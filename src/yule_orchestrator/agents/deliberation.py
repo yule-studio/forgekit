@@ -314,12 +314,38 @@ def _synthesis_optional_str(value: Any) -> Optional[str]:
 
 @dataclass(frozen=True)
 class DeliberationContext:
-    """Bundled inputs for one role's deliberation turn."""
+    """Bundled inputs for one role's deliberation turn.
+
+    ``memory_context`` is filled by the retrieval layer (Phase 3) when
+    available. Each entry is a ``RetrievedMemory`` with title/snippet/
+    source_kind/role/note_kind so a runner can splice it into a prompt
+    or a deterministic fallback can quote it. Retrieval failure leaves
+    this empty — deterministic takes still work end-to-end.
+    """
 
     session: WorkflowSession
     role: str
     research_pack: Optional[ResearchPack] = None
     previous_turns: Sequence[RoleTake] = field(default_factory=tuple)
+    memory_context: Sequence["RetrievedMemory"] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class RetrievedMemory:
+    """One retrieval hit, decoupled from the memory.search SQLite shape.
+
+    Kept here so deliberation/team-runtime can depend on agents.* without
+    pulling in the FTS5 layer transitively. The retrieval helper translates
+    :class:`yule_orchestrator.memory.MemorySearchResult` to this shape.
+    """
+
+    title: str
+    snippet: str
+    source_kind: str
+    role: Optional[str] = None
+    note_kind: Optional[str] = None
+    path: Optional[str] = None
+    score: float = 0.0
 
 
 # ---------------------------------------------------------------------------

@@ -855,16 +855,59 @@ def deliberation_role_turn(
     contract instead of the bare templated line. ``runner_fn`` is the
     optional LLM hook; when None or when it raises, the deterministic
     fallback inside ``run_role_deliberation`` handles the response.
+
+    Right before the run, we ask the local memory layer for relevant
+    past notes/policies/workflow artifacts and stash them on the
+    ``DeliberationContext``. Retrieval failure is logged and ignored —
+    deterministic fallback runs unchanged.
     """
 
+    memory_context = _retrieve_memory_for_role(
+        role=role,
+        session=session,
+        research_pack=research_pack,
+    )
     context = DeliberationContext(
         session=session,
         role=role,
         research_pack=research_pack,
         previous_turns=tuple(previous_turns),
+        memory_context=memory_context,
     )
     take = run_role_deliberation(context, runner_fn=runner_fn)
     return take, render_role_take(take)
+
+
+def _retrieve_memory_for_role(
+    *,
+    role: str,
+    session: WorkflowSession,
+    research_pack: Optional[ResearchPack],
+):
+    """Best-effort memory retrieval — never raises into the caller."""
+
+    try:
+        from ..memory.retrieval import fetch_role_context
+    except Exception:  # noqa: BLE001 - memory layer optional
+        return ()
+    query_parts: list[str] = []
+    if research_pack is not None and getattr(research_pack, "title", None):
+        query_parts.append(str(research_pack.title))
+    if getattr(session, "prompt", None):
+        query_parts.append(str(session.prompt))
+    query = " ".join(query_parts).strip()
+    if not query:
+        return ()
+    try:
+        hits = fetch_role_context(
+            role=role,
+            query=query,
+            task_type=getattr(session, "task_type", None),
+            limit=3,
+        )
+    except Exception:  # noqa: BLE001 - retrieval is opportunistic
+        return ()
+    return tuple(hits)
 
 
 def synthesize_thread(
@@ -873,8 +916,22 @@ def synthesize_thread(
     *,
     research_pack: Optional[ResearchPack] = None,
 ) -> Tuple[TechLeadSynthesis, str]:
-    """Run tech-lead synthesis and return both the dataclass and rendered text."""
+    """Run tech-lead synthesis and return both the dataclass and rendered text.
 
+    Tech-lead retrieval also runs here so the synthesis can reference
+    prior decisions/policies via the deterministic fallback. Retrieval
+    is opportunistic; failure is silent.
+    """
+
+    # Retrieval is currently advisory — synthesize() does not consume it
+    # in the deterministic path. Calling it keeps the seam warm for an
+    # LLM-backed tech-lead and gives observability hooks one place to
+    # see what would have been pulled in.
+    _retrieve_memory_for_role(
+        role="tech-lead",
+        session=session,
+        research_pack=research_pack,
+    )
     synth = synthesize(session, role_takes, research_pack=research_pack)
     return synth, render_synthesis(synth)
 
