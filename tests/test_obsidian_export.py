@@ -263,5 +263,56 @@ class FrontmatterShapeTestCase(unittest.TestCase):
         self.assertIn("sources: []", note.content)
 
 
+class ProjectVaultLayoutTests(unittest.TestCase):
+    def test_project_kw_routes_research_into_projects_tree(self) -> None:
+        from yule_orchestrator.agents.obsidian_export import recommend_path
+
+        path = recommend_path(
+            title="Stripe pricing hero copy",
+            kind="research",
+            created_at=datetime(2026, 4, 30),
+            project="yule-studio-agent",
+        )
+        self.assertTrue(path.folder.startswith("10-projects/yule-studio-agent/"))
+        self.assertTrue(path.folder.endswith("/research"))
+
+    def test_project_decision_uses_decisions_subdir(self) -> None:
+        from yule_orchestrator.agents.obsidian_export import recommend_path
+
+        path = recommend_path(
+            title="hero copy 분할",
+            kind="decision",
+            created_at=datetime(2026, 4, 30),
+            project="yule-studio-agent",
+        )
+        self.assertTrue(path.folder.endswith("/decisions"))
+
+    def test_default_layout_unchanged_when_project_absent(self) -> None:
+        from yule_orchestrator.agents.obsidian_export import (
+            PATH_RESEARCH,
+            recommend_path,
+        )
+
+        path = recommend_path(
+            title="x", kind="research", created_at=datetime(2026, 4, 30)
+        )
+        self.assertEqual(path.folder, PATH_RESEARCH)
+
+    def test_render_research_note_picks_up_session_project_extra(self) -> None:
+        pack = ResearchPack(title="개발팀 학습 루프 설계")
+        session = WorkflowSession(
+            session_id="abc",
+            prompt="x",
+            task_type="landing-page",
+            state=WorkflowState.APPROVED,
+            created_at=datetime(2026, 4, 30, 9, 0),
+            updated_at=datetime(2026, 4, 30, 9, 0),
+            extra={"project": "yule-studio-agent"},
+        )
+        note = render_research_note(pack, session=session)
+        self.assertTrue(note.path.folder.startswith("10-projects/"))
+        self.assertIn("project: yule-studio-agent", note.content)
+
+
 if __name__ == "__main__":
     unittest.main()

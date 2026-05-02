@@ -34,6 +34,16 @@ PATH_RESEARCH = f"{VAULT_BASE}/Research"
 PATH_DECISIONS = f"{VAULT_BASE}/Decisions"
 PATH_REFERENCES = f"{VAULT_BASE}/References"
 
+# yule-agent-vault layout (compatibility mode — opt-in via ``project=``).
+# When the caller passes a project name, ResearchPack/DecisionRecord/
+# Reference notes land under ``10-projects/<project>/{research,decisions,references}/``
+# instead of the legacy ``Agents/Engineering/...`` flat tree. The default
+# behaviour is unchanged so existing vaults keep working.
+PROJECTS_BASE = "10-projects"
+PROJECT_RESEARCH_SUBDIR = "research"
+PROJECT_DECISIONS_SUBDIR = "decisions"
+PROJECT_REFERENCES_SUBDIR = "references"
+
 
 @dataclass(frozen=True)
 class ExportPath:
@@ -72,14 +82,21 @@ def recommend_path(
     title: str,
     kind: str,
     created_at: Optional[datetime] = None,
+    project: Optional[str] = None,
 ) -> ExportPath:
-    """Return the recommended ``Agents/Engineering/<kind>/<YYYY-MM-DD_slug>.md`` path.
+    """Return the recommended export path.
 
     *kind* must be one of ``research``/``decision``/``reference`` (case
     insensitive). Anything else falls back to ``research``.
+
+    Path layout:
+      - default (no ``project``): ``Agents/Engineering/<kind>/<YYYY-MM-DD_slug>.md``.
+      - with ``project``: ``10-projects/<project-slug>/<kind>/<YYYY-MM-DD_slug>.md``
+        — the yule-agent-vault layout. Existing vaults keep using the
+        default; new vaults can opt in by passing the project name.
     """
 
-    folder = _kind_to_folder(kind)
+    folder = _kind_to_project_folder(kind, project) if project else _kind_to_folder(kind)
     when = created_at or datetime.utcnow()
     if isinstance(when, datetime):
         date_part = when.date().isoformat()
@@ -91,6 +108,16 @@ def recommend_path(
     if not slug:
         slug = "untitled"
     return ExportPath(folder=folder, filename=f"{date_part}_{slug}.md")
+
+
+def _kind_to_project_folder(kind: str, project: str) -> str:
+    project_slug = _slugify(project) or "uncategorized"
+    normalized = (kind or "").strip().lower()
+    if normalized in ("decision", "decisions"):
+        return f"{PROJECTS_BASE}/{project_slug}/{PROJECT_DECISIONS_SUBDIR}"
+    if normalized in ("reference", "references"):
+        return f"{PROJECTS_BASE}/{project_slug}/{PROJECT_REFERENCES_SUBDIR}"
+    return f"{PROJECTS_BASE}/{project_slug}/{PROJECT_RESEARCH_SUBDIR}"
 
 
 # ---------------------------------------------------------------------------
@@ -105,15 +132,22 @@ def render_research_note(
     synthesis: Optional[TechLeadSynthesis] = None,
     kind: Optional[str] = None,
     exported_at: Optional[datetime] = None,
+    project: Optional[str] = None,
 ) -> ObsidianNote:
     """Render a ResearchPack into an Obsidian-ready note.
 
     *kind* defaults based on whether a synthesis is provided
     (``decision`` if so, else ``research``). Pass ``"reference"``
     explicitly for pure UX/design reference notes.
+
+    *project* opts the resulting note path into the
+    ``10-projects/<project>/...`` yule-agent-vault layout. When omitted
+    the legacy ``Agents/Engineering/...`` tree is preserved so existing
+    vaults keep working.
     """
 
     chosen_kind = (kind or _infer_kind(synthesis)).lower()
+    chosen_project = project or _project_from_session(session)
     frontmatter = _frontmatter(
         pack=pack,
         session=session,
@@ -121,14 +155,35 @@ def render_research_note(
         kind=chosen_kind,
         exported_at=exported_at,
     )
+    if chosen_project:
+        frontmatter["project"] = chosen_project
     body_lines = _body(pack, synthesis=synthesis, session=session)
     content = _format_frontmatter(frontmatter) + "\n\n" + "\n\n".join(body_lines).strip() + "\n"
     path = recommend_path(
         title=pack.title,
         kind=chosen_kind,
         created_at=pack.created_at,
+        project=chosen_project,
     )
     return ObsidianNote(path=path, content=content, frontmatter=frontmatter)
+
+
+def _project_from_session(session: Optional[WorkflowSession]) -> Optional[str]:
+    """Best-effort project derivation from session metadata.
+
+    Looks for an explicit ``project`` key in ``session.extra`` first
+    (operators can stash it there at intake time). Returns ``None`` when
+    nothing usable is found — the path then defaults to the legacy
+    layout.
+    """
+
+    if session is None:
+        return None
+    extra = dict(getattr(session, "extra", None) or {})
+    candidate = extra.get("project") or extra.get("project_name")
+    if candidate:
+        return str(candidate).strip() or None
+    return None
 
 
 # ---------------------------------------------------------------------------
