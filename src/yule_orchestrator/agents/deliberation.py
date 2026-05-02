@@ -481,6 +481,89 @@ def filter_pack_for_role(
     return tuple(source for _, source in indexed)
 
 
+# ---------------------------------------------------------------------------
+# RetrievedMemory helpers (Phase 3 follow-up)
+# ---------------------------------------------------------------------------
+
+
+def memory_evidence_lines(
+    memory_context: Sequence["RetrievedMemory"],
+    *,
+    limit: int = 2,
+) -> Tuple[str, ...]:
+    """Render up to *limit* memory hits as evidence-style one-liners.
+
+    Format: ``[memory:<source>·<note_kind>] <title> — <path> · <snippet>``.
+    FTS5 highlight markers (``«»``) are stripped so the line stays clean
+    in Discord. Empty input or hits with neither title nor snippet are
+    skipped — never raises.
+    """
+
+    if not memory_context:
+        return ()
+    out: list[str] = []
+    for hit in memory_context:
+        title = (getattr(hit, "title", "") or "").strip()
+        snippet = _strip_fts_markers(
+            (getattr(hit, "snippet", "") or "").strip()
+        )
+        if not title and not snippet:
+            continue
+        source_kind = (getattr(hit, "source_kind", "") or "memory").strip() or "memory"
+        note_kind = getattr(hit, "note_kind", None)
+        tag = f"{source_kind}·{note_kind}" if note_kind else source_kind
+        path = (getattr(hit, "path", None) or "").strip()
+        line = f"[memory:{tag}] {title or '(제목 없음)'}"
+        if path:
+            line += f" — {path}"
+        if snippet:
+            line += f" · {snippet[:160]}"
+        out.append(line)
+        if len(out) >= max(0, limit):
+            break
+    return tuple(out)
+
+
+def memory_hint_for_role(
+    memory_context: Sequence["RetrievedMemory"],
+    *,
+    kind: Optional[str] = None,
+    source: Optional[str] = None,
+    limit: int = 1,
+) -> Optional[str]:
+    """Return a short ``"기억된 …: <title>"`` style phrase for the first hit.
+
+    Filters by ``note_kind`` and/or ``source_kind`` if provided. Returns
+    ``None`` when no hit matches — callers branch on None to keep their
+    deterministic output stable.
+    """
+
+    if not memory_context:
+        return None
+    matches = []
+    for hit in memory_context:
+        if kind is not None and getattr(hit, "note_kind", None) != kind:
+            continue
+        if source is not None and getattr(hit, "source_kind", None) != source:
+            continue
+        matches.append(hit)
+        if len(matches) >= max(1, limit):
+            break
+    if not matches:
+        return None
+    first = matches[0]
+    title = (getattr(first, "title", "") or "").strip() or "(제목 없음)"
+    return title
+
+
+def _strip_fts_markers(text: str) -> str:
+    """Remove FTS5 highlight markers (``«»``) and trim whitespace."""
+
+    if not text:
+        return ""
+    return text.replace("«", "").replace("»", "").strip()
+
+
 def evidence_lines_for_role(
     pack: Optional[ResearchPack],
     role: str,
@@ -569,11 +652,17 @@ def synthesize(
     role_takes: Sequence[RoleTake],
     *,
     research_pack: Optional[ResearchPack] = None,
+    memory_context: Sequence["RetrievedMemory"] = (),
 ) -> TechLeadSynthesis:
     """Produce the final tech-lead synthesis from collected role takes.
 
     Pure-deterministic for MVP. A future iteration may delegate to an LLM
     runner; the dataclass shape is the contract either way.
+
+    When ``memory_context`` is provided, prior decision/policy memories
+    are folded into the consensus prefix and open_research follow-ups so
+    the synthesis visibly references past notes — the seam the gateway
+    forum hook and synthesize_thread now feed.
     """
 
     todos: list[str] = []
@@ -608,6 +697,18 @@ def synthesize(
                     f"{short} 우선 자료 유형({top_type})이 비어 있음 — 보강 권장"
                 )
 
+    # Memory-driven follow-ups: surface relevant prior decisions/policies
+    # as additional research/decision items so the operator sees that
+    # synthesis read past memory before proposing the consensus.
+    decision_memory_hit = memory_hint_for_role(memory_context, kind="decision")
+    if decision_memory_hit:
+        todos.append(f"이전 결정({decision_memory_hit}) 재확인")
+    policy_memory_hit = memory_hint_for_role(memory_context, source="policy")
+    if policy_memory_hit:
+        open_research.append(
+            f"관련 정책({policy_memory_hit}) 검토 후 합의안 확정"
+        )
+
     approval_required = bool(session.write_requested) and not _session_approved(session)
     approval_reason = (
         session.write_blocked_reason
@@ -620,6 +721,8 @@ def synthesize(
     )
 
     consensus = _consensus_summary(session, role_takes)
+    if decision_memory_hit:
+        consensus = f"기억된 결정({decision_memory_hit}) 맥락에서: {consensus}"
     return TechLeadSynthesis(
         consensus=consensus,
         todos=tuple(_dedup_keep_order(todos)),
@@ -730,10 +833,14 @@ def _fallback_tech_lead_opening(ctx: DeliberationContext) -> TechLeadOpening:
         f"`{session.task_type}` 작업 — 실행 후보 `{session.executor_role or 'tech-lead'}` "
         "를 기준으로 각 멤버가 자기 정책에 맞게 검토 의견 제출."
     )
-    evidence = evidence_lines_for_role(pack, ctx.role)
+    evidence = list(evidence_lines_for_role(pack, ctx.role))
+    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=2))
     risks: list[str] = [
         "멤버별 의견 수렴 지연 — thread 응답이 늦어지면 실행 후보 작업이 막힘",
     ]
+    policy_hit = memory_hint_for_role(ctx.memory_context, source="policy")
+    if policy_hit:
+        risks.append(f"기존 정책과의 충돌 점검: {policy_hit}")
     if session.write_requested and not _session_approved(session):
         risks.append("승인 전 쓰기 진행 시 정책 위반 — write 게이트 차단 유지")
     if pack is None or not pack.urls:
@@ -746,13 +853,18 @@ def _fallback_tech_lead_opening(ctx: DeliberationContext) -> TechLeadOpening:
     if session.write_requested and not _session_approved(session):
         next_actions.append("operator에게 ✅ 승인 요청")
 
+    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
+    notes: Optional[str] = None
+    if decision_hit:
+        notes = f"이전 결정 참고: {decision_hit}"
+
     return TechLeadOpening(
         task_breakdown=tuple(breakdown),
         dependencies=tuple(dependencies),
         decisions_needed=tuple(decisions_needed),
-        notes=None,
+        notes=notes,
         perspective=perspective,
-        evidence=evidence,
+        evidence=tuple(evidence),
         risks=tuple(risks),
         next_actions=tuple(next_actions),
     )
@@ -774,6 +886,13 @@ def _fallback_product_designer(ctx: DeliberationContext) -> ProductDesignerTake:
             f"[design_reference] {r} — (task_type 추천)"
             for r in ctx.session.references_suggested[:3]
         )
+
+    # Memory-driven references take priority — surfacing past visual /
+    # research notes ahead of pack-derived URLs gives the designer the
+    # "we already looked at this before" anchor.
+    memory_lines = memory_evidence_lines(ctx.memory_context, limit=2)
+    if memory_lines:
+        refs = memory_lines + refs
 
     summary = refs or (
         "reference 미공급 — 사용자 제공 자료 또는 suggested 카테고리 우선",
@@ -823,7 +942,8 @@ def _fallback_product_designer(ctx: DeliberationContext) -> ProductDesignerTake:
 def _fallback_backend_engineer(ctx: DeliberationContext) -> BackendEngineerTake:
     pack = ctx.research_pack
     role = ctx.role
-    evidence = evidence_lines_for_role(pack, role)
+    evidence = list(evidence_lines_for_role(pack, role))
+    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=1))
 
     risks: list[str] = [
         "schema 변경 동시 작업 충돌 가능",
@@ -831,6 +951,10 @@ def _fallback_backend_engineer(ctx: DeliberationContext) -> BackendEngineerTake:
     ]
     if pack is not None and not _has_doc_or_code_signal(pack, role):
         risks.append("공식 문서/code_context 부족 — 가정 기반 결정 위험")
+
+    policy_hit = memory_hint_for_role(ctx.memory_context, source="policy")
+    if policy_hit:
+        risks.append(f"정책 점검: {policy_hit}")
 
     perspective = (
         "데이터 모델, 외부 API 계약, 인증/권한, 저장소 영향을 점검해 "
@@ -841,6 +965,11 @@ def _fallback_backend_engineer(ctx: DeliberationContext) -> BackendEngineerTake:
         "관련 schema/migration 영향 thread에 정리",
         "외부 API 변경 시 backward-compat 메모 PR description에 포함",
     ]
+    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
+    if decision_hit:
+        next_actions.append(
+            f"이전 결정({decision_hit}) 데이터 영향 재확인"
+        )
     if pack is not None:
         # If product-designer already decided UX direction, surface it as
         # a backend-side validation step.
@@ -859,7 +988,7 @@ def _fallback_backend_engineer(ctx: DeliberationContext) -> BackendEngineerTake:
         storage_impact="저장소 마이그레이션 필요 시 off-peak 적용 권장",
         risks=tuple(risks),
         perspective=perspective,
-        evidence=evidence,
+        evidence=tuple(evidence),
         next_actions=tuple(next_actions),
     )
 
@@ -867,7 +996,8 @@ def _fallback_backend_engineer(ctx: DeliberationContext) -> BackendEngineerTake:
 def _fallback_frontend_engineer(ctx: DeliberationContext) -> FrontendEngineerTake:
     pack = ctx.research_pack
     role = ctx.role
-    evidence = evidence_lines_for_role(pack, role)
+    evidence = list(evidence_lines_for_role(pack, role))
+    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=1))
 
     risks: list[str] = [
         "모바일 가로폭에서 CTA 절단 가능",
@@ -885,6 +1015,13 @@ def _fallback_frontend_engineer(ctx: DeliberationContext) -> FrontendEngineerTak
         "필수 컴포넌트 분해 + 재사용 가능한 패턴 thread에 정리",
         "접근성(ARIA) 점검 항목 PR checklist에 포함",
     ]
+    reference_hit = memory_hint_for_role(
+        ctx.memory_context, kind="reference"
+    ) or memory_hint_for_role(ctx.memory_context, kind="decision")
+    if reference_hit:
+        next_actions.append(
+            f"이전 reference({reference_hit}) 컴포넌트 패턴 재사용 검토"
+        )
     designer_visual = _previous_field(ctx.previous_turns, ProductDesignerTake, "visual_direction")
     if designer_visual:
         next_actions.append(
@@ -902,7 +1039,7 @@ def _fallback_frontend_engineer(ctx: DeliberationContext) -> FrontendEngineerTak
         user_flow="첫 화면 → 정보 입력 → 검증 → 결과 노출 4단계 유지",
         risks=tuple(risks),
         perspective=perspective,
-        evidence=evidence,
+        evidence=tuple(evidence),
         next_actions=tuple(next_actions),
     )
 
@@ -910,7 +1047,8 @@ def _fallback_frontend_engineer(ctx: DeliberationContext) -> FrontendEngineerTak
 def _fallback_qa_engineer(ctx: DeliberationContext) -> QaEngineerTake:
     pack = ctx.research_pack
     role = ctx.role
-    evidence = evidence_lines_for_role(pack, role)
+    evidence = list(evidence_lines_for_role(pack, role))
+    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=1))
 
     risks: list[str] = [
         "기존 회귀 케이스 영향",
@@ -920,6 +1058,9 @@ def _fallback_qa_engineer(ctx: DeliberationContext) -> QaEngineerTake:
         risks.append(
             "장애/회귀 사례 reference 부족 — risk-based test 우선 순위 약함"
         )
+    workflow_hit = memory_hint_for_role(ctx.memory_context, source="workflow")
+    if workflow_hit:
+        risks.append(f"과거 세션({workflow_hit}) 회귀 위험 재점검")
 
     perspective = (
         "수용 기준과 회귀 영향을 정의해 실행 후보가 만든 변경이 "
@@ -930,6 +1071,11 @@ def _fallback_qa_engineer(ctx: DeliberationContext) -> QaEngineerTake:
         "수용 기준 thread에 commit-by-commit 매핑",
         "회귀 묶음 영향 확인 — 실행 후보 PR에 라벨 부착",
     ]
+    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
+    if decision_hit:
+        next_actions.append(
+            f"이전 결정({decision_hit}) 영향 회귀 시나리오 보강"
+        )
     backend_data = _previous_field(ctx.previous_turns, BackendEngineerTake, "data_impact")
     if backend_data:
         next_actions.append(
@@ -941,18 +1087,22 @@ def _fallback_qa_engineer(ctx: DeliberationContext) -> QaEngineerTake:
             f"프론트 사용자 흐름({frontend_flow}) e2e 시나리오 1건 추가"
         )
 
+    regression_targets: list[str] = [
+        "회원가입 onboarding 회귀 묶음",
+        "공통 layout 컴포넌트",
+    ]
+    if decision_hit:
+        regression_targets.append(f"이전 결정 영역({decision_hit}) 회귀 추적")
+
     return QaEngineerTake(
         acceptance_criteria=(
             "주요 흐름 e2e 1건 추가",
             "에러/빈 상태 스냅샷 확인",
         ),
         risks=tuple(risks),
-        regression_targets=(
-            "회원가입 onboarding 회귀 묶음",
-            "공통 layout 컴포넌트",
-        ),
+        regression_targets=tuple(regression_targets),
         perspective=perspective,
-        evidence=evidence,
+        evidence=tuple(evidence),
         next_actions=tuple(next_actions),
     )
 
@@ -962,14 +1112,21 @@ def _fallback_ai_engineer(ctx: DeliberationContext) -> AiEngineerTake:
 
     pack = ctx.research_pack
     role = ctx.role
-    evidence = evidence_lines_for_role(pack, role)
+    pack_evidence = evidence_lines_for_role(pack, role)
+    memory_lines = memory_evidence_lines(ctx.memory_context, limit=2)
+    evidence = tuple(list(pack_evidence) + list(memory_lines))
 
     risks: list[str] = [
         "context window 초과로 응답 품질 저하 가능",
         "벡터 인덱스가 비어 있으면 first-pass quality 낮음",
     ]
-    if pack is None or not evidence:
+    if pack is None or not pack_evidence:
         risks.append("RAG/메모리 reference 부족 — 모델 결정 근거 약함")
+    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
+    if decision_hit:
+        risks.append(
+            f"기존 결정({decision_hit})과 retrieval 결과 일관성 점검"
+        )
 
     perspective = (
         "사용자 자료를 모델 컨텍스트로 어떻게 들여보내고, 메모리/RAG 구조와 "

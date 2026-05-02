@@ -1172,5 +1172,309 @@ class DeliberationLoopTestCase(unittest.TestCase):
         self.assertIn("승인 필요: yes", result.synthesis_text)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3 follow-up: deterministic fallback consumes RetrievedMemory
+# ---------------------------------------------------------------------------
+
+
+from yule_orchestrator.agents.deliberation import (  # noqa: E402  (placed after the rest for grouping)
+    AiEngineerTake,
+    RetrievedMemory,
+    _deterministic_role_take,
+    memory_evidence_lines,
+    memory_hint_for_role,
+)
+
+
+def _decision_memory(title: str = "Stripe Pricing 합의") -> RetrievedMemory:
+    return RetrievedMemory(
+        title=title,
+        snippet="hero step copy를 분할한다",
+        source_kind="obsidian",
+        note_kind="decision",
+        path=f"Agents/Engineering/Decisions/{title}.md",
+        score=-7.1,
+    )
+
+
+def _policy_memory(
+    title: str = "Backend Deployment Policy",
+) -> RetrievedMemory:
+    return RetrievedMemory(
+        title=title,
+        snippet="Stripe pricing 변경은 backend 검토 후 적용",
+        source_kind="policy",
+        note_kind=None,
+        path=f"policies/runtime/agents/{title}.md",
+        score=-5.4,
+    )
+
+
+def _reference_memory(
+    title: str = "Stripe Pricing visual reference",
+) -> RetrievedMemory:
+    return RetrievedMemory(
+        title=title,
+        snippet="이미지 모음을 정리한 노트",
+        source_kind="obsidian",
+        note_kind="reference",
+        path=f"Agents/Engineering/References/{title}.md",
+        score=-6.0,
+    )
+
+
+def _research_memory(title: str = "Stripe Pricing 자료") -> RetrievedMemory:
+    return RetrievedMemory(
+        title=title,
+        snippet="Stripe pricing 페이지의 hero step 패턴 자료",
+        source_kind="obsidian",
+        note_kind="research",
+        path=f"Agents/Engineering/Research/{title}.md",
+        score=-4.2,
+    )
+
+
+class MemoryHelpersTestCase(unittest.TestCase):
+    def test_memory_evidence_lines_renders_per_hit(self) -> None:
+        lines = memory_evidence_lines(
+            (_decision_memory(), _reference_memory()),
+            limit=2,
+        )
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(any("decision" in line for line in lines))
+        self.assertTrue(any("reference" in line for line in lines))
+
+    def test_memory_evidence_lines_strips_fts5_markers(self) -> None:
+        hit = RetrievedMemory(
+            title="x",
+            snippet="…before «match» after…",
+            source_kind="policy",
+        )
+        line = memory_evidence_lines((hit,))[0]
+        self.assertNotIn("«", line)
+        self.assertNotIn("»", line)
+
+    def test_memory_hint_for_role_filters_by_kind(self) -> None:
+        hint = memory_hint_for_role(
+            (_policy_memory(), _decision_memory()),
+            kind="decision",
+        )
+        self.assertIsNotNone(hint)
+        self.assertIn("Stripe Pricing 합의", hint)
+
+    def test_memory_helpers_handle_empty(self) -> None:
+        self.assertEqual(memory_evidence_lines(()), ())
+        self.assertIsNone(memory_hint_for_role(()))
+
+
+class FallbacksConsumeMemoryContextTestCase(unittest.TestCase):
+    def _ctx(self, role: str, memory_context=()) -> DeliberationContext:
+        return DeliberationContext(
+            session=_session(),
+            role=role,
+            research_pack=None,
+            memory_context=tuple(memory_context),
+        )
+
+    # --- baselines for diff-checks ----------------------------------------
+
+    def _baseline_text(self, role: str) -> str:
+        ctx = self._ctx(role)
+        return render_role_take(_deterministic_role_take(ctx))
+
+    # --- per-role assertions ----------------------------------------------
+
+    def test_tech_lead_fallback_includes_decision_memory(self) -> None:
+        baseline = self._baseline_text("engineering-agent/tech-lead")
+        ctx = self._ctx(
+            "engineering-agent/tech-lead",
+            memory_context=(_decision_memory(), _policy_memory()),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsInstance(take, TechLeadOpening)
+        rendered = render_role_take(take)
+        self.assertIn("Stripe Pricing 합의", rendered)
+        self.assertNotEqual(rendered, baseline)
+
+    def test_product_designer_fallback_prepends_reference_memory(self) -> None:
+        baseline = self._baseline_text("engineering-agent/product-designer")
+        ctx = self._ctx(
+            "engineering-agent/product-designer",
+            memory_context=(_reference_memory(), _research_memory()),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsInstance(take, ProductDesignerTake)
+        rendered = render_role_take(take)
+        self.assertIn("visual reference", rendered)
+        # The first reference summary entry must be the memory hit.
+        self.assertTrue(
+            take.reference_summary[0].lower().startswith("[memory")
+            or "Stripe Pricing visual reference" in take.reference_summary[0],
+            f"reference_summary[0]={take.reference_summary[0]!r}",
+        )
+        self.assertNotEqual(rendered, baseline)
+
+    def test_backend_engineer_fallback_surfaces_policy_memory_in_risks(self) -> None:
+        baseline = self._baseline_text("engineering-agent/backend-engineer")
+        ctx = self._ctx(
+            "engineering-agent/backend-engineer",
+            memory_context=(_policy_memory(),),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsInstance(take, BackendEngineerTake)
+        joined_risks = " · ".join(take.risks)
+        self.assertIn("Backend Deployment Policy", joined_risks)
+        self.assertNotEqual(render_role_take(take), baseline)
+
+    def test_frontend_engineer_fallback_uses_reference_memory_in_next_actions(self) -> None:
+        baseline = self._baseline_text("engineering-agent/frontend-engineer")
+        ctx = self._ctx(
+            "engineering-agent/frontend-engineer",
+            memory_context=(_reference_memory(),),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsInstance(take, FrontendEngineerTake)
+        joined = " · ".join(take.next_actions)
+        self.assertIn("Stripe Pricing visual reference", joined)
+        self.assertNotEqual(render_role_take(take), baseline)
+
+    def test_qa_engineer_fallback_quotes_decision_memory_in_regression(self) -> None:
+        ctx = self._ctx(
+            "engineering-agent/qa-engineer",
+            memory_context=(_decision_memory(),),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsInstance(take, QaEngineerTake)
+        joined = " · ".join(take.regression_targets) + " · ".join(take.next_actions)
+        self.assertIn("Stripe Pricing 합의", joined)
+
+    def test_ai_engineer_fallback_consumes_research_memory(self) -> None:
+        ctx = self._ctx(
+            "engineering-agent/ai-engineer",
+            memory_context=(_research_memory(), _decision_memory()),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsInstance(take, AiEngineerTake)
+        joined_evidence = " · ".join(take.evidence)
+        self.assertIn("Stripe Pricing 자료", joined_evidence)
+
+    def test_empty_memory_context_keeps_existing_fallback_output(self) -> None:
+        # Sanity: every role's deterministic output stays stable when
+        # memory_context is empty.
+        for role in (
+            "engineering-agent/tech-lead",
+            "engineering-agent/product-designer",
+            "engineering-agent/backend-engineer",
+            "engineering-agent/frontend-engineer",
+            "engineering-agent/qa-engineer",
+            "engineering-agent/ai-engineer",
+        ):
+            with_memory = render_role_take(
+                _deterministic_role_take(self._ctx(role, memory_context=()))
+            )
+            again = render_role_take(
+                _deterministic_role_take(self._ctx(role, memory_context=()))
+            )
+            self.assertEqual(with_memory, again)
+            # Critical sections still present (regression contract guard).
+            self.assertIn("관점", with_memory)
+            self.assertIn("근거", with_memory)
+            self.assertIn("리스크", with_memory)
+            self.assertIn("다음 행동", with_memory)
+
+    def test_memory_hits_do_not_explode_evidence_length(self) -> None:
+        # Hard cap: with 5 memory hits, role take must still emit a
+        # bounded number of evidence/extra lines (verbosity guard).
+        many = (_decision_memory(), _decision_memory(),
+                _policy_memory(), _research_memory(), _reference_memory())
+        ctx = self._ctx(
+            "engineering-agent/tech-lead", memory_context=many
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertLessEqual(len(take.evidence), 6)
+
+
+class SynthesizeConsumesMemoryContextTestCase(unittest.TestCase):
+    def test_synthesize_with_decision_memory_adds_consensus_prefix(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        baseline = synthesize(session, takes)
+        with_memory = synthesize(
+            session,
+            takes,
+            memory_context=(_decision_memory(),),
+        )
+        self.assertNotEqual(baseline.consensus, with_memory.consensus)
+        # The decision title leaks into either consensus or todos so the
+        # operator can see "we consulted prior memory".
+        joined = with_memory.consensus + " · ".join(with_memory.todos)
+        self.assertIn("Stripe Pricing 합의", joined)
+
+    def test_synthesize_with_policy_memory_adds_open_research(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        with_memory = synthesize(
+            session,
+            takes,
+            memory_context=(_policy_memory(),),
+        )
+        self.assertTrue(
+            any("Backend Deployment Policy" in entry for entry in with_memory.open_research),
+            f"open_research={with_memory.open_research}",
+        )
+
+    def test_synthesize_no_memory_matches_legacy_signature(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        legacy = synthesize(session, takes)
+        memory = synthesize(session, takes, memory_context=())
+        self.assertEqual(legacy.consensus, memory.consensus)
+        self.assertEqual(tuple(legacy.todos), tuple(memory.todos))
+
+
+class SynthesizeThreadPipesMemoryTestCase(unittest.TestCase):
+    """Verify that the runtime seam ``synthesize_thread`` actually feeds
+    the retrieval result into ``synthesize`` instead of dropping it.
+    """
+
+    def test_synthesize_thread_passes_memory_context(self) -> None:
+        from unittest.mock import patch
+
+        session = _session()
+        captured: dict[str, object] = {}
+
+        def stub_retrieve(*, role, session, research_pack):  # noqa: D401
+            return (_decision_memory(),)
+
+        def fake_synthesize(*args, **kwargs):
+            captured["memory_context"] = kwargs.get("memory_context")
+            return TechLeadSynthesis(consensus="stub", todos=())
+
+        with patch(
+            "yule_orchestrator.discord.engineering_team_runtime."
+            "_retrieve_memory_for_role",
+            side_effect=stub_retrieve,
+        ), patch(
+            "yule_orchestrator.discord.engineering_team_runtime.synthesize",
+            side_effect=fake_synthesize,
+        ):
+            synthesize_thread(session, role_takes=())
+
+        self.assertIsNotNone(captured.get("memory_context"))
+        self.assertEqual(len(captured["memory_context"]), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
