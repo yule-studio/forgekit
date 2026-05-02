@@ -13,7 +13,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from ..agents.deliberation import RetrievedMemory
+from ..agents.deliberation import RetrievedMemory, assign_citation_ids
 from .models import (
     NOTE_KIND_DECISION,
     NOTE_KIND_REFERENCE,
@@ -121,7 +121,10 @@ def fetch_role_context(
             merged.append(_to_retrieved_memory(hit))
             if len(merged) >= limit:
                 break
-    return merged[:limit]
+    # Stamp citation IDs at the boundary so callers (deterministic
+    # fallbacks + future LLM runners) get the same labels regardless of
+    # which entry point produced the list.
+    return list(assign_citation_ids(tuple(merged[:limit])))
 
 
 def _to_retrieved_memory(hit) -> RetrievedMemory:

@@ -165,6 +165,18 @@ class FetchRoleContextTests(unittest.TestCase):
         # Should still produce hits via the default priority chain.
         self.assertTrue(hits)
 
+    def test_citation_ids_stamped_on_results(self) -> None:
+        hits = fetch_role_context(
+            role="engineering-agent/tech-lead",
+            query="Stripe Pricing",
+            limit=3,
+        )
+        self.assertTrue(hits)
+        ids = [hit.citation_id for hit in hits]
+        # Every hit gets a non-empty id and they are unique.
+        self.assertTrue(all(cid for cid in ids))
+        self.assertEqual(len(ids), len(set(ids)))
+
 
 class DeliberationRetrievalIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:

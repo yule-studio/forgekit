@@ -1476,5 +1476,196 @@ class SynthesizeThreadPipesMemoryTestCase(unittest.TestCase):
         self.assertEqual(len(captured["memory_context"]), 1)
 
 
+# ---------------------------------------------------------------------------
+# Phase 3 safety: structured citations + multi-decision synthesis
+# ---------------------------------------------------------------------------
+
+
+from yule_orchestrator.agents.deliberation import (  # noqa: E402
+    assign_citation_ids,
+    format_memory_block,
+    memory_hits_by,
+)
+
+
+def _decision_memory_v2(title: str = "Stripe Pricing 합의 v2") -> RetrievedMemory:
+    return RetrievedMemory(
+        title=title,
+        snippet="hero step copy 일괄 유지로 회귀",
+        source_kind="obsidian",
+        note_kind="decision",
+        path=f"Agents/Engineering/Decisions/{title}.md",
+        score=-6.5,
+    )
+
+
+class CitationIdsTestCase(unittest.TestCase):
+    def test_assigns_stable_ids_in_input_order(self) -> None:
+        hits = (_decision_memory(), _policy_memory(), _reference_memory())
+        labelled = assign_citation_ids(hits)
+        ids = [h.citation_id for h in labelled]
+        self.assertEqual(ids, ["m1", "m2", "m3"])
+
+    def test_assign_citation_ids_preserves_existing(self) -> None:
+        existing = _decision_memory()
+        existing = type(existing)(
+            **{**existing.__dict__, "citation_id": "custom-7"}
+        )
+        labelled = assign_citation_ids((existing, _policy_memory()))
+        self.assertEqual(labelled[0].citation_id, "custom-7")
+        self.assertEqual(labelled[1].citation_id, "m2")
+
+    def test_assign_citation_ids_handles_empty(self) -> None:
+        self.assertEqual(assign_citation_ids(()), ())
+
+
+class FormatMemoryBlockTestCase(unittest.TestCase):
+    def test_block_keeps_path_score_source(self) -> None:
+        block = format_memory_block(
+            assign_citation_ids((_decision_memory(), _policy_memory()))
+        )
+        self.assertIn("[m1]", block)
+        self.assertIn("[m2]", block)
+        self.assertIn("Agents/Engineering/Decisions", block)
+        self.assertIn("policies/runtime/agents", block)
+        self.assertIn("score=", block)
+        self.assertIn("obsidian", block)
+        self.assertIn("policy", block)
+
+    def test_block_strips_fts_markers_in_snippet(self) -> None:
+        hit = RetrievedMemory(
+            title="x",
+            snippet="…before «match» after…",
+            source_kind="policy",
+            citation_id="m1",
+        )
+        self.assertNotIn("«", format_memory_block((hit,)))
+
+    def test_empty_block(self) -> None:
+        self.assertEqual(format_memory_block(()), "")
+
+
+class MemoryHitsByTestCase(unittest.TestCase):
+    def test_filters_by_kind_and_returns_multiple_hits(self) -> None:
+        hits = (
+            _decision_memory(title="결정 A"),
+            _decision_memory(title="결정 B"),
+            _policy_memory(),
+        )
+        decisions = memory_hits_by(hits, kind="decision", limit=5)
+        self.assertEqual([h.title for h in decisions], ["결정 A", "결정 B"])
+
+    def test_returns_empty_when_no_match(self) -> None:
+        self.assertEqual(
+            memory_hits_by((_policy_memory(),), kind="decision"), ()
+        )
+
+
+class FallbackCitationsTestCase(unittest.TestCase):
+    def _ctx(self, role, memory_context):
+        return DeliberationContext(
+            session=_session(),
+            role=role,
+            research_pack=None,
+            memory_context=tuple(memory_context),
+        )
+
+    def test_tech_lead_evidence_includes_citation_id(self) -> None:
+        ctx = self._ctx(
+            "engineering-agent/tech-lead",
+            (_decision_memory(), _policy_memory()),
+        )
+        take = _deterministic_role_take(ctx)
+        joined = " | ".join(take.evidence)
+        self.assertIn("[m1", joined)
+        self.assertIn("[m2", joined)
+
+    def test_tech_lead_notes_include_citation(self) -> None:
+        ctx = self._ctx(
+            "engineering-agent/tech-lead",
+            (_decision_memory(),),
+        )
+        take = _deterministic_role_take(ctx)
+        self.assertIsNotNone(take.notes)
+        self.assertIn("[m1]", take.notes)
+
+    def test_backend_risk_includes_citation_id(self) -> None:
+        ctx = self._ctx(
+            "engineering-agent/backend-engineer",
+            (_policy_memory(), _decision_memory()),
+        )
+        take = _deterministic_role_take(ctx)
+        joined_risks = " · ".join(take.risks)
+        joined_actions = " · ".join(take.next_actions)
+        self.assertIn("[m1", joined_risks)
+        self.assertIn("[m2", joined_actions)
+
+
+class SynthesizeMultiDecisionTestCase(unittest.TestCase):
+    def test_two_decision_hits_both_appear_in_todos(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        result = synthesize(
+            session,
+            takes,
+            memory_context=(_decision_memory(), _decision_memory_v2()),
+        )
+        joined = " · ".join(result.todos)
+        self.assertIn("Stripe Pricing 합의", joined)
+        self.assertIn("Stripe Pricing 합의 v2", joined)
+
+    def test_conflicting_decisions_surface_user_decisions(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        result = synthesize(
+            session,
+            takes,
+            memory_context=(_decision_memory(), _decision_memory_v2()),
+        )
+        joined_user = " · ".join(result.user_decisions_needed)
+        self.assertIn("Stripe Pricing 합의", joined_user)
+        self.assertIn("Stripe Pricing 합의 v2", joined_user)
+
+    def test_single_decision_does_not_request_user_arbitration(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        result = synthesize(
+            session,
+            takes,
+            memory_context=(_decision_memory(),),
+        )
+        # Only one decision → no "다중 검토" prompt for the user.
+        self.assertFalse(
+            any(
+                "다중 검토" in entry for entry in result.user_decisions_needed
+            ),
+            f"user_decisions_needed={result.user_decisions_needed}",
+        )
+
+    def test_legacy_signature_unchanged_when_memory_empty(self) -> None:
+        session = _session()
+        takes = (
+            _deterministic_role_take(
+                DeliberationContext(session=session, role="engineering-agent/tech-lead")
+            ),
+        )
+        legacy = synthesize(session, takes)
+        empty_memory = synthesize(session, takes, memory_context=())
+        self.assertEqual(legacy.consensus, empty_memory.consensus)
+        self.assertEqual(tuple(legacy.todos), tuple(empty_memory.todos))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1006,11 +1006,17 @@ def synthesize_thread(
     failure returns an empty tuple and synthesis runs unchanged.
     """
 
-    memory_context = _retrieve_memory_for_role(
+    raw_memory = _retrieve_memory_for_role(
         role="tech-lead",
         session=session,
         research_pack=research_pack,
     )
+    # Stamp citation IDs once so the synthesis text and any later
+    # observability hook (e.g. format_memory_block) refer to the same
+    # labels.
+    from ..agents.deliberation import assign_citation_ids
+
+    memory_context = assign_citation_ids(raw_memory) if raw_memory else ()
     synth = synthesize(
         session,
         role_takes,
