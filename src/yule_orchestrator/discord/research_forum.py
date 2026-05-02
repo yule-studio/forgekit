@@ -71,22 +71,163 @@ ALL_PREFIXES = THREAD_TITLE_PREFIXES + COMMENT_PREFIXES
 # ---------------------------------------------------------------------------
 
 
-def normalize_thread_title(title: str, *, prefix: Optional[str] = None) -> str:
-    """Ensure the thread title starts with one of the THREAD_TITLE_PREFIXES.
+DISCORD_THREAD_TITLE_LIMIT = 100
+TOPIC_BUDGET = 60  # leaves room for the prefix + safety margin
 
-    If *title* already begins with a known thread prefix, returns it as-is.
-    If *prefix* is given and *title* doesn't have one yet, prepends it.
-    Otherwise defaults to ``[Research]``.
+
+def derive_research_topic(pack: "ResearchPack") -> str:
+    """Pick a short, semantic topic string for the forum thread title.
+
+    Resolution order (each step short-circuits when it produces a
+    non-empty value within :data:`TOPIC_BUDGET`):
+      1. ``pack.title`` if it looks intentional (already short, no full
+         sentence punctuation).
+      2. First sentence of ``pack.summary`` trimmed to a topic phrase.
+      3. ``pack.tags`` joined with ``·`` if any.
+      4. ``pack.request.question`` if the pack carries an autonomous
+         request.
+      5. ``pack.title`` truncated as a last resort.
+      6. Literal ``"engineering 작업"`` so the title is never empty.
+
+    The function does *not* prepend ``[Research]`` — that is
+    :func:`normalize_thread_title`'s job, which also enforces the 100
+    char limit on the combined string.
+    """
+
+    candidates: list[str] = []
+    title = (getattr(pack, "title", "") or "").strip()
+    if title:
+        candidates.append(title)
+
+    summary = (getattr(pack, "summary", "") or "").strip()
+    if summary:
+        first = _first_sentence(summary)
+        if first and first != title:
+            candidates.append(first)
+
+    tags = tuple(getattr(pack, "tags", ()) or ())
+    if tags:
+        candidates.append(" · ".join(str(t) for t in tags if str(t).strip()))
+
+    request = getattr(pack, "request", None)
+    if request is not None:
+        question = (getattr(request, "question", "") or "").strip()
+        if question:
+            candidates.append(_first_sentence(question))
+
+    for candidate in candidates:
+        compact = _compact_topic(candidate)
+        if compact and len(compact) <= TOPIC_BUDGET:
+            return compact
+
+    # Fall back to a hard-trimmed version of the first non-empty
+    # candidate — title preferred. Final fallback keeps a sensible
+    # anchor so create_thread_fn never sees blank.
+    for candidate in candidates:
+        if candidate:
+            return _compact_topic(candidate)[:TOPIC_BUDGET]
+    return "engineering 작업"
+
+
+def _first_sentence(text: str) -> str:
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+    for sep in (". ", "! ", "? ", "\n"):
+        idx = cleaned.find(sep)
+        if 0 < idx < TOPIC_BUDGET * 2:
+            cleaned = cleaned[:idx]
+            break
+    return cleaned.strip().rstrip("." )
+
+
+def _compact_topic(text: str) -> str:
+    cleaned = " ".join((text or "").split())
+    return cleaned.strip()
+
+
+def _extract_original_request(pack: "ResearchPack") -> str:
+    """Return the user-facing original request text for the body block.
+
+    Looks at ``pack.request.question`` first (autonomous collector
+    populates this from the conversation prompt), then ``pack.summary``
+    only if it visibly differs from the title — title alone is not
+    informative as "원문 요청". Returns ``""`` when nothing usable
+    exists so the caller can omit the section entirely.
+    """
+
+    request = getattr(pack, "request", None)
+    if request is not None:
+        # ResearchRequest may carry the original question under ``topic``
+        # (current schema) or ``question`` (older drafts). Read both
+        # defensively so callers from either era surface the prompt.
+        for attr in ("question", "topic"):
+            value = (getattr(request, attr, "") or "").strip()
+            if value:
+                return value
+    summary = (getattr(pack, "summary", "") or "").strip()
+    title = (getattr(pack, "title", "") or "").strip()
+    if summary and summary != title and len(summary) > len(title):
+        return summary
+    return ""
+
+
+def normalize_thread_title(
+    title: str,
+    *,
+    prefix: Optional[str] = None,
+    max_chars: int = DISCORD_THREAD_TITLE_LIMIT,
+) -> str:
+    """Return a thread title that fits Discord's 100-char limit.
+
+    Discord forum thread names must be 1..100 characters. If *title*
+    already starts with a known thread prefix, the prefix is preserved.
+    Otherwise *prefix* (or ``[Research]``) is prepended. The combined
+    string is then trimmed to ``max_chars``: word-boundary first, with a
+    trailing ellipsis-style ``…`` so the cut is visible. Empty input
+    falls back to ``"(untitled)"`` so create_thread_fn never sees an
+    empty name.
     """
 
     cleaned = (title or "").strip()
     if not cleaned:
         cleaned = "(untitled)"
+
+    matched_prefix: Optional[str] = None
     for known in ALL_PREFIXES:
         if cleaned.startswith(known):
-            return cleaned
-    chosen = prefix if prefix in THREAD_TITLE_PREFIXES else PREFIX_RESEARCH
-    return f"{chosen} {cleaned}"
+            matched_prefix = known
+            cleaned = cleaned[len(known):].strip() or "(untitled)"
+            break
+
+    chosen_prefix = matched_prefix
+    if chosen_prefix is None:
+        chosen_prefix = prefix if prefix in THREAD_TITLE_PREFIXES else PREFIX_RESEARCH
+
+    full = f"{chosen_prefix} {cleaned}".strip()
+    if len(full) <= max_chars:
+        return full
+    return _safe_truncate(full, max_chars=max_chars)
+
+
+def _safe_truncate(text: str, *, max_chars: int) -> str:
+    """Trim *text* to ``max_chars`` at a word boundary when possible.
+
+    Reserves one character for the trailing ``…`` marker so the result
+    is exactly ``max_chars`` after the marker is appended. Falls back to
+    a hard slice when there's no whitespace inside the budget.
+    """
+
+    if max_chars <= 1:
+        return text[:max_chars]
+    budget = max_chars - 1
+    head = text[:budget]
+    pivot = head.rfind(" ")
+    # Only break on whitespace when it leaves at least 60% of the budget
+    # — otherwise hard-slice keeps more signal.
+    if pivot >= int(budget * 0.6):
+        head = head[:pivot]
+    return head.rstrip() + "…"
 
 
 def format_research_post_body(
@@ -110,6 +251,12 @@ def format_research_post_body(
     lines: list[str] = []
     if posted_by:
         lines.append(f"_posted by_ `{posted_by}`")
+        lines.append("")
+
+    original_request = _extract_original_request(pack)
+    if original_request:
+        lines.append("## 원문 요청")
+        lines.append(original_request)
         lines.append("")
 
     collection_block = _render_collection_block(
@@ -361,7 +508,8 @@ async def create_research_post(
     pack's request role when present.
     """
 
-    title = normalize_thread_title(pack.title, prefix=prefix)
+    short_topic = derive_research_topic(pack)
+    title = normalize_thread_title(short_topic, prefix=prefix)
     body = format_research_post_body(
         pack,
         posted_by=posted_by,

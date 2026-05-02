@@ -102,6 +102,34 @@ class NormalizeThreadTitleTestCase(unittest.TestCase):
     def test_blank_input_becomes_untitled(self) -> None:
         self.assertEqual(normalize_thread_title("  "), f"{PREFIX_RESEARCH} (untitled)")
 
+    def test_long_title_is_truncated_under_discord_limit(self) -> None:
+        long_title = (
+            "오늘은 Obsidian과 Discord와 Claude를 연결해서 개발팀이 스스로 "
+            "학습하는 구조를 만들고 싶다. 그리고 흐름이 어떻게 안정되는지도 "
+            "함께 검토하자. 그 다음에는 Obsidian sync까지."
+        )
+        result = normalize_thread_title(long_title)
+        self.assertLessEqual(len(result), 100)
+        self.assertTrue(result.startswith(PREFIX_RESEARCH))
+        self.assertTrue(result.endswith("…"))
+
+    def test_existing_prefix_does_not_duplicate(self) -> None:
+        result = normalize_thread_title(f"{PREFIX_RESEARCH} 자료 모음")
+        self.assertEqual(result, f"{PREFIX_RESEARCH} 자료 모음")
+        # Caller passing prefix= explicitly with an already-prefixed title
+        # also avoids double prefix.
+        result2 = normalize_thread_title(
+            f"{PREFIX_RESEARCH} 자료 모음", prefix=PREFIX_RESEARCH
+        )
+        self.assertEqual(result2.count(PREFIX_RESEARCH), 1)
+
+    def test_max_chars_param_overrides_default(self) -> None:
+        result = normalize_thread_title(
+            "긴 제목을 짧게 자르고 싶어요 매우 길게", max_chars=30
+        )
+        self.assertLessEqual(len(result), 30)
+        self.assertTrue(result.startswith(PREFIX_RESEARCH))
+
 
 class DetectThreadPrefixTestCase(unittest.TestCase):
     def test_detects_known_prefix(self) -> None:
@@ -517,6 +545,94 @@ class CreateResearchPostCollectionTestCase(unittest.TestCase):
 
         self.assertTrue(result.posted)
         self.assertIn("1차 자료 정리", captured.get("content", ""))
+
+
+from yule_orchestrator.discord.research_forum import derive_research_topic  # noqa: E402
+
+
+class DeriveResearchTopicTests(unittest.TestCase):
+    def test_uses_short_pack_title(self) -> None:
+        pack = ResearchPack(title="개발팀 학습 루프 설계", summary="...")
+        self.assertEqual(derive_research_topic(pack), "개발팀 학습 루프 설계")
+
+    def test_falls_back_to_first_summary_sentence_when_title_long(self) -> None:
+        long_title = "오늘은 Obsidian과 Discord와 Claude를 연결해서 개발팀이 스스로 학습하는 구조를 만들고 싶어 길게 적는다"
+        pack = ResearchPack(
+            title=long_title,
+            summary="개발팀 학습 루프 설계. 그 다음에는 Obsidian sync.",
+        )
+        topic = derive_research_topic(pack)
+        self.assertIn("개발팀 학습 루프 설계", topic)
+        self.assertLessEqual(len(topic), 60)
+
+    def test_blank_pack_returns_safe_default(self) -> None:
+        pack = ResearchPack(title="", summary="")
+        self.assertEqual(derive_research_topic(pack), "engineering 작업")
+
+
+class CreateResearchPostTitleAndBodyTests(unittest.TestCase):
+    def _async_run(self, coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def test_long_prompt_does_not_explode_thread_name(self) -> None:
+        long_prompt = (
+            "오늘은 Obsidian + Discord + Claude를 연결해서 개발팀이 스스로 학습하는 구조를 만들고 싶어. "
+            "이 흐름이 잘 굴러가는지 자료 모아줘. 그리고 추가로 어떤 우려가 있는지도 검토해줘."
+        )
+        pack = ResearchPack(title=long_prompt, summary="개발팀 학습 루프 설계")
+        captured: dict = {}
+
+        async def fake_thread_fn(*, channel_id, channel_name, name, content):
+            captured["name"] = name
+            captured["content"] = content
+            return {"id": 4242, "url": "https://discord.test/4242"}
+
+        result = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=999),
+                create_thread_fn=fake_thread_fn,
+            )
+        )
+        self.assertTrue(result.posted)
+        self.assertIn("name", captured)
+        self.assertLessEqual(len(captured["name"]), 100)
+        self.assertTrue(captured["name"].startswith(PREFIX_RESEARCH))
+        # Prefix must not appear twice.
+        self.assertEqual(captured["name"].count(PREFIX_RESEARCH), 1)
+
+    def test_body_includes_original_request_section(self) -> None:
+        from yule_orchestrator.agents.research_pack import ResearchRequest
+
+        pack = ResearchPack(
+            title="개발팀 학습 루프 설계",
+            summary="짧은 요약",
+            request=ResearchRequest(
+                request_id="r1",
+                topic="오늘은 개발팀이 스스로 학습하는 구조를 만들고 싶어",
+                role="engineering-agent/tech-lead",
+            ),
+        )
+        captured: dict = {}
+
+        async def fake_thread_fn(*, channel_id, channel_name, name, content):
+            captured["content"] = content
+            return {"id": 1, "url": "https://x"}
+
+        self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=999),
+                create_thread_fn=fake_thread_fn,
+            )
+        )
+        body = captured.get("content", "")
+        self.assertIn("## 원문 요청", body)
+        self.assertIn("개발팀이 스스로 학습하는 구조", body)
 
 
 if __name__ == "__main__":
