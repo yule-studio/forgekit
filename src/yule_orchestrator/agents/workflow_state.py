@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Mapping, Optional, Sequence
 
@@ -108,7 +108,13 @@ def list_sessions(*, limit: int = 100) -> tuple[WorkflowSession, ...]:
             sessions.append(_from_payload(entry.payload))
         except Exception:  # noqa: BLE001 - ignore corrupt cache rows
             continue
-    sessions.sort(key=lambda item: item.updated_at, reverse=True)
+    # Some legacy rows persisted ``updated_at`` as naive ISO strings
+    # (older writes) while newer rows use ``datetime.now().astimezone()``
+    # which is timezone-aware. Sorting the mixed list directly raises
+    # ``TypeError: can't compare offset-naive and offset-aware datetimes``.
+    # Normalise the sort key only — the dataclass instances themselves
+    # are left untouched so callers see the persisted shape.
+    sessions.sort(key=lambda item: _sortable_dt(item.updated_at), reverse=True)
     return tuple(sessions)
 
 
@@ -205,6 +211,21 @@ def _from_payload(payload: Mapping[str, Any]) -> WorkflowSession:
         ),
         extra=dict(payload.get("extra") or {}),
     )
+
+
+def _sortable_dt(value: datetime) -> datetime:
+    """Return *value* coerced to a timezone-aware datetime for ordering.
+
+    Naive datetimes (legacy cache rows) are treated as UTC — the absolute
+    instant may shift by the operator's local offset, but ordering is
+    consistent within naive and aware slices, which is enough for "most
+    recently updated session first". The dataclass itself is never
+    mutated; only the sort key sees the coerced value.
+    """
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def _optional_str(value: Any) -> Optional[str]:
