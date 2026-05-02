@@ -491,6 +491,20 @@ yule discord bot
 
 이 구조에서는 Discord 봇이 브리핑 시점에 캘린더나 GitHub API 응답을 기다리지 않습니다.
 
+## Memory 인덱스
+
+`yule memory`는 Obsidian vault, 저장소 정책 문서(`policies/`, agent `CLAUDE.md`, `README.md`), 최근 workflow session artifact(research_pack/synthesis)를 로컬 SQLite FTS5에 색인하고 검색하는 layer입니다. 네트워크 의존이 없고, 결정적이며, 인덱스 파일은 `.cache/yule/memory.sqlite3` (또는 `YULE_MEMORY_DB_PATH`)에 떨어집니다.
+
+```bash
+yule memory reindex                                  # 모두 재색인
+yule memory reindex --skip-obsidian                  # vault 미설정 시 부분 재색인
+yule memory search "Obsidian sync 정책" --limit 5
+yule memory search "hero copy" --source-kind obsidian --note-kind decision
+yule memory search "운영-리서치" --role engineering-agent/tech-lead --json
+```
+
+검색 결과는 `[source_kind] title` + 경로 + role/task_type/note_kind/tags/score + snippet으로 출력합니다. `--json`은 retrieval 파이프라인에서 그대로 소비할 수 있는 평면 객체 배열을 반환합니다. reindex는 idempotent하며 source_kind별로 기존 슬라이스를 비우고 다시 채우므로 삭제된 노트도 깔끔히 사라집니다.
+
 ## 테스트
 
 기본 자동 테스트는 표준 라이브러리 `unittest`로 실행합니다.

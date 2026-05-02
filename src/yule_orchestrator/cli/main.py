@@ -34,6 +34,7 @@ from .engineer import (
 from ..agents.workflow import WorkflowError
 from .doctor import run_doctor_command
 from .github import run_github_issues_command
+from .memory import run_memory_reindex_command, run_memory_search_command
 from .obsidian import run_obsidian_sync_command
 from .planning import (
     run_planning_checkpoints_command,
@@ -589,6 +590,73 @@ def build_parser() -> argparse.ArgumentParser:
         help="Custom commit message. Defaults to 'obsidian sync: <session_id> ...'.",
     )
 
+    memory_parser = subparsers.add_parser(
+        "memory",
+        help="Manage the local engineering-agent memory index.",
+    )
+    memory_subparsers = memory_parser.add_subparsers(dest="memory_command", required=True)
+
+    memory_reindex_parser = memory_subparsers.add_parser(
+        "reindex",
+        help="Reindex Obsidian notes, policy docs, and workflow artifacts.",
+    )
+    memory_reindex_parser.add_argument(
+        "--vault-path",
+        help="Override OBSIDIAN_VAULT_PATH for this run only.",
+    )
+    memory_reindex_parser.add_argument(
+        "--skip-obsidian",
+        action="store_true",
+        help="Skip Obsidian vault ingestion (e.g. when vault is unavailable).",
+    )
+    memory_reindex_parser.add_argument(
+        "--skip-policies",
+        action="store_true",
+        help="Skip repo policy/README ingestion.",
+    )
+    memory_reindex_parser.add_argument(
+        "--skip-workflow",
+        action="store_true",
+        help="Skip workflow session artifact ingestion.",
+    )
+    memory_reindex_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable counts.",
+    )
+
+    memory_search_parser = memory_subparsers.add_parser(
+        "search",
+        help="Search the local memory index.",
+    )
+    memory_search_parser.add_argument("query", help="Free-text search query.")
+    memory_search_parser.add_argument(
+        "--limit", type=int, default=10, help="Maximum results. Defaults to 10."
+    )
+    memory_search_parser.add_argument(
+        "--source-kind",
+        choices=("obsidian", "policy", "workflow"),
+        help="Restrict to one source kind.",
+    )
+    memory_search_parser.add_argument(
+        "--role",
+        help="Filter by author role (frontmatter roles[0]).",
+    )
+    memory_search_parser.add_argument(
+        "--note-kind",
+        choices=("research", "decision", "reference"),
+        help="Filter by note kind.",
+    )
+    memory_search_parser.add_argument(
+        "--task-type",
+        help="Filter by task_type.",
+    )
+    memory_search_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON results.",
+    )
+
     return parser
 
 
@@ -744,6 +812,26 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             )
         if args.command == "engineer":
             return _dispatch_engineer_command(repo_root, args)
+        if args.command == "memory" and args.memory_command == "reindex":
+            return run_memory_reindex_command(
+                repo_root,
+                vault_path=args.vault_path,
+                skip_obsidian=args.skip_obsidian,
+                skip_policies=args.skip_policies,
+                skip_workflow=args.skip_workflow,
+                json_output=args.json,
+            )
+        if args.command == "memory" and args.memory_command == "search":
+            return run_memory_search_command(
+                repo_root,
+                query=args.query,
+                limit=args.limit,
+                source_kind=args.source_kind,
+                role=args.role,
+                note_kind=args.note_kind,
+                task_type=args.task_type,
+                json_output=args.json,
+            )
         if args.command == "obsidian" and args.obsidian_command == "sync":
             return run_obsidian_sync_command(
                 args.session,
