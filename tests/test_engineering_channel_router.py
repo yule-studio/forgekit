@@ -745,6 +745,182 @@ class RouteEngineeringMessageWithResearchLoopTests(unittest.TestCase):
         persist_spy.assert_called_once()
         self.assertIs(persist_spy.call_args.args[1], pack)
 
+    def test_route_calls_decide_routing_in_production_path(self) -> None:
+        """Wiring guard: route_engineering_message must invoke decide_routing.
+
+        Earlier we shipped decide_routing as a standalone helper but the
+        production router still ran the legacy heuristic. This test
+        ensures the wiring stays in place by patching ``decide_routing``
+        and asserting the call lands.
+        """
+
+        message = _Message(
+            content="실제 운영 라우팅 점검",
+            channel=_Channel(channel_id=111, name="업무-접수"),
+        )
+        outcome = self._confirmed_outcome()
+
+        async def loop_fn(**_kwargs):
+            return EngineeringResearchLoopReport()
+
+        with patch(
+            "yule_orchestrator.discord.engineering_channel_router.decide_routing",
+            wraps=__import__(
+                "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
+            ).decide_routing,
+        ) as decide_spy:
+            self._route(message=message, research_loop_fn=loop_fn)
+        decide_spy.assert_called_once()
+        # The production call must pass the original prompt_text so the
+        # routing heuristics see what the user typed.
+        kwargs = decide_spy.call_args.kwargs
+        self.assertIn("prompt", kwargs)
+        self.assertEqual(kwargs["prompt"], "실제 운영 라우팅 점검")
+
+    def test_route_attaches_decision_to_result(self) -> None:
+        message = _Message(
+            content="라우팅 결과 노출",
+            channel=_Channel(channel_id=111, name="업무-접수"),
+        )
+
+        async def loop_fn(**_kwargs):
+            return EngineeringResearchLoopReport()
+
+        result = self._route(message=message, research_loop_fn=loop_fn)
+        self.assertIsNotNone(result.routing_decision)
+        # Default flow with no open sessions → CREATE.
+        self.assertEqual(result.routing_decision.action, "create_new_work")
+
+    def test_route_joins_existing_when_decision_is_join(self) -> None:
+        """When decide_routing says JOIN, the router must reuse the matched
+        session via thread_continuation_fn instead of creating a new one.
+        """
+
+        from yule_orchestrator.agents.routing import (
+            EngineeringRoutingDecision,
+        )
+
+        message = _Message(
+            content="기존 작업 이어가자",
+            channel=_Channel(channel_id=111, name="업무-접수"),
+        )
+        outcome = self._confirmed_outcome()
+        existing = _FakeSession(session_id="open-1", task_type="research")
+        continuation = EngineeringThreadContinuation(
+            session=existing,
+            thread_id=4242,
+            message="기존 thread에 이어 붙였습니다.",
+        )
+
+        async def continuation_fn(**_kwargs):
+            return continuation
+
+        async def loop_fn(**_kwargs):
+            return EngineeringResearchLoopReport()
+
+        intake_fn = AsyncMock(side_effect=AssertionError("intake should not run"))
+        kickoff_fn = AsyncMock(side_effect=AssertionError("kickoff should not run"))
+
+        with patch(
+            "yule_orchestrator.discord.engineering_channel_router.decide_routing",
+            return_value=EngineeringRoutingDecision(
+                action="join_existing_work",
+                matched_session_id="open-1",
+                matched_thread_id=4242,
+                confidence="high",
+                reason="forced join in test",
+            ),
+        ):
+            result = _run(
+                route_engineering_message(
+                    message=message,
+                    bot_user=object(),
+                    route_context=self.context,
+                    extract_prompt=_extract_prompt,
+                    conversation_fn=lambda **_: outcome,
+                    intake_fn=intake_fn,
+                    thread_kickoff_fn=kickoff_fn,
+                    send_chunks=self.send_chunks,
+                    research_loop_fn=loop_fn,
+                    thread_continuation_fn=continuation_fn,
+                )
+            )
+
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "open-1")
+        self.assertEqual(result.thread_id, 4242)
+        intake_fn.assert_not_awaited()
+        kickoff_fn.assert_not_awaited()
+
+    def test_route_asks_for_clarification_when_decision_is_ask(self) -> None:
+        from yule_orchestrator.agents.routing import (
+            CandidateSummary,
+            EngineeringRoutingDecision,
+        )
+
+        message = _Message(
+            content="비슷한 작업이 두 개 있는데",
+            channel=_Channel(channel_id=111, name="업무-접수"),
+        )
+        outcome = self._confirmed_outcome()
+
+        intake_fn = AsyncMock(side_effect=AssertionError("intake should not run"))
+        kickoff_fn = AsyncMock(side_effect=AssertionError("kickoff should not run"))
+        loop_fn = AsyncMock(side_effect=AssertionError("loop should not run"))
+
+        with patch(
+            "yule_orchestrator.discord.engineering_channel_router.decide_routing",
+            return_value=EngineeringRoutingDecision(
+                action="ask_for_clarification",
+                reason="후보 두 건이 비슷합니다",
+                candidate_summaries=(
+                    CandidateSummary(
+                        session_id="aaa",
+                        score=0.4,
+                        title="Stripe pricing hero",
+                        task_type="landing-page",
+                        thread_id=10,
+                        forum_thread_id=None,
+                        why="match",
+                    ),
+                    CandidateSummary(
+                        session_id="bbb",
+                        score=0.38,
+                        title="Stripe pricing 회귀",
+                        task_type="landing-page",
+                        thread_id=11,
+                        forum_thread_id=None,
+                        why="match",
+                    ),
+                ),
+            ),
+        ):
+            result = _run(
+                route_engineering_message(
+                    message=message,
+                    bot_user=object(),
+                    route_context=self.context,
+                    extract_prompt=_extract_prompt,
+                    conversation_fn=lambda **_: outcome,
+                    intake_fn=intake_fn,
+                    thread_kickoff_fn=kickoff_fn,
+                    send_chunks=self.send_chunks,
+                    research_loop_fn=loop_fn,
+                )
+            )
+
+        self.assertTrue(result.handled)
+        intake_fn.assert_not_awaited()
+        sent_payloads = [call.args[1] for call in self.send_chunks.await_args_list]
+        self.assertTrue(
+            any("어느 작업에 합류할까요" in s for s in sent_payloads),
+            f"sent payloads: {sent_payloads}",
+        )
+        # Both candidate session ids must surface so the user can pick.
+        joined = "\n".join(sent_payloads)
+        self.assertIn("aaa", joined)
+        self.assertIn("bbb", joined)
+
     def test_no_persist_call_when_outcome_has_no_research_pack(self) -> None:
         """A bare confirm without recall context must not invoke the persist
         helper (nothing to save) — keeps existing intakes side-effect free.

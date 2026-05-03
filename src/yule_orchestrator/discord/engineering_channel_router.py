@@ -18,6 +18,15 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional, Sequence, Union
 
 from ..agents.research_persistence import persist_research_artifacts
+from ..agents.routing import (
+    ACTION_APPEND_CONTEXT,
+    ACTION_ASK,
+    ACTION_CREATE,
+    ACTION_JOIN,
+    EngineeringRoutingDecision,
+    decide_routing,
+    list_open_sessions,
+)
 
 
 # Single-source confirmation lexicon; the engineering conversation layer
@@ -158,6 +167,7 @@ class EngineeringRouteResult:
     thread_id: Optional[int] = None
     research_loop_report: Optional[EngineeringResearchLoopReport] = None
     error: Optional[str] = None
+    routing_decision: Optional[EngineeringRoutingDecision] = None
 
 
 SendChunksFn = Callable[[Any, str], Awaitable[None]]
@@ -342,53 +352,43 @@ async def route_engineering_message(
             conversation_message=outcome.content or None,
         )
 
-    wants_continuation = should_continue_existing_thread(
-        prompt_text, intake_prompt
-    ) and not should_start_new_thread(prompt_text)
-    if wants_continuation:
-        continuation: Optional[EngineeringThreadContinuation] = None
-        if thread_continuation_fn is not None:
-            continuation = await _maybe_await(
-                thread_continuation_fn(
-                    message=message,
-                    prompt=intake_prompt,
-                    write_requested=outcome.write_requested,
-                    thread_topic=outcome.thread_topic,
-                )
-            )
-        if continuation is not None:
-            continued_session = continuation.session
-            continued_session = _maybe_persist_research_pack(
-                continued_session,
-                research_pack=outcome.research_pack,
-                collection_outcome=outcome.collection_outcome,
-            )
-            session_id = getattr(continued_session, "session_id", None)
-            thread_id = continuation.thread_id
-            if continuation.message:
-                await send_chunks(message.channel, continuation.message)
+    # New routing decision — replaces the boolean "should_continue_existing_thread"
+    # heuristic. ``decide_routing`` looks at currently open workflow sessions and
+    # returns one of join/create/ask/append-context. Failures fall back to the
+    # legacy "create new" path so the bot never gets wedged.
+    try:
+        routing_decision = decide_routing(prompt=prompt_text)
+    except Exception as exc:  # noqa: BLE001 - routing must not crash the bot
+        routing_decision = EngineeringRoutingDecision(
+            action=ACTION_CREATE,
+            reason=f"decide_routing fallback: {exc}",
+            confidence="low",
+        )
 
-            research_loop_report: Optional[EngineeringResearchLoopReport] = None
-            if research_loop_fn is not None and continued_session is not None:
-                research_loop_report = await _run_research_loop_hook(
-                    research_loop_fn=research_loop_fn,
-                    message=message,
-                    session=continued_session,
-                    prompt_text=intake_prompt,
-                    send_chunks=send_chunks,
-                    collection_outcome=outcome.collection_outcome,
-                    research_pack=outcome.research_pack,
-                    role_for_research=outcome.role_for_research,
-                    thread_id=thread_id,
-                )
-            return EngineeringRouteResult(
-                handled=True,
-                conversation_message=outcome.content or None,
-                kickoff_message=continuation.message,
-                session_id=session_id,
-                thread_id=thread_id,
-                research_loop_report=research_loop_report,
-            )
+    if routing_decision.action == ACTION_ASK:
+        clarification = _format_clarification_message(routing_decision)
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
+            routing_decision=routing_decision,
+        )
+
+    if routing_decision.action in (ACTION_JOIN, ACTION_APPEND_CONTEXT):
+        result = await _handle_join_or_append(
+            message=message,
+            outcome=outcome,
+            decision=routing_decision,
+            intake_prompt=intake_prompt,
+            send_chunks=send_chunks,
+            thread_continuation_fn=thread_continuation_fn,
+            research_loop_fn=research_loop_fn,
+        )
+        if result is not None:
+            return result
+        # Fell through (continuation failed to find the matched thread) →
+        # treat as an explicit clarification; never silently create a new
+        # session when the user signalled they wanted to continue.
         not_found_message = (
             "열려 있는 engineering-agent thread를 찾지 못해서 새 작업 세션은 만들지 않았습니다.\n"
             "이어갈 thread 안에서 다시 말해주시거나, 새 작업으로 시작하려면 `새 작업으로 진행`이라고 답해 주세요."
@@ -398,6 +398,48 @@ async def route_engineering_message(
             handled=True,
             conversation_message=outcome.content or None,
             error="existing engineering thread not found",
+            routing_decision=routing_decision,
+        )
+
+    # CREATE branch — but if the user explicitly typed a "이어가" / "새로
+    # 등록하지 말고" continuation phrase in this turn, give the
+    # continuation function one chance to find a matching thread before
+    # falling through to a fresh intake. This honours the user's explicit
+    # signal without re-introducing the legacy "blindly join the latest
+    # open session" bug.
+    legacy_wants_continuation = (
+        routing_decision.action == ACTION_CREATE
+        and should_continue_existing_thread(prompt_text, intake_prompt)
+        and not should_start_new_thread(prompt_text)
+    )
+    if legacy_wants_continuation:
+        join_decision = EngineeringRoutingDecision(
+            action=ACTION_JOIN,
+            confidence="low",
+            reason="explicit continuation phrase fallback (no scored match)",
+            candidate_summaries=routing_decision.candidate_summaries,
+        )
+        legacy_result = await _handle_join_or_append(
+            message=message,
+            outcome=outcome,
+            decision=join_decision,
+            intake_prompt=intake_prompt,
+            send_chunks=send_chunks,
+            thread_continuation_fn=thread_continuation_fn,
+            research_loop_fn=research_loop_fn,
+        )
+        if legacy_result is not None:
+            return legacy_result
+        not_found_message = (
+            "열려 있는 engineering-agent thread를 찾지 못해서 새 작업 세션은 만들지 않았습니다.\n"
+            "이어갈 thread 안에서 다시 말해주시거나, 새 작업으로 시작하려면 `새 작업으로 진행`이라고 답해 주세요."
+        )
+        await send_chunks(message.channel, not_found_message)
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
+            error="existing engineering thread not found",
+            routing_decision=routing_decision,
         )
 
     try:
@@ -475,7 +517,111 @@ async def route_engineering_message(
         thread_id=thread_id,
         research_loop_report=research_loop_report,
         error=kickoff_error,
+        routing_decision=routing_decision,
     )
+
+
+async def _handle_join_or_append(
+    *,
+    message: Any,
+    outcome: "EngineeringConversationOutcome",
+    decision: EngineeringRoutingDecision,
+    intake_prompt: str,
+    send_chunks: SendChunksFn,
+    thread_continuation_fn: Optional[ThreadContinuationFn],
+    research_loop_fn: Optional[ResearchLoopFn],
+) -> Optional[EngineeringRouteResult]:
+    """Try to attach the message to a matched existing session/thread.
+
+    Returns the populated :class:`EngineeringRouteResult` on success or
+    ``None`` when no thread could be located — caller is responsible for
+    surfacing a "not found" notice. ``ACTION_APPEND_CONTEXT`` skips the
+    research loop entirely; ``ACTION_JOIN`` runs it like the legacy
+    continuation path so the resumed thread stays current.
+    """
+
+    if thread_continuation_fn is None:
+        return None
+    continuation = await _maybe_await(
+        thread_continuation_fn(
+            message=message,
+            prompt=intake_prompt,
+            write_requested=outcome.write_requested,
+            thread_topic=outcome.thread_topic,
+        )
+    )
+    if continuation is None:
+        return None
+
+    continued_session = continuation.session
+    continued_session = _maybe_persist_research_pack(
+        continued_session,
+        research_pack=outcome.research_pack,
+        collection_outcome=outcome.collection_outcome,
+    )
+    session_id = getattr(continued_session, "session_id", None)
+    thread_id = continuation.thread_id
+    if continuation.message:
+        await send_chunks(message.channel, continuation.message)
+
+    research_loop_report: Optional[EngineeringResearchLoopReport] = None
+    is_append_only = decision.action == ACTION_APPEND_CONTEXT
+    if (
+        not is_append_only
+        and research_loop_fn is not None
+        and continued_session is not None
+    ):
+        research_loop_report = await _run_research_loop_hook(
+            research_loop_fn=research_loop_fn,
+            message=message,
+            session=continued_session,
+            prompt_text=intake_prompt,
+            send_chunks=send_chunks,
+            collection_outcome=outcome.collection_outcome,
+            research_pack=outcome.research_pack,
+            role_for_research=outcome.role_for_research,
+            thread_id=thread_id,
+        )
+
+    return EngineeringRouteResult(
+        handled=True,
+        conversation_message=outcome.content or None,
+        kickoff_message=continuation.message,
+        session_id=session_id,
+        thread_id=thread_id,
+        research_loop_report=research_loop_report,
+        routing_decision=decision,
+    )
+
+
+def _format_clarification_message(decision: EngineeringRoutingDecision) -> str:
+    """Render the ASK action's prompt for the user.
+
+    Uses up to 3 candidate summaries so the operator can pick which open
+    session to join, or ask for a new one. Falls back to ``decision.reason``
+    when no candidates are available so the message is never empty.
+    """
+
+    lines = ["**[engineering-agent] 어느 작업에 합류할까요?**"]
+    if decision.reason:
+        lines.append(decision.reason)
+    if decision.candidate_summaries:
+        lines.append("")
+        for idx, candidate in enumerate(decision.candidate_summaries[:3], start=1):
+            tail = []
+            if candidate.task_type:
+                tail.append(candidate.task_type)
+            if candidate.thread_id is not None:
+                tail.append(f"thread `{candidate.thread_id}`")
+            tail.append(f"score {candidate.score:.2f}")
+            lines.append(
+                f"{idx}. `{candidate.session_id}` — {candidate.title} ({' · '.join(tail)})"
+            )
+    lines.append("")
+    lines.append(
+        "이어갈 세션 ID를 `기존 세션 <id>`처럼 답하시거나, `새 작업으로 진행`이라고 답해 주세요."
+    )
+    return "\n".join(lines)
 
 
 def _maybe_persist_research_pack(

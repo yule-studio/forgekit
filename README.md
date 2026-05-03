@@ -405,6 +405,8 @@ yule engineer show --session <session_id>
 - `--write`를 붙인 세션은 승인 전까지 쓰기 작업이 차단됩니다.
 - `complete --references-used refs.json`을 쓰면 완료 보고에 실제 반영한 reference를 함께 남길 수 있습니다.
 - Discord 자유 대화에서 `새로 등록하지 말고 기존 스레드에서 이어가`처럼 말하면 열린 thread를 찾아 이어 붙이고, 새 세션은 만들지 않습니다.
+- gateway는 매 요청마다 `decide_routing()`으로 현재 열려 있는 workflow session과 prompt를 비교해 4가지 action 중 하나로 라우팅합니다 — `join_existing_work`(유사한 미종료 작업이 있음), `create_new_work`(없음), `ask_for_clarification`(후보가 비슷해 결정이 위험함), `append_context_only`(`이 자료만 ... 참고로 붙여줘`처럼 명시적 부착 요청). `기존 맥락 참고` 같은 표현이 단독으로 쓰이면 자동 join을 강제하지 않고 similarity로만 판정합니다 — 옛 휴리스틱이 모든 "참고/이어가" 표현을 최신 thread에 강제로 붙이던 동작과 다릅니다. 사용자가 명시적으로 `이어가/새로 등록하지 말고`라고 적었지만 매칭되는 open thread가 없으면 새 세션을 만들지 않고 어느 작업에 합류할지 다시 묻습니다.
+- Research 자료 수집은 한 번 호출하고 끝나지 않습니다. `auto_collect_or_request_more_input()`이 `score_research_sufficiency()`로 역할별 coverage(tech-lead·ai-engineer·backend·frontend·design·qa)를 평가하고, 부족하면 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` 예산 안에서 부족한 역할 위주로 추가 query를 돌립니다. 같은 URL/title이면 dedupe하고, 새 자료가 늘지 않는 round가 연속 4번이면 안전 종료합니다. 결과 `CollectionOutcome.sufficiency`에는 부족한 역할/source_type이 그대로 남아 운영자가 어디가 비어 있는지 확인할 수 있습니다.
 
 Discord slash command는 `yule discord bot` 또는 `yule discord up` 실행 시 guild 단위로 등록됩니다.
 
