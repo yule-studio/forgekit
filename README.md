@@ -515,6 +515,53 @@ yule memory search "운영-리서치" --role engineering-agent/tech-lead --json
 python3 -m unittest discover -s tests -t .
 ```
 
+### 집중 테스트 묶음
+
+영역별로 좁혀서 돌리고 싶을 때 사용하는 묶음입니다. 라우터 파일이 관심사별로 3개로 쪼개져 있어, 회귀 디버깅 시 실패 위치가 곧 영역을 가리킵니다.
+
+- engineering-agent (라우팅/persistence/forum + 라우팅 결정 단위 테스트):
+
+  ```bash
+  python3 -m unittest \
+    tests.test_engineering_channel_router_routing \
+    tests.test_engineering_channel_router_persistence \
+    tests.test_engineering_channel_router_forum \
+    tests.test_engineering_routing
+  ```
+
+- 리서치 sufficiency / collector 루프:
+
+  ```bash
+  python3 -m unittest \
+    tests.test_research_collector_sufficiency \
+    tests.test_research_sufficiency
+  ```
+
+- memory 인덱스 / retrieval:
+
+  ```bash
+  python3 -m unittest \
+    tests.test_memory_index \
+    tests.test_memory_retrieval
+  ```
+
+- Obsidian 동기화:
+
+  ```bash
+  python3 -m unittest \
+    tests.test_obsidian_export \
+    tests.test_obsidian_writer \
+    tests.test_cli_obsidian_sync
+  ```
+
+### 공유 fixture
+
+라우터 테스트에서 반복되는 가짜 Discord 채널/메시지/세션 객체는 `tests/_helpers.py`에 모여 있습니다. 새 라우터 테스트를 추가할 때는 `tests._helpers`에서 `FakeChannel`, `FakeMessage`, `FakeSession` 등을 import해 사용하세요.
+
+### Optional dependency skip
+
+`tests/test_calendar_category_color.py`는 `icalendar` 패키지가 설치돼 있어야 의미 있게 돌아갑니다. 패키지를 설치하지 않은 dev 환경에서는 자동으로 skip 처리되도록 가드가 들어 있어 전체 `unittest discover`가 실패하지 않습니다. 실제로 캘린더 경로를 확인하려면 `pip install -e .`로 프로젝트 의존성을 설치해 주세요.
+
 ## 로컬 전용 파일
 
 아래 파일과 폴더는 로컬 실행 상태이거나 민감 정보가 포함될 수 있으므로 Git에 올리지 않습니다.

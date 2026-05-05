@@ -10,13 +10,24 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from icalendar import Calendar
+# ``icalendar`` is in pyproject dependencies, but on a dev box that hasn't
+# run ``pip install -e .`` the import will fail and crash the entire
+# ``unittest`` discovery. Skip the suite in that case so other tests can
+# still run; CI that installs the project will exercise this normally.
+try:
+    from icalendar import Calendar
+except ModuleNotFoundError:
+    Calendar = None  # type: ignore[assignment]
 
 from yule_orchestrator.integrations.calendar.models import CalendarQueryResult
 from yule_orchestrator.integrations.calendar.parsing import build_todo
 from yule_orchestrator.storage.calendar_state import list_calendar_state_records, sync_calendar_query_result
 
 
+@unittest.skipIf(
+    Calendar is None,
+    "icalendar not installed — run `pip install -e .` to enable this suite",
+)
 class CalendarCategoryColorTestCase(unittest.TestCase):
     def test_build_todo_extracts_naver_category_color(self) -> None:
         component = _first_component(

@@ -356,8 +356,16 @@ async def route_engineering_message(
     # heuristic. ``decide_routing`` looks at currently open workflow sessions and
     # returns one of join/create/ask/append-context. Failures fall back to the
     # legacy "create new" path so the bot never gets wedged.
+    #
+    # Use ``intake_prompt`` (the canonical task description) instead of
+    # ``prompt_text`` (which is just the user's confirmation reply like
+    # "이대로 진행") so similarity scoring runs on the actual work content,
+    # not on the short confirm phrase. ``intake_prompt`` already falls back
+    # to ``prompt_text`` when the conversation layer has no separate task
+    # text (direct-confirm / single-message confirmation).
+    routing_prompt = intake_prompt or prompt_text
     try:
-        routing_decision = decide_routing(prompt=prompt_text)
+        routing_decision = decide_routing(prompt=routing_prompt)
     except Exception as exc:  # noqa: BLE001 - routing must not crash the bot
         routing_decision = EngineeringRoutingDecision(
             action=ACTION_CREATE,
