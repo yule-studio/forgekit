@@ -406,7 +406,8 @@ yule engineer show --session <session_id>
 - `complete --references-used refs.json`을 쓰면 완료 보고에 실제 반영한 reference를 함께 남길 수 있습니다.
 - Discord 자유 대화에서 `새로 등록하지 말고 기존 스레드에서 이어가`처럼 말하면 열린 thread를 찾아 이어 붙이고, 새 세션은 만들지 않습니다.
 - gateway는 매 요청마다 `decide_routing()`으로 현재 열려 있는 workflow session과 prompt를 비교해 4가지 action 중 하나로 라우팅합니다 — `join_existing_work`(유사한 미종료 작업이 있음), `create_new_work`(없음), `ask_for_clarification`(후보가 비슷해 결정이 위험함), `append_context_only`(`이 자료만 ... 참고로 붙여줘`처럼 명시적 부착 요청). `기존 맥락 참고` 같은 표현이 단독으로 쓰이면 자동 join을 강제하지 않고 similarity로만 판정합니다 — 옛 휴리스틱이 모든 "참고/이어가" 표현을 최신 thread에 강제로 붙이던 동작과 다릅니다. 사용자가 명시적으로 `이어가/새로 등록하지 말고`라고 적었지만 매칭되는 open thread가 없으면 새 세션을 만들지 않고 어느 작업에 합류할지 다시 묻습니다.
-- Research 자료 수집은 한 번 호출하고 끝나지 않습니다. `auto_collect_or_request_more_input()`이 `score_research_sufficiency()`로 역할별 coverage(tech-lead·ai-engineer·backend·frontend·design·qa)를 평가하고, 부족하면 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` 예산 안에서 부족한 역할 위주로 추가 query를 돌립니다. 같은 URL/title이면 dedupe하고, 새 자료가 늘지 않는 round가 연속 4번이면 안전 종료합니다. 결과 `CollectionOutcome.sufficiency`에는 부족한 역할/source_type이 그대로 남아 운영자가 어디가 비어 있는지 확인할 수 있습니다.
+- Research 자료 수집은 한 번 호출하고 끝나지 않습니다. `auto_collect_or_request_more_input()`이 `score_research_sufficiency()`로 역할별 coverage(tech-lead·ai-engineer·backend·frontend·design·qa·devops)를 평가하고, 부족하면 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` 예산 안에서 부족한 역할 위주로 추가 query를 돌립니다. 같은 URL/title이면 dedupe하고, 새 자료가 늘지 않는 round가 연속 4번이면 안전 종료합니다. 결과 `CollectionOutcome.sufficiency`에는 부족한 역할/source_type이 그대로 남아 운영자가 어디가 비어 있는지 확인할 수 있습니다.
+- Reference budget은 task 내용에 따라 4단계(`small` 4call/2results, `medium` 8/3, `large` 16/5, `deep_research` 28/8)로 자동 분류됩니다(`agents/research_budget.py`). 기본은 `medium`이며, prompt에 `architecture / RAG / multi-agent / infra / 리서치 / 조사 / 설계 / 아키텍처 / 검토` 같은 large 키워드 또는 `task_type=platform-infra`가 있으면 `large`, `깊게 / deep dive / 리서치 먼저` 같은 phrase는 `deep_research`, `버그 / typo / quick fix / 간단` 키워드는 `small`로 떨어집니다. **`ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` / `ENGINEERING_RESEARCH_MAX_RESULTS_PER_ROLE`는 hard cap입니다** — 분류기가 large/deep tier를 골라도 env 값이 더 작으면 그 값으로 클램프됩니다(비용 안전). 기본 운영값은 medium 이하로 시작하고, 큰 리서치를 정말로 돌리려면 env 값을 같이 12~20 정도로 올려야 large/deep tier가 실제로 작동합니다. 결과 `CollectionOutcome`에는 `budget_tier / max_provider_calls / max_results_per_role / role_targets / stop_reason / under_covered_roles`가 노출되고, 운영-리서치 forum body에도 `### 수집 예산 / 종료 조건` 섹션으로 자동 렌더링됩니다.
 
 #### Multi-provider 검색 (auto / multi 모드)
 
@@ -465,15 +466,35 @@ ResearchPack을 개인 Obsidian vault에 Markdown 파일로 저장하려면 `OBS
 ```bash
 # .env.local 예시
 OBSIDIAN_VAULT_PATH=/Users/<MY_USER>/local-dev/yule-agent-vault/obsidian-vault
+# (선택) 기본 export 레이아웃과 기본 project — 둘 다 비워 두면 아래 기본값이 적용됩니다.
+OBSIDIAN_EXPORT_LAYOUT=yule-agent-vault
+OBSIDIAN_DEFAULT_PROJECT=yule-studio-agent
 
 # 사용
-yule obsidian sync --session <session_id>            # 실제 쓰기 (overwrite 금지가 기본)
-yule obsidian sync --session <session_id> --dry-run  # 경로/내용만 검증
+yule obsidian sync --session <session_id>                              # 실제 쓰기 (overwrite 금지가 기본)
+yule obsidian sync --session <session_id> --dry-run                    # 경로/내용만 검증
 yule obsidian sync --session <session_id> --overwrite
 yule obsidian sync --session <session_id> --kind reference
+yule obsidian sync --session <session_id> --project other-project      # 이 sync만 다른 프로젝트로
+yule obsidian sync --session <session_id> --layout legacy-agent        # 옛 Agents/Engineering/...
 ```
 
-vault 안에는 exporter가 정한 `Agents/Engineering/<kind>/YYYY-MM-DD_<slug>.md` 경로로 떨어집니다. 예: `$OBSIDIAN_VAULT_PATH/Agents/Engineering/Research/2026-04-30_stripe-pricing.md`. 같은 날짜·같은 slug로 sync가 반복되면 같은 폴더 안에서 `..._2.md`, `..._3.md` 식으로 자동 suffix가 붙어 기존 노트는 silently 덮이지 않고, `--overwrite`를 명시하면 suffix 없이 원래 파일을 그대로 교체합니다. 자세한 contract와 안전 정책은 `policies/runtime/agents/engineering-agent/obsidian-memory.md`를 참고하세요. `yule doctor`는 `obsidian vault` 체크를 자동 수행합니다.
+기본 export 경로는 yule-agent-vault 정책을 따릅니다 — `10-projects/<project>/<kind>/YYYY-MM-DD_<kind>-<slug>.md`. 예: `$OBSIDIAN_VAULT_PATH/10-projects/yule-studio-agent/research/2026-04-30_research-stripe-pricing.md`. project 결정 우선순위는 **CLI `--project` → `session.extra["project"]` / `["project_name"]` → `OBSIDIAN_DEFAULT_PROJECT` env → 기본값 `yule-studio-agent`** 입니다. 알려지지 않은 kind는 `00-inbox/unsorted/`로 라우팅되어 사용자 triage 큐에 노출됩니다.
+
+| kind | yule-agent-vault 경로 | 비고 |
+| --- | --- | --- |
+| `research` (기본) | `10-projects/<project>/research/` | ResearchPack 1차 자료 노트 |
+| `decision` | `10-projects/<project>/decisions/` | TechLeadSynthesis가 있을 때 자동 선택 |
+| `reference` | `10-projects/<project>/references/` | 디자인/UX 레퍼런스 |
+| `task-log` | `10-projects/<project>/task-logs/` | 작업 진행 로그 |
+| `meeting` / `meeting-notes` | `10-projects/<project>/meeting-notes/` | 회의록 |
+| 알 수 없음 | `00-inbox/unsorted/` | 미상/애매한 kind는 inbox로 |
+
+기존 vault가 아직 `Agents/Engineering/...` 트리에 머물러 있다면 `OBSIDIAN_EXPORT_LAYOUT=legacy-agent`(또는 `--layout legacy-agent`)를 한시적으로 켜서 옛 경로를 그대로 사용할 수 있습니다. legacy 모드에서는 frontmatter에 `project:` 키가 들어가지 않아 byte 출력이 마이그레이션 이전과 그대로 유지됩니다.
+
+같은 날짜·같은 slug로 sync가 반복되면 같은 폴더 안에서 `..._2.md`, `..._3.md` 식으로 자동 suffix가 붙어 기존 노트는 silently 덮이지 않고, `--overwrite`를 명시하면 suffix 없이 원래 파일을 그대로 교체합니다. 자세한 contract와 안전 정책은 `policies/runtime/agents/engineering-agent/obsidian-memory.md`를 참고하세요. `yule doctor`는 `obsidian vault` 체크를 자동 수행합니다.
+
+긴 원문 prompt가 들어와도 title/filename은 30~50자 수준의 짧은 요약으로 자동 정리됩니다 — `[Research]` / 마크다운 bold / 줄바꿈 / "오늘은", "이를 위해" 같은 filler를 제거한 뒤 첫 절을 잘라냅니다. 원문 전체는 frontmatter `original_prompt` 키와 본문 `## 원문 요청` 섹션에 보존되고, basename은 100자 이하로 강제됩니다.
 
 vault를 git으로 관리한다면 `--git-commit` 옵션으로 sync 직후 자동 commit까지 남길 수 있습니다. 대상은 코드 저장소가 아니라 **Obsidian vault repo**이고, 기본 동작은 **opt-in**, **이번 sync가 만든 그 note 파일 하나만 stage/commit**, **push는 절대 하지 않음**입니다. vault repo에 이미 staged 변경이 있거나 vault가 git repo가 아니면 fail-loud로 종료합니다. `--dry-run --git-commit`은 파일/commit 모두 시뮬레이션만 합니다.
 
@@ -483,7 +504,7 @@ yule obsidian sync --session <session_id> --git-commit --git-message "obsidian s
 yule obsidian sync --session <session_id> --git-commit --dry-run
 ```
 
-게이트웨이가 deliberation을 끝내면 `TechLeadSynthesis`(합의안/해야 할 일/더 조사할 것/사용자 결정 필요/승인 여부)도 session에 함께 저장되어, sync는 이 값을 복원해 `Agents/Engineering/Decisions/...` 아래에 5개 섹션을 갖춘 결정 노트로 떨어뜨립니다. synthesis 키가 없는 오래된 session은 안전하게 fallback해 `Research` 폴더의 자료 노트로만 떨어집니다.
+게이트웨이가 deliberation을 끝내면 `TechLeadSynthesis`(합의안/해야 할 일/더 조사할 것/사용자 결정 필요/승인 여부)도 session에 함께 저장되어, sync는 이 값을 복원해 기본 레이아웃 기준 `10-projects/<project>/decisions/` 아래에 5개 섹션을 갖춘 결정 노트로 떨어뜨립니다. synthesis 키가 없는 오래된 session은 안전하게 fallback해 `research/` 폴더의 자료 노트로만 떨어집니다.
 
 ## Discord Bot
 

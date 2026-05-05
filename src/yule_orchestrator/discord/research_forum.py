@@ -269,6 +269,11 @@ def format_research_post_body(
         lines.append(collection_block)
         lines.append("")
 
+    budget_block = _render_budget_block(collection_outcome)
+    if budget_block:
+        lines.append(budget_block)
+        lines.append("")
+
     if pack.summary:
         lines.append("**요약**")
         lines.append(pack.summary.strip())
@@ -301,6 +306,64 @@ def format_research_post_body(
             lines.append("**출처**")
             lines.append(provenance)
     return "\n".join(line for line in lines).strip()
+
+
+def _render_budget_block(outcome: Optional[Any]) -> str:
+    """Render the ``"### 수집 예산 / 종료 조건"`` block from a CollectionOutcome.
+
+    Pulls budget tier, provider call usage vs cap, per-role results cap,
+    role targets, stop reason, and under-covered roles directly from
+    ``outcome``. Returns an empty string when the outcome is missing or
+    doesn't carry the budget metadata (legacy/round-tripped outcomes that
+    pre-date the budget policy still flow through the body cleanly).
+    """
+
+    if outcome is None:
+        return ""
+    tier = getattr(outcome, "budget_tier", None)
+    if not tier:
+        return ""
+
+    iterations = int(getattr(outcome, "iterations", 0) or 0)
+    max_calls = int(getattr(outcome, "max_provider_calls", 0) or 0)
+    max_results_per_role = int(getattr(outcome, "max_results_per_role", 0) or 0)
+    stop_reason = getattr(outcome, "stop_reason", None) or "unknown"
+    under_covered = tuple(getattr(outcome, "under_covered_roles", ()) or ())
+    role_targets = tuple(getattr(outcome, "role_targets", ()) or ())
+
+    lines: list[str] = ["### 수집 예산 / 종료 조건", f"- tier: {tier}"]
+    if max_calls:
+        # Cap the displayed usage at max so partial outcomes (e.g. when
+        # the loop bails early) read naturally as ``2/8`` rather than
+        # ``2/2``.
+        used = min(iterations, max_calls) if iterations else iterations
+        lines.append(f"- provider calls: {used}/{max_calls}")
+    elif iterations:
+        lines.append(f"- provider calls: {iterations}")
+
+    if max_results_per_role:
+        lines.append(f"- max results per role: {max_results_per_role}")
+
+    if role_targets:
+        target_strs = []
+        for role, min_sources in role_targets:
+            if not role:
+                continue
+            try:
+                target_strs.append(f"{role} {int(min_sources)}")
+            except (TypeError, ValueError):
+                continue
+        if target_strs:
+            lines.append("- role target: " + ", ".join(target_strs))
+
+    lines.append(f"- stop reason: {stop_reason}")
+
+    if under_covered:
+        joined = ", ".join(str(r) for r in under_covered if r)
+        if joined:
+            lines.append(f"- 부족한 역할: {joined}")
+
+    return "\n".join(lines)
 
 
 def _render_collection_block(

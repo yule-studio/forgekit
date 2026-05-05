@@ -635,5 +635,113 @@ class CreateResearchPostTitleAndBodyTests(unittest.TestCase):
         self.assertIn("개발팀이 스스로 학습하는 구조", body)
 
 
+class BudgetBlockInForumBodyTests(unittest.TestCase):
+    """Forum body must surface budget tier + provider usage + role coverage
+    so operators see at a glance how thorough auto-collection was.
+    """
+
+    def _budget_outcome(
+        self,
+        *,
+        budget_tier="large",
+        iterations=7,
+        max_provider_calls=12,
+        max_results_per_role=5,
+        role_targets=(
+            ("ai-engineer", 5),
+            ("backend-engineer", 4),
+            ("devops-engineer", 4),
+        ),
+        stop_reason="budget_exhausted",
+        under_covered_roles=("frontend-engineer", "product-designer"),
+    ):
+        from yule_orchestrator.agents.research_collector import (
+            CollectionMode,
+            CollectionOutcome,
+        )
+
+        return CollectionOutcome(
+            mode=CollectionMode.AUTO_COLLECTED,
+            pack=ResearchPack(title="Stripe pricing 검토"),
+            user_prompt=None,
+            collector_name="multi",
+            query="Stripe pricing",
+            auto_collected_count=7,
+            iterations=iterations,
+            budget_tier=budget_tier,
+            max_provider_calls=max_provider_calls,
+            max_results_per_role=max_results_per_role,
+            role_targets=role_targets,
+            stop_reason=stop_reason,
+            under_covered_roles=under_covered_roles,
+        )
+
+    def test_body_renders_budget_section_with_tier_and_usage(self) -> None:
+        body = format_research_post_body(
+            ResearchPack(title="x"),
+            collection_outcome=self._budget_outcome(),
+        )
+        self.assertIn("### 수집 예산 / 종료 조건", body)
+        self.assertIn("tier: large", body)
+        self.assertIn("provider calls: 7/12", body)
+        self.assertIn("max results per role: 5", body)
+        self.assertIn("ai-engineer 5", body)
+        self.assertIn("backend-engineer 4", body)
+        self.assertIn("devops-engineer 4", body)
+        self.assertIn("stop reason: budget_exhausted", body)
+        self.assertIn("부족한 역할:", body)
+        self.assertIn("frontend-engineer", body)
+
+    def test_body_omits_budget_section_when_metadata_missing(self) -> None:
+        # Legacy outcomes (no budget_tier) must NOT surface an empty
+        # budget block. The body still renders the rest of the pack.
+        from yule_orchestrator.agents.research_collector import (
+            CollectionMode,
+            CollectionOutcome,
+        )
+
+        legacy = CollectionOutcome(
+            mode=CollectionMode.AUTO_COLLECTED,
+            pack=ResearchPack(title="legacy"),
+            user_prompt=None,
+            collector_name="mock",
+            query="legacy",
+            auto_collected_count=1,
+        )
+        body = format_research_post_body(
+            ResearchPack(title="legacy"),
+            collection_outcome=legacy,
+        )
+        self.assertNotIn("### 수집 예산", body)
+
+    def test_body_handles_empty_role_targets(self) -> None:
+        outcome = self._budget_outcome(role_targets=())
+        body = format_research_post_body(
+            ResearchPack(title="x"),
+            collection_outcome=outcome,
+        )
+        self.assertIn("### 수집 예산 / 종료 조건", body)
+        # No "role target:" line when role_targets is empty.
+        self.assertNotIn("- role target:", body)
+
+    def test_body_handles_no_under_covered_roles(self) -> None:
+        outcome = self._budget_outcome(stop_reason="sufficient", under_covered_roles=())
+        body = format_research_post_body(
+            ResearchPack(title="x"),
+            collection_outcome=outcome,
+        )
+        self.assertIn("stop reason: sufficient", body)
+        self.assertNotIn("부족한 역할:", body)
+
+    def test_body_renders_iteration_count_when_no_max_cap(self) -> None:
+        outcome = self._budget_outcome(max_provider_calls=0, iterations=5)
+        body = format_research_post_body(
+            ResearchPack(title="x"),
+            collection_outcome=outcome,
+        )
+        self.assertIn("provider calls: 5", body)
+        self.assertNotIn("provider calls: 5/0", body)
+
+
 if __name__ == "__main__":
     unittest.main()
