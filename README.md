@@ -408,6 +408,39 @@ yule engineer show --session <session_id>
 - gateway는 매 요청마다 `decide_routing()`으로 현재 열려 있는 workflow session과 prompt를 비교해 4가지 action 중 하나로 라우팅합니다 — `join_existing_work`(유사한 미종료 작업이 있음), `create_new_work`(없음), `ask_for_clarification`(후보가 비슷해 결정이 위험함), `append_context_only`(`이 자료만 ... 참고로 붙여줘`처럼 명시적 부착 요청). `기존 맥락 참고` 같은 표현이 단독으로 쓰이면 자동 join을 강제하지 않고 similarity로만 판정합니다 — 옛 휴리스틱이 모든 "참고/이어가" 표현을 최신 thread에 강제로 붙이던 동작과 다릅니다. 사용자가 명시적으로 `이어가/새로 등록하지 말고`라고 적었지만 매칭되는 open thread가 없으면 새 세션을 만들지 않고 어느 작업에 합류할지 다시 묻습니다.
 - Research 자료 수집은 한 번 호출하고 끝나지 않습니다. `auto_collect_or_request_more_input()`이 `score_research_sufficiency()`로 역할별 coverage(tech-lead·ai-engineer·backend·frontend·design·qa)를 평가하고, 부족하면 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` 예산 안에서 부족한 역할 위주로 추가 query를 돌립니다. 같은 URL/title이면 dedupe하고, 새 자료가 늘지 않는 round가 연속 4번이면 안전 종료합니다. 결과 `CollectionOutcome.sufficiency`에는 부족한 역할/source_type이 그대로 남아 운영자가 어디가 비어 있는지 확인할 수 있습니다.
 
+#### Multi-provider 검색 (auto / multi 모드)
+
+`ENGINEERING_RESEARCH_PROVIDER=auto`(또는 `multi`)로 두면 Tavily + Brave를 함께 사용합니다. `ENGINEERING_RESEARCH_PROVIDERS=tavily,brave`로 후보를 좁힐 수 있고, API key가 비어 있는 provider는 `outcome.pack.extra["auto_skipped_providers"]`에 skipped reason과 함께 남고 silent skip됩니다 — 즉 한쪽 키만 있어도 나머지 한쪽으로 폴백합니다.
+
+| 역할 | 1순위 provider | 2순위 provider | 비고 |
+| --- | --- | --- | --- |
+| `gateway` | (없음) | (없음) | 기본은 local memory만 사용 — 라우팅 결정에 외부 검색 미사용 |
+| `tech-lead` | Tavily | Brave | 합의/요약/비교 (Tavily) + 공식 문서/GitHub/최신성 (Brave) |
+| `ai-engineer` | Tavily | Brave | RAG/CAG, agent 아키텍처, prompt/context, retrieval |
+| `backend-engineer` | Brave | Tavily | 공식 API 문서, DB/보안/아키텍처, GitHub issue, release note |
+| `frontend-engineer` | Brave | Tavily | MDN, web.dev, browser support, UI library docs |
+| `product-designer` | Brave | Tavily | 경쟁 서비스, UX 사례, 디자인 패턴, benchmark |
+| `qa-engineer` | Brave | Tavily | 테스트 전략, regression, GitHub issue, release note |
+| `devops-engineer` | Brave | Tavily | GitHub Actions, Docker, CI/CD, observability, incident |
+
+설정 예시 (`.env.local`에만 두고 git에는 커밋하지 않음):
+
+```bash
+ENGINEERING_RESEARCH_AUTO_COLLECT_ENABLED=true
+ENGINEERING_RESEARCH_PROVIDER=auto
+ENGINEERING_RESEARCH_PROVIDERS=tavily,brave
+ENGINEERING_RESEARCH_MAX_RESULTS=5
+# 비용 안전장치: 모든 provider 호출의 합계 상한이므로 낮게 시작.
+ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS=3
+ENGINEERING_RESEARCH_MAX_RESULTS_PER_ROLE=2
+TAVILY_API_KEY=<발급받은 Tavily key>
+BRAVE_SEARCH_API_KEY=<발급받은 Brave key>
+```
+
+Multi 모드에서는 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS`가 **모든 provider 호출의 합계** 상한입니다 — Tavily 1회 + Brave 1회 = 2 슬롯. 비용을 천천히 검증하기 위해 처음에는 3 정도로 시작하고, 결과 품질을 본 뒤에 단계적으로 올리는 것을 권장합니다. 예산을 모두 소진하면 `pack.extra["budget_note"]`에 알림이 남습니다.
+
+dedupe는 (1) URL 정규화(scheme/host 소문자 + trailing slash + UTM 파라미터 제거), (2) 동일 도메인+source_type+title prefix, (3) URL 없는 항목은 title+type 조합으로 수행해 같은 자료가 두 provider에서 모두 잡혀도 한 건만 남깁니다.
+
 Discord slash command는 `yule discord bot` 또는 `yule discord up` 실행 시 guild 단위로 등록됩니다.
 
 ```text
