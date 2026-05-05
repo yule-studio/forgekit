@@ -72,7 +72,7 @@ class RecommendPathTestCase(unittest.TestCase):
 
     def test_blank_title_yields_untitled(self) -> None:
         path = recommend_path(title="   ", kind="research", created_at=datetime(2026, 4, 30))
-        self.assertEqual(path.filename, "2026-04-30_untitled.md")
+        self.assertEqual(path.filename, "2026-04-30_research-untitled.md")
 
 
 class RenderNoteTestCase(unittest.TestCase):
@@ -312,6 +312,100 @@ class ProjectVaultLayoutTests(unittest.TestCase):
         note = render_research_note(pack, session=session)
         self.assertTrue(note.path.folder.startswith("10-projects/"))
         self.assertIn("project: yule-studio-agent", note.content)
+
+
+class ShortTitleAndFilenameTests(unittest.TestCase):
+    """Regression: long Korean prompts must yield short titles and
+    sanitised filenames so Obsidian/git checkouts stay readable.
+    """
+
+    LONG_PROMPT = (
+        "오늘은 에이전트들이 서로 상호작용할 수 있는 구조와, 이를 코드 레벨에서 "
+        "병렬 처리로 어떻게 적용할지 고민해보려 합니다. 우선은 라우팅과 합의안 "
+        "공유 지점부터 정리해보고, 다음 주제로 넘어가는 식으로 진행하면 좋을 것 같아요."
+    )
+
+    def _session(self, *, prompt: str | None = None, extra: dict | None = None) -> WorkflowSession:
+        return WorkflowSession(
+            session_id="abc",
+            prompt=prompt if prompt is not None else self.LONG_PROMPT,
+            task_type="landing-page",
+            state=WorkflowState.APPROVED,
+            created_at=datetime(2026, 5, 5, 9, 0),
+            updated_at=datetime(2026, 5, 5, 9, 5),
+            extra=dict(extra or {}),
+        )
+
+    def test_long_korean_prompt_collapses_to_short_title(self) -> None:
+        from yule_orchestrator.agents.obsidian_export import derive_short_title
+
+        pack = ResearchPack(title=self.LONG_PROMPT, summary="")
+        title = derive_short_title(pack, session=self._session())
+        self.assertLessEqual(len(title), 50)
+        # Filler prefixes are gone.
+        self.assertFalse(title.startswith("오늘은 "))
+        self.assertNotIn("\n", title)
+
+    def test_session_extra_short_title_wins(self) -> None:
+        from yule_orchestrator.agents.obsidian_export import derive_short_title
+
+        pack = ResearchPack(title=self.LONG_PROMPT, summary="")
+        session = self._session(extra={"short_title": "에이전트 병렬 회의 구조"})
+        self.assertEqual(
+            derive_short_title(pack, session=session),
+            "에이전트 병렬 회의 구조",
+        )
+
+    def test_render_uses_short_title_for_h1_and_filename(self) -> None:
+        pack = ResearchPack(
+            title=self.LONG_PROMPT,
+            summary="",
+            created_at=datetime(2026, 5, 5),
+        )
+        session = self._session(extra={"short_title": "에이전트 병렬 회의 구조"})
+        note = render_research_note(pack, session=session)
+        self.assertIn("# 에이전트 병렬 회의 구조", note.content)
+        # Filename basename within the 100-char cap.
+        self.assertLessEqual(len(note.path.filename), 100)
+        # Filename starts with date_kind- prefix.
+        self.assertTrue(
+            note.path.filename.startswith("2026-05-05_research-"),
+            note.path.filename,
+        )
+
+    def test_filename_basename_caps_at_100_chars(self) -> None:
+        # Even without an operator-curated short_title we must stay under
+        # the cap on a long Korean prompt.
+        pack = ResearchPack(
+            title=self.LONG_PROMPT,
+            summary="",
+            created_at=datetime(2026, 5, 5),
+        )
+        note = render_research_note(pack, session=self._session())
+        self.assertLessEqual(len(note.path.filename), 100)
+
+    def test_original_prompt_preserved_in_frontmatter(self) -> None:
+        pack = ResearchPack(
+            title=self.LONG_PROMPT,
+            summary="",
+            created_at=datetime(2026, 5, 5),
+        )
+        session = self._session(extra={"short_title": "에이전트 병렬 회의 구조"})
+        note = render_research_note(pack, session=session)
+        # The full prompt body shows up in the body's "원문 요청" section
+        # AND in frontmatter as ``original_prompt``.
+        self.assertIn("## 원문 요청", note.content)
+        self.assertIn("에이전트들이 서로 상호작용할", note.content)
+        self.assertIn("original_prompt:", note.content)
+
+    def test_clean_title_strips_research_prefix_bold_and_newlines(self) -> None:
+        from yule_orchestrator.agents.obsidian_export import _clean_title
+
+        out = _clean_title("[Research] **에이전트 회의**\n구조 정리")
+        self.assertEqual(out, "에이전트 회의 구조 정리")
+        self.assertNotIn("**", out)
+        self.assertNotIn("[Research]", out)
+        self.assertNotIn("\n", out)
 
 
 if __name__ == "__main__":

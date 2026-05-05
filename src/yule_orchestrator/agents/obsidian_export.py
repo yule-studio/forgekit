@@ -77,6 +77,11 @@ class ObsidianNote:
 # ---------------------------------------------------------------------------
 
 
+FILENAME_BASENAME_LIMIT = 100  # tip-of-the-iceberg cap for the bare filename
+FILENAME_SLUG_LIMIT = 50  # leaves room for ``YYYY-MM-DD_<kind>-`` prefix
+TITLE_LIMIT = 50  # short, readable Obsidian H1 / frontmatter title
+
+
 def recommend_path(
     *,
     title: str,
@@ -90,10 +95,12 @@ def recommend_path(
     insensitive). Anything else falls back to ``research``.
 
     Path layout:
-      - default (no ``project``): ``Agents/Engineering/<kind>/<YYYY-MM-DD_slug>.md``.
-      - with ``project``: ``10-projects/<project-slug>/<kind>/<YYYY-MM-DD_slug>.md``
-        — the yule-agent-vault layout. Existing vaults keep using the
-        default; new vaults can opt in by passing the project name.
+      - default (no ``project``): ``Agents/Engineering/<kind>/<YYYY-MM-DD_<kind>-<slug>>.md``.
+      - with ``project``: ``10-projects/<project-slug>/<kind>/<YYYY-MM-DD_<kind>-<slug>>.md``.
+
+    The slug is capped at :data:`FILENAME_SLUG_LIMIT` characters and the
+    full basename never exceeds :data:`FILENAME_BASENAME_LIMIT` so the
+    Obsidian indexer / git checkout never trips on path-length limits.
     """
 
     folder = _kind_to_project_folder(kind, project) if project else _kind_to_folder(kind)
@@ -104,10 +111,25 @@ def recommend_path(
         date_part = when.isoformat()
     else:
         date_part = datetime.utcnow().date().isoformat()
-    slug = _slugify(title)
+    kind_normalized = _kind_short_label(kind)
+    slug = _slugify(title, max_chars=FILENAME_SLUG_LIMIT)
     if not slug:
         slug = "untitled"
-    return ExportPath(folder=folder, filename=f"{date_part}_{slug}.md")
+    basename = f"{date_part}_{kind_normalized}-{slug}.md"
+    if len(basename) > FILENAME_BASENAME_LIMIT:
+        # Hard cap — trim slug further so the basename always fits.
+        keep = FILENAME_BASENAME_LIMIT - (len(date_part) + 1 + len(kind_normalized) + 1 + 3)
+        basename = f"{date_part}_{kind_normalized}-{slug[:max(1, keep)]}.md"
+    return ExportPath(folder=folder, filename=basename)
+
+
+def _kind_short_label(kind: str) -> str:
+    normalized = (kind or "").strip().lower()
+    if normalized in ("decision", "decisions"):
+        return "decision"
+    if normalized in ("reference", "references"):
+        return "reference"
+    return "research"
 
 
 def _kind_to_project_folder(kind: str, project: str) -> str:
@@ -148,19 +170,23 @@ def render_research_note(
 
     chosen_kind = (kind or _infer_kind(synthesis)).lower()
     chosen_project = project or _project_from_session(session)
+    short_title = derive_short_title(pack, session=session)
     frontmatter = _frontmatter(
         pack=pack,
         session=session,
         synthesis=synthesis,
         kind=chosen_kind,
         exported_at=exported_at,
+        short_title=short_title,
     )
     if chosen_project:
         frontmatter["project"] = chosen_project
-    body_lines = _body(pack, synthesis=synthesis, session=session)
+    body_lines = _body(
+        pack, synthesis=synthesis, session=session, short_title=short_title
+    )
     content = _format_frontmatter(frontmatter) + "\n\n" + "\n\n".join(body_lines).strip() + "\n"
     path = recommend_path(
-        title=pack.title,
+        title=short_title,
         kind=chosen_kind,
         created_at=pack.created_at,
         project=chosen_project,
@@ -198,9 +224,12 @@ def _frontmatter(
     synthesis: Optional[TechLeadSynthesis],
     kind: str,
     exported_at: Optional[datetime],
+    short_title: Optional[str] = None,
 ) -> dict:
+    title = (short_title or _clean_title(pack.title) or "(untitled)").strip() or "(untitled)"
+    original_prompt = _resolve_original_prompt(pack=pack, session=session)
     fm: dict = {
-        "title": pack.title or "(untitled)",
+        "title": title,
         "source": pack.primary_url or _first_source_url(pack),
         "roles": list(pack.author_roles),
         "status": _status_from(synthesis, session),
@@ -208,11 +237,13 @@ def _frontmatter(
         "created_at": _iso_or_none(pack.created_at),
         "kind": kind,
         "tags": _tags_for(pack, kind),
-        "topic": pack.title or "(untitled)",
+        "topic": title,
         "task_type": getattr(session, "task_type", None) if session else None,
         "sources": _source_descriptors(pack),
         "contract": CONTRACT_VERSION,
     }
+    if original_prompt and original_prompt != title:
+        fm["original_prompt"] = original_prompt
     if synthesis is not None:
         fm["approval_required"] = bool(synthesis.approval_required)
     if exported_at is not None:
@@ -225,10 +256,16 @@ def _body(
     *,
     synthesis: Optional[TechLeadSynthesis],
     session: Optional[WorkflowSession],
+    short_title: Optional[str] = None,
 ) -> list[str]:
     blocks: list[str] = []
 
-    blocks.append(f"# {pack.title or '(untitled)'}")
+    h1 = (short_title or _clean_title(pack.title) or "(untitled)").strip() or "(untitled)"
+    blocks.append(f"# {h1}")
+
+    original_prompt = _resolve_original_prompt(pack=pack, session=session)
+    if original_prompt and original_prompt != h1:
+        blocks.append("## 원문 요청\n" + original_prompt)
 
     if synthesis is not None:
         blocks.append("## 합의안\n" + synthesis.consensus)
@@ -382,12 +419,211 @@ def _attachment_lines(attachments: Sequence[ResearchAttachment]) -> list[str]:
     return out
 
 
-def _slugify(value: str) -> str:
+def _slugify(value: str, *, max_chars: int = FILENAME_SLUG_LIMIT) -> str:
     if not value:
         return ""
     normalized = unicodedata.normalize("NFC", value)
     cleaned = re.sub(r"[^0-9A-Za-z가-힣]+", "-", normalized).strip("-").lower()
-    return cleaned[:80]
+    return cleaned[:max(1, max_chars)]
+
+
+# ---------------------------------------------------------------------------
+# Short title derivation (deterministic, LLM-free)
+# ---------------------------------------------------------------------------
+
+
+# Filler / connector phrases that pad the start of a Korean prompt without
+# adding signal. Removed before the deterministic summarizer kicks in.
+_FILLER_PREFIXES = (
+    "오늘은 ",
+    "오늘 ",
+    "내일은 ",
+    "지금은 ",
+    "이번에는 ",
+    "이번엔 ",
+    "다음 주제로 ",
+    "다음으로 ",
+    "이를 위해 ",
+    "그래서 ",
+    "그러니까 ",
+    "한번 ",
+    "잠깐 ",
+)
+
+_FILLER_SUFFIXES = (
+    " 고민해보려 합니다.",
+    " 고민해보려 합니다",
+    " 고민해보고자 합니다.",
+    " 고민해보고자 합니다",
+    " 정리해보려 합니다.",
+    " 정리해보려 합니다",
+    " 검토해보려 합니다.",
+    " 검토해보려 합니다",
+    " 해보려 합니다.",
+    " 해보려 합니다",
+    " 합니다.",
+    " 합니다",
+)
+
+
+_RESEARCH_PREFIX_RE = re.compile(r"^\s*\[(?:Research|Decision|Reference)\]\s*", re.IGNORECASE)
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+
+def _clean_title(text: str) -> str:
+    """Strip Discord/Obsidian markup that doesn't belong in a title.
+
+    Removes ``[Research]`` / ``[Decision]`` style prefixes, markdown
+    ``**bold**`` markers, line breaks, and runs of whitespace. The output
+    is a single-line plain string that downstream summarisation /
+    truncation can work on without escape-sequence surprises.
+    """
+
+    if not text:
+        return ""
+    cleaned = _RESEARCH_PREFIX_RE.sub("", text)
+    cleaned = _BOLD_RE.sub(r"\1", cleaned)
+    cleaned = cleaned.replace("\r", " ").replace("\n", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" -·…")
+
+
+def _strip_fillers(text: str) -> str:
+    """Drop common Korean filler prefixes/suffixes that pad a prompt."""
+
+    out = text.strip()
+    if not out:
+        return ""
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _FILLER_PREFIXES:
+            if out.startswith(prefix):
+                out = out[len(prefix):].lstrip()
+                changed = True
+                break
+    for suffix in _FILLER_SUFFIXES:
+        if out.endswith(suffix):
+            out = out[: -len(suffix)].rstrip()
+            break
+    return out
+
+
+def _summarize_for_title(text: str, *, max_chars: int = TITLE_LIMIT) -> str:
+    """Deterministic short-title summariser.
+
+    Strategy: clean → strip fillers → take the first sentence/clause →
+    truncate at a word boundary under ``max_chars``. Korean and English
+    both supported because we rely on simple punctuation/whitespace and
+    don't tokenise on script.
+    """
+
+    cleaned = _clean_title(text)
+    cleaned = _strip_fillers(cleaned)
+    if not cleaned:
+        return ""
+    # Split on the first strong sentence-ending punctuation.
+    for sep in (". ", "! ", "? ", "。", "·", " — ", " - ", "\u2014"):
+        idx = cleaned.find(sep)
+        if 0 < idx < max_chars * 3:
+            cleaned = cleaned[:idx].strip(" ,.;:")
+            break
+    cleaned = _strip_fillers(cleaned)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    # Word-boundary trim — prefer not to cut a token in half. Korean
+    # words are space-delimited at the eojeol boundary so this works
+    # for both scripts.
+    head = cleaned[:max_chars]
+    pivot = head.rfind(" ")
+    if pivot >= int(max_chars * 0.5):
+        head = head[:pivot]
+    return head.rstrip(" ,.;:") + "…"
+
+
+def derive_short_title(
+    pack: ResearchPack,
+    *,
+    session: Optional[WorkflowSession] = None,
+    max_chars: int = TITLE_LIMIT,
+) -> str:
+    """Pick a short, readable title for the Obsidian note.
+
+    Resolution order:
+      1. ``session.extra["short_title"]`` / ``session.extra["research_title"]``
+         / ``session.extra["routing_decision_title"]`` if any are set —
+         operators pre-stash a curated title at intake time.
+      2. ``pack.title`` after :func:`_clean_title` if it's already short
+         and looks intentional (≤ ``max_chars`` and not a full sentence).
+      3. :func:`_summarize_for_title` of (in order) ``pack.title``,
+         ``pack.summary``, or ``session.prompt``.
+      4. Literal fallback ``"engineering 작업"`` so the title is never
+         empty — keeps filename slugify from collapsing to "untitled".
+    """
+
+    if session is not None:
+        extra = dict(getattr(session, "extra", None) or {})
+        for key in ("short_title", "research_title", "routing_decision_title"):
+            candidate = extra.get(key)
+            if isinstance(candidate, str):
+                cleaned = _clean_title(candidate)
+                if cleaned:
+                    return cleaned[:max_chars]
+
+    pack_title = _clean_title(getattr(pack, "title", "") or "")
+    if pack_title and len(pack_title) <= max_chars and not _looks_like_full_prompt(pack_title):
+        return pack_title
+
+    for candidate in (
+        getattr(pack, "title", "") or "",
+        getattr(pack, "summary", "") or "",
+        getattr(session, "prompt", None) if session else None,
+    ):
+        if not candidate:
+            continue
+        derived = _summarize_for_title(candidate, max_chars=max_chars)
+        if derived:
+            return derived
+
+    return "engineering 작업"
+
+
+def _resolve_original_prompt(
+    *,
+    pack: ResearchPack,
+    session: Optional[WorkflowSession],
+) -> Optional[str]:
+    """Pick the operator-facing original prompt for the note body/frontmatter.
+
+    Order: ``session.prompt`` (most authoritative — the actual Discord
+    message), then ``pack.summary`` if it's longer than the title, then
+    ``pack.title`` itself when it's clearly a full sentence (the legacy
+    "title=full prompt" data we want to migrate). Returns ``None`` when
+    there is nothing meaningful to preserve.
+    """
+
+    if session is not None:
+        prompt = (getattr(session, "prompt", None) or "").strip()
+        if prompt:
+            return prompt
+    summary = (getattr(pack, "summary", "") or "").strip()
+    title = (getattr(pack, "title", "") or "").strip()
+    if summary and summary != title and len(summary) > len(title):
+        return summary
+    if title and _looks_like_full_prompt(title):
+        return title
+    return None
+
+
+def _looks_like_full_prompt(text: str) -> bool:
+    """Heuristic: a sentence-shaped paragraph is probably the raw prompt."""
+
+    # Multiple Korean sentence enders or hangul predicate endings = prompt.
+    if any(marker in text for marker in (". ", "다. ", "다 ", "려 합니다", "고 싶")):
+        return True
+    if text.count(" ") > 8:  # very long, treat as full prompt
+        return True
+    return False
 
 
 def _format_frontmatter(fm: dict) -> str:

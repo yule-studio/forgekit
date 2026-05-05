@@ -259,8 +259,8 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
             self.assertEqual(
                 written,
                 [
-                    "2026-04-30_stripe-pricing-패턴.md",
-                    "2026-04-30_stripe-pricing-패턴_2.md",
+                    "2026-04-30_research-stripe-pricing-패턴.md",
+                    "2026-04-30_research-stripe-pricing-패턴_2.md",
                 ],
             )
 
