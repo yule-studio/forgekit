@@ -130,6 +130,14 @@ ROLE_RESEARCH_PROFILES: Mapping[str, Tuple[str, ...]] = {
         SOURCE_TYPE_WEB_RESULT,
         SOURCE_TYPE_URL,
     ),
+    "devops-engineer": (
+        SOURCE_TYPE_OFFICIAL_DOCS,
+        SOURCE_TYPE_GITHUB_PR,
+        SOURCE_TYPE_GITHUB_ISSUE,
+        SOURCE_TYPE_CODE_CONTEXT,
+        SOURCE_TYPE_URL,
+        SOURCE_TYPE_WEB_RESULT,
+    ),
 }
 
 
@@ -229,6 +237,23 @@ class AiEngineerTake:
     next_actions: Sequence[str] = field(default_factory=tuple)
 
 
+@dataclass(frozen=True)
+class DevOpsEngineerTake:
+    """devops-engineer 관점의 CI/CD/배포/관측/롤백 영향."""
+
+    role: str = "engineering-agent/devops-engineer"
+    cicd_strategy: Optional[str] = None
+    deployment_plan: Optional[str] = None
+    rollback_plan: Optional[str] = None
+    observability: Optional[str] = None
+    secrets_and_permissions: Optional[str] = None
+    release_checklist: Sequence[str] = field(default_factory=tuple)
+    risks: Sequence[str] = field(default_factory=tuple)
+    perspective: Optional[str] = None
+    evidence: Sequence[str] = field(default_factory=tuple)
+    next_actions: Sequence[str] = field(default_factory=tuple)
+
+
 RoleTake = Union[
     TechLeadOpening,
     ProductDesignerTake,
@@ -236,6 +261,7 @@ RoleTake = Union[
     FrontendEngineerTake,
     QaEngineerTake,
     AiEngineerTake,
+    DevOpsEngineerTake,
 ]
 
 
@@ -886,6 +912,8 @@ def render_role_take(take: RoleTake) -> str:
         return _render_qa_engineer(take)
     if isinstance(take, AiEngineerTake):
         return _render_ai_engineer(take)
+    if isinstance(take, DevOpsEngineerTake):
+        return _render_devops_engineer(take)
     raise TypeError(f"unsupported role take type: {type(take)!r}")
 
 
@@ -929,6 +957,8 @@ def _deterministic_role_take(context: DeliberationContext) -> RoleTake:
         return _fallback_qa_engineer(context)
     if role_short == "ai-engineer":
         return _fallback_ai_engineer(context)
+    if role_short == "devops-engineer":
+        return _fallback_devops_engineer(context)
     # Unknown role — coerce to a generic tech-lead-shaped take so callers
     # always get something renderable.
     return TechLeadOpening(
@@ -1295,6 +1325,63 @@ def _fallback_ai_engineer(ctx: DeliberationContext) -> AiEngineerTake:
     )
 
 
+def _fallback_devops_engineer(ctx: DeliberationContext) -> DevOpsEngineerTake:
+    """devops-engineer 관점의 CI/CD·배포·관측·롤백·릴리즈 체크 정리."""
+
+    pack = ctx.research_pack
+    role = ctx.role
+    pack_evidence = evidence_lines_for_role(pack, role)
+    memory_lines = memory_evidence_lines(ctx.memory_context, limit=2)
+    evidence = tuple(list(pack_evidence) + list(memory_lines))
+
+    risks: list[str] = [
+        "배포 직후 롤백 경로 미정의 — 장애 시 복구 시간 지연",
+        "secrets/권한 변경 누락 — 운영 환경에서만 노출되는 회귀 가능",
+    ]
+    if pack is None or not pack_evidence:
+        risks.append("배포/관측 reference 부족 — 결정 근거가 약해 운영 사고 위험")
+    policy_hit = memory_hint_for_role(ctx.memory_context, source="policy")
+    if policy_hit:
+        risks.append(f"기존 운영 정책({policy_hit}) 충돌 점검 필요")
+
+    perspective = (
+        "CI/CD 파이프라인, 배포 전략, 관측·롤백, secrets/권한, 릴리즈 체크리스트를 "
+        "정리해 실행 후보가 운영 사고 없이 변경을 적용할 수 있는지 판단한다."
+    )
+
+    next_actions: list[str] = [
+        "GitHub Actions 변경 영향 분석 — workflow yaml diff 정리",
+        "deployment 단계별 rollback 시나리오 thread에 명시",
+        "release checklist에 observability/alarm 항목 포함",
+    ]
+    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
+    if decision_hit:
+        next_actions.append(f"이전 결정({decision_hit}) 배포 영향 재확인")
+    backend_data = _previous_field(ctx.previous_turns, BackendEngineerTake, "data_impact")
+    if backend_data:
+        next_actions.append(
+            f"백엔드 데이터 영향({backend_data}) migration window·downtime 산정"
+        )
+
+    return DevOpsEngineerTake(
+        cicd_strategy="GitHub Actions 기준 — main 머지 시 staging 배포, 수동 승인 후 prod",
+        deployment_plan="기존 blue/green 또는 canary 패턴 유지 — 새 환경 변수만 검증 후 적용",
+        rollback_plan="배포 직전 태그 보관 + revert PR 자동 생성 + alarm 30분 모니터",
+        observability="기존 metrics/logs 스키마 유지 — 신규 지표만 추가, dashboard PR 동반",
+        secrets_and_permissions="신규 secret/scope 변경은 .env.example 및 권한 정책 문서에 동기화",
+        release_checklist=(
+            "테스트 green + 회귀 묶음 통과 확인",
+            "secrets/permissions 변경 점검",
+            "rollback 시나리오 thread에 명시",
+            "운영 알람/대시보드 갱신",
+        ),
+        risks=tuple(risks),
+        perspective=perspective,
+        evidence=evidence,
+        next_actions=tuple(next_actions),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Renderers
 # ---------------------------------------------------------------------------
@@ -1386,6 +1473,28 @@ def _render_ai_engineer(t: AiEngineerTake) -> str:
         lines.append(f"검색 전략: {t.retrieval_strategy}")
     if t.evaluation_strategy:
         lines.append(f"평가 전략: {t.evaluation_strategy}")
+    lines.append(_bullet_block("근거", t.evidence))
+    lines.append(_bullet_block("리스크", t.risks))
+    lines.append(_bullet_block("다음 행동", t.next_actions))
+    return "\n".join(line for line in lines if line)
+
+
+def _render_devops_engineer(t: DevOpsEngineerTake) -> str:
+    short = _short_role(t.role)
+    lines = [f"**[{short}]**"]
+    if t.perspective:
+        lines.append(f"관점: {t.perspective}")
+    if t.cicd_strategy:
+        lines.append(f"CI/CD: {t.cicd_strategy}")
+    if t.deployment_plan:
+        lines.append(f"배포 계획: {t.deployment_plan}")
+    if t.rollback_plan:
+        lines.append(f"롤백 계획: {t.rollback_plan}")
+    if t.observability:
+        lines.append(f"관측성: {t.observability}")
+    if t.secrets_and_permissions:
+        lines.append(f"secrets/권한: {t.secrets_and_permissions}")
+    lines.append(_bullet_block("릴리즈 체크리스트", t.release_checklist))
     lines.append(_bullet_block("근거", t.evidence))
     lines.append(_bullet_block("리스크", t.risks))
     lines.append(_bullet_block("다음 행동", t.next_actions))

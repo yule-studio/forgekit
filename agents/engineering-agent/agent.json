@@ -9,7 +9,8 @@
     "product-designer",
     "backend-engineer",
     "frontend-engineer",
-    "qa-engineer"
+    "qa-engineer",
+    "devops-engineer"
   ],
   "execution_mode": "autonomous_member_team_with_approval_gates",
   "default_executor": "claude",

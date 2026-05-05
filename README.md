@@ -515,6 +515,25 @@ yule memory search "운영-리서치" --role engineering-agent/tech-lead --json
 python3 -m unittest discover -s tests -t .
 ```
 
+### 디렉토리 구조
+
+`tests/`는 기능 영역별 하위 패키지로 정리되어 있습니다. 새 테스트는 해당 영역 디렉토리에 추가하세요.
+
+```text
+tests/
+  _bootstrap.py          # sys.path 세팅 + 캐시 격리 헬퍼
+  _helpers.py            # 공유 fake message/channel/session 등
+  engineering/           # engineering-agent 라우터/대화/팀 런타임
+  research/              # research collector/loop/pack/sufficiency
+  memory/                # memory index + retrieval
+  obsidian/              # Obsidian export/writer/git/CLI sync
+  discord/               # discord 봇 런타임/명령/포매터/포럼
+  calendar/              # 캘린더 캐시/카테고리/E2E
+  planning/              # planning 입력/스냅샷/플래너
+  integrations/          # GitHub/TLS 등 외부 통합
+  core/                  # agent 디스패처/워크플로/타임존 등 공통 유틸
+```
+
 ### 집중 테스트 묶음
 
 영역별로 좁혀서 돌리고 싶을 때 사용하는 묶음입니다. 라우터 파일이 관심사별로 3개로 쪼개져 있어, 회귀 디버깅 시 실패 위치가 곧 영역을 가리킵니다.
@@ -523,44 +542,50 @@ python3 -m unittest discover -s tests -t .
 
   ```bash
   python3 -m unittest \
-    tests.test_engineering_channel_router_routing \
-    tests.test_engineering_channel_router_persistence \
-    tests.test_engineering_channel_router_forum \
-    tests.test_engineering_routing
+    tests.engineering.test_channel_router_routing \
+    tests.engineering.test_channel_router_persistence \
+    tests.engineering.test_channel_router_forum \
+    tests.engineering.test_routing
+  ```
+
+  대화/팀 런타임/리서치 루프 hook까지 포함하려면:
+
+  ```bash
+  python3 -m unittest discover -s tests/engineering -t .
   ```
 
 - 리서치 sufficiency / collector 루프:
 
   ```bash
   python3 -m unittest \
-    tests.test_research_collector_sufficiency \
-    tests.test_research_sufficiency
+    tests.research.test_collector_sufficiency \
+    tests.research.test_sufficiency
   ```
 
 - memory 인덱스 / retrieval:
 
   ```bash
   python3 -m unittest \
-    tests.test_memory_index \
-    tests.test_memory_retrieval
+    tests.memory.test_index \
+    tests.memory.test_retrieval
   ```
 
 - Obsidian 동기화:
 
   ```bash
   python3 -m unittest \
-    tests.test_obsidian_export \
-    tests.test_obsidian_writer \
-    tests.test_cli_obsidian_sync
+    tests.obsidian.test_export \
+    tests.obsidian.test_writer \
+    tests.obsidian.test_cli_sync
   ```
 
 ### 공유 fixture
 
-라우터 테스트에서 반복되는 가짜 Discord 채널/메시지/세션 객체는 `tests/_helpers.py`에 모여 있습니다. 새 라우터 테스트를 추가할 때는 `tests._helpers`에서 `FakeChannel`, `FakeMessage`, `FakeSession` 등을 import해 사용하세요.
+라우터 테스트에서 반복되는 가짜 Discord 채널/메시지/세션 객체는 `tests/_helpers.py`에 모여 있습니다. 새 라우터 테스트를 추가할 때는 `tests._helpers`에서 `FakeChannel`, `FakeMessage`, `FakeSession`, `isolate_cache_for_test` 등을 import해 사용하세요. `tests/_bootstrap.py`는 `sys.path`에 `src/`를 끼워 넣고 기본 `YULE_CACHE_DB_PATH`를 격리된 파일로 돌려놓습니다.
 
 ### Optional dependency skip
 
-`tests/test_calendar_category_color.py`는 `icalendar` 패키지가 설치돼 있어야 의미 있게 돌아갑니다. 패키지를 설치하지 않은 dev 환경에서는 자동으로 skip 처리되도록 가드가 들어 있어 전체 `unittest discover`가 실패하지 않습니다. 실제로 캘린더 경로를 확인하려면 `pip install -e .`로 프로젝트 의존성을 설치해 주세요.
+`tests/calendar/test_category_color.py`는 `icalendar` 패키지가 설치돼 있어야 의미 있게 돌아갑니다. 패키지를 설치하지 않은 dev 환경에서는 자동으로 skip 처리되도록 가드가 들어 있어 전체 `unittest discover`가 실패하지 않습니다. 실제로 캘린더 경로를 확인하려면 `pip install -e .`로 프로젝트 의존성을 설치해 주세요.
 
 ## 로컬 전용 파일
 

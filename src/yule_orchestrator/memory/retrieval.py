@@ -64,6 +64,12 @@ _ROLE_SOURCE_PRIORITY: dict[str, Sequence[tuple[Optional[str], Optional[str]]]] 
         (SOURCE_POLICY, None),
         (SOURCE_OBSIDIAN, NOTE_KIND_RESEARCH),
     ),
+    "devops-engineer": (
+        (SOURCE_POLICY, None),
+        (SOURCE_OBSIDIAN, NOTE_KIND_DECISION),
+        (SOURCE_OBSIDIAN, NOTE_KIND_RESEARCH),
+        (SOURCE_WORKFLOW, None),
+    ),
 }
 
 _DEFAULT_PRIORITY: Sequence[tuple[Optional[str], Optional[str]]] = (

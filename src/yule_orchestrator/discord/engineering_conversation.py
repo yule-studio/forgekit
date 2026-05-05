@@ -1060,6 +1060,14 @@ ROLE_RESEARCH_PROFILES: Mapping[str, tuple[str, ...]] = {
         SOURCE_TYPE_URL,
         SOURCE_TYPE_USER_MESSAGE,
     ),
+    "devops-engineer": (
+        SOURCE_TYPE_OFFICIAL_DOCS,
+        SOURCE_TYPE_GITHUB_PR,
+        SOURCE_TYPE_GITHUB_ISSUE,
+        SOURCE_TYPE_CODE_CONTEXT,
+        SOURCE_TYPE_URL,
+        SOURCE_TYPE_USER_MESSAGE,
+    ),
 }
 
 

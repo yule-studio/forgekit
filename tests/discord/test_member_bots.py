@@ -26,7 +26,7 @@ from yule_orchestrator.discord.member_bots import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class EnvKeyTestCase(unittest.TestCase):
@@ -67,6 +67,7 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
                 "backend-engineer",
                 "frontend-engineer",
                 "qa-engineer",
+                "devops-engineer",
             ),
         )
         for profile in config.profiles:
@@ -107,6 +108,39 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
             profile = config.get("ai-engineer")
             self.assertTrue(profile.active)
             self.assertEqual(profile.token, "ai-token")
+
+    def test_devops_engineer_role_is_registered_with_expected_env_key(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            for key in list(os.environ):
+                if key.startswith("ENGINEERING_AGENT_BOT_"):
+                    del os.environ[key]
+            config = load_member_bot_config(REPO_ROOT, "engineering-agent")
+
+        devops = config.get("devops-engineer")
+        self.assertEqual(
+            devops.env_key,
+            "ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN",
+        )
+        self.assertFalse(devops.active)
+
+    def test_devops_engineer_token_in_env_marks_profile_active(self) -> None:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ENGINEERING_AGENT_BOT_")}
+        env["ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN"] = "devops-token"
+        with patch.dict(os.environ, env, clear=True):
+            config = load_member_bot_config(REPO_ROOT, "engineering-agent")
+            profile = config.get("devops-engineer")
+            self.assertTrue(profile.active)
+            self.assertEqual(profile.token, "devops-token")
+
+    def test_ai_and_devops_both_active_when_both_tokens_set(self) -> None:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ENGINEERING_AGENT_BOT_")}
+        env["ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN"] = "ai-tok"
+        env["ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN"] = "devops-tok"
+        with patch.dict(os.environ, env, clear=True):
+            config = load_member_bot_config(REPO_ROOT, "engineering-agent")
+            active_roles = {p.role for p in config.active_profiles()}
+        self.assertIn("ai-engineer", active_roles)
+        self.assertIn("devops-engineer", active_roles)
 
 
 class SelectProfileTestCase(unittest.TestCase):

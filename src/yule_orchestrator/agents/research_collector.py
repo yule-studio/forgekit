@@ -443,6 +443,13 @@ ROLE_QUERY_BOOSTS: Mapping[str, Tuple[str, ...]] = {
     "backend-engineer": ("official docs", "API", "schema"),
     "frontend-engineer": ("MDN", "framework docs", "accessibility"),
     "qa-engineer": ("regression", "test plan", "e2e"),
+    "devops-engineer": (
+        "CI/CD",
+        "GitHub Actions",
+        "deployment",
+        "rollback",
+        "observability",
+    ),
 }
 
 

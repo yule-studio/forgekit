@@ -68,6 +68,7 @@ DEFAULT_RESEARCH_ROLE_SEQUENCE: Tuple[str, ...] = (
     "backend-engineer",
     "frontend-engineer",
     "qa-engineer",
+    "devops-engineer",
 )
 
 

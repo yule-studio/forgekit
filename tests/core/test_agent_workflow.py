@@ -23,7 +23,7 @@ from yule_orchestrator.agents import (
 from yule_orchestrator.agents.workflow_state import find_latest_open_session
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _build_orchestrator() -> tuple[WorkflowOrchestrator, list[datetime]]:

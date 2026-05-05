@@ -108,6 +108,11 @@ DEFAULT_ROLE_TARGETS: Tuple[RoleSufficiencyTarget, ...] = (
         min_sources=2,
         required_types=_ANY_GITHUB,
     ),
+    RoleSufficiencyTarget(
+        role="devops-engineer",
+        min_sources=2,
+        required_types=(SOURCE_TYPE_OFFICIAL_DOCS,) + _ANY_GITHUB,
+    ),
 )
 
 

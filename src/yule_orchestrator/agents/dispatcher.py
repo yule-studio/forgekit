@@ -38,6 +38,7 @@ ROLE_DEFAULT_WEIGHTS: Mapping[str, Mapping[str, int]] = {
     "frontend-engineer": {"claude": 8, "codex": 8, "gemini": 5, "ollama": 3},
     "product-designer": {"gemini": 9, "claude": 8, "codex": 4, "ollama": 3},
     "qa-engineer": {"codex": 9, "claude": 8, "gemini": 5, "ollama": 3},
+    "devops-engineer": {"claude": 9, "codex": 7, "gemini": 6, "ollama": 3},
 }
 
 
@@ -100,6 +101,7 @@ TASK_ROLE_SEQUENCE: Mapping[TaskType, Sequence[str]] = {
         "product-designer",
         "backend-engineer",
         "qa-engineer",
+        "devops-engineer",
     ),
     TaskType.UNKNOWN: (
         "tech-lead",
@@ -108,6 +110,7 @@ TASK_ROLE_SEQUENCE: Mapping[TaskType, Sequence[str]] = {
         "backend-engineer",
         "frontend-engineer",
         "qa-engineer",
+        "devops-engineer",
     ),
 }
 
