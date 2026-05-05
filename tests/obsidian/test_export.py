@@ -11,13 +11,25 @@ except ModuleNotFoundError:
 from yule_orchestrator.agents.deliberation import TechLeadSynthesis
 from yule_orchestrator.agents.obsidian_export import (
     CONTRACT_VERSION,
+    DEFAULT_PROJECT,
+    INBOX_UNSORTED,
+    LAYOUT_LEGACY_AGENT,
+    LAYOUT_YULE_AGENT_VAULT,
     PATH_DECISIONS,
     PATH_REFERENCES,
     PATH_RESEARCH,
+    PROJECT_DECISIONS_SUBDIR,
+    PROJECT_REFERENCES_SUBDIR,
+    PROJECT_RESEARCH_SUBDIR,
+    PROJECTS_BASE,
     ExportPath,
     recommend_path,
     render_research_note,
 )
+
+
+def _default_project_folder(subdir: str, project: str = DEFAULT_PROJECT) -> str:
+    return f"{PROJECTS_BASE}/{project}/{subdir}"
 from yule_orchestrator.agents.research_pack import (
     ResearchAttachment,
     ResearchSource,
@@ -43,35 +55,95 @@ def _session(**overrides) -> WorkflowSession:
 
 
 class RecommendPathTestCase(unittest.TestCase):
-    def test_research_default(self) -> None:
+    """Default layout = yule-agent-vault, default project = yule-studio-agent.
+
+    Tests pass ``env={}`` so ``OBSIDIAN_*`` variables on the developer's
+    machine never bleed into expected paths.
+    """
+
+    def test_research_default_goes_to_default_project_research(self) -> None:
         path = recommend_path(
             title="Stripe Pricing 패턴",
             kind="research",
             created_at=datetime(2026, 4, 30),
+            env={},
         )
-        self.assertEqual(path.folder, PATH_RESEARCH)
+        self.assertEqual(
+            path.folder, _default_project_folder(PROJECT_RESEARCH_SUBDIR)
+        )
         self.assertTrue(path.filename.startswith("2026-04-30_"))
         self.assertTrue(path.filename.endswith(".md"))
 
-    def test_decisions_folder(self) -> None:
-        path = recommend_path(title="x", kind="decision")
+    def test_decision_default_goes_to_default_project_decisions(self) -> None:
+        path = recommend_path(title="x", kind="decision", env={})
+        self.assertEqual(
+            path.folder, _default_project_folder(PROJECT_DECISIONS_SUBDIR)
+        )
+
+    def test_reference_default_goes_to_default_project_references(self) -> None:
+        path = recommend_path(title="x", kind="references", env={})
+        self.assertEqual(
+            path.folder, _default_project_folder(PROJECT_REFERENCES_SUBDIR)
+        )
+
+    def test_unknown_kind_routes_to_inbox_unsorted(self) -> None:
+        # Spec: unknown/ambiguous kinds land in 00-inbox/unsorted/ so the
+        # operator can triage them instead of having them buried under
+        # research/.
+        path = recommend_path(title="x", kind="diary", env={})
+        self.assertEqual(path.folder, INBOX_UNSORTED)
+
+    def test_explicit_project_arg_overrides_default(self) -> None:
+        path = recommend_path(
+            title="x",
+            kind="research",
+            project="other-project",
+            env={},
+        )
+        self.assertEqual(
+            path.folder,
+            _default_project_folder(
+                PROJECT_RESEARCH_SUBDIR, project="other-project"
+            ),
+        )
+
+    def test_env_default_project_takes_effect_when_arg_blank(self) -> None:
+        path = recommend_path(
+            title="x",
+            kind="research",
+            env={"OBSIDIAN_DEFAULT_PROJECT": "project-from-env"},
+        )
+        self.assertTrue(path.folder.startswith("10-projects/project-from-env/"))
+
+    def test_legacy_layout_uses_agents_engineering_tree(self) -> None:
+        path = recommend_path(
+            title="x",
+            kind="decision",
+            layout="legacy-agent",
+            env={},
+        )
         self.assertEqual(path.folder, PATH_DECISIONS)
 
-    def test_references_folder(self) -> None:
-        path = recommend_path(title="x", kind="references")
-        self.assertEqual(path.folder, PATH_REFERENCES)
-
-    def test_unknown_kind_falls_back(self) -> None:
-        path = recommend_path(title="x", kind="diary")
+    def test_legacy_layout_via_env_var(self) -> None:
+        path = recommend_path(
+            title="x",
+            kind="research",
+            env={"OBSIDIAN_EXPORT_LAYOUT": "legacy-agent"},
+        )
         self.assertEqual(path.folder, PATH_RESEARCH)
 
     def test_korean_title_is_slugified(self) -> None:
-        path = recommend_path(title="히어로 섹션 정리 v2", kind="research")
+        path = recommend_path(title="히어로 섹션 정리 v2", kind="research", env={})
         self.assertIn("히어로", path.filename)
         self.assertNotIn(" ", path.filename)
 
     def test_blank_title_yields_untitled(self) -> None:
-        path = recommend_path(title="   ", kind="research", created_at=datetime(2026, 4, 30))
+        path = recommend_path(
+            title="   ",
+            kind="research",
+            created_at=datetime(2026, 4, 30),
+            env={},
+        )
         self.assertEqual(path.filename, "2026-04-30_research-untitled.md")
 
 
@@ -96,8 +168,12 @@ class RenderNoteTestCase(unittest.TestCase):
         )
 
     def test_renders_research_note_without_synthesis(self) -> None:
-        note = render_research_note(self._pack())
-        self.assertEqual(note.path.folder, PATH_RESEARCH)
+        # Default layout = yule-agent-vault → path lands under
+        # 10-projects/<default-project>/research/.
+        note = render_research_note(self._pack(), env={})
+        self.assertEqual(
+            note.path.folder, _default_project_folder(PROJECT_RESEARCH_SUBDIR)
+        )
         self.assertIn("contract: research-forum-export/v0", note.content)
         self.assertIn("title: Stripe Pricing 패턴", note.content)
         self.assertIn("source: https://stripe.com/pricing", note.content)
@@ -105,6 +181,9 @@ class RenderNoteTestCase(unittest.TestCase):
         self.assertIn("## 자료 링크", note.content)
         self.assertIn("## 첨부", note.content)
         self.assertIn("`image`", note.content)
+        # Default project name is stamped into frontmatter so retrieval
+        # can filter by project without re-reading the path.
+        self.assertIn(f"project: {DEFAULT_PROJECT}", note.content)
 
     def test_decision_note_when_synthesis_provided(self) -> None:
         synth = TechLeadSynthesis(
@@ -115,8 +194,12 @@ class RenderNoteTestCase(unittest.TestCase):
             approval_required=True,
             approval_reason="write requires approval",
         )
-        note = render_research_note(self._pack(), session=_session(), synthesis=synth)
-        self.assertEqual(note.path.folder, PATH_DECISIONS)
+        note = render_research_note(
+            self._pack(), session=_session(), synthesis=synth, env={}
+        )
+        self.assertEqual(
+            note.path.folder, _default_project_folder(PROJECT_DECISIONS_SUBDIR)
+        )
         self.assertIn("status: approval-pending", note.content)
         self.assertIn("approval_required: true", note.content)
         self.assertIn("## 합의안", note.content)
@@ -128,11 +211,56 @@ class RenderNoteTestCase(unittest.TestCase):
         self.assertIn("승인 필요 여부\nyes — write requires approval", note.content)
 
     def test_explicit_reference_kind(self) -> None:
-        note = render_research_note(self._pack(), kind="reference")
-        self.assertEqual(note.path.folder, PATH_REFERENCES)
+        note = render_research_note(self._pack(), kind="reference", env={})
+        self.assertEqual(
+            note.path.folder, _default_project_folder(PROJECT_REFERENCES_SUBDIR)
+        )
         self.assertIn("kind: reference", note.content)
         # tag derived from kind = "reference" (singular)
         self.assertIn("tags: [reference, ux]", note.content)
+
+    def test_legacy_layout_writes_to_agents_engineering_research(self) -> None:
+        note = render_research_note(
+            self._pack(), layout=LAYOUT_LEGACY_AGENT, env={}
+        )
+        self.assertEqual(note.path.folder, PATH_RESEARCH)
+        # Legacy mode keeps frontmatter project-less so byte output stays
+        # stable for vaults that haven't migrated.
+        self.assertNotIn("project:", note.content)
+
+    def test_legacy_layout_via_env_var_writes_to_agents_engineering(self) -> None:
+        note = render_research_note(
+            self._pack(),
+            env={"OBSIDIAN_EXPORT_LAYOUT": "legacy-agent"},
+        )
+        self.assertEqual(note.path.folder, PATH_RESEARCH)
+
+    def test_explicit_project_arg_wins_over_env(self) -> None:
+        note = render_research_note(
+            self._pack(),
+            project="other-project",
+            env={"OBSIDIAN_DEFAULT_PROJECT": "ignored-default"},
+        )
+        self.assertTrue(note.path.folder.startswith("10-projects/other-project/"))
+        self.assertIn("project: other-project", note.content)
+
+    def test_session_extra_project_wins_over_env_default(self) -> None:
+        session = _session(extra={"project": "session-project"})
+        note = render_research_note(
+            self._pack(),
+            session=session,
+            env={"OBSIDIAN_DEFAULT_PROJECT": "env-default"},
+        )
+        self.assertTrue(note.path.folder.startswith("10-projects/session-project/"))
+        self.assertIn("project: session-project", note.content)
+
+    def test_env_default_project_used_when_no_explicit_or_session(self) -> None:
+        note = render_research_note(
+            self._pack(),
+            env={"OBSIDIAN_DEFAULT_PROJECT": "env-default"},
+        )
+        self.assertTrue(note.path.folder.startswith("10-projects/env-default/"))
+        self.assertIn("project: env-default", note.content)
 
     def test_status_decided_without_approval(self) -> None:
         synth = TechLeadSynthesis(
@@ -287,16 +415,21 @@ class ProjectVaultLayoutTests(unittest.TestCase):
         )
         self.assertTrue(path.folder.endswith("/decisions"))
 
-    def test_default_layout_unchanged_when_project_absent(self) -> None:
+    def test_default_falls_back_to_default_project_when_absent(self) -> None:
+        # New default: even without explicit project / session.extra, the
+        # path uses the configured default project (yule-studio-agent).
+        # Legacy ``Agents/Engineering/...`` is opt-in only.
         from yule_orchestrator.agents.obsidian_export import (
-            PATH_RESEARCH,
+            DEFAULT_PROJECT,
             recommend_path,
         )
 
         path = recommend_path(
-            title="x", kind="research", created_at=datetime(2026, 4, 30)
+            title="x", kind="research", created_at=datetime(2026, 4, 30), env={}
         )
-        self.assertEqual(path.folder, PATH_RESEARCH)
+        self.assertEqual(
+            path.folder, f"10-projects/{DEFAULT_PROJECT}/research"
+        )
 
     def test_render_research_note_picks_up_session_project_extra(self) -> None:
         pack = ResearchPack(title="개발팀 학습 루프 설계")

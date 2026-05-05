@@ -16,11 +16,12 @@ truth for title/source/roles/status/session_id/created_at.
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 from .deliberation import TechLeadSynthesis
 from .research_pack import ResearchAttachment, ResearchPack
@@ -29,20 +30,98 @@ from .workflow_state import WorkflowSession
 
 CONTRACT_VERSION = "research-forum-export/v0"
 
+# ---------------------------------------------------------------------------
+# Layout / project policy (yule-agent-vault is the default)
+# ---------------------------------------------------------------------------
+#
+# yule-agent-vault layout (default):
+#   00-inbox/unsorted/        — 애매한 문서, kind 미지정/미상
+#   10-projects/{project}/    — 프로젝트 관련 (research/decisions/references/task-logs/meeting-notes)
+#   20-areas/{area}/          — 지속 참고 기술 개념
+#   30-resources/             — 일반 자료 요약
+#   40-patterns/              — 재사용 설계/구현 방식
+#   50-snippets/{lang}/       — 코드 조각
+#   60-troubleshooting/{area}/— 에러 해결
+#   70-daily/                 — 일일 작업 기록
+#   90-archive/               — 오래된 문서
+#
+# legacy-agent layout (opt-in via OBSIDIAN_EXPORT_LAYOUT=legacy-agent):
+#   Agents/Engineering/{Research|Decisions|References}/
+#
+# Switching the default required a one-time path change for callers that
+# expected the flat ``Agents/Engineering/...`` tree; any pre-existing notes
+# in that tree are unaffected because Obsidian-side files are never moved
+# by this module — only future writes pick up the new layout.
+
+ENV_DEFAULT_PROJECT = "OBSIDIAN_DEFAULT_PROJECT"
+ENV_EXPORT_LAYOUT = "OBSIDIAN_EXPORT_LAYOUT"
+
+LAYOUT_YULE_AGENT_VAULT = "yule-agent-vault"
+LAYOUT_LEGACY_AGENT = "legacy-agent"
+KNOWN_LAYOUTS = (LAYOUT_YULE_AGENT_VAULT, LAYOUT_LEGACY_AGENT)
+DEFAULT_LAYOUT = LAYOUT_YULE_AGENT_VAULT
+
+# Hard-coded fallback when ``OBSIDIAN_DEFAULT_PROJECT`` is not set.
+DEFAULT_PROJECT = "yule-studio-agent"
+
+# yule-agent-vault top-level folders.
+INBOX_BASE = "00-inbox"
+INBOX_UNSORTED = f"{INBOX_BASE}/unsorted"
+PROJECTS_BASE = "10-projects"
+AREAS_BASE = "20-areas"
+RESOURCES_BASE = "30-resources"
+PATTERNS_BASE = "40-patterns"
+SNIPPETS_BASE = "50-snippets"
+TROUBLESHOOTING_BASE = "60-troubleshooting"
+DAILY_BASE = "70-daily"
+ARCHIVE_BASE = "90-archive"
+
+# Per-project subdirectories (yule-agent-vault layout).
+PROJECT_RESEARCH_SUBDIR = "research"
+PROJECT_DECISIONS_SUBDIR = "decisions"
+PROJECT_REFERENCES_SUBDIR = "references"
+PROJECT_TASK_LOGS_SUBDIR = "task-logs"
+PROJECT_MEETING_NOTES_SUBDIR = "meeting-notes"
+
+# Legacy-agent layout (kept for opt-in legacy mode + back-compat imports).
 VAULT_BASE = "Agents/Engineering"
 PATH_RESEARCH = f"{VAULT_BASE}/Research"
 PATH_DECISIONS = f"{VAULT_BASE}/Decisions"
 PATH_REFERENCES = f"{VAULT_BASE}/References"
 
-# yule-agent-vault layout (compatibility mode — opt-in via ``project=``).
-# When the caller passes a project name, ResearchPack/DecisionRecord/
-# Reference notes land under ``10-projects/<project>/{research,decisions,references}/``
-# instead of the legacy ``Agents/Engineering/...`` flat tree. The default
-# behaviour is unchanged so existing vaults keep working.
-PROJECTS_BASE = "10-projects"
-PROJECT_RESEARCH_SUBDIR = "research"
-PROJECT_DECISIONS_SUBDIR = "decisions"
-PROJECT_REFERENCES_SUBDIR = "references"
+# Recognised kind aliases → canonical project subdirectory. Anything not
+# in this map gets routed to ``00-inbox/unsorted/`` so it surfaces for
+# triage instead of silently landing in research/.
+_KIND_TO_PROJECT_SUBDIR: Mapping[str, str] = {
+    "research": PROJECT_RESEARCH_SUBDIR,
+    "decision": PROJECT_DECISIONS_SUBDIR,
+    "decisions": PROJECT_DECISIONS_SUBDIR,
+    "reference": PROJECT_REFERENCES_SUBDIR,
+    "references": PROJECT_REFERENCES_SUBDIR,
+    "task-log": PROJECT_TASK_LOGS_SUBDIR,
+    "task-logs": PROJECT_TASK_LOGS_SUBDIR,
+    "tasklog": PROJECT_TASK_LOGS_SUBDIR,
+    "meeting": PROJECT_MEETING_NOTES_SUBDIR,
+    "meeting-note": PROJECT_MEETING_NOTES_SUBDIR,
+    "meeting-notes": PROJECT_MEETING_NOTES_SUBDIR,
+}
+
+# Filename label per kind (used by ``recommend_path`` to build basenames
+# like ``YYYY-MM-DD_decision-<slug>.md``). Anything unrecognised falls back
+# to ``research`` so legacy callers keep working.
+_KIND_TO_LABEL: Mapping[str, str] = {
+    "research": "research",
+    "decision": "decision",
+    "decisions": "decision",
+    "reference": "reference",
+    "references": "reference",
+    "task-log": "task-log",
+    "task-logs": "task-log",
+    "tasklog": "task-log",
+    "meeting": "meeting",
+    "meeting-note": "meeting",
+    "meeting-notes": "meeting",
+}
 
 
 @dataclass(frozen=True)
@@ -82,28 +161,90 @@ FILENAME_SLUG_LIMIT = 50  # leaves room for ``YYYY-MM-DD_<kind>-`` prefix
 TITLE_LIMIT = 50  # short, readable Obsidian H1 / frontmatter title
 
 
+def resolve_layout(
+    layout: Optional[str] = None,
+    *,
+    env: Optional[Mapping[str, str]] = None,
+) -> str:
+    """Return the canonical layout name (yule-agent-vault | legacy-agent).
+
+    Resolution: explicit *layout* arg (validated) → ``OBSIDIAN_EXPORT_LAYOUT``
+    env (case-insensitive, validated) → :data:`DEFAULT_LAYOUT`. Anything
+    unrecognised silently degrades to the default — operators get the new
+    vault tree by default and legacy mode is strictly opt-in.
+    """
+
+    if layout:
+        normalized = str(layout).strip().lower()
+        if normalized in KNOWN_LAYOUTS:
+            return normalized
+        return DEFAULT_LAYOUT
+    env_map: Mapping[str, str] = env if env is not None else os.environ
+    raw = (env_map.get(ENV_EXPORT_LAYOUT) or "").strip().lower()
+    if raw in KNOWN_LAYOUTS:
+        return raw
+    return DEFAULT_LAYOUT
+
+
+def resolve_default_project(
+    env: Optional[Mapping[str, str]] = None,
+) -> str:
+    """Return the operator-configured default project (or fallback).
+
+    Reads ``OBSIDIAN_DEFAULT_PROJECT`` from *env* (or the live process env)
+    and trims whitespace. When unset, falls back to :data:`DEFAULT_PROJECT`
+    so the default-write target is always a concrete folder.
+    """
+
+    env_map: Mapping[str, str] = env if env is not None else os.environ
+    raw = (env_map.get(ENV_DEFAULT_PROJECT) or "").strip()
+    return raw or DEFAULT_PROJECT
+
+
 def recommend_path(
     *,
     title: str,
     kind: str,
     created_at: Optional[datetime] = None,
     project: Optional[str] = None,
+    layout: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> ExportPath:
     """Return the recommended export path.
 
-    *kind* must be one of ``research``/``decision``/``reference`` (case
-    insensitive). Anything else falls back to ``research``.
+    Layout default is :data:`LAYOUT_YULE_AGENT_VAULT` — note targets land
+    under ``10-projects/<project>/<kind>/``. Caller can opt into the legacy
+    flat tree by passing ``layout="legacy-agent"`` or via the
+    ``OBSIDIAN_EXPORT_LAYOUT`` env.
 
-    Path layout:
-      - default (no ``project``): ``Agents/Engineering/<kind>/<YYYY-MM-DD_<kind>-<slug>>.md``.
-      - with ``project``: ``10-projects/<project-slug>/<kind>/<YYYY-MM-DD_<kind>-<slug>>.md``.
+    Project resolution for the default layout: explicit *project* arg →
+    ``OBSIDIAN_DEFAULT_PROJECT`` env → :data:`DEFAULT_PROJECT`
+    (``yule-studio-agent``). The session-aware project chain that prefers
+    ``session.extra["project"]`` is run by :func:`render_research_note`
+    before this function is called — keeping that lookup in the renderer
+    means callers using the bare ``recommend_path`` API don't need to
+    construct a ``WorkflowSession`` just to get the right folder.
 
-    The slug is capped at :data:`FILENAME_SLUG_LIMIT` characters and the
-    full basename never exceeds :data:`FILENAME_BASENAME_LIMIT` so the
-    Obsidian indexer / git checkout never trips on path-length limits.
+    *kind* aliases (case-insensitive): ``research`` /
+    ``decision`` (or ``decisions``) / ``reference`` (or ``references``)
+    / ``task-log`` (or ``task-logs``) / ``meeting`` (or ``meeting-note`` /
+    ``meeting-notes``). Anything else routes to ``00-inbox/unsorted/`` so
+    the operator notices the unrecognised kind instead of silently
+    burying it under research/.
+
+    The slug is capped at :data:`FILENAME_SLUG_LIMIT` and the full basename
+    never exceeds :data:`FILENAME_BASENAME_LIMIT` so Obsidian and git stay
+    within their path-length limits.
     """
 
-    folder = _kind_to_project_folder(kind, project) if project else _kind_to_folder(kind)
+    layout_resolved = resolve_layout(layout, env=env)
+    if layout_resolved == LAYOUT_LEGACY_AGENT:
+        folder = _legacy_kind_to_folder(kind)
+    else:
+        project_resolved = (
+            (project or "").strip() or resolve_default_project(env=env)
+        )
+        folder = _yule_vault_kind_to_folder(kind, project_resolved)
     when = created_at or datetime.utcnow()
     if isinstance(when, datetime):
         date_part = when.date().isoformat()
@@ -124,22 +265,41 @@ def recommend_path(
 
 
 def _kind_short_label(kind: str) -> str:
+    """Return the filename-safe short label for *kind*.
+
+    Falls back to ``research`` for unknown kinds — the folder routing
+    sends them to ``00-inbox/unsorted/`` but the filename label stays
+    deterministic so legacy filename tests keep passing.
+    """
+
     normalized = (kind or "").strip().lower()
-    if normalized in ("decision", "decisions"):
-        return "decision"
-    if normalized in ("reference", "references"):
-        return "reference"
-    return "research"
+    return _KIND_TO_LABEL.get(normalized, "research")
 
 
-def _kind_to_project_folder(kind: str, project: str) -> str:
-    project_slug = _slugify(project) or "uncategorized"
+def _yule_vault_kind_to_folder(kind: str, project: str) -> str:
+    """yule-agent-vault folder for *kind* under ``10-projects/<project>/``.
+
+    Unknown *kind* values land in ``00-inbox/unsorted/`` so they show up
+    in the operator's triage queue instead of being silently buried.
+    """
+
+    normalized = (kind or "").strip().lower()
+    subdir = _KIND_TO_PROJECT_SUBDIR.get(normalized)
+    if subdir is None:
+        return INBOX_UNSORTED
+    project_slug = _slugify(project) or _slugify(DEFAULT_PROJECT) or "uncategorized"
+    return f"{PROJECTS_BASE}/{project_slug}/{subdir}"
+
+
+def _legacy_kind_to_folder(kind: str) -> str:
+    """Legacy ``Agents/Engineering/<Kind>/`` mapping (opt-in only)."""
+
     normalized = (kind or "").strip().lower()
     if normalized in ("decision", "decisions"):
-        return f"{PROJECTS_BASE}/{project_slug}/{PROJECT_DECISIONS_SUBDIR}"
+        return PATH_DECISIONS
     if normalized in ("reference", "references"):
-        return f"{PROJECTS_BASE}/{project_slug}/{PROJECT_REFERENCES_SUBDIR}"
-    return f"{PROJECTS_BASE}/{project_slug}/{PROJECT_RESEARCH_SUBDIR}"
+        return PATH_REFERENCES
+    return PATH_RESEARCH
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +315,8 @@ def render_research_note(
     kind: Optional[str] = None,
     exported_at: Optional[datetime] = None,
     project: Optional[str] = None,
+    layout: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> ObsidianNote:
     """Render a ResearchPack into an Obsidian-ready note.
 
@@ -162,14 +324,29 @@ def render_research_note(
     (``decision`` if so, else ``research``). Pass ``"reference"``
     explicitly for pure UX/design reference notes.
 
-    *project* opts the resulting note path into the
-    ``10-projects/<project>/...`` yule-agent-vault layout. When omitted
-    the legacy ``Agents/Engineering/...`` tree is preserved so existing
-    vaults keep working.
+    Path layout follows :data:`DEFAULT_LAYOUT` (yule-agent-vault) by
+    default — notes land under ``10-projects/<project>/<kind>/``. The
+    project resolution chain runs in this order:
+
+    1. Explicit *project* kwarg (e.g. CLI ``--project``).
+    2. ``session.extra["project"]`` / ``session.extra["project_name"]``.
+    3. ``OBSIDIAN_DEFAULT_PROJECT`` env (via *env* or ``os.environ``).
+    4. Hard-coded :data:`DEFAULT_PROJECT` (``yule-studio-agent``).
+
+    Pass ``layout="legacy-agent"`` (or set
+    ``OBSIDIAN_EXPORT_LAYOUT=legacy-agent``) to get the old
+    ``Agents/Engineering/...`` flat tree — used only by callers that
+    haven't migrated their vault yet.
     """
 
     chosen_kind = (kind or _infer_kind(synthesis)).lower()
-    chosen_project = project or _project_from_session(session)
+    layout_resolved = resolve_layout(layout, env=env)
+    chosen_project = _resolve_project(
+        project=project,
+        session=session,
+        layout=layout_resolved,
+        env=env,
+    )
     short_title = derive_short_title(pack, session=session)
     frontmatter = _frontmatter(
         pack=pack,
@@ -190,17 +367,51 @@ def render_research_note(
         kind=chosen_kind,
         created_at=pack.created_at,
         project=chosen_project,
+        layout=layout_resolved,
+        env=env,
     )
     return ObsidianNote(path=path, content=content, frontmatter=frontmatter)
+
+
+def _resolve_project(
+    *,
+    project: Optional[str],
+    session: Optional[WorkflowSession],
+    layout: str,
+    env: Optional[Mapping[str, str]],
+) -> Optional[str]:
+    """Walk the project resolution chain.
+
+    Order: explicit kwarg → ``session.extra["project"|"project_name"]`` →
+    ``OBSIDIAN_DEFAULT_PROJECT`` env → :data:`DEFAULT_PROJECT`. Returns
+    ``None`` only in legacy-agent layout — there the legacy flat tree
+    doesn't carry a project segment so we drop it from frontmatter as
+    well.
+    """
+
+    if layout == LAYOUT_LEGACY_AGENT:
+        # Legacy mode keeps frontmatter project-less unless caller set one
+        # explicitly. session.extra/env are intentionally ignored so the
+        # legacy notes stay byte-stable for vaults that haven't migrated.
+        explicit = (project or "").strip()
+        return explicit or None
+
+    explicit = (project or "").strip()
+    if explicit:
+        return explicit
+    from_session = _project_from_session(session)
+    if from_session:
+        return from_session
+    return resolve_default_project(env=env)
 
 
 def _project_from_session(session: Optional[WorkflowSession]) -> Optional[str]:
     """Best-effort project derivation from session metadata.
 
-    Looks for an explicit ``project`` key in ``session.extra`` first
-    (operators can stash it there at intake time). Returns ``None`` when
-    nothing usable is found — the path then defaults to the legacy
-    layout.
+    Looks for an explicit ``project`` (or ``project_name``) key in
+    ``session.extra``. Operators stash it there at intake time when a
+    request is clearly tied to a known project. Returns ``None`` when
+    nothing usable is found.
     """
 
     if session is None:
@@ -324,15 +535,6 @@ def _body(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _kind_to_folder(kind: str) -> str:
-    normalized = (kind or "").strip().lower()
-    if normalized in ("decision", "decisions"):
-        return PATH_DECISIONS
-    if normalized in ("reference", "references"):
-        return PATH_REFERENCES
-    return PATH_RESEARCH
 
 
 def _infer_kind(synthesis: Optional[TechLeadSynthesis]) -> str:

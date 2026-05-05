@@ -589,6 +589,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--git-message",
         help="Custom commit message. Defaults to 'obsidian sync: <session_id> ...'.",
     )
+    obsidian_sync_parser.add_argument(
+        "--project",
+        help=(
+            "Project slug to use for the yule-agent-vault layout — note lands "
+            "under 10-projects/<project>/<kind>/. Resolution order: this flag "
+            "→ session.extra['project'] → OBSIDIAN_DEFAULT_PROJECT env → "
+            "yule-studio-agent."
+        ),
+    )
+    obsidian_sync_parser.add_argument(
+        "--layout",
+        choices=("yule-agent-vault", "legacy-agent"),
+        help=(
+            "Override OBSIDIAN_EXPORT_LAYOUT. Defaults to yule-agent-vault. "
+            "Use legacy-agent only for vaults still on Agents/Engineering/..."
+        ),
+    )
 
     memory_parser = subparsers.add_parser(
         "memory",
@@ -841,6 +858,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 dry_run=args.dry_run,
                 git_commit=args.git_commit,
                 git_message=args.git_message,
+                project=args.project,
+                layout=args.layout,
             )
     except ContextError as exc:
         print(f"error: {exc}", file=sys.stderr)

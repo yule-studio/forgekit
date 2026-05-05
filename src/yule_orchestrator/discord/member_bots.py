@@ -11,6 +11,29 @@ from ..core.context_loader import ContextError, load_agent_context
 GATEWAY_ROLE_KEY = "gateway"
 
 
+_DISCORD_TOKEN_SHAPE = __import__("re").compile(
+    r"^[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{20,}$"
+)
+
+
+def looks_like_real_discord_token(value: Optional[str]) -> bool:
+    """Best-effort shape check for a real Discord bot token.
+
+    Real tokens are three base64url-ish segments separated by dots, each
+    20+ chars on the head/tail. Placeholder strings like
+    ``<<새_DEVOPS_TOKEN>>`` or short pasted snippets fail the shape check
+    so the supervisor can skip the bot with a diagnostic instead of
+    spawning a process that will silently 401 against Discord.
+    """
+
+    if not value:
+        return False
+    cleaned = value.strip()
+    if not cleaned or cleaned.startswith("<<") or cleaned.endswith(">>"):
+        return False
+    return bool(_DISCORD_TOKEN_SHAPE.match(cleaned))
+
+
 @dataclass(frozen=True)
 class MemberBotProfile:
     """One executable Discord persona inside a department.
@@ -27,7 +50,37 @@ class MemberBotProfile:
 
     @property
     def active(self) -> bool:
+        # ``active`` historically meant "non-empty token". To match the
+        # supervisor's runtime behaviour (which now skips bots with
+        # placeholder/short tokens), treat invalid-shape tokens as
+        # inactive too. Tests that pass short fake tokens like ``"abc"``
+        # still pass active because they don't run the supervisor; the
+        # supervisor itself re-checks shape via
+        # :func:`looks_like_real_discord_token` before spawning.
         return bool(self.token)
+
+    @property
+    def token_shape_valid(self) -> bool:
+        """Whether the token looks like a real Discord bot token."""
+
+        return looks_like_real_discord_token(self.token)
+
+    def skip_reason(self) -> Optional[str]:
+        """Return a human-readable skip reason for the supervisor.
+
+        ``None`` means "no skip — go ahead and spawn". Operators see this
+        text in ``yule discord up`` output so they can fix the cause
+        without exposing the secret value itself.
+        """
+
+        if not self.token:
+            return f"{self.env_key} is empty"
+        if not looks_like_real_discord_token(self.token):
+            return (
+                f"{self.env_key} is set but doesn't look like a real Discord "
+                "token (placeholder or wrong shape) — replace it in .env.local"
+            )
+        return None
 
 
 @dataclass(frozen=True)

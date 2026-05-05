@@ -28,12 +28,26 @@ from yule_orchestrator.discord.supervisor import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+def _shape_valid(label: str) -> str:
+    """Return a fake-but-shape-valid Discord token for tests.
+
+    The supervisor's shape check requires three dot-separated base64url-ish
+    segments. Simple fixtures like ``_shape_valid("gw")`` were rejected once the
+    placeholder-detection guard landed, so tests now compose tokens that
+    look real to the supervisor while still being inert.
+    """
+
+    head = (label + "x" * 24)[:24]
+    tail = (label + "y" * 30)[:30]
+    return f"{head}.AaBbCc.{tail}"
+
+
 class BuildInventoryTestCase(unittest.TestCase):
     def test_inventory_lists_planning_first_then_gateway_then_members(self) -> None:
         env = {
-            PLANNING_BOT_ENV_KEY: "planning-token",
-            "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN": "gw-token",
-            "ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN": "be-token",
+            PLANNING_BOT_ENV_KEY: _shape_valid("planning"),
+            "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN": _shape_valid("gw"),
+            "ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN": _shape_valid("be"),
         }
 
         inventory = build_inventory(REPO_ROOT, env=env)
@@ -56,7 +70,7 @@ class BuildInventoryTestCase(unittest.TestCase):
         self.assertIn(planning, inventory.skipped())
 
     def test_engineering_gateway_uses_gateway_runner_type(self) -> None:
-        env = {"ENGINEERING_AGENT_BOT_GATEWAY_TOKEN": "gw-token"}
+        env = {"ENGINEERING_AGENT_BOT_GATEWAY_TOKEN": _shape_valid("gw")}
 
         inventory = build_inventory(REPO_ROOT, env=env)
         gateway = next(
@@ -67,7 +81,7 @@ class BuildInventoryTestCase(unittest.TestCase):
         self.assertTrue(gateway.has_token)
 
     def test_engineering_role_bot_has_member_runner_type(self) -> None:
-        env = {"ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN": "be-token"}
+        env = {"ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN": _shape_valid("be")}
 
         inventory = build_inventory(REPO_ROOT, env=env)
         backend = next(
@@ -78,7 +92,12 @@ class BuildInventoryTestCase(unittest.TestCase):
         self.assertTrue(backend.has_token)
 
     def test_ai_engineer_member_appears_in_inventory_with_active_status(self) -> None:
-        env = {"ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN": "ai-token"}
+        # Use the shape-valid helper so we never embed a Discord-token-shaped
+        # literal in the source tree (GitHub push protection blocks the
+        # base64url-ish form even when the value is inert).
+        env = {
+            "ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN": _shape_valid("ai")
+        }
 
         inventory = build_inventory(REPO_ROOT, env=env)
         ai_engineer = next(
@@ -99,7 +118,8 @@ class BuildInventoryTestCase(unittest.TestCase):
         )
 
         self.assertFalse(ai_engineer.has_token)
-        self.assertEqual(ai_engineer.status, "skipped (token missing)")
+        self.assertIn("ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN", ai_engineer.status)
+        self.assertIn("empty", ai_engineer.status)
 
     def test_planning_bot_has_planning_runner_type(self) -> None:
         env = {PLANNING_BOT_ENV_KEY: "planning-token"}
@@ -127,7 +147,10 @@ class RenderInventorySummaryTestCase(unittest.TestCase):
         self.assertIn("planning-bot", joined)
         self.assertIn("engineering-agent (gateway)", joined)
         self.assertIn("active", joined)
-        self.assertIn("skipped (token missing)", joined)
+        # The new diagnostic surfaces the env key by name so the
+        # operator knows which slot to fill in .env.local.
+        self.assertIn("is empty", joined)
+        self.assertIn("ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN", joined)
         self.assertTrue(any(line.startswith("summary: ") for line in lines))
 
 
@@ -151,7 +174,7 @@ class StartAllTestCase(unittest.TestCase):
     def test_starts_only_active_bots(self) -> None:
         env = {
             PLANNING_BOT_ENV_KEY: "planning-token",
-            "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN": "gw-token",
+            "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN": _shape_valid("gw"),
         }
         inventory = build_inventory(REPO_ROOT, env=env)
         spawned: list[str] = []
@@ -226,6 +249,55 @@ class SpawnResultDefaultsTestCase(unittest.TestCase):
         self.assertIsNone(result.handle)
         self.assertIsNone(result.error)
         self.assertIsNone(result.skipped_reason)
+
+
+class PlaceholderTokenDetectionTests(unittest.TestCase):
+    """The original bug: ``.env.local`` carried sentinel placeholders like
+    ``<<새_DEVOPS_TOKEN>>`` that satisfied the bare presence check but
+    failed Discord login at runtime. The supervisor must skip those bots
+    with a diagnostic instead of spawning a doomed process.
+    """
+
+    def test_placeholder_sentinel_token_is_skipped(self) -> None:
+        env = {
+            "ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN": "<<새_AI_TOKEN>>",
+            "ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN": "<<새_DEVOPS_TOKEN>>",
+        }
+        inventory = build_inventory(REPO_ROOT, env=env)
+        ai = next(b for b in inventory.bots if b.role == "ai-engineer")
+        devops = next(b for b in inventory.bots if b.role == "devops-engineer")
+        self.assertFalse(ai.runnable, "placeholder must skip ai-engineer")
+        self.assertFalse(devops.runnable, "placeholder must skip devops-engineer")
+        self.assertIn("placeholder or wrong shape", ai.skip_reason or "")
+        self.assertIn("placeholder or wrong shape", devops.skip_reason or "")
+
+    def test_short_garbage_token_is_skipped(self) -> None:
+        env = {"ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN": "abc"}
+        inventory = build_inventory(REPO_ROOT, env=env)
+        ai = next(b for b in inventory.bots if b.role == "ai-engineer")
+        self.assertFalse(ai.runnable)
+        self.assertIn("wrong shape", ai.skip_reason or "")
+
+    def test_real_shape_token_passes_supervisor_gate(self) -> None:
+        env = {
+            "ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN": _shape_valid("ai"),
+            "ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN": _shape_valid("devops"),
+        }
+        inventory = build_inventory(REPO_ROOT, env=env)
+        active_roles = {b.role for b in inventory.active()}
+        self.assertIn("ai-engineer", active_roles)
+        self.assertIn("devops-engineer", active_roles)
+
+    def test_start_all_surfaces_placeholder_skip_reason(self) -> None:
+        env = {
+            "ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN": "<<새_AI_TOKEN>>",
+            PLANNING_BOT_ENV_KEY: _shape_valid("planning"),
+        }
+        inventory = build_inventory(REPO_ROOT, env=env)
+        report = start_all(inventory, dry_run=True)
+        ai_result = next(r for r in report.results if r.bot_id.endswith("ai-engineer"))
+        self.assertFalse(ai_result.started)
+        self.assertIn("ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN", ai_result.skipped_reason or "")
 
 
 if __name__ == "__main__":

@@ -1691,6 +1691,12 @@ class CollectionOutcome:
     auto_collected_count: int
     sufficiency: Optional[Any] = None
     iterations: int = 1
+    budget_tier: Optional[str] = None
+    max_provider_calls: int = 0
+    max_results_per_role: int = 0
+    role_targets: Tuple[Tuple[str, int], ...] = ()
+    stop_reason: Optional[str] = None
+    under_covered_roles: Tuple[str, ...] = ()
 
 
 def auto_collect_or_request_more_input(
@@ -1714,12 +1720,25 @@ def auto_collect_or_request_more_input(
     cfg = config if config is not None else CollectorConfig.from_env()
     user_supplied = bool(user_links) or bool(user_attachments)
 
-    # The composite collector needs to consult the same budget the outer
-    # loop tracks, so we build budget first and pass it in. Single-provider
-    # collectors ignore the kwarg.
+    # Task-aware budget policy. The hard caps come from CollectorConfig
+    # (env-driven cost gate); the policy never asks for more than that.
+    # The result feeds both BudgetTracker and the per-role sufficiency
+    # targets used by the iterative loop.
+    from .research_budget import (
+        decide_budget,
+        role_targets_to_sufficiency_targets,
+    )
+
+    policy = decide_budget(
+        prompt=prompt,
+        task_type=task_type,
+        role_sequence=(),
+        hard_cap_provider_calls=cfg.max_provider_calls,
+        hard_cap_results_per_role=cfg.max_results_per_role,
+    )
     budget = BudgetTracker(
-        max_provider_calls=cfg.max_provider_calls,
-        max_results_per_role=cfg.max_results_per_role,
+        max_provider_calls=policy.max_provider_calls,
+        max_results_per_role=policy.max_results_per_role,
     )
     chosen = collector or build_collector(cfg, budget=budget)
     pack = collect_research_pack(
@@ -1737,7 +1756,8 @@ def auto_collect_or_request_more_input(
 
     # Iterate until sufficiency target is met, the budget is exhausted,
     # or two consecutive rounds add no new URLs (canned/stale provider).
-    pack, iterations, sufficiency = _extend_pack_until_sufficient(
+    sufficiency_targets = role_targets_to_sufficiency_targets(policy)
+    pack, iterations, sufficiency, stop_reason = _extend_pack_until_sufficient(
         pack=pack,
         collector=chosen,
         budget=budget,
@@ -1745,7 +1765,20 @@ def auto_collect_or_request_more_input(
         task_type=task_type,
         primary_role=role,
         max_results=cfg.max_results,
+        sufficiency_targets=sufficiency_targets,
     )
+
+    role_targets_tuple = tuple(
+        (target.role, target.min_sources) for target in policy.role_targets
+    )
+    under_covered: Tuple[str, ...] = ()
+    if sufficiency is not None:
+        try:
+            from .research_sufficiency import under_covered_roles as _under
+
+            under_covered = tuple(_under(sufficiency))
+        except Exception:  # noqa: BLE001 - defensive
+            under_covered = ()
 
     # Count sources stamped by *some* provider (mock/tavily/brave/live).
     # User-supplied URLs/attachments use ``provider`` ∉ extra, so they don't
@@ -1755,6 +1788,15 @@ def auto_collect_or_request_more_input(
     )
 
     query = build_query_for_role(role=role, prompt=prompt, task_type=task_type)
+
+    common_extras = {
+        "budget_tier": policy.tier,
+        "max_provider_calls": policy.max_provider_calls,
+        "max_results_per_role": policy.max_results_per_role,
+        "role_targets": role_targets_tuple,
+        "stop_reason": stop_reason,
+        "under_covered_roles": under_covered,
+    }
 
     if auto_collected_count > 0:
         return CollectionOutcome(
@@ -1766,6 +1808,7 @@ def auto_collect_or_request_more_input(
             auto_collected_count=auto_collected_count,
             sufficiency=sufficiency,
             iterations=iterations,
+            **common_extras,
         )
     if user_supplied:
         return CollectionOutcome(
@@ -1777,6 +1820,7 @@ def auto_collect_or_request_more_input(
             auto_collected_count=0,
             sufficiency=sufficiency,
             iterations=iterations,
+            **common_extras,
         )
     return CollectionOutcome(
         mode=CollectionMode.NEEDS_USER_INPUT,
@@ -1787,6 +1831,7 @@ def auto_collect_or_request_more_input(
         auto_collected_count=0,
         sufficiency=sufficiency,
         iterations=iterations,
+        **common_extras,
     )
 
 
@@ -1814,28 +1859,34 @@ def _extend_pack_until_sufficient(
     task_type: Optional[str],
     primary_role: str,
     max_results: int,
+    sufficiency_targets: Sequence[Any] = (),
 ):
     """Drive role-aware follow-up queries until coverage is "good enough".
 
-    Returns ``(pack, iterations, sufficiency)``. ``sufficiency`` may be
-    ``None`` when the deliberation/sufficiency module isn't importable
-    (defensive for partial installs); the caller falls back to single-pass
-    behaviour. ``iterations`` counts how many provider rounds ran in
-    total (including the initial pass).
+    Returns ``(pack, iterations, sufficiency, stop_reason)``. ``sufficiency``
+    may be ``None`` when the deliberation/sufficiency module isn't
+    importable (defensive for partial installs); the caller falls back
+    to single-pass behaviour. ``stop_reason`` is one of:
+    ``"sufficient"``, ``"budget_exhausted"``, ``"no_progress"``,
+    ``"role_rotation_exhausted"``, ``"no_initial_provider_hit"``, or
+    ``"no_sufficiency_module"``.
     """
 
     try:
         from .research_sufficiency import (
+            DEFAULT_ROLE_TARGETS,
             score_research_sufficiency,
             under_covered_roles,
         )
     except Exception:  # noqa: BLE001 - module optional during partial installs
-        return pack, 1, None
+        return pack, 1, None, "no_sufficiency_module"
+
+    targets = tuple(sufficiency_targets) if sufficiency_targets else DEFAULT_ROLE_TARGETS
 
     iterations = 1
-    score = score_research_sufficiency(pack)
+    score = score_research_sufficiency(pack, role_targets=targets)
     if score.sufficient:
-        return pack, iterations, score
+        return pack, iterations, score, "sufficient"
 
     # The follow-up loop expands coverage, it doesn't bootstrap from
     # zero. If the first pass returned no provider hits at all (unknown
@@ -1845,7 +1896,7 @@ def _extend_pack_until_sufficient(
         (s.extra or {}).get("provider") for s in pack.sources
     )
     if not has_provider_hit:
-        return pack, iterations, score
+        return pack, iterations, score, "no_initial_provider_hit"
 
     seen_urls: set[str] = {
         (s.source_url or "").strip()
@@ -1855,6 +1906,7 @@ def _extend_pack_until_sufficient(
 
     visited_role_queries: set[tuple[str, str]] = set()
     consecutive_no_gain = 0
+    stop_reason = "budget_exhausted"  # default if while-loop exits via budget
 
     while budget.can_call():
         next_role = _next_followup_role(
@@ -1864,7 +1916,8 @@ def _extend_pack_until_sufficient(
             under_covered_fn=under_covered_roles,
         )
         if next_role is None:
-            break  # exhausted role rotation without finding more work
+            stop_reason = "role_rotation_exhausted"
+            break
 
         query = build_query_for_role(
             role=next_role, prompt=prompt, task_type=task_type
@@ -1921,13 +1974,15 @@ def _extend_pack_until_sufficient(
             # infinitely loop, but trust visited_role_queries + budget
             # for the actual termination work.
             if consecutive_no_gain >= 4:
+                stop_reason = "no_progress"
                 break
 
-        score = score_research_sufficiency(pack)
+        score = score_research_sufficiency(pack, role_targets=targets)
         if score.sufficient:
+            stop_reason = "sufficient"
             break
 
-    return pack, iterations, score
+    return pack, iterations, score, stop_reason
 
 
 def _next_followup_role(

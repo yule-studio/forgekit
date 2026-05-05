@@ -92,30 +92,100 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("research_pack", buf_err.getvalue())
 
-    def test_legacy_session_without_synthesis_writes_research_note(self) -> None:
+    def test_default_session_without_synthesis_writes_to_yule_vault_layout(self) -> None:
+        # Default layout = yule-agent-vault → note lands under
+        # 10-projects/yule-studio-agent/research/ (no env tweaks needed).
+        session = _session(extra={"research_pack": pack_to_dict(_pack())})
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+            ), patch.dict(
+                "os.environ",
+                {k: v for k, v in __import__("os").environ.items()
+                 if not k.startswith("OBSIDIAN_")},
+                clear=True,
+            ):
+                rc = run_obsidian_sync_command(
+                    session.session_id,
+                    kind=None,
+                    vault_path=tmp,
+                    overwrite=False,
+                    dry_run=False,
+                )
+            self.assertEqual(rc, 0)
+            written = list(Path(tmp).rglob("*.md"))
+            self.assertEqual(len(written), 1)
+            content = written[0].read_text(encoding="utf-8")
+            self.assertIn("10-projects/yule-studio-agent/research", str(written[0]))
+            # synthesis-only sections must NOT appear
+            self.assertNotIn("## 합의안", content)
+            self.assertNotIn("## 승인 필요 여부", content)
+            self.assertIn("project: yule-studio-agent", content)
+
+    def test_legacy_layout_writes_to_agents_engineering_research(self) -> None:
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
                 "yule_orchestrator.cli.obsidian.load_session", return_value=session
             ):
-                buf_out = io.StringIO()
-                with redirect_stdout(buf_out):
-                    rc = run_obsidian_sync_command(
-                        session.session_id,
-                        kind=None,
-                        vault_path=tmp,
-                        overwrite=False,
-                        dry_run=False,
-                    )
+                rc = run_obsidian_sync_command(
+                    session.session_id,
+                    kind=None,
+                    vault_path=tmp,
+                    overwrite=False,
+                    dry_run=False,
+                    layout="legacy-agent",
+                )
             self.assertEqual(rc, 0)
             written = list(Path(tmp).rglob("*.md"))
             self.assertEqual(len(written), 1)
-            content = written[0].read_text(encoding="utf-8")
-            # research kind, not decision
             self.assertIn("Agents/Engineering/Research", str(written[0]))
-            # synthesis-only sections must NOT appear
-            self.assertNotIn("## 합의안", content)
-            self.assertNotIn("## 승인 필요 여부", content)
+
+    def test_cli_project_flag_routes_into_named_project_folder(self) -> None:
+        session = _session(extra={"research_pack": pack_to_dict(_pack())})
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+            ):
+                rc = run_obsidian_sync_command(
+                    session.session_id,
+                    kind=None,
+                    vault_path=tmp,
+                    overwrite=False,
+                    dry_run=False,
+                    project="other-project",
+                )
+            self.assertEqual(rc, 0)
+            written = list(Path(tmp).rglob("*.md"))
+            self.assertEqual(len(written), 1)
+            self.assertIn("10-projects/other-project/research", str(written[0]))
+            content = written[0].read_text(encoding="utf-8")
+            self.assertIn("project: other-project", content)
+
+    def test_session_extra_project_wins_when_no_cli_flag(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": pack_to_dict(_pack()),
+                "project": "session-project",
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch(
+                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+            ):
+                rc = run_obsidian_sync_command(
+                    session.session_id,
+                    kind=None,
+                    vault_path=tmp,
+                    overwrite=False,
+                    dry_run=False,
+                )
+            self.assertEqual(rc, 0)
+            written = list(Path(tmp).rglob("*.md"))
+            self.assertEqual(len(written), 1)
+            self.assertIn(
+                "10-projects/session-project/research", str(written[0])
+            )
 
     def test_session_with_synthesis_renders_decision_sections(self) -> None:
         synthesis = TechLeadSynthesis(
@@ -146,7 +216,9 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
             self.assertEqual(rc, 0)
             written = list(Path(tmp).rglob("*.md"))
             self.assertEqual(len(written), 1)
-            self.assertIn("Agents/Engineering/Decisions", str(written[0]))
+            self.assertIn(
+                "10-projects/yule-studio-agent/decisions", str(written[0])
+            )
             content = written[0].read_text(encoding="utf-8")
             for header in (
                 "## 합의안",
@@ -183,8 +255,11 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
             self.assertIn("warning", buf_err.getvalue().lower())
             written = list(Path(tmp).rglob("*.md"))
             self.assertEqual(len(written), 1)
-            # Falls back to research note since synthesis was unreadable
-            self.assertIn("Agents/Engineering/Research", str(written[0]))
+            # Falls back to research note (since synthesis was unreadable)
+            # under the default yule-agent-vault layout.
+            self.assertIn(
+                "10-projects/yule-studio-agent/research", str(written[0])
+            )
 
     def test_dry_run_does_not_write(self) -> None:
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
@@ -319,7 +394,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
                 text=True,
                 capture_output=True,
             ).stdout
-            self.assertIn("Agents/Engineering/Research/", tree)
+            self.assertIn("10-projects/yule-studio-agent/research/", tree)
             self.assertNotIn("untracked.md", tree)
 
             status = subprocess.run(
