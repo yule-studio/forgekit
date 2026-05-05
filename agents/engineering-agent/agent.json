@@ -2,7 +2,7 @@
   "id": "engineering-agent",
   "name": "Engineering Agent (Engineering Department)",
   "type": "department",
-  "description": "Engineering department gateway under the future CTO organization. Receives requests from upstream agents (planning-agent, orchestrator, eventually cto-agent) and posts work for role members (tech-lead, ai-engineer, product-designer, backend-engineer, frontend-engineer, qa-engineer). Members should behave like autonomous employees: inspect the work, gather role-specific context, propose or execute next steps within approval gates, and collaborate through Discord/GitHub artifacts.",
+  "description": "Engineering department gateway under the future CTO organization. Receives requests from upstream agents (planning-agent, orchestrator, eventually cto-agent) and posts work for role members (tech-lead, ai-engineer, product-designer, backend-engineer, frontend-engineer, qa-engineer, devops-engineer). Members should behave like autonomous employees: inspect the work, gather role-specific context, propose or execute next steps within approval gates, and collaborate through Discord/GitHub artifacts.",
   "members": [
     "tech-lead",
     "ai-engineer",

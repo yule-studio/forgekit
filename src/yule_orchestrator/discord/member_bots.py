@@ -144,6 +144,16 @@ def load_member_bot_config(repo_root: Path, agent_id: str) -> MemberBotConfig:
             warnings.append("Skipping non-string member id in manifest")
             continue
         profiles.append(_build_profile(agent_id, member))
+        # Each member id in agent.json is expected to have a sibling
+        # config directory (``agents/<agent_id>/<member>/agent.json``).
+        # Missing role configs are a frequent source of "bot in
+        # inventory but no policy" surprises — surface them as a
+        # warning instead of silently spawning the bot.
+        role_config = repo_root.resolve() / "agents" / agent_id / member / "agent.json"
+        if not role_config.exists():
+            warnings.append(
+                f"role config missing: {role_config.relative_to(repo_root.resolve()) if str(role_config).startswith(str(repo_root.resolve())) else role_config}"
+            )
 
     return MemberBotConfig(agent_id=agent_id, profiles=tuple(profiles), warnings=tuple(warnings))
 

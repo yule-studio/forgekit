@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -141,6 +143,44 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
             active_roles = {p.role for p in config.active_profiles()}
         self.assertIn("ai-engineer", active_roles)
         self.assertIn("devops-engineer", active_roles)
+
+    def test_missing_role_config_dir_emits_warning(self) -> None:
+        """Members listed in agent.json without a sibling role config dir
+        must surface a 'role config missing' warning so operators see the
+        gap in ``yule discord up`` output instead of silently spawning a
+        role bot that has no policy files behind it."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "CLAUDE.md").write_text("# stub root", encoding="utf-8")
+            agent_dir = root / "agents" / "fake-agent"
+            agent_dir.mkdir(parents=True)
+            (agent_dir / "CLAUDE.md").write_text("# stub agent", encoding="utf-8")
+            manifest = {
+                "id": "fake-agent",
+                "name": "Fake Agent",
+                "type": "department",
+                "description": "test fixture",
+                "members": ["present-role", "missing-role"],
+                "instruction_entry": "agents/fake-agent/CLAUDE.md",
+                "policies": [],
+            }
+            (agent_dir / "agent.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            present = agent_dir / "present-role"
+            present.mkdir()
+            (present / "agent.json").write_text("{}", encoding="utf-8")
+            # Intentionally omit ``missing-role/agent.json``.
+
+            env = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_AGENT_BOT_")}
+            with patch.dict(os.environ, env, clear=True):
+                config = load_member_bot_config(root, "fake-agent")
+
+        warning_text = "\n".join(config.warnings)
+        self.assertIn("role config missing", warning_text)
+        self.assertIn("missing-role", warning_text)
+        self.assertNotIn("present-role", warning_text)
 
 
 class SelectProfileTestCase(unittest.TestCase):
