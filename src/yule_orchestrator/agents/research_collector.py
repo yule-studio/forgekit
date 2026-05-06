@@ -1697,6 +1697,11 @@ class CollectionOutcome:
     role_targets: Tuple[Tuple[str, int], ...] = ()
     stop_reason: Optional[str] = None
     under_covered_roles: Tuple[str, ...] = ()
+    # Roles the tech-lead picked for this task. Empty when the caller
+    # didn't pass ``active_roles`` (legacy "all 7 roles" behaviour).
+    # Surfaced so the gateway / Discord preview / Obsidian work-report
+    # can show *who* participated without re-running role_selection.
+    active_roles: Tuple[str, ...] = ()
 
 
 def auto_collect_or_request_more_input(
@@ -1710,11 +1715,19 @@ def auto_collect_or_request_more_input(
     request_id: Optional[str] = None,
     config: Optional[CollectorConfig] = None,
     collector: Optional[ResearchCollector] = None,
+    active_roles: Sequence[str] = (),
 ) -> CollectionOutcome:
     """Top-level entry point for the conversation layer.
 
     *collector* is an injection seam for tests; production callers can
     pass ``None`` and let the env-driven factory decide.
+
+    *active_roles* — role-selection result from
+    :func:`agents.role_selection.recommend_active_roles`. When passed,
+    the budget policy and per-role sufficiency targets are filtered to
+    that set so the loop only chases coverage for the roles the
+    tech-lead actually picked. Empty / unset preserves the legacy
+    "all roles" behaviour.
     """
 
     cfg = config if config is not None else CollectorConfig.from_env()
@@ -1733,6 +1746,7 @@ def auto_collect_or_request_more_input(
         prompt=prompt,
         task_type=task_type,
         role_sequence=(),
+        active_roles=active_roles,
         hard_cap_provider_calls=cfg.max_provider_calls,
         hard_cap_results_per_role=cfg.max_results_per_role,
     )
@@ -1796,6 +1810,7 @@ def auto_collect_or_request_more_input(
         "role_targets": role_targets_tuple,
         "stop_reason": stop_reason,
         "under_covered_roles": under_covered,
+        "active_roles": tuple(r for r in (active_roles or ()) if r),
     }
 
     if auto_collected_count > 0:

@@ -213,5 +213,84 @@ class CollectorOutcomeMetadataTests(unittest.TestCase):
         self.assertLessEqual(len(collector.calls), 3)
 
 
+class ActiveRoleScopingTests(unittest.TestCase):
+    """Phase 2 — when role_selection produces an active set, the
+    budget policy and per-role sufficiency targets must scope down to
+    that set so the loop only chases coverage for the roles the
+    tech-lead picked. Empty / unset preserves legacy "all roles"
+    behaviour."""
+
+    def _cfg(self, *, max_provider_calls=20, max_results_per_role=8):
+        return CollectorConfig(
+            enabled=True,
+            provider="mock",
+            max_results=5,
+            api_key=None,
+            max_provider_calls=max_provider_calls,
+            max_results_per_role=max_results_per_role,
+        )
+
+    def test_active_roles_filter_role_targets(self) -> None:
+        # Tech-lead picked 3 roles; the policy must only carry targets
+        # for those roles, not the full 7-role default.
+        policy = decide_budget(
+            prompt="multi-agent architecture 설계",
+            active_roles=("tech-lead", "ai-engineer", "qa-engineer"),
+        )
+        roles = {t.role for t in policy.role_targets}
+        self.assertEqual(
+            roles,
+            {"tech-lead", "ai-engineer", "qa-engineer"},
+        )
+
+    def test_empty_active_roles_keeps_full_role_targets(self) -> None:
+        # Legacy behaviour — sessions without role_selection metadata
+        # must still get the full role target table.
+        policy_default = decide_budget(prompt="아키텍처 검토")
+        policy_empty = decide_budget(prompt="아키텍처 검토", active_roles=())
+        self.assertEqual(
+            len(policy_default.role_targets),
+            len(policy_empty.role_targets),
+        )
+        self.assertGreater(len(policy_default.role_targets), 3)
+
+    def test_active_roles_with_no_overlap_falls_back_to_all(self) -> None:
+        # Defensive: an active list naming only roles we don't have
+        # base targets for shouldn't yield a vacuously-sufficient
+        # zero-target policy. Fall back to the full table.
+        policy = decide_budget(
+            prompt="아키텍처 검토",
+            active_roles=("nonexistent-role",),
+        )
+        self.assertGreater(len(policy.role_targets), 3)
+
+    def test_outcome_carries_active_roles(self) -> None:
+        active = ("tech-lead", "backend-engineer")
+        collector = _ScriptedCollector(default=(_result(url="https://a"),))
+        outcome = auto_collect_or_request_more_input(
+            role="engineering-agent/tech-lead",
+            prompt="결제 모듈 멱등성 백엔드 검토",
+            config=self._cfg(),
+            collector=collector,
+            active_roles=active,
+        )
+        self.assertEqual(outcome.active_roles, active)
+        # Role targets in the outcome match the active set.
+        target_roles = {role for role, _ in outcome.role_targets}
+        self.assertTrue(target_roles.issubset({"tech-lead", "backend-engineer"}))
+
+    def test_outcome_active_roles_empty_when_caller_omits(self) -> None:
+        # Backward-compat: callers that don't pass active_roles get an
+        # empty tuple in the outcome and the full role-target table.
+        collector = _ScriptedCollector(default=(_result(url="https://a"),))
+        outcome = auto_collect_or_request_more_input(
+            role="engineering-agent/tech-lead",
+            prompt="아키텍처 검토",
+            config=self._cfg(),
+            collector=collector,
+        )
+        self.assertEqual(outcome.active_roles, ())
+
+
 if __name__ == "__main__":
     unittest.main()

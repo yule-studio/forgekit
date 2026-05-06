@@ -153,11 +153,39 @@ def _scaled_targets(tier: str) -> Tuple[RoleTarget, ...]:
     )
 
 
+def _filter_targets_by_active_roles(
+    targets: Tuple[RoleTarget, ...],
+    active_roles: Sequence[str],
+) -> Tuple[RoleTarget, ...]:
+    """Return only the targets whose role is in *active_roles*.
+
+    Used to scope the collector loop to the role-selection result —
+    when the tech-lead picks 4 active roles for a task, the budget
+    must not keep chasing references for the 3 excluded ones. An
+    empty / ``None`` *active_roles* preserves the legacy "all roles"
+    behaviour so older sessions without role_selection metadata keep
+    working.
+    """
+
+    if not active_roles:
+        return targets
+    selected = {role for role in active_roles if role}
+    if not selected:
+        return targets
+    filtered = tuple(t for t in targets if t.role in selected)
+    # Defensive: if the active list mentions only roles we don't have
+    # base targets for, fall back to the unfiltered set so the loop
+    # still has *something* to score against rather than an empty
+    # target list (which would make sufficiency vacuously true).
+    return filtered or targets
+
+
 def decide_budget(
     *,
     prompt: str,
     task_type: Optional[str] = None,
     role_sequence: Sequence[str] = (),
+    active_roles: Sequence[str] = (),
     hard_cap_provider_calls: Optional[int] = None,
     hard_cap_results_per_role: Optional[int] = None,
 ) -> ResearchBudgetPolicy:
@@ -174,6 +202,14 @@ def decide_budget(
     ``hard_cap_*`` come from ``CollectorConfig.from_env`` so operator
     cost gates always win — the policy never asks for more than the env
     ceiling.
+
+    *active_roles* is the role-selection result from
+    :func:`agents.role_selection.recommend_active_roles` (or read off
+    ``session.extra['active_research_roles']`` for a continuation).
+    When provided, the policy's ``role_targets`` is filtered down to
+    that set so the sufficiency loop and forum publisher stop chasing
+    coverage for excluded roles. Empty/None falls back to the
+    historical "all roles" behaviour for backward-compat.
     """
 
     tier, reason = _classify(prompt=prompt, task_type=task_type)
@@ -188,11 +224,16 @@ def decide_budget(
     else:
         max_results = base_results
 
+    targets = _filter_targets_by_active_roles(
+        _scaled_targets(tier),
+        active_roles,
+    )
+
     return ResearchBudgetPolicy(
         tier=tier,
         max_provider_calls=max_calls,
         max_results_per_role=max_results,
-        role_targets=_scaled_targets(tier),
+        role_targets=targets,
         reason=reason,
     )
 
