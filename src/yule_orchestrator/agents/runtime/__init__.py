@@ -49,6 +49,7 @@ from .models import (
     SessionCandidate,
 )
 from .loop import run_runtime_loop
+from .policies import RolePolicy, all_role_policies, role_policy_for
 from .recall import (
     AMBIGUITY_MARGIN,
     RECALL_SEEKING_INTENTS,
@@ -98,10 +99,13 @@ __all__ = (
     "AMBIGUITY_MARGIN",
     "IntentClassifier",
     "RECALL_SEEKING_INTENTS",
+    "RolePolicy",
     "SCORE_HIGH",
     "SCORE_MEDIUM",
+    "all_role_policies",
     "classify_intent_deterministic",
     "make_recall_fn",
     "make_understand_fn",
+    "role_policy_for",
     "run_runtime_loop",
 )

@@ -45,6 +45,7 @@ from .models import (
     RuntimeRecallResult,
     SessionCandidate,
 )
+from .policies import RolePolicy, role_policy_for
 
 
 SCORE_HIGH = 0.45
@@ -124,6 +125,7 @@ _STOPWORDS = frozenset(
 
 
 ListSessionsFn = Callable[..., Sequence[Any]]
+MemorySearchFn = Callable[..., Sequence[Any]]
 
 
 def make_recall_fn(
@@ -131,6 +133,8 @@ def make_recall_fn(
     *,
     limit: int = 50,
     open_state_filter: Optional[Callable[[Any], bool]] = None,
+    memory_search_fn: Optional[MemorySearchFn] = None,
+    memory_search_limit: int = 5,
 ):
     """Build a ``recall_fn`` for ``run_runtime_loop``.
 
@@ -143,6 +147,12 @@ def make_recall_fn(
     *open_state_filter* identifies which sessions are still "open"
     (i.e. eligible for recall). The default skips terminal states
     (``COMPLETED`` / ``REJECTED``).
+
+    *memory_search_fn* is the callable that wraps
+    :func:`memory.search.search` (or any compatible fake). When
+    provided we run the role-shaped query and attach hits to
+    ``RuntimeRecallResult.memory_hits``. Errors there are non-fatal —
+    the session lookup result still flows through.
     """
 
     state_filter = open_state_filter or _default_open_filter
@@ -152,139 +162,215 @@ def make_recall_fn(
         intent: RuntimeIntent,
         input_: RuntimeInput,
     ) -> RuntimeRecallResult:
-        if list_sessions_fn is None:
-            return RuntimeRecallResult(reason="no list_sessions_fn provided")
-
-        if intent.intent_id == INTENT_NEW_WORK_REQUEST:
-            # Even for explicit new work we still surface the channel/
-            # thread-bound session if any — the Decide stage may want
-            # to warn the operator that another session is open in the
-            # same thread. But we skip token scoring entirely.
-            anchor = _find_anchor_session(
-                list_sessions_fn=list_sessions_fn,
-                limit=limit,
-                state_filter=state_filter,
-                input_=input_,
-            )
-            if anchor is None:
-                return RuntimeRecallResult(reason="new work — no anchor session")
-            return RuntimeRecallResult(
-                matched_session_id=None,  # do NOT auto-attach for new work
-                candidates=(_session_to_candidate(anchor, score=0.0, why="anchor (channel/thread)"),),
-                confidence="low",
-                reason="new work — anchor session in same channel/thread",
-            )
-
-        try:
-            raw_sessions = list_sessions_fn(limit=limit)
-        except TypeError:
-            # Older list_sessions_fn signatures don't accept kwargs.
-            raw_sessions = list_sessions_fn()
-
-        sessions = [s for s in raw_sessions if state_filter(s)]
-        if not sessions:
-            return RuntimeRecallResult(reason="no open sessions")
-
-        # 1. Channel/thread anchoring — wins outright when present.
-        anchor_id = _resolve_thread_anchor(sessions, input_)
-        if anchor_id is not None:
-            anchored = next(s for s in sessions if s.session_id == anchor_id)
-            return RuntimeRecallResult(
-                matched_session_id=anchored.session_id,
-                matched_thread_id=getattr(anchored, "thread_id", None),
-                matched_forum_thread_id=_extract_forum_thread_id(anchored),
-                candidates=tuple(
-                    _session_to_candidate(
-                        s,
-                        score=1.0 if s.session_id == anchor_id else 0.0,
-                        why="thread anchor" if s.session_id == anchor_id else "in scope",
-                    )
-                    for s in sessions[:MAX_CANDIDATES_RETURNED]
-                ),
-                confidence="high",
-                reason="thread/channel anchor",
-            )
-
-        # 2. Token scoring against prompt / pack / synthesis.
-        prompt_tokens = _tokenize(observation.message_text)
-        scored: list[tuple[float, Any, str]] = []
-        for session in sessions:
-            score, why = _score_session(prompt_tokens, session)
-            if score > 0:
-                scored.append((score, session, why))
-        scored.sort(key=lambda t: t[0], reverse=True)
-
-        # 3. Recency fallback — when the user said "어제/방금/지난번"
-        # without a distinct token match, pick the most-recently-updated
-        # open session.
-        if not scored and _has_recency_cue(observation):
-            recent = _most_recent(sessions)
-            if recent is not None:
-                return RuntimeRecallResult(
-                    matched_session_id=recent.session_id,
-                    matched_thread_id=getattr(recent, "thread_id", None),
-                    matched_forum_thread_id=_extract_forum_thread_id(recent),
-                    candidates=(
-                        _session_to_candidate(
-                            recent,
-                            score=0.5,
-                            why="recency fallback",
-                        ),
-                    ),
-                    confidence="medium",
-                    reason="recency cue + latest open session",
-                )
-
-        if not scored:
-            return RuntimeRecallResult(
-                candidates=(),
-                confidence="low",
-                reason="no token match",
-            )
-
-        top_score, top_session, top_why = scored[0]
-        runner_up_score = scored[1][0] if len(scored) > 1 else 0.0
-        margin = top_score - runner_up_score
-
-        candidates = tuple(
-            _session_to_candidate(s, score=score, why=why)
-            for score, s, why in scored[:MAX_CANDIDATES_RETURNED]
+        base = _compute_session_recall(
+            observation=observation,
+            intent=intent,
+            input_=input_,
+            list_sessions_fn=list_sessions_fn,
+            state_filter=state_filter,
+            limit=limit,
         )
-
-        if top_score >= SCORE_HIGH and margin >= AMBIGUITY_MARGIN:
-            return RuntimeRecallResult(
-                matched_session_id=top_session.session_id,
-                matched_thread_id=getattr(top_session, "thread_id", None),
-                matched_forum_thread_id=_extract_forum_thread_id(top_session),
-                candidates=candidates,
-                confidence="high",
-                reason=f"top score {top_score:.2f} · {top_why}",
-            )
-        if top_score >= SCORE_MEDIUM and margin >= AMBIGUITY_MARGIN:
-            return RuntimeRecallResult(
-                matched_session_id=top_session.session_id,
-                matched_thread_id=getattr(top_session, "thread_id", None),
-                matched_forum_thread_id=_extract_forum_thread_id(top_session),
-                candidates=candidates,
-                confidence="medium",
-                reason=f"top score {top_score:.2f} · {top_why}",
-            )
-        # Ambiguous — surface candidates but do NOT match.
-        return RuntimeRecallResult(
-            candidates=candidates,
-            confidence="low",
-            reason=(
-                f"ambiguous · top {top_score:.2f} vs runner-up {runner_up_score:.2f} "
-                f"(margin {margin:.2f})"
-            ),
+        # Memory hits flow on top of whatever the session lookup decided
+        # so callers always get role-aware citations even on a no-match.
+        memory_hits = _run_memory_search(
+            memory_search_fn=memory_search_fn,
+            observation=observation,
+            input_=input_,
+            limit=memory_search_limit,
         )
+        if memory_hits:
+            return replace(base, memory_hits=tuple(memory_hits))
+        return base
 
     return recall
+
+
+def _compute_session_recall(
+    *,
+    observation: RuntimeObservation,
+    intent: RuntimeIntent,
+    input_: RuntimeInput,
+    list_sessions_fn: Optional[ListSessionsFn],
+    state_filter: Callable[[Any], bool],
+    limit: int,
+) -> RuntimeRecallResult:
+    if list_sessions_fn is None:
+        return RuntimeRecallResult(reason="no list_sessions_fn provided")
+
+    if intent.intent_id == INTENT_NEW_WORK_REQUEST:
+        # Even for explicit new work we still surface the channel/
+        # thread-bound session if any — the Decide stage may want
+        # to warn the operator that another session is open in the
+        # same thread. But we skip token scoring entirely.
+        anchor = _find_anchor_session(
+            list_sessions_fn=list_sessions_fn,
+            limit=limit,
+            state_filter=state_filter,
+            input_=input_,
+        )
+        if anchor is None:
+            return RuntimeRecallResult(reason="new work — no anchor session")
+        return RuntimeRecallResult(
+            matched_session_id=None,  # do NOT auto-attach for new work
+            candidates=(_session_to_candidate(anchor, score=0.0, why="anchor (channel/thread)"),),
+            confidence="low",
+            reason="new work — anchor session in same channel/thread",
+        )
+
+    try:
+        raw_sessions = list_sessions_fn(limit=limit)
+    except TypeError:
+        # Older list_sessions_fn signatures don't accept kwargs.
+        raw_sessions = list_sessions_fn()
+
+    sessions = [s for s in raw_sessions if state_filter(s)]
+    if not sessions:
+        return RuntimeRecallResult(reason="no open sessions")
+
+    # 1. Channel/thread anchoring — wins outright when present.
+    anchor_id = _resolve_thread_anchor(sessions, input_)
+    if anchor_id is not None:
+        anchored = next(s for s in sessions if s.session_id == anchor_id)
+        return RuntimeRecallResult(
+            matched_session_id=anchored.session_id,
+            matched_thread_id=getattr(anchored, "thread_id", None),
+            matched_forum_thread_id=_extract_forum_thread_id(anchored),
+            candidates=tuple(
+                _session_to_candidate(
+                    s,
+                    score=1.0 if s.session_id == anchor_id else 0.0,
+                    why="thread anchor" if s.session_id == anchor_id else "in scope",
+                )
+                for s in sessions[:MAX_CANDIDATES_RETURNED]
+            ),
+            confidence="high",
+            reason="thread/channel anchor",
+        )
+
+    # 2. Token scoring against prompt / pack / synthesis.
+    prompt_tokens = _tokenize(observation.message_text)
+    scored: list[tuple[float, Any, str]] = []
+    for session in sessions:
+        score, why = _score_session(prompt_tokens, session)
+        if score > 0:
+            scored.append((score, session, why))
+    scored.sort(key=lambda t: t[0], reverse=True)
+
+    # 3. Recency fallback — when the user said "어제/방금/지난번"
+    # without a distinct token match, pick the most-recently-updated
+    # open session.
+    if not scored and _has_recency_cue(observation):
+        recent = _most_recent(sessions)
+        if recent is not None:
+            return RuntimeRecallResult(
+                matched_session_id=recent.session_id,
+                matched_thread_id=getattr(recent, "thread_id", None),
+                matched_forum_thread_id=_extract_forum_thread_id(recent),
+                candidates=(
+                    _session_to_candidate(
+                        recent,
+                        score=0.5,
+                        why="recency fallback",
+                    ),
+                ),
+                confidence="medium",
+                reason="recency cue + latest open session",
+            )
+
+    if not scored:
+        return RuntimeRecallResult(
+            candidates=(),
+            confidence="low",
+            reason="no token match",
+        )
+
+    top_score, top_session, top_why = scored[0]
+    runner_up_score = scored[1][0] if len(scored) > 1 else 0.0
+    margin = top_score - runner_up_score
+
+    candidates = tuple(
+        _session_to_candidate(s, score=score, why=why)
+        for score, s, why in scored[:MAX_CANDIDATES_RETURNED]
+    )
+
+    if top_score >= SCORE_HIGH and margin >= AMBIGUITY_MARGIN:
+        return RuntimeRecallResult(
+            matched_session_id=top_session.session_id,
+            matched_thread_id=getattr(top_session, "thread_id", None),
+            matched_forum_thread_id=_extract_forum_thread_id(top_session),
+            candidates=candidates,
+            confidence="high",
+            reason=f"top score {top_score:.2f} · {top_why}",
+        )
+    if top_score >= SCORE_MEDIUM and margin >= AMBIGUITY_MARGIN:
+        return RuntimeRecallResult(
+            matched_session_id=top_session.session_id,
+            matched_thread_id=getattr(top_session, "thread_id", None),
+            matched_forum_thread_id=_extract_forum_thread_id(top_session),
+            candidates=candidates,
+            confidence="medium",
+            reason=f"top score {top_score:.2f} · {top_why}",
+        )
+    # Ambiguous — surface candidates but do NOT match.
+    return RuntimeRecallResult(
+        candidates=candidates,
+        confidence="low",
+        reason=(
+            f"ambiguous · top {top_score:.2f} vs runner-up {runner_up_score:.2f} "
+            f"(margin {margin:.2f})"
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _run_memory_search(
+    *,
+    memory_search_fn: Optional[MemorySearchFn],
+    observation: RuntimeObservation,
+    input_: RuntimeInput,
+    limit: int,
+) -> Sequence[Any]:
+    """Run the role-shaped memory search if one is wired in.
+
+    The runtime gives the search function the role policy's filter +
+    the canonical search query (the message text). Errors are swallowed
+    here so a memory outage never derails the session-recall result —
+    operators see ``memory_hits=()`` and can investigate separately.
+    """
+
+    if memory_search_fn is None:
+        return ()
+    text = (observation.message_text or "").strip()
+    if not text:
+        return ()
+    policy = role_policy_for(input_.role_id)
+    try:
+        kwargs: dict[str, Any] = {
+            "limit": limit,
+            "role": policy.memory_role_filter,
+        }
+        # Only pass note_kind when the policy expressed a preference,
+        # so the underlying search adapter doesn't filter the result
+        # set down to nothing for roles without a strong preference.
+        if policy.preferred_note_kinds:
+            kwargs["note_kind"] = policy.preferred_note_kinds[0]
+        if policy.preferred_source_kinds:
+            kwargs["source_kind"] = policy.preferred_source_kinds[0]
+        try:
+            hits = memory_search_fn(text, **kwargs)
+        except TypeError:
+            # Adapter doesn't take all kwargs — degrade gracefully to
+            # a positional-only call so tests with simple fakes work.
+            hits = memory_search_fn(text)
+    except Exception:  # noqa: BLE001 - never propagate
+        return ()
+    if not hits:
+        return ()
+    return tuple(hits)
 
 
 def _default_open_filter(session: Any) -> bool:
