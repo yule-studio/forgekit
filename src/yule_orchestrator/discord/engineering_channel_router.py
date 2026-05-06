@@ -166,6 +166,17 @@ class EngineeringResearchLoopReport:
     forum_thread_url: Optional[str] = None
     insufficient: bool = False
     error: Optional[str] = None
+    # member-bots vs gateway publication mode signal — populated by the
+    # research-loop hook from the publication outcome so status /
+    # diagnostic responses can describe the live setup correctly.
+    forum_comment_mode: Optional[str] = None
+    # member-bots mode only: did the gateway successfully post the
+    # ``[research-open:<session_id>]`` open-call directive that each
+    # member bot is supposed to react to? ``None`` in gateway mode.
+    kickoff_posted: Optional[bool] = None
+    # member-bots mode only: stringified error from the open-call
+    # directive post when ``kickoff_posted`` is False; otherwise None.
+    kickoff_error: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -1159,6 +1170,7 @@ def _coerce_research_loop_report(raw: Any) -> EngineeringResearchLoopReport:
         return raw
     if raw is None:
         return EngineeringResearchLoopReport()
+    raw_kickoff_posted = getattr(raw, "kickoff_posted", None)
     return EngineeringResearchLoopReport(
         follow_up_message=_optional_str(getattr(raw, "follow_up_message", None)),
         forum_status_message=_optional_str(getattr(raw, "forum_status_message", None)),
@@ -1166,6 +1178,11 @@ def _coerce_research_loop_report(raw: Any) -> EngineeringResearchLoopReport:
         forum_thread_url=_optional_str(getattr(raw, "forum_thread_url", None)),
         insufficient=bool(getattr(raw, "insufficient", False)),
         error=_optional_str(getattr(raw, "error", None)),
+        forum_comment_mode=_optional_str(getattr(raw, "forum_comment_mode", None)),
+        kickoff_posted=(
+            bool(raw_kickoff_posted) if raw_kickoff_posted is not None else None
+        ),
+        kickoff_error=_optional_str(getattr(raw, "kickoff_error", None)),
     )
 
 

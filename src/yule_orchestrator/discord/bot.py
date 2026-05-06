@@ -2092,16 +2092,48 @@ def _research_loop_report_from_publish(
             error=thread.error,
         )
 
-    role_count = len(publish.role_comments)
-    decision_ok = bool(publish.decision_comment and publish.decision_comment.posted)
-    lines = ["✅ 운영-리서치 forum 게시 완료"]
+    # member-bots mode signal: the publisher only sets
+    # ``kickoff_comment`` when it tried to post the open-call directive
+    # that the per-role member bots react to. Gateway mode never sets
+    # it. Use that to switch summary wording — gateway-mode "역할별
+    # 댓글 N건" is misleading in member-bots mode where the gateway
+    # never posts those comments by design.
+    kickoff_comment = getattr(publish, "kickoff_comment", None)
+    is_member_bots_mode = kickoff_comment is not None
+    kickoff_posted_flag: Optional[bool] = (
+        bool(getattr(kickoff_comment, "posted", False))
+        if kickoff_comment is not None
+        else None
+    )
+    kickoff_error_text: Optional[str] = (
+        _optional_str_value(getattr(kickoff_comment, "error", None))
+        if kickoff_comment is not None
+        else None
+    )
+
+    lines: list[str] = ["✅ 운영-리서치 forum 게시 완료"]
     if thread.thread_url:
         lines.append(f"thread: {thread.thread_url}")
     elif thread.thread_id:
         lines.append(f"thread id: {thread.thread_id}")
-    lines.append(
-        f"역할별 댓글 {role_count}건 · tech-lead 종합 {'기록' if decision_ok else '미기록'}"
-    )
+
+    if is_member_bots_mode:
+        lines.append("모드: member-bots (각 멤버 봇이 자기 계정으로 댓글)")
+        if kickoff_posted_flag:
+            lines.append("open-call directive: 게시 완료")
+        else:
+            reason = kickoff_error_text or "원인 미확인"
+            lines.append(f"open-call directive: 게시 실패 — {reason}")
+        lines.append(
+            "각 멤버 봇의 후속 댓글은 운영-리서치 thread에서 확인하세요."
+        )
+    else:
+        role_count = len(publish.role_comments)
+        decision_ok = bool(publish.decision_comment and publish.decision_comment.posted)
+        lines.append(
+            f"역할별 댓글 {role_count}건 · tech-lead 종합 {'기록' if decision_ok else '미기록'}"
+        )
+
     if outcome.assignments:
         executor = next((a for a in outcome.assignments if a.is_executor), None)
         if executor:
@@ -2117,7 +2149,21 @@ def _research_loop_report_from_publish(
         forum_status_message="\n".join(lines),
         forum_thread_id=thread.thread_id,
         forum_thread_url=thread.thread_url,
+        forum_comment_mode="member-bots" if is_member_bots_mode else "gateway",
+        kickoff_posted=kickoff_posted_flag,
+        kickoff_error=kickoff_error_text,
     )
+
+
+def _optional_str_value(value: Any) -> Optional[str]:
+    """Tiny helper for normalising error strings — kept out of the
+    `_research_loop_report_from_publish` body so the top-level reads as
+    ``mode → wording → return``."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _make_default_research_forum_create_thread_fn(discord_module: "discord"):

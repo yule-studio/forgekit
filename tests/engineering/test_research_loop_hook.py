@@ -80,6 +80,7 @@ class _PublishOutcome:
     role_comments: dict = field(default_factory=dict)
     decision_comment: Optional[_CommentOutcome] = None
     skipped_reason: Optional[str] = None
+    kickoff_comment: Optional[_CommentOutcome] = None
 
 
 def _outcome_with_designer_landing() -> _Outcome:
@@ -159,6 +160,79 @@ class ResearchLoopReportFromPublishTestCase(unittest.TestCase):
         self.assertIn("forum 게시 실패", report.forum_status_message)
         self.assertIn("# Research", report.forum_status_message)
         self.assertEqual(report.error, "discord api boom")
+
+
+class MemberBotsModeSummaryTestCase(unittest.TestCase):
+    """member-bots mode signals: the gateway only posted the
+    ``[research-open:<session_id>]`` directive; per-role comments come
+    from each member bot. Summary must reflect that — and never mention
+    the gateway-mode "역할별 댓글 N건" line, which would look like a
+    failure to operators."""
+
+    def test_kickoff_posted_in_member_bots_mode_renders_directive_status(self) -> None:
+        outcome = _outcome_with_designer_landing()
+        publish = _PublishOutcome(
+            thread=_ThreadOutcome(),
+            kickoff_comment=_CommentOutcome(posted=True),
+        )
+
+        report = bot_module._research_loop_report_from_publish(outcome, publish)
+
+        msg = report.forum_status_message or ""
+        self.assertIn("운영-리서치 forum 게시 완료", msg)
+        self.assertIn("모드: member-bots", msg)
+        self.assertIn("open-call directive: 게시 완료", msg)
+        self.assertIn("후속 댓글은 운영-리서치 thread", msg)
+        # Gateway-mode wording must not appear.
+        self.assertNotIn("역할별 댓글 0건", msg)
+        self.assertNotIn("tech-lead 종합 미기록", msg)
+        # Mode metadata reaches the report fields too.
+        self.assertEqual(report.forum_comment_mode, "member-bots")
+        self.assertTrue(report.kickoff_posted)
+        self.assertIsNone(report.kickoff_error)
+
+    def test_kickoff_failed_in_member_bots_mode_surfaces_reason(self) -> None:
+        outcome = _outcome_with_designer_landing()
+        publish = _PublishOutcome(
+            thread=_ThreadOutcome(),
+            kickoff_comment=_CommentOutcome(posted=False, error="rate limit 503"),
+        )
+
+        report = bot_module._research_loop_report_from_publish(outcome, publish)
+
+        msg = report.forum_status_message or ""
+        self.assertIn("모드: member-bots", msg)
+        self.assertIn("open-call directive: 게시 실패", msg)
+        self.assertIn("rate limit 503", msg)
+        # Gateway-mode wording must still not leak.
+        self.assertNotIn("역할별 댓글", msg)
+        self.assertEqual(report.forum_comment_mode, "member-bots")
+        self.assertFalse(report.kickoff_posted)
+        self.assertEqual(report.kickoff_error, "rate limit 503")
+
+    def test_gateway_mode_keeps_role_comment_summary(self) -> None:
+        outcome = _outcome_with_designer_landing()
+        publish = _PublishOutcome(
+            thread=_ThreadOutcome(),
+            role_comments={
+                "product-designer": _CommentOutcome(),
+                "frontend-engineer": _CommentOutcome(),
+            },
+            decision_comment=_CommentOutcome(),
+            # No kickoff_comment → gateway mode.
+        )
+
+        report = bot_module._research_loop_report_from_publish(outcome, publish)
+
+        msg = report.forum_status_message or ""
+        self.assertIn("역할별 댓글 2건", msg)
+        self.assertIn("tech-lead 종합 기록", msg)
+        # member-bots-only wording must not appear in gateway mode.
+        self.assertNotIn("모드: member-bots", msg)
+        self.assertNotIn("open-call directive", msg)
+        self.assertEqual(report.forum_comment_mode, "gateway")
+        self.assertIsNone(report.kickoff_posted)
+        self.assertIsNone(report.kickoff_error)
 
 
 class FormatResearchForumDisabledStatusTestCase(unittest.TestCase):
