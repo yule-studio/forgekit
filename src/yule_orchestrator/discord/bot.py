@@ -42,7 +42,13 @@ from .engineering_channel_router import (
     should_continue_existing_thread,
     should_start_new_thread,
 )
-from .research_forum import ResearchForumContext
+from .research_forum import (
+    FORUM_STARTER_CONTENT_LIMIT,
+    ResearchForumContext,
+    chunk_for_discord_message,
+    truncate_for_starter_message,
+)
+from .typing_indicator import typing_context
 from ..agents.research_loop import (
     publish_research_loop_to_forum,
     run_research_loop,
@@ -156,18 +162,32 @@ def run_discord_bot(repo_root: Path) -> None:
             engineering_context = EngineeringRouteContext.from_env()
             if engineering_context.configured:
                 send_chunks = _make_engineering_send_chunks(discord)
-                engineering_result = await route_engineering_message(
-                    message=message,
-                    bot_user=self.user,
-                    route_context=engineering_context,
-                    extract_prompt=_extract_conversation_prompt,
-                    conversation_fn=_default_engineering_conversation_fn,
-                    intake_fn=_default_engineering_intake_fn,
-                    thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
-                    send_chunks=send_chunks,
-                    research_loop_fn=_make_default_engineering_research_loop_fn(discord),
-                    thread_continuation_fn=_make_default_thread_continuation_fn(discord),
-                )
+                # Wrap the entire engineering route in a typing context so
+                # the gateway bot account shows ``입력 중...`` while it runs
+                # conversation classification, intake, kickoff, and the
+                # research loop. Without this the user has no signal that
+                # the gateway is alive during the multi-second flow.
+                #
+                # tech-lead synthesis coverage: when synthesis runs through
+                # the gateway-side legacy path inside research_loop_fn
+                # (publish_research_loop_to_forum -> _post_decision_comment),
+                # the typing indicator stays under this same context so the
+                # gateway bot keeps showing 입력 중... until the synthesis
+                # comment lands. The dedicated tech-lead bot path is
+                # covered separately by member_bot.py's typing wrap.
+                async with typing_context(message.channel):
+                    engineering_result = await route_engineering_message(
+                        message=message,
+                        bot_user=self.user,
+                        route_context=engineering_context,
+                        extract_prompt=_extract_conversation_prompt,
+                        conversation_fn=_default_engineering_conversation_fn,
+                        intake_fn=_default_engineering_intake_fn,
+                        thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
+                        send_chunks=send_chunks,
+                        research_loop_fn=_make_default_engineering_research_loop_fn(discord),
+                        thread_continuation_fn=_make_default_thread_continuation_fn(discord),
+                    )
                 if engineering_result.handled:
                     return
 
@@ -1511,6 +1531,25 @@ def _default_engineering_conversation_fn(
     last_proposed = (
         _ENGINEERING_LAST_PROPOSED.get(channel_id) if channel_id is not None else None
     )
+
+    def _load_latest_open_session_for_status() -> Any:
+        """Resolve the latest open session for the channel/thread.
+
+        Wired into the conversation layer's ``status_session_loader``
+        seam so a "왜 안 됐어?" / "운영 리서치는 안 열어?" question
+        gets answered against real workflow state instead of triggering
+        a fresh intake. Falls back to ``None`` on lookup errors so the
+        conversation layer can render the no-session message.
+        """
+
+        try:
+            return find_latest_open_session(
+                channel_id=channel_id,
+                user_id=author_user_id,
+            )
+        except Exception:  # noqa: BLE001 - best-effort lookup
+            return None
+
     response = builder(
         message_text,
         author_user_id=author_user_id,
@@ -1521,6 +1560,7 @@ def _default_engineering_conversation_fn(
         user_attachments=tuple(attachments or ()),
         role_for_research=role_for_research,
         session_id=session_id,
+        status_session_loader=_load_latest_open_session_for_status,
     )
 
     intent_id = getattr(response, "intent_id", "")
@@ -1574,6 +1614,7 @@ def _default_engineering_conversation_fn(
         research_pack=research_pack,
         collection_outcome=collection_outcome,
         role_for_research=response_role_for_research,
+        is_status_query=bool(getattr(response, "is_status_query", False)),
     )
 
 
@@ -1634,7 +1675,8 @@ def _make_default_thread_continuation_fn(discord_module: "discord"):
             write_requested=write_requested,
             topic=thread_topic,
         )
-        await thread.send(continuation_text)
+        for piece in chunk_for_discord_message(continuation_text) or (continuation_text,):
+            await thread.send(piece)
         _clear_engineering_last_proposed_for_channel(message)
         status = (
             "**[engineering-agent] 기존 thread에 이어서 접수**\n"
@@ -1672,7 +1714,13 @@ def _make_default_thread_kickoff_fn(discord_module: "discord"):
             thread_id = getattr(channel, "id", None)
             session_with_thread = _persist_engineering_thread_id(session, thread_id)
             kickoff_text = _format_engineering_kickoff_message(session_with_thread, plan)
-            await channel.send(_append_team_kickoff_directive(kickoff_text, session_with_thread))
+            kickoff_with_directive = _append_team_kickoff_directive(
+                kickoff_text, session_with_thread
+            )
+            for piece in chunk_for_discord_message(kickoff_with_directive) or (
+                kickoff_with_directive,
+            ):
+                await channel.send(piece)
             return EngineeringThreadKickoff(
                 thread_id=thread_id,
                 message=kickoff_text,
@@ -1685,14 +1733,21 @@ def _make_default_thread_kickoff_fn(discord_module: "discord"):
         )
         if thread is None:
             kickoff_text = _format_engineering_kickoff_message(session, plan)
-            await channel.send(kickoff_text)
+            for piece in chunk_for_discord_message(kickoff_text) or (kickoff_text,):
+                await channel.send(piece)
             return EngineeringThreadKickoff(thread_id=None, message=kickoff_text)
 
         thread_id = getattr(thread, "id", None)
         session_with_thread = _persist_engineering_thread_id(session, thread_id)
         kickoff_text = _format_engineering_kickoff_message(session_with_thread, plan)
         try:
-            await thread.send(_append_team_kickoff_directive(kickoff_text, session_with_thread))
+            kickoff_with_directive = _append_team_kickoff_directive(
+                kickoff_text, session_with_thread
+            )
+            for piece in chunk_for_discord_message(kickoff_with_directive) or (
+                kickoff_with_directive,
+            ):
+                await thread.send(piece)
         except Exception as exc:  # noqa: BLE001 - report and continue
             print(f"warning: engineering thread kickoff send failed: {exc}")
 
@@ -2012,7 +2067,16 @@ def _research_loop_report_from_publish(
         )
 
     if not thread.posted:
-        fallback_text = thread.fallback_markdown or thread.error or "forum 게시 실패"
+        # The fallback markdown can run thousands of chars. The status
+        # message gets sent to a regular Discord channel (2000-char hard
+        # cap, split into chunks), so cap the embedded fallback at the
+        # forum starter limit and append the truncation notice. Operators
+        # can recover the full record from the Obsidian export.
+        raw_fallback = thread.fallback_markdown or thread.error or "forum 게시 실패"
+        fallback_text = truncate_for_starter_message(
+            raw_fallback,
+            limit=FORUM_STARTER_CONTENT_LIMIT,
+        )
         return EngineeringResearchLoopReport(
             forum_status_message=f"⚠️ 운영-리서치 forum 게시 실패 — fallback markdown:\n{fallback_text}",
             error=thread.error,
@@ -2090,8 +2154,19 @@ def _make_default_research_forum_post_message_fn(discord_module: "discord"):
                 thread = await bot.fetch_channel(int(thread_id))
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError(f"thread {thread_id} not reachable: {exc}") from exc
-        message = await thread.send(content)
-        return {"id": getattr(message, "id", None)}
+        # Defence in depth: callers in research_forum.py / research_loop.py
+        # already chunk before they reach this wrapper, but a stray caller
+        # (or a re-issued legacy code path) could still pass a > 1900 char
+        # string. Run it through the chunker once more so Discord never
+        # sees a content above the cap. ``id`` is the first chunk's id so
+        # downstream persistence keeps a stable handle.
+        pieces = chunk_for_discord_message(content) or (content,)
+        first_message_id = None
+        for piece in pieces:
+            sent = await thread.send(piece)
+            if first_message_id is None:
+                first_message_id = getattr(sent, "id", None)
+        return {"id": first_message_id}
 
     return _post
 

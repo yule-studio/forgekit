@@ -68,6 +68,7 @@ from .research_pack import (
 
 ENV_AUTO_COLLECT_ENABLED = "ENGINEERING_RESEARCH_AUTO_COLLECT_ENABLED"
 ENV_PROVIDER = "ENGINEERING_RESEARCH_PROVIDER"
+ENV_PROVIDERS = "ENGINEERING_RESEARCH_PROVIDERS"  # auto-mode candidate list
 ENV_MAX_RESULTS = "ENGINEERING_RESEARCH_MAX_RESULTS"
 ENV_MAX_PROVIDER_CALLS = "ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS"
 ENV_MAX_RESULTS_PER_ROLE = "ENGINEERING_RESEARCH_MAX_RESULTS_PER_ROLE"
@@ -105,7 +106,46 @@ ENV_BRAVE_API_KEY = "BRAVE_SEARCH_API_KEY"
 PROVIDER_MOCK = "mock"
 PROVIDER_TAVILY = "tavily"
 PROVIDER_BRAVE = "brave"
-KNOWN_PROVIDERS: Tuple[str, ...] = (PROVIDER_MOCK, PROVIDER_TAVILY, PROVIDER_BRAVE)
+PROVIDER_AUTO = "auto"
+# ``multi`` is accepted as an alias for ``auto`` so operators who think in
+# "multi-provider" terms still get the same behaviour.
+PROVIDER_MULTI = "multi"
+KNOWN_PROVIDERS: Tuple[str, ...] = (
+    PROVIDER_MOCK,
+    PROVIDER_TAVILY,
+    PROVIDER_BRAVE,
+    PROVIDER_AUTO,
+    PROVIDER_MULTI,
+)
+# Single-provider modes (i.e. not ``auto``/``multi``).
+SINGLE_PROVIDER_MODES: Tuple[str, ...] = (PROVIDER_MOCK, PROVIDER_TAVILY, PROVIDER_BRAVE)
+# External (network) providers we know how to dispatch in auto mode.
+EXTERNAL_PROVIDERS: Tuple[str, ...] = (PROVIDER_TAVILY, PROVIDER_BRAVE)
+# Default candidate set when ``ENGINEERING_RESEARCH_PROVIDERS`` is blank.
+DEFAULT_AUTO_PROVIDERS: Tuple[str, ...] = (PROVIDER_TAVILY, PROVIDER_BRAVE)
+
+
+# Per-role provider preference for ``auto`` / ``multi`` mode. The ordering
+# matters: providers earlier in the tuple are queried first, and budget
+# pressure stops the chain at the position the operator can afford.
+#
+# Trade-off:
+# - Tavily ranks AI/RAG/agent material and synthesizes well — preferred for
+#   tech-lead synthesis and ai-engineer.
+# - Brave ranks official docs / GitHub / latest community signal — preferred
+#   for backend / frontend / qa / devops / product-designer benchmarks.
+DEFAULT_ROLE_PROVIDER_POLICY: Mapping[str, Tuple[str, ...]] = {
+    # Gateway uses local memory; external search is opt-in. Returning ``()``
+    # makes auto mode skip provider calls for this role entirely.
+    "gateway": (),
+    "tech-lead": (PROVIDER_TAVILY, PROVIDER_BRAVE),
+    "ai-engineer": (PROVIDER_TAVILY, PROVIDER_BRAVE),
+    "backend-engineer": (PROVIDER_BRAVE, PROVIDER_TAVILY),
+    "frontend-engineer": (PROVIDER_BRAVE, PROVIDER_TAVILY),
+    "product-designer": (PROVIDER_BRAVE, PROVIDER_TAVILY),
+    "qa-engineer": (PROVIDER_BRAVE, PROVIDER_TAVILY),
+    "devops-engineer": (PROVIDER_BRAVE, PROVIDER_TAVILY),
+}
 
 DEFAULT_MAX_RESULTS = 5
 DEFAULT_MAX_PROVIDER_CALLS = 3
@@ -124,6 +164,13 @@ class CollectorConfig:
     the user-input fallback". ``provider`` and ``max_results`` are still
     resolved so observability commands can show the operator what would
     happen if they flipped the flag.
+
+    ``provider="auto"`` (or ``"multi"``) activates the multi-provider
+    composite: each role's query is dispatched to the providers listed in
+    ``providers`` (default ``("tavily", "brave")``) following the per-role
+    priority defined by :data:`DEFAULT_ROLE_PROVIDER_POLICY`. Each provider
+    looks up its own API key from ``api_keys`` so missing keys can be
+    skipped without disturbing the rest.
     """
 
     enabled: bool
@@ -132,6 +179,18 @@ class CollectorConfig:
     api_key: Optional[str] = None
     max_provider_calls: int = DEFAULT_MAX_PROVIDER_CALLS
     max_results_per_role: int = DEFAULT_MAX_RESULTS_PER_ROLE
+    # Auto-mode candidate provider list, e.g. ``("tavily", "brave")``.
+    # Empty for single-provider modes — the factory still works because it
+    # only consults ``providers`` when ``provider`` is ``auto``/``multi``.
+    providers: Tuple[str, ...] = ()
+    # Provider name → api key mapping. Populated for every external
+    # provider whose API key is set in env regardless of mode, so future
+    # observability/debug surfaces can report which keys were available.
+    api_keys: Mapping[str, str] = field(default_factory=dict)
+
+    @property
+    def is_auto(self) -> bool:
+        return self.provider in {PROVIDER_AUTO, PROVIDER_MULTI}
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "CollectorConfig":
@@ -151,11 +210,35 @@ class CollectorConfig:
             env_map.get(ENV_MAX_RESULTS_PER_ROLE), default=DEFAULT_MAX_RESULTS_PER_ROLE
         )
 
+        # Always collect every known external API key so auto/multi mode
+        # can dispatch to whichever providers are configured. Single-provider
+        # modes only need their own key but populating both is harmless.
+        api_keys_raw: dict[str, str] = {}
+        tavily_key = _strip_or_none(env_map.get(ENV_TAVILY_API_KEY))
+        if tavily_key:
+            api_keys_raw[PROVIDER_TAVILY] = tavily_key
+        brave_key = _strip_or_none(env_map.get(ENV_BRAVE_API_KEY))
+        if brave_key:
+            api_keys_raw[PROVIDER_BRAVE] = brave_key
+
+        # Legacy ``api_key`` field — points at the chosen single provider's
+        # key. Kept so existing callers that read ``cfg.api_key`` still work.
         api_key: Optional[str] = None
         if provider_raw == PROVIDER_TAVILY:
-            api_key = _strip_or_none(env_map.get(ENV_TAVILY_API_KEY))
+            api_key = api_keys_raw.get(PROVIDER_TAVILY)
         elif provider_raw == PROVIDER_BRAVE:
-            api_key = _strip_or_none(env_map.get(ENV_BRAVE_API_KEY))
+            api_key = api_keys_raw.get(PROVIDER_BRAVE)
+
+        # Auto/multi mode parses the ``ENGINEERING_RESEARCH_PROVIDERS``
+        # candidate list. Unknown entries are dropped silently so a typo
+        # doesn't disable the whole pipeline; the factory fills the gap
+        # with the default list when the parsed result is empty.
+        providers: Tuple[str, ...] = ()
+        if provider_raw in {PROVIDER_AUTO, PROVIDER_MULTI}:
+            providers = _parse_provider_list(
+                env_map.get(ENV_PROVIDERS),
+                allowed=EXTERNAL_PROVIDERS,
+            ) or DEFAULT_AUTO_PROVIDERS
 
         return cls(
             enabled=enabled,
@@ -164,7 +247,32 @@ class CollectorConfig:
             api_key=api_key,
             max_provider_calls=max_provider_calls,
             max_results_per_role=max_results_per_role,
+            providers=providers,
+            api_keys=api_keys_raw,
         )
+
+
+def _parse_provider_list(
+    raw: Optional[str], *, allowed: Sequence[str]
+) -> Tuple[str, ...]:
+    """Parse a comma-separated provider list, filtering to *allowed*.
+
+    Trims whitespace, lowercases entries, drops blanks/duplicates and any
+    name not in ``allowed``. Returns ``()`` when the result would be empty
+    so callers can fall back to a default list.
+    """
+
+    if not raw:
+        return ()
+    seen: dict[str, None] = {}
+    for token in str(raw).split(","):
+        cleaned = token.strip().lower()
+        if not cleaned or cleaned in seen:
+            continue
+        if cleaned not in allowed:
+            continue
+        seen[cleaned] = None
+    return tuple(seen.keys())
 
 
 def _truthy(value: Optional[str]) -> bool:
@@ -443,6 +551,13 @@ ROLE_QUERY_BOOSTS: Mapping[str, Tuple[str, ...]] = {
     "backend-engineer": ("official docs", "API", "schema"),
     "frontend-engineer": ("MDN", "framework docs", "accessibility"),
     "qa-engineer": ("regression", "test plan", "e2e"),
+    "devops-engineer": (
+        "CI/CD",
+        "GitHub Actions",
+        "deployment",
+        "rollback",
+        "observability",
+    ),
 }
 
 
@@ -1039,6 +1154,234 @@ def extract_domain(url: Optional[str]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Multi-provider composite (auto / multi mode)
+# ---------------------------------------------------------------------------
+
+
+class MultiProviderCollector(ResearchCollector):
+    """Auto-mode composite that fans out to multiple sub-collectors.
+
+    For each :meth:`search` call the composite walks a role-specific
+    provider order (``role_policy``), invokes each available sub-collector
+    in turn, and returns the deduped/merged hits. Providers whose name is
+    in ``role_policy`` but absent from ``providers`` (e.g. their API key
+    wasn't set) are skipped silently — :attr:`skipped_providers` lists
+    them with the reason for observability.
+
+    Budget bookkeeping:
+
+    - The outer ``collect_research_pack`` loop calls ``budget.record_call()``
+      once per role-level :meth:`search`. The composite counts that as the
+      *first* inner provider's slot for free.
+    - Every additional inner provider beyond the first claims another
+      ``budget.record_call()`` if and only if ``budget.can_call()``. This
+      keeps the operator's ``ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS``
+      cap as a true ceiling on total provider invocations across the
+      whole collection run.
+    """
+
+    name = "auto"
+
+    def __init__(
+        self,
+        *,
+        providers: Sequence[ResearchCollector],
+        role_policy: Optional[Mapping[str, Tuple[str, ...]]] = None,
+        budget: Optional[BudgetTracker] = None,
+        skipped: Optional[Mapping[str, str]] = None,
+    ) -> None:
+        # Map each provider's ``name`` → instance so role policy lookup is O(1).
+        self._provider_map: dict[str, ResearchCollector] = {}
+        for collector in providers:
+            self._provider_map[collector.name] = collector
+        self._role_policy: Mapping[str, Tuple[str, ...]] = (
+            role_policy if role_policy is not None else DEFAULT_ROLE_PROVIDER_POLICY
+        )
+        self._budget = budget
+        self._skipped_providers: dict[str, str] = dict(skipped or {})
+        # Inner provider call counter for observability — independent of the
+        # outer BudgetTracker so tests can verify both behaviours.
+        self._inner_calls = 0
+
+    @property
+    def active_providers(self) -> Tuple[str, ...]:
+        return tuple(self._provider_map.keys())
+
+    @property
+    def skipped_providers(self) -> Mapping[str, str]:
+        return dict(self._skipped_providers)
+
+    @property
+    def inner_calls(self) -> int:
+        return self._inner_calls
+
+    def provider_order_for_role(self, role: str) -> Tuple[str, ...]:
+        """Return the ordered provider names this composite would query
+        for *role*. Filters to providers actually present in the composite.
+
+        Unknown roles fall back to ``DEFAULT_AUTO_PROVIDERS`` so the chain
+        still does something useful instead of silently returning empty.
+        """
+
+        short = short_role(role)
+        configured = self._role_policy.get(short)
+        if configured is None:
+            configured = DEFAULT_AUTO_PROVIDERS
+        return tuple(name for name in configured if name in self._provider_map)
+
+    def search(self, query: CollectorQuery) -> Sequence[ResearchSource]:
+        order = self.provider_order_for_role(query.role)
+        if not order:
+            return ()
+        merged: list[ResearchSource] = []
+        first_call_consumed = False
+        for provider_name in order:
+            provider = self._provider_map.get(provider_name)
+            if provider is None:
+                continue
+            if first_call_consumed:
+                # The outer loop only paid for one budget slot; second-and-
+                # later providers in this role's policy must claim their own.
+                if self._budget is not None:
+                    if not self._budget.can_call():
+                        break
+                    self._budget.record_call()
+            first_call_consumed = True
+            try:
+                hits = provider.search(query)
+            except CollectorError:
+                hits = ()
+            except Exception:  # noqa: BLE001 - never crash the composite
+                hits = ()
+            self._inner_calls += 1
+            # Stamp provider rank inside extra so downstream rendering can
+            # show "1순위 검색 — Tavily" / "2순위 검색 — Brave" without
+            # re-deriving the order.
+            ranked_hits: list[ResearchSource] = []
+            for idx, src in enumerate(hits):
+                ranked_hits.append(_with_provider_rank(src, provider_name, idx))
+            merged.extend(ranked_hits)
+        return _dedupe_sources(merged)
+
+
+def _with_provider_rank(
+    source: ResearchSource, provider: str, rank: int
+) -> ResearchSource:
+    """Return *source* with ``provider`` and ``provider_rank`` in extra.
+
+    Underlying collectors already stamp ``provider``; the multi composite
+    re-stamps it (defensively) and adds ``provider_rank`` so downstream
+    sort/UI can preserve "this came from the 1st provider in policy".
+    """
+
+    base_extra = dict(getattr(source, "extra", {}) or {})
+    base_extra.setdefault("provider", provider)
+    base_extra["provider_rank"] = rank
+    return ResearchSource(
+        source_type=source.source_type,
+        source_url=source.source_url,
+        title=source.title,
+        summary=source.summary,
+        collected_by_role=source.collected_by_role,
+        why_relevant=source.why_relevant,
+        risk_or_limit=source.risk_or_limit,
+        confidence=source.confidence,
+        collected_at=source.collected_at,
+        attachments=source.attachments,
+        attachment_id=source.attachment_id,
+        author_role=getattr(source, "author_role", None),
+        extra=base_extra,
+    )
+
+
+def _normalize_url(url: Optional[str]) -> str:
+    """Return a canonical form for *url* used for dedupe keys.
+
+    Lower-cases scheme+host, strips trailing slashes from the path, drops
+    fragments, and ignores common tracking query keys (``utm_*``). Two
+    URLs that differ only in those things end up with the same key.
+    """
+
+    if not url:
+        return ""
+    text = str(url).strip()
+    if not text:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(text)
+    except Exception:  # noqa: BLE001 - defensive
+        return text.lower()
+    scheme = (parsed.scheme or "").lower()
+    netloc = (parsed.netloc or "").lower()
+    path = (parsed.path or "").rstrip("/")
+    # Drop tracking params; keep everything else so legitimate query
+    # parameters still distinguish unique pages.
+    if parsed.query:
+        kept = []
+        for part in parsed.query.split("&"):
+            if not part:
+                continue
+            key = part.split("=", 1)[0].lower()
+            if key.startswith("utm_") or key in {"ref", "ref_src"}:
+                continue
+            kept.append(part)
+        query = "&".join(kept)
+    else:
+        query = ""
+    return urllib.parse.urlunsplit((scheme, netloc, path, query, ""))
+
+
+def _dedupe_sources(
+    sources: Sequence[ResearchSource],
+) -> Tuple[ResearchSource, ...]:
+    """Drop duplicate sources from *sources* in arrival order.
+
+    Dedupe keys (any match collapses to first occurrence):
+
+    1. Normalised URL (lowercase scheme/host, no trailing slash, no UTM).
+    2. ``(domain, source_type)`` + lower-cased title prefix — catches
+       providers that return the same page under slightly different URL
+       shapes (mobile/desktop variants, AMP, language redirects).
+    3. URL-less sources fall back to ``(title, source_type)``.
+    """
+
+    seen_urls: set[str] = set()
+    seen_titles: set[Tuple[str, str]] = set()
+    seen_dom_type_title: set[Tuple[str, str, str]] = set()
+    deduped: list[ResearchSource] = []
+    for src in sources:
+        url_key = _normalize_url(src.source_url)
+        type_value = (
+            src.source_type.value
+            if isinstance(src.source_type, SourceType)
+            else str(src.source_type)
+        )
+        title_key = (src.title or "").strip().lower()
+        domain_key = ((src.extra or {}).get("domain") or extract_domain(src.source_url)).lower()
+
+        if url_key:
+            if url_key in seen_urls:
+                continue
+            seen_urls.add(url_key)
+        else:
+            tt = (title_key, type_value)
+            if tt in seen_titles:
+                continue
+            seen_titles.add(tt)
+        # Even when the URL differs, collapse near-duplicates that share
+        # domain + type + title prefix (provider returned the same article
+        # under two URLs, e.g. with/without query string).
+        title_prefix = title_key[:80]
+        composite = (domain_key, type_value, title_prefix)
+        if title_prefix and composite in seen_dom_type_title:
+            continue
+        if title_prefix:
+            seen_dom_type_title.add(composite)
+        deduped.append(src)
+    return tuple(deduped)
+
+
+# ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
@@ -1047,6 +1390,7 @@ def build_collector(
     config: Optional[CollectorConfig] = None,
     *,
     env: Optional[Mapping[str, str]] = None,
+    budget: Optional[BudgetTracker] = None,
 ) -> ResearchCollector:
     """Resolve env config and return a usable collector.
 
@@ -1055,7 +1399,15 @@ def build_collector(
     - ``provider=mock`` (default) → :class:`MockSearchCollector`.
     - ``provider=tavily`` + ``TAVILY_API_KEY`` set → :class:`TavilySearchCollector`.
     - ``provider=brave`` + ``BRAVE_SEARCH_API_KEY`` set → :class:`BraveSearchCollector`.
+    - ``provider=auto`` / ``multi`` → :class:`MultiProviderCollector` with
+      every external provider whose API key is set; if no key is present,
+      falls back to :class:`MockSearchCollector` (so dev/test runs stay
+      deterministic without leaking the auto-mode contract).
     - Provider key missing → silent fallback to :class:`MockSearchCollector`.
+
+    Pass ``budget`` to wire a shared :class:`BudgetTracker` into the auto
+    composite; without it the composite still works but the outer cap can
+    be exceeded by ``len(providers) - 1`` calls per role-level search.
     """
 
     cfg = config if config is not None else CollectorConfig.from_env(env)
@@ -1071,7 +1423,61 @@ def build_collector(
             return BraveSearchCollector(api_key=cfg.api_key)
         except ProviderUnavailable:
             return MockSearchCollector()
+    if cfg.is_auto:
+        return _build_auto_collector(cfg, budget=budget)
     return MockSearchCollector()
+
+
+def _build_auto_collector(
+    cfg: CollectorConfig,
+    *,
+    budget: Optional[BudgetTracker] = None,
+) -> ResearchCollector:
+    """Construct a :class:`MultiProviderCollector` from *cfg*.
+
+    Honours ``cfg.providers`` as the candidate list; for each candidate
+    we instantiate the live provider when its API key is set and record a
+    ``skipped`` reason otherwise. If no candidate ends up usable, fall
+    back to :class:`MockSearchCollector` so the rest of the pipeline keeps
+    working in dev environments.
+    """
+
+    candidates = cfg.providers or DEFAULT_AUTO_PROVIDERS
+    instances: list[ResearchCollector] = []
+    skipped: dict[str, str] = {}
+    for provider_name in candidates:
+        if provider_name == PROVIDER_TAVILY:
+            api_key = cfg.api_keys.get(PROVIDER_TAVILY)
+            if not api_key:
+                skipped[PROVIDER_TAVILY] = f"{ENV_TAVILY_API_KEY} not set"
+                continue
+            try:
+                instances.append(TavilySearchCollector(api_key=api_key))
+            except ProviderUnavailable as exc:
+                skipped[PROVIDER_TAVILY] = str(exc)
+        elif provider_name == PROVIDER_BRAVE:
+            api_key = cfg.api_keys.get(PROVIDER_BRAVE)
+            if not api_key:
+                skipped[PROVIDER_BRAVE] = f"{ENV_BRAVE_API_KEY} not set"
+                continue
+            try:
+                instances.append(BraveSearchCollector(api_key=api_key))
+            except ProviderUnavailable as exc:
+                skipped[PROVIDER_BRAVE] = str(exc)
+        # Unknown providers were filtered out at parse time; defensive
+        # branch left implicit so adding a new provider is one match arm.
+
+    if not instances:
+        # Every candidate skipped → mock fallback so dev/test runs work
+        # without API keys. The skipped reasons are still surfaced via
+        # the outcome metadata path so operators can see *why*.
+        return MockSearchCollector()
+
+    return MultiProviderCollector(
+        providers=instances,
+        budget=budget,
+        skipped=skipped,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1210,6 +1616,16 @@ def collect_research_pack(
     limit_note = budget.limit_note()
     if limit_note:
         pack_extra["budget_note"] = limit_note
+    # Surface skipped-provider reasons (auto mode only) so the conversation
+    # layer can render "Tavily skipped — TAVILY_API_KEY not set" instead of
+    # silently dropping a provider.
+    if isinstance(collector, MultiProviderCollector):
+        skipped = collector.skipped_providers
+        if skipped:
+            pack_extra["auto_skipped_providers"] = dict(skipped)
+        active = collector.active_providers
+        if active:
+            pack_extra["auto_active_providers"] = list(active)
 
     return pack_from_request(
         request=request,
@@ -1261,6 +1677,10 @@ class CollectionOutcome:
     - ``AUTO_COLLECTED`` — collector produced ≥1 web result. Run deliberation.
     - ``USER_PROVIDED`` — user already supplied links/attachments. Run deliberation.
     - ``NEEDS_USER_INPUT`` — nothing usable. Reply with *user_prompt*.
+
+    ``sufficiency`` and ``iterations`` are filled when the collector loop
+    iterated to satisfy per-role coverage (Phase 4). Both default to
+    safe values so existing callers and round-trips don't break.
     """
 
     mode: CollectionMode
@@ -1269,6 +1689,14 @@ class CollectionOutcome:
     collector_name: str
     query: str
     auto_collected_count: int
+    sufficiency: Optional[Any] = None
+    iterations: int = 1
+    budget_tier: Optional[str] = None
+    max_provider_calls: int = 0
+    max_results_per_role: int = 0
+    role_targets: Tuple[Tuple[str, int], ...] = ()
+    stop_reason: Optional[str] = None
+    under_covered_roles: Tuple[str, ...] = ()
 
 
 def auto_collect_or_request_more_input(
@@ -1290,13 +1718,29 @@ def auto_collect_or_request_more_input(
     """
 
     cfg = config if config is not None else CollectorConfig.from_env()
-    chosen = collector or build_collector(cfg)
     user_supplied = bool(user_links) or bool(user_attachments)
 
-    budget = BudgetTracker(
-        max_provider_calls=cfg.max_provider_calls,
-        max_results_per_role=cfg.max_results_per_role,
+    # Task-aware budget policy. The hard caps come from CollectorConfig
+    # (env-driven cost gate); the policy never asks for more than that.
+    # The result feeds both BudgetTracker and the per-role sufficiency
+    # targets used by the iterative loop.
+    from .research_budget import (
+        decide_budget,
+        role_targets_to_sufficiency_targets,
     )
+
+    policy = decide_budget(
+        prompt=prompt,
+        task_type=task_type,
+        role_sequence=(),
+        hard_cap_provider_calls=cfg.max_provider_calls,
+        hard_cap_results_per_role=cfg.max_results_per_role,
+    )
+    budget = BudgetTracker(
+        max_provider_calls=policy.max_provider_calls,
+        max_results_per_role=policy.max_results_per_role,
+    )
+    chosen = collector or build_collector(cfg, budget=budget)
     pack = collect_research_pack(
         collector=chosen,
         role=role,
@@ -1310,6 +1754,32 @@ def auto_collect_or_request_more_input(
         budget=budget,
     )
 
+    # Iterate until sufficiency target is met, the budget is exhausted,
+    # or two consecutive rounds add no new URLs (canned/stale provider).
+    sufficiency_targets = role_targets_to_sufficiency_targets(policy)
+    pack, iterations, sufficiency, stop_reason = _extend_pack_until_sufficient(
+        pack=pack,
+        collector=chosen,
+        budget=budget,
+        prompt=prompt,
+        task_type=task_type,
+        primary_role=role,
+        max_results=cfg.max_results,
+        sufficiency_targets=sufficiency_targets,
+    )
+
+    role_targets_tuple = tuple(
+        (target.role, target.min_sources) for target in policy.role_targets
+    )
+    under_covered: Tuple[str, ...] = ()
+    if sufficiency is not None:
+        try:
+            from .research_sufficiency import under_covered_roles as _under
+
+            under_covered = tuple(_under(sufficiency))
+        except Exception:  # noqa: BLE001 - defensive
+            under_covered = ()
+
     # Count sources stamped by *some* provider (mock/tavily/brave/live).
     # User-supplied URLs/attachments use ``provider`` ∉ extra, so they don't
     # count even though they're valid reference material.
@@ -1319,6 +1789,15 @@ def auto_collect_or_request_more_input(
 
     query = build_query_for_role(role=role, prompt=prompt, task_type=task_type)
 
+    common_extras = {
+        "budget_tier": policy.tier,
+        "max_provider_calls": policy.max_provider_calls,
+        "max_results_per_role": policy.max_results_per_role,
+        "role_targets": role_targets_tuple,
+        "stop_reason": stop_reason,
+        "under_covered_roles": under_covered,
+    }
+
     if auto_collected_count > 0:
         return CollectionOutcome(
             mode=CollectionMode.AUTO_COLLECTED,
@@ -1327,6 +1806,9 @@ def auto_collect_or_request_more_input(
             collector_name=chosen.name,
             query=query,
             auto_collected_count=auto_collected_count,
+            sufficiency=sufficiency,
+            iterations=iterations,
+            **common_extras,
         )
     if user_supplied:
         return CollectionOutcome(
@@ -1336,6 +1818,9 @@ def auto_collect_or_request_more_input(
             collector_name=chosen.name,
             query=query,
             auto_collected_count=0,
+            sufficiency=sufficiency,
+            iterations=iterations,
+            **common_extras,
         )
     return CollectionOutcome(
         mode=CollectionMode.NEEDS_USER_INPUT,
@@ -1344,6 +1829,209 @@ def auto_collect_or_request_more_input(
         collector_name=chosen.name,
         query=query,
         auto_collected_count=0,
+        sufficiency=sufficiency,
+        iterations=iterations,
+        **common_extras,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sufficiency-driven follow-up collection (Part 4)
+# ---------------------------------------------------------------------------
+
+
+_FOLLOWUP_ROLE_ORDER: Tuple[str, ...] = (
+    "ai-engineer",
+    "backend-engineer",
+    "product-designer",
+    "frontend-engineer",
+    "qa-engineer",
+    "tech-lead",
+)
+
+
+def _extend_pack_until_sufficient(
+    *,
+    pack: ResearchPack,
+    collector: ResearchCollector,
+    budget: BudgetTracker,
+    prompt: str,
+    task_type: Optional[str],
+    primary_role: str,
+    max_results: int,
+    sufficiency_targets: Sequence[Any] = (),
+):
+    """Drive role-aware follow-up queries until coverage is "good enough".
+
+    Returns ``(pack, iterations, sufficiency, stop_reason)``. ``sufficiency``
+    may be ``None`` when the deliberation/sufficiency module isn't
+    importable (defensive for partial installs); the caller falls back
+    to single-pass behaviour. ``stop_reason`` is one of:
+    ``"sufficient"``, ``"budget_exhausted"``, ``"no_progress"``,
+    ``"role_rotation_exhausted"``, ``"no_initial_provider_hit"``, or
+    ``"no_sufficiency_module"``.
+    """
+
+    try:
+        from .research_sufficiency import (
+            DEFAULT_ROLE_TARGETS,
+            score_research_sufficiency,
+            under_covered_roles,
+        )
+    except Exception:  # noqa: BLE001 - module optional during partial installs
+        return pack, 1, None, "no_sufficiency_module"
+
+    targets = tuple(sufficiency_targets) if sufficiency_targets else DEFAULT_ROLE_TARGETS
+
+    iterations = 1
+    score = score_research_sufficiency(pack, role_targets=targets)
+    if score.sufficient:
+        return pack, iterations, score, "sufficient"
+
+    # The follow-up loop expands coverage, it doesn't bootstrap from
+    # zero. If the first pass returned no provider hits at all (unknown
+    # role / disabled provider / canned-empty mock), fall through with
+    # the same shape as before so the caller can route to NEEDS_USER_INPUT.
+    has_provider_hit = any(
+        (s.extra or {}).get("provider") for s in pack.sources
+    )
+    if not has_provider_hit:
+        return pack, iterations, score, "no_initial_provider_hit"
+
+    seen_urls: set[str] = {
+        (s.source_url or "").strip()
+        for s in pack.sources
+        if (s.source_url or "").strip()
+    }
+
+    visited_role_queries: set[tuple[str, str]] = set()
+    consecutive_no_gain = 0
+    stop_reason = "budget_exhausted"  # default if while-loop exits via budget
+
+    while budget.can_call():
+        next_role = _next_followup_role(
+            score=score,
+            primary_role=primary_role,
+            visited=visited_role_queries,
+            under_covered_fn=under_covered_roles,
+        )
+        if next_role is None:
+            stop_reason = "role_rotation_exhausted"
+            break
+
+        query = build_query_for_role(
+            role=next_role, prompt=prompt, task_type=task_type
+        )
+        marker = (next_role, query)
+        if not query or marker in visited_role_queries:
+            visited_role_queries.add(marker)
+            continue
+        visited_role_queries.add(marker)
+
+        budget.record_call()
+        iterations += 1
+        try:
+            hits = collector.search(
+                CollectorQuery(
+                    query=query,
+                    role=next_role,
+                    max_results=max_results,
+                    task_type=task_type,
+                )
+            )
+        except CollectorError:
+            hits = ()
+        except Exception:  # noqa: BLE001 - never crash the conversation flow
+            hits = ()
+
+        ranked = _rank_sources_for_role(hits, role=next_role)
+        ranked = budget.trim_results(ranked)
+        new_sources = []
+        for src in ranked:
+            url = (getattr(src, "source_url", None) or "").strip()
+            if not url:
+                # Sources without URL — key off title to avoid
+                # exact-duplicate canned hits inflating coverage.
+                key = f"title:{(getattr(src, 'title', '') or '').strip()}"
+                if key in seen_urls:
+                    continue
+                seen_urls.add(key)
+                new_sources.append(src)
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            new_sources.append(src)
+
+        if new_sources:
+            pack = _append_sources(pack, new_sources)
+            consecutive_no_gain = 0
+        else:
+            consecutive_no_gain += 1
+            # Bail out only after a generous run of zero-gain rounds —
+            # role rotation legitimately produces a few duplicates before
+            # finding a fresh source. Cap so canned providers can't
+            # infinitely loop, but trust visited_role_queries + budget
+            # for the actual termination work.
+            if consecutive_no_gain >= 4:
+                stop_reason = "no_progress"
+                break
+
+        score = score_research_sufficiency(pack, role_targets=targets)
+        if score.sufficient:
+            stop_reason = "sufficient"
+            break
+
+    return pack, iterations, score, stop_reason
+
+
+def _next_followup_role(
+    *,
+    score,
+    primary_role: str,
+    visited: set,
+    under_covered_fn,
+) -> Optional[str]:
+    """Pick the next role to query. Returns ``None`` when nothing's left."""
+
+    short_primary = short_role(primary_role)
+    under_covered = list(under_covered_fn(score))
+    # Prefer the originally-asked role when still under-covered so the
+    # follow-up doesn't drift away from the user's actual request.
+    ordered: list[str] = []
+    if short_primary in under_covered:
+        ordered.append(short_primary)
+    for candidate in _FOLLOWUP_ROLE_ORDER:
+        if candidate in under_covered and candidate not in ordered:
+            ordered.append(candidate)
+    for candidate in under_covered:
+        if candidate not in ordered:
+            ordered.append(candidate)
+    for candidate in ordered:
+        # Skip roles whose query we already tried this run.
+        if any(role == candidate for role, _q in visited):
+            continue
+        return candidate
+    return None
+
+
+def _append_sources(
+    pack: ResearchPack, new_sources: Sequence[ResearchSource]
+) -> ResearchPack:
+    """Return *pack* with ``new_sources`` appended (immutable rebuild)."""
+
+    if not new_sources:
+        return pack
+    merged = tuple(list(pack.sources) + list(new_sources))
+    auto_provider = any(s.extra.get("provider") for s in merged if s.extra)
+    tags = pack.tags
+    if auto_provider and "auto-collected" not in tags:
+        tags = tuple(list(tags) + ["auto-collected"])
+    return pack_from_request(
+        request=pack.request,
+        sources=merged,
+        tags=tags,
+        extra=dict(pack.extra or {}),
     )
 
 

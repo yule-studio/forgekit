@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 from types import SimpleNamespace
 import unittest
 from pathlib import Path
@@ -26,7 +28,7 @@ from yule_orchestrator.discord.member_bots import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class EnvKeyTestCase(unittest.TestCase):
@@ -67,6 +69,7 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
                 "backend-engineer",
                 "frontend-engineer",
                 "qa-engineer",
+                "devops-engineer",
             ),
         )
         for profile in config.profiles:
@@ -107,6 +110,77 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
             profile = config.get("ai-engineer")
             self.assertTrue(profile.active)
             self.assertEqual(profile.token, "ai-token")
+
+    def test_devops_engineer_role_is_registered_with_expected_env_key(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            for key in list(os.environ):
+                if key.startswith("ENGINEERING_AGENT_BOT_"):
+                    del os.environ[key]
+            config = load_member_bot_config(REPO_ROOT, "engineering-agent")
+
+        devops = config.get("devops-engineer")
+        self.assertEqual(
+            devops.env_key,
+            "ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN",
+        )
+        self.assertFalse(devops.active)
+
+    def test_devops_engineer_token_in_env_marks_profile_active(self) -> None:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ENGINEERING_AGENT_BOT_")}
+        env["ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN"] = "devops-token"
+        with patch.dict(os.environ, env, clear=True):
+            config = load_member_bot_config(REPO_ROOT, "engineering-agent")
+            profile = config.get("devops-engineer")
+            self.assertTrue(profile.active)
+            self.assertEqual(profile.token, "devops-token")
+
+    def test_ai_and_devops_both_active_when_both_tokens_set(self) -> None:
+        env = {k: v for k, v in os.environ.items() if not k.startswith("ENGINEERING_AGENT_BOT_")}
+        env["ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN"] = "ai-tok"
+        env["ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN"] = "devops-tok"
+        with patch.dict(os.environ, env, clear=True):
+            config = load_member_bot_config(REPO_ROOT, "engineering-agent")
+            active_roles = {p.role for p in config.active_profiles()}
+        self.assertIn("ai-engineer", active_roles)
+        self.assertIn("devops-engineer", active_roles)
+
+    def test_missing_role_config_dir_emits_warning(self) -> None:
+        """Members listed in agent.json without a sibling role config dir
+        must surface a 'role config missing' warning so operators see the
+        gap in ``yule discord up`` output instead of silently spawning a
+        role bot that has no policy files behind it."""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "CLAUDE.md").write_text("# stub root", encoding="utf-8")
+            agent_dir = root / "agents" / "fake-agent"
+            agent_dir.mkdir(parents=True)
+            (agent_dir / "CLAUDE.md").write_text("# stub agent", encoding="utf-8")
+            manifest = {
+                "id": "fake-agent",
+                "name": "Fake Agent",
+                "type": "department",
+                "description": "test fixture",
+                "members": ["present-role", "missing-role"],
+                "instruction_entry": "agents/fake-agent/CLAUDE.md",
+                "policies": [],
+            }
+            (agent_dir / "agent.json").write_text(
+                json.dumps(manifest), encoding="utf-8"
+            )
+            present = agent_dir / "present-role"
+            present.mkdir()
+            (present / "agent.json").write_text("{}", encoding="utf-8")
+            # Intentionally omit ``missing-role/agent.json``.
+
+            env = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_AGENT_BOT_")}
+            with patch.dict(os.environ, env, clear=True):
+                config = load_member_bot_config(root, "fake-agent")
+
+        warning_text = "\n".join(config.warnings)
+        self.assertIn("role config missing", warning_text)
+        self.assertIn("missing-role", warning_text)
+        self.assertNotIn("present-role", warning_text)
 
 
 class SelectProfileTestCase(unittest.TestCase):

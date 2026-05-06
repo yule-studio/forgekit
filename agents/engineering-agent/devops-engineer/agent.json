@@ -1,0 +1,22 @@
+{
+  "id": "devops-engineer",
+  "name": "DevOps Engineer",
+  "type": "role",
+  "department": "engineering-agent",
+  "description": "CI/CD, GitHub Actions, Docker, deployment strategy, env/secret/permissions, observability(logging/metrics/alerts), rollback, incident response, release checklist, infrastructure/runtime reliability를 책임지는 부서 멤버. 다른 역할이 만들어낸 변경이 운영 사고 없이 배포되고 모니터링되도록 운영 관점의 검토를 자문한다.",
+  "instruction_entry": "agents/engineering-agent/devops-engineer/CLAUDE.md",
+  "runner": null,
+  "discord_token_env": "ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN",
+  "responsibilities": [
+    "CI/CD 파이프라인 (GitHub Actions, workflow yaml diff 검토, matrix/env 분리)",
+    "Docker / runtime image / 의존성 관리 (lockfile, base image, vulnerability 점검)",
+    "deployment strategy (staging→prod, canary/blue-green, rollback window)",
+    "env / secret / 권한 / scope 변경 영향 점검 (.env.example sync, secret rotation 정책)",
+    "observability (logs/metrics/traces, alerting threshold, dashboard PR 동반)",
+    "rollback / incident response (revert PR 자동 생성, postmortem 양식, 30분 모니터)",
+    "release checklist (테스트 green, 회귀 묶음, secrets 점검, 알람/대시보드 갱신)",
+    "infrastructure / runtime reliability (cron, queue, worker, capacity planning)"
+  ],
+  "preferred_advisors": ["claude", "codex", "gemini", "ollama"],
+  "phase": "skeleton"
+}

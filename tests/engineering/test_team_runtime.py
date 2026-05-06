@@ -425,5 +425,56 @@ class TeamTurnDataTestCase(unittest.TestCase):
         self.assertIn("sess-team-001", msg)
 
 
+class DefaultResearchRoleSequenceTests(unittest.TestCase):
+    """The forum open-call directive iterates the default research role
+    sequence — both ``ai-engineer`` and ``devops-engineer`` must be in
+    the chain so member bots for both roles get a turn.
+    """
+
+    def test_default_sequence_includes_ai_and_devops(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            DEFAULT_RESEARCH_ROLE_SEQUENCE,
+        )
+
+        self.assertIn("ai-engineer", DEFAULT_RESEARCH_ROLE_SEQUENCE)
+        self.assertIn("devops-engineer", DEFAULT_RESEARCH_ROLE_SEQUENCE)
+
+    def test_normalised_sequence_falls_back_to_default_when_session_empty(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            deliberation_research_role_sequence,
+        )
+
+        # Empty session.role_sequence → fall back to the
+        # DEFAULT_RESEARCH_ROLE_SEQUENCE which must include both
+        # ai-engineer and devops-engineer.
+        sequence = deliberation_research_role_sequence(
+            _make_session(role_sequence=())
+        )
+        self.assertEqual(sequence[0], "tech-lead")
+        self.assertIn("ai-engineer", sequence)
+        self.assertIn("devops-engineer", sequence)
+
+
+class DevOpsRoleDeliberationTests(unittest.TestCase):
+    """devops-engineer fallback must produce a real DevOpsEngineerTake
+    instead of the unknown-role placeholder so the member bot can post."""
+
+    def test_deliberation_role_turn_returns_devops_take(self) -> None:
+        from yule_orchestrator.agents.deliberation import DevOpsEngineerTake
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            deliberation_role_turn,
+        )
+
+        take, rendered = deliberation_role_turn(
+            _make_session(),
+            "engineering-agent/devops-engineer",
+        )
+        self.assertIsInstance(take, DevOpsEngineerTake)
+        self.assertIn("[devops-engineer]", rendered)
+        # Release checklist + rollback are the role's signature fields.
+        self.assertTrue(take.release_checklist)
+        self.assertTrue(take.rollback_plan)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -237,6 +237,24 @@ def _coerce_text(value: Any) -> str:
 
 
 def split_discord_message(message: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
+    """Break *message* into pieces that each fit Discord's content limit.
+
+    Discord rejects ``content`` > 2000 chars (regular messages) and
+    > 4000 chars (forum starters) with ``50035 — Must be N or fewer in
+    length``. We default to ``DISCORD_MESSAGE_LIMIT`` (1900) so the
+    same chunker is safe for every channel.send / thread.send / forum
+    create_thread call. Any caller wanting a different cap (e.g. forum
+    starters) should pass an explicit ``limit``.
+
+    Long-line guarantee: if a *single* line is itself longer than the
+    limit, we hard-slice it into ``limit``-sized pieces so the splitter
+    never returns a chunk above the cap. Without that guarantee a
+    single huge line would get re-emitted whole and Discord would still
+    reject it.
+    """
+
+    if limit <= 0:
+        return [message]
     if len(message) <= limit:
         return [message]
 
@@ -244,10 +262,27 @@ def split_discord_message(message: str, limit: int = DISCORD_MESSAGE_LIMIT) -> l
     current_lines: list[str] = []
     current_length = 0
 
+    def _flush() -> None:
+        nonlocal current_lines, current_length
+        if current_lines:
+            chunks.append("\n".join(current_lines))
+            current_lines = []
+            current_length = 0
+
     for line in message.splitlines():
+        if len(line) > limit:
+            # Single-line overflow: emit anything we've buffered, then
+            # hard-slice the long line into ``limit`` sized blocks so no
+            # individual chunk exceeds the cap. This catches log-style
+            # output, very long URLs glued into a paragraph, etc.
+            _flush()
+            for offset in range(0, len(line), limit):
+                chunks.append(line[offset : offset + limit])
+            continue
+
         added_length = len(line) + (1 if current_lines else 0)
         if current_lines and current_length + added_length > limit:
-            chunks.append("\n".join(current_lines))
+            _flush()
             current_lines = [line]
             current_length = len(line)
             continue
@@ -255,9 +290,7 @@ def split_discord_message(message: str, limit: int = DISCORD_MESSAGE_LIMIT) -> l
         current_lines.append(line)
         current_length += added_length
 
-    if current_lines:
-        chunks.append("\n".join(current_lines))
-
+    _flush()
     return chunks
 
 

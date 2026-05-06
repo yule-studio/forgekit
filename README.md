@@ -405,6 +405,42 @@ yule engineer show --session <session_id>
 - `--write`를 붙인 세션은 승인 전까지 쓰기 작업이 차단됩니다.
 - `complete --references-used refs.json`을 쓰면 완료 보고에 실제 반영한 reference를 함께 남길 수 있습니다.
 - Discord 자유 대화에서 `새로 등록하지 말고 기존 스레드에서 이어가`처럼 말하면 열린 thread를 찾아 이어 붙이고, 새 세션은 만들지 않습니다.
+- gateway는 매 요청마다 `decide_routing()`으로 현재 열려 있는 workflow session과 prompt를 비교해 4가지 action 중 하나로 라우팅합니다 — `join_existing_work`(유사한 미종료 작업이 있음), `create_new_work`(없음), `ask_for_clarification`(후보가 비슷해 결정이 위험함), `append_context_only`(`이 자료만 ... 참고로 붙여줘`처럼 명시적 부착 요청). `기존 맥락 참고` 같은 표현이 단독으로 쓰이면 자동 join을 강제하지 않고 similarity로만 판정합니다 — 옛 휴리스틱이 모든 "참고/이어가" 표현을 최신 thread에 강제로 붙이던 동작과 다릅니다. 사용자가 명시적으로 `이어가/새로 등록하지 말고`라고 적었지만 매칭되는 open thread가 없으면 새 세션을 만들지 않고 어느 작업에 합류할지 다시 묻습니다.
+- Research 자료 수집은 한 번 호출하고 끝나지 않습니다. `auto_collect_or_request_more_input()`이 `score_research_sufficiency()`로 역할별 coverage(tech-lead·ai-engineer·backend·frontend·design·qa·devops)를 평가하고, 부족하면 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` 예산 안에서 부족한 역할 위주로 추가 query를 돌립니다. 같은 URL/title이면 dedupe하고, 새 자료가 늘지 않는 round가 연속 4번이면 안전 종료합니다. 결과 `CollectionOutcome.sufficiency`에는 부족한 역할/source_type이 그대로 남아 운영자가 어디가 비어 있는지 확인할 수 있습니다.
+- Reference budget은 task 내용에 따라 4단계(`small` 4call/2results, `medium` 8/3, `large` 16/5, `deep_research` 28/8)로 자동 분류됩니다(`agents/research_budget.py`). 기본은 `medium`이며, prompt에 `architecture / RAG / multi-agent / infra / 리서치 / 조사 / 설계 / 아키텍처 / 검토` 같은 large 키워드 또는 `task_type=platform-infra`가 있으면 `large`, `깊게 / deep dive / 리서치 먼저` 같은 phrase는 `deep_research`, `버그 / typo / quick fix / 간단` 키워드는 `small`로 떨어집니다. **`ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS` / `ENGINEERING_RESEARCH_MAX_RESULTS_PER_ROLE`는 hard cap입니다** — 분류기가 large/deep tier를 골라도 env 값이 더 작으면 그 값으로 클램프됩니다(비용 안전). 기본 운영값은 medium 이하로 시작하고, 큰 리서치를 정말로 돌리려면 env 값을 같이 12~20 정도로 올려야 large/deep tier가 실제로 작동합니다. 결과 `CollectionOutcome`에는 `budget_tier / max_provider_calls / max_results_per_role / role_targets / stop_reason / under_covered_roles`가 노출되고, 운영-리서치 forum body에도 `### 수집 예산 / 종료 조건` 섹션으로 자동 렌더링됩니다.
+
+#### Multi-provider 검색 (auto / multi 모드)
+
+`ENGINEERING_RESEARCH_PROVIDER=auto`(또는 `multi`)로 두면 Tavily + Brave를 함께 사용합니다. `ENGINEERING_RESEARCH_PROVIDERS=tavily,brave`로 후보를 좁힐 수 있고, API key가 비어 있는 provider는 `outcome.pack.extra["auto_skipped_providers"]`에 skipped reason과 함께 남고 silent skip됩니다 — 즉 한쪽 키만 있어도 나머지 한쪽으로 폴백합니다.
+
+| 역할 | 1순위 provider | 2순위 provider | 비고 |
+| --- | --- | --- | --- |
+| `gateway` | (없음) | (없음) | 기본은 local memory만 사용 — 라우팅 결정에 외부 검색 미사용 |
+| `tech-lead` | Tavily | Brave | 합의/요약/비교 (Tavily) + 공식 문서/GitHub/최신성 (Brave) |
+| `ai-engineer` | Tavily | Brave | RAG/CAG, agent 아키텍처, prompt/context, retrieval |
+| `backend-engineer` | Brave | Tavily | 공식 API 문서, DB/보안/아키텍처, GitHub issue, release note |
+| `frontend-engineer` | Brave | Tavily | MDN, web.dev, browser support, UI library docs |
+| `product-designer` | Brave | Tavily | 경쟁 서비스, UX 사례, 디자인 패턴, benchmark |
+| `qa-engineer` | Brave | Tavily | 테스트 전략, regression, GitHub issue, release note |
+| `devops-engineer` | Brave | Tavily | GitHub Actions, Docker, CI/CD, observability, incident |
+
+설정 예시 (`.env.local`에만 두고 git에는 커밋하지 않음):
+
+```bash
+ENGINEERING_RESEARCH_AUTO_COLLECT_ENABLED=true
+ENGINEERING_RESEARCH_PROVIDER=auto
+ENGINEERING_RESEARCH_PROVIDERS=tavily,brave
+ENGINEERING_RESEARCH_MAX_RESULTS=5
+# 비용 안전장치: 모든 provider 호출의 합계 상한이므로 낮게 시작.
+ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS=3
+ENGINEERING_RESEARCH_MAX_RESULTS_PER_ROLE=2
+TAVILY_API_KEY=<발급받은 Tavily key>
+BRAVE_SEARCH_API_KEY=<발급받은 Brave key>
+```
+
+Multi 모드에서는 `ENGINEERING_RESEARCH_MAX_PROVIDER_CALLS`가 **모든 provider 호출의 합계** 상한입니다 — Tavily 1회 + Brave 1회 = 2 슬롯. 비용을 천천히 검증하기 위해 처음에는 3 정도로 시작하고, 결과 품질을 본 뒤에 단계적으로 올리는 것을 권장합니다. 예산을 모두 소진하면 `pack.extra["budget_note"]`에 알림이 남습니다.
+
+dedupe는 (1) URL 정규화(scheme/host 소문자 + trailing slash + UTM 파라미터 제거), (2) 동일 도메인+source_type+title prefix, (3) URL 없는 항목은 title+type 조합으로 수행해 같은 자료가 두 provider에서 모두 잡혀도 한 건만 남깁니다.
 
 Discord slash command는 `yule discord bot` 또는 `yule discord up` 실행 시 guild 단위로 등록됩니다.
 
@@ -423,6 +459,52 @@ Discord slash command는 `yule discord bot` 또는 `yule discord up` 실행 시 
 - `/engineer_review_reply`는 적용/제안/남은 이슈를 같은 review cycle에 회신합니다.
 - Discord slash command의 `complete`는 inline `references_used`를 받지 않으므로, reference 인용까지 닫으려면 CLI `yule engineer complete --references-used <json>`을 사용합니다.
 
+### Discord 운영 smoke test
+
+브랜치를 실제 Discord에 띄우기 전에 다음 5단계를 순서대로 확인합니다. 모두 dry-run/관찰 작업이고 secret을 읽지 않습니다.
+
+1. **봇 인벤토리 확인** — 9개 봇이 모두 active로 잡히는지.
+
+   ```bash
+   yule discord up --dry-run
+   ```
+
+   기대 출력: `summary: 9 active / 0 skipped` (planning-bot 1 + engineering gateway 1 + 멤버 7).
+
+2. **typing indicator 확인** — 사용자가 봇이 살아 있는지 본다.
+
+   - `#업무-접수` 채널에서 새 요청 메시지를 보내면 `yule-eng-gateway`가 `입력 중...`으로 표시되어야 한다 (gateway가 conversation/intake/kickoff/research_loop 전체를 처리하는 동안 유지).
+   - 작업 thread/forum에서 멤버 봇이 자기 차례를 처리할 때 해당 봇 계정(`yule-eng-backend`, `yule-eng-tech-lead` 등)이 `입력 중...`으로 표시되어야 한다.
+   - 일반 conversation 채널은 기존대로 typing이 보이고 동작은 변하지 않아야 한다.
+
+3. **diagnostic intent 확인** — 새 작업 접수 대신 상태 설명으로 응답하는지.
+
+   다음 질문들을 `#업무-접수`에 보냈을 때 새 session이 만들어지지 않고 현재 열린 session 상태가 답변으로 와야 한다.
+
+   - "운영 리서치는 안 열어?"
+   - "어떻게 됐어?"
+   - "왜 실패했어?"
+   - "진행상황 좀"
+   - "Obsidian 왜 안 들어갔어?"
+
+   확인 포인트: 답변에 session id가 포함되고, "1차 자료를 모아볼게요" 같은 intake 템플릿이 다시 나오면 안 된다. 열린 session이 없으면 안전한 안내 문구("열린 engineering-agent 세션이 보이지 않아요...")가 와야 한다.
+
+4. **Forum long body 확인** — starter는 짧게, 상세 자료는 thread 댓글로 분할.
+
+   매우 긴 리서치 요청(원문 + 다수 자료)을 보내도 운영-리서치 forum 게시가 50035("Must be 4000 or fewer in length")로 실패하지 않아야 한다. 확인 포인트:
+
+   - starter 메시지에 `_본문이 길어 상세 자료는 아래 댓글로 이어집니다. 원본은 Obsidian export에 보존됩니다._` 안내가 들어 있는지.
+   - 같은 thread 안에 후속 댓글이 1900자 이하 chunk로 이어 게시되는지.
+   - 일부 chunk 게시가 실패하면 `⚠️ 상세 자료 댓글 N건 중 K건 게시에 실패했습니다…` 안내 댓글이 한 건 추가되는지.
+
+5. **Obsidian sync 확인** — 원본은 vault에 보존되는지.
+
+   ```bash
+   yule obsidian sync --session <session_id> --dry-run
+   ```
+
+   `.env.local`의 `OBSIDIAN_VAULT_PATH`(예: `/Users/<MY_USER>/local-dev/yule-agent-vault/obsidian-vault`)를 사용한다. dry-run 출력에 예상 markdown 경로와 Forum starter에서 잘려나간 본문/출처/synthesis가 포함되어 있어야 한다.
+
 ### Obsidian 로컬 동기화
 
 ResearchPack을 개인 Obsidian vault에 Markdown 파일로 저장하려면 `OBSIDIAN_VAULT_PATH`에 vault 절대경로를 설정합니다. **실제 절대경로는 git에 커밋되는 `.env.example`이 아니라 로컬 전용 `.env.local`에 둡니다** — `.gitignore`가 `.env*`는 제외하고 `.env.example`만 화이트리스트로 추적하기 때문입니다.
@@ -430,15 +512,35 @@ ResearchPack을 개인 Obsidian vault에 Markdown 파일로 저장하려면 `OBS
 ```bash
 # .env.local 예시
 OBSIDIAN_VAULT_PATH=/Users/<MY_USER>/local-dev/yule-agent-vault/obsidian-vault
+# (선택) 기본 export 레이아웃과 기본 project — 둘 다 비워 두면 아래 기본값이 적용됩니다.
+OBSIDIAN_EXPORT_LAYOUT=yule-agent-vault
+OBSIDIAN_DEFAULT_PROJECT=yule-studio-agent
 
 # 사용
-yule obsidian sync --session <session_id>            # 실제 쓰기 (overwrite 금지가 기본)
-yule obsidian sync --session <session_id> --dry-run  # 경로/내용만 검증
+yule obsidian sync --session <session_id>                              # 실제 쓰기 (overwrite 금지가 기본)
+yule obsidian sync --session <session_id> --dry-run                    # 경로/내용만 검증
 yule obsidian sync --session <session_id> --overwrite
 yule obsidian sync --session <session_id> --kind reference
+yule obsidian sync --session <session_id> --project other-project      # 이 sync만 다른 프로젝트로
+yule obsidian sync --session <session_id> --layout legacy-agent        # 옛 Agents/Engineering/...
 ```
 
-vault 안에는 exporter가 정한 `Agents/Engineering/<kind>/YYYY-MM-DD_<slug>.md` 경로로 떨어집니다. 예: `$OBSIDIAN_VAULT_PATH/Agents/Engineering/Research/2026-04-30_stripe-pricing.md`. 같은 날짜·같은 slug로 sync가 반복되면 같은 폴더 안에서 `..._2.md`, `..._3.md` 식으로 자동 suffix가 붙어 기존 노트는 silently 덮이지 않고, `--overwrite`를 명시하면 suffix 없이 원래 파일을 그대로 교체합니다. 자세한 contract와 안전 정책은 `policies/runtime/agents/engineering-agent/obsidian-memory.md`를 참고하세요. `yule doctor`는 `obsidian vault` 체크를 자동 수행합니다.
+기본 export 경로는 yule-agent-vault 정책을 따릅니다 — `10-projects/<project>/<kind>/YYYY-MM-DD_<kind>-<slug>.md`. 예: `$OBSIDIAN_VAULT_PATH/10-projects/yule-studio-agent/research/2026-04-30_research-stripe-pricing.md`. project 결정 우선순위는 **CLI `--project` → `session.extra["project"]` / `["project_name"]` → `OBSIDIAN_DEFAULT_PROJECT` env → 기본값 `yule-studio-agent`** 입니다. 알려지지 않은 kind는 `00-inbox/unsorted/`로 라우팅되어 사용자 triage 큐에 노출됩니다.
+
+| kind | yule-agent-vault 경로 | 비고 |
+| --- | --- | --- |
+| `research` (기본) | `10-projects/<project>/research/` | ResearchPack 1차 자료 노트 |
+| `decision` | `10-projects/<project>/decisions/` | TechLeadSynthesis가 있을 때 자동 선택 |
+| `reference` | `10-projects/<project>/references/` | 디자인/UX 레퍼런스 |
+| `task-log` | `10-projects/<project>/task-logs/` | 작업 진행 로그 |
+| `meeting` / `meeting-notes` | `10-projects/<project>/meeting-notes/` | 회의록 |
+| 알 수 없음 | `00-inbox/unsorted/` | 미상/애매한 kind는 inbox로 |
+
+기존 vault가 아직 `Agents/Engineering/...` 트리에 머물러 있다면 `OBSIDIAN_EXPORT_LAYOUT=legacy-agent`(또는 `--layout legacy-agent`)를 한시적으로 켜서 옛 경로를 그대로 사용할 수 있습니다. legacy 모드에서는 frontmatter에 `project:` 키가 들어가지 않아 byte 출력이 마이그레이션 이전과 그대로 유지됩니다.
+
+같은 날짜·같은 slug로 sync가 반복되면 같은 폴더 안에서 `..._2.md`, `..._3.md` 식으로 자동 suffix가 붙어 기존 노트는 silently 덮이지 않고, `--overwrite`를 명시하면 suffix 없이 원래 파일을 그대로 교체합니다. 자세한 contract와 안전 정책은 `policies/runtime/agents/engineering-agent/obsidian-memory.md`를 참고하세요. `yule doctor`는 `obsidian vault` 체크를 자동 수행합니다.
+
+긴 원문 prompt가 들어와도 title/filename은 30~50자 수준의 짧은 요약으로 자동 정리됩니다 — `[Research]` / 마크다운 bold / 줄바꿈 / "오늘은", "이를 위해" 같은 filler를 제거한 뒤 첫 절을 잘라냅니다. 원문 전체는 frontmatter `original_prompt` 키와 본문 `## 원문 요청` 섹션에 보존되고, basename은 100자 이하로 강제됩니다.
 
 vault를 git으로 관리한다면 `--git-commit` 옵션으로 sync 직후 자동 commit까지 남길 수 있습니다. 대상은 코드 저장소가 아니라 **Obsidian vault repo**이고, 기본 동작은 **opt-in**, **이번 sync가 만든 그 note 파일 하나만 stage/commit**, **push는 절대 하지 않음**입니다. vault repo에 이미 staged 변경이 있거나 vault가 git repo가 아니면 fail-loud로 종료합니다. `--dry-run --git-commit`은 파일/commit 모두 시뮬레이션만 합니다.
 
@@ -448,7 +550,7 @@ yule obsidian sync --session <session_id> --git-commit --git-message "obsidian s
 yule obsidian sync --session <session_id> --git-commit --dry-run
 ```
 
-게이트웨이가 deliberation을 끝내면 `TechLeadSynthesis`(합의안/해야 할 일/더 조사할 것/사용자 결정 필요/승인 여부)도 session에 함께 저장되어, sync는 이 값을 복원해 `Agents/Engineering/Decisions/...` 아래에 5개 섹션을 갖춘 결정 노트로 떨어뜨립니다. synthesis 키가 없는 오래된 session은 안전하게 fallback해 `Research` 폴더의 자료 노트로만 떨어집니다.
+게이트웨이가 deliberation을 끝내면 `TechLeadSynthesis`(합의안/해야 할 일/더 조사할 것/사용자 결정 필요/승인 여부)도 session에 함께 저장되어, sync는 이 값을 복원해 기본 레이아웃 기준 `10-projects/<project>/decisions/` 아래에 5개 섹션을 갖춘 결정 노트로 떨어뜨립니다. synthesis 키가 없는 오래된 session은 안전하게 fallback해 `research/` 폴더의 자료 노트로만 떨어집니다.
 
 ## Discord Bot
 
@@ -491,6 +593,20 @@ yule discord bot
 
 이 구조에서는 Discord 봇이 브리핑 시점에 캘린더나 GitHub API 응답을 기다리지 않습니다.
 
+## Memory 인덱스
+
+`yule memory`는 Obsidian vault, 저장소 정책 문서(`policies/`, agent `CLAUDE.md`, `README.md`), 최근 workflow session artifact(research_pack/synthesis)를 로컬 SQLite FTS5에 색인하고 검색하는 layer입니다. 네트워크 의존이 없고, 결정적이며, 인덱스 파일은 `.cache/yule/memory.sqlite3` (또는 `YULE_MEMORY_DB_PATH`)에 떨어집니다.
+
+```bash
+yule memory reindex                                  # 모두 재색인
+yule memory reindex --skip-obsidian                  # vault 미설정 시 부분 재색인
+yule memory search "Obsidian sync 정책" --limit 5
+yule memory search "hero copy" --source-kind obsidian --note-kind decision
+yule memory search "운영-리서치" --role engineering-agent/tech-lead --json
+```
+
+검색 결과는 `[source_kind] title` + 경로 + role/task_type/note_kind/tags/score + snippet으로 출력합니다. `--json`은 retrieval 파이프라인에서 그대로 소비할 수 있는 평면 객체 배열을 반환합니다. reindex는 idempotent하며 source_kind별로 기존 슬라이스를 비우고 다시 채우므로 삭제된 노트도 깔끔히 사라집니다.
+
 ## 테스트
 
 기본 자동 테스트는 표준 라이브러리 `unittest`로 실행합니다.
@@ -498,6 +614,78 @@ yule discord bot
 ```bash
 python3 -m unittest discover -s tests -t .
 ```
+
+### 디렉토리 구조
+
+`tests/`는 기능 영역별 하위 패키지로 정리되어 있습니다. 새 테스트는 해당 영역 디렉토리에 추가하세요.
+
+```text
+tests/
+  _bootstrap.py          # sys.path 세팅 + 캐시 격리 헬퍼
+  _helpers.py            # 공유 fake message/channel/session 등
+  engineering/           # engineering-agent 라우터/대화/팀 런타임
+  research/              # research collector/loop/pack/sufficiency
+  memory/                # memory index + retrieval
+  obsidian/              # Obsidian export/writer/git/CLI sync
+  discord/               # discord 봇 런타임/명령/포매터/포럼
+  calendar/              # 캘린더 캐시/카테고리/E2E
+  planning/              # planning 입력/스냅샷/플래너
+  integrations/          # GitHub/TLS 등 외부 통합
+  core/                  # agent 디스패처/워크플로/타임존 등 공통 유틸
+```
+
+### 집중 테스트 묶음
+
+영역별로 좁혀서 돌리고 싶을 때 사용하는 묶음입니다. 라우터 파일이 관심사별로 3개로 쪼개져 있어, 회귀 디버깅 시 실패 위치가 곧 영역을 가리킵니다.
+
+- engineering-agent (라우팅/persistence/forum + 라우팅 결정 단위 테스트):
+
+  ```bash
+  python3 -m unittest \
+    tests.engineering.test_channel_router_routing \
+    tests.engineering.test_channel_router_persistence \
+    tests.engineering.test_channel_router_forum \
+    tests.engineering.test_routing
+  ```
+
+  대화/팀 런타임/리서치 루프 hook까지 포함하려면:
+
+  ```bash
+  python3 -m unittest discover -s tests/engineering -t .
+  ```
+
+- 리서치 sufficiency / collector 루프:
+
+  ```bash
+  python3 -m unittest \
+    tests.research.test_collector_sufficiency \
+    tests.research.test_sufficiency
+  ```
+
+- memory 인덱스 / retrieval:
+
+  ```bash
+  python3 -m unittest \
+    tests.memory.test_index \
+    tests.memory.test_retrieval
+  ```
+
+- Obsidian 동기화:
+
+  ```bash
+  python3 -m unittest \
+    tests.obsidian.test_export \
+    tests.obsidian.test_writer \
+    tests.obsidian.test_cli_sync
+  ```
+
+### 공유 fixture
+
+라우터 테스트에서 반복되는 가짜 Discord 채널/메시지/세션 객체는 `tests/_helpers.py`에 모여 있습니다. 새 라우터 테스트를 추가할 때는 `tests._helpers`에서 `FakeChannel`, `FakeMessage`, `FakeSession`, `isolate_cache_for_test` 등을 import해 사용하세요. `tests/_bootstrap.py`는 `sys.path`에 `src/`를 끼워 넣고 기본 `YULE_CACHE_DB_PATH`를 격리된 파일로 돌려놓습니다.
+
+### Optional dependency skip
+
+`tests/calendar/test_category_color.py`는 `icalendar` 패키지가 설치돼 있어야 의미 있게 돌아갑니다. 패키지를 설치하지 않은 dev 환경에서는 자동으로 skip 처리되도록 가드가 들어 있어 전체 `unittest discover`가 실패하지 않습니다. 실제로 캘린더 경로를 확인하려면 `pip install -e .`로 프로젝트 의존성을 설치해 주세요.
 
 ## 로컬 전용 파일
 

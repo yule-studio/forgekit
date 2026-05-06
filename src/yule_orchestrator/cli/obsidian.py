@@ -31,6 +31,8 @@ def run_obsidian_sync_command(
     dry_run: bool,
     git_commit: bool = False,
     git_message: Optional[str] = None,
+    project: Optional[str] = None,
+    layout: Optional[str] = None,
 ) -> int:
     if kind is not None and kind not in VALID_KINDS:
         print(
@@ -80,7 +82,14 @@ def run_obsidian_sync_command(
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    note = render_research_note(pack, session=session, synthesis=synthesis, kind=kind)
+    note = render_research_note(
+        pack,
+        session=session,
+        synthesis=synthesis,
+        kind=kind,
+        project=project,
+        layout=layout,
+    )
 
     try:
         result = write_note(

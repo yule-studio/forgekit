@@ -60,10 +60,25 @@ class BotEntry:
     runner: str
     display_label: str
     member_profile: Optional[MemberBotProfile] = None
+    skip_reason: Optional[str] = None
 
     @property
     def status(self) -> str:
+        if self.skip_reason:
+            return f"skipped ({self.skip_reason})"
         return "active" if self.has_token else "skipped (token missing)"
+
+    @property
+    def runnable(self) -> bool:
+        """True iff supervisor should spawn this bot.
+
+        A bot is runnable when it has a token AND that token passes the
+        shape check (or there's no profile to run shape check against —
+        e.g. the planning bot uses a different env). ``skip_reason``
+        being non-None means "do not spawn".
+        """
+
+        return self.has_token and not self.skip_reason
 
 
 @dataclass(frozen=True)
@@ -74,10 +89,10 @@ class SupervisorInventory:
     warnings: Tuple[str, ...] = field(default_factory=tuple)
 
     def active(self) -> Tuple[BotEntry, ...]:
-        return tuple(bot for bot in self.bots if bot.has_token)
+        return tuple(bot for bot in self.bots if bot.runnable)
 
     def skipped(self) -> Tuple[BotEntry, ...]:
-        return tuple(bot for bot in self.bots if not bot.has_token)
+        return tuple(bot for bot in self.bots if not bot.runnable)
 
     def by_family(self, family: str) -> Tuple[BotEntry, ...]:
         return tuple(bot for bot in self.bots if bot.family == family)
@@ -176,12 +191,13 @@ def start_all(
 
     results: list[SpawnResult] = []
     for bot in inventory.bots:
-        if not bot.has_token:
+        if not bot.runnable:
+            reason = bot.skip_reason or f"{bot.env_key} is empty"
             results.append(
                 SpawnResult(
                     bot_id=bot.bot_id,
                     started=False,
-                    skipped_reason=f"{bot.env_key} is empty",
+                    skipped_reason=reason,
                 )
             )
             continue
@@ -226,8 +242,20 @@ def _build_planning_entry(env_map: Mapping[str, str]) -> BotEntry:
 def _build_member_entry(profile: MemberBotProfile, env_map: Mapping[str, str]) -> BotEntry:
     # ``profile.token`` was filled from ``os.environ`` at load time; for tests
     # we re-resolve against the supplied env to keep injection consistent.
+    from .member_bots import looks_like_real_discord_token
+
     raw = env_map.get(profile.env_key, "")
-    has_token = bool(raw and raw.strip()) or bool(profile.token)
+    raw_stripped = raw.strip() if isinstance(raw, str) else ""
+    effective_token = raw_stripped or (profile.token or "")
+    has_token = bool(effective_token)
+    skip_reason: Optional[str] = None
+    if not has_token:
+        skip_reason = f"{profile.env_key} is empty"
+    elif not looks_like_real_discord_token(effective_token):
+        skip_reason = (
+            f"{profile.env_key} is set but doesn't look like a real Discord token "
+            "(placeholder or wrong shape) — replace it in .env.local"
+        )
     bot_id = f"{profile.agent_id}/{profile.role}"
     return BotEntry(
         bot_id=bot_id,
@@ -242,6 +270,7 @@ def _build_member_entry(profile: MemberBotProfile, env_map: Mapping[str, str]) -
         ),
         display_label=profile.display_label,
         member_profile=profile,
+        skip_reason=skip_reason,
     )
 
 

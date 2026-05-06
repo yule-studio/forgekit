@@ -30,7 +30,7 @@ from yule_orchestrator.agents.review_loop import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _feedback(

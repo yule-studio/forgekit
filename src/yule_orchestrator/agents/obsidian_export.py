@@ -16,11 +16,12 @@ truth for title/source/roles/status/session_id/created_at.
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Mapping, Optional, Sequence
 
 from .deliberation import TechLeadSynthesis
 from .research_pack import ResearchAttachment, ResearchPack
@@ -29,10 +30,98 @@ from .workflow_state import WorkflowSession
 
 CONTRACT_VERSION = "research-forum-export/v0"
 
+# ---------------------------------------------------------------------------
+# Layout / project policy (yule-agent-vault is the default)
+# ---------------------------------------------------------------------------
+#
+# yule-agent-vault layout (default):
+#   00-inbox/unsorted/        — 애매한 문서, kind 미지정/미상
+#   10-projects/{project}/    — 프로젝트 관련 (research/decisions/references/task-logs/meeting-notes)
+#   20-areas/{area}/          — 지속 참고 기술 개념
+#   30-resources/             — 일반 자료 요약
+#   40-patterns/              — 재사용 설계/구현 방식
+#   50-snippets/{lang}/       — 코드 조각
+#   60-troubleshooting/{area}/— 에러 해결
+#   70-daily/                 — 일일 작업 기록
+#   90-archive/               — 오래된 문서
+#
+# legacy-agent layout (opt-in via OBSIDIAN_EXPORT_LAYOUT=legacy-agent):
+#   Agents/Engineering/{Research|Decisions|References}/
+#
+# Switching the default required a one-time path change for callers that
+# expected the flat ``Agents/Engineering/...`` tree; any pre-existing notes
+# in that tree are unaffected because Obsidian-side files are never moved
+# by this module — only future writes pick up the new layout.
+
+ENV_DEFAULT_PROJECT = "OBSIDIAN_DEFAULT_PROJECT"
+ENV_EXPORT_LAYOUT = "OBSIDIAN_EXPORT_LAYOUT"
+
+LAYOUT_YULE_AGENT_VAULT = "yule-agent-vault"
+LAYOUT_LEGACY_AGENT = "legacy-agent"
+KNOWN_LAYOUTS = (LAYOUT_YULE_AGENT_VAULT, LAYOUT_LEGACY_AGENT)
+DEFAULT_LAYOUT = LAYOUT_YULE_AGENT_VAULT
+
+# Hard-coded fallback when ``OBSIDIAN_DEFAULT_PROJECT`` is not set.
+DEFAULT_PROJECT = "yule-studio-agent"
+
+# yule-agent-vault top-level folders.
+INBOX_BASE = "00-inbox"
+INBOX_UNSORTED = f"{INBOX_BASE}/unsorted"
+PROJECTS_BASE = "10-projects"
+AREAS_BASE = "20-areas"
+RESOURCES_BASE = "30-resources"
+PATTERNS_BASE = "40-patterns"
+SNIPPETS_BASE = "50-snippets"
+TROUBLESHOOTING_BASE = "60-troubleshooting"
+DAILY_BASE = "70-daily"
+ARCHIVE_BASE = "90-archive"
+
+# Per-project subdirectories (yule-agent-vault layout).
+PROJECT_RESEARCH_SUBDIR = "research"
+PROJECT_DECISIONS_SUBDIR = "decisions"
+PROJECT_REFERENCES_SUBDIR = "references"
+PROJECT_TASK_LOGS_SUBDIR = "task-logs"
+PROJECT_MEETING_NOTES_SUBDIR = "meeting-notes"
+
+# Legacy-agent layout (kept for opt-in legacy mode + back-compat imports).
 VAULT_BASE = "Agents/Engineering"
 PATH_RESEARCH = f"{VAULT_BASE}/Research"
 PATH_DECISIONS = f"{VAULT_BASE}/Decisions"
 PATH_REFERENCES = f"{VAULT_BASE}/References"
+
+# Recognised kind aliases → canonical project subdirectory. Anything not
+# in this map gets routed to ``00-inbox/unsorted/`` so it surfaces for
+# triage instead of silently landing in research/.
+_KIND_TO_PROJECT_SUBDIR: Mapping[str, str] = {
+    "research": PROJECT_RESEARCH_SUBDIR,
+    "decision": PROJECT_DECISIONS_SUBDIR,
+    "decisions": PROJECT_DECISIONS_SUBDIR,
+    "reference": PROJECT_REFERENCES_SUBDIR,
+    "references": PROJECT_REFERENCES_SUBDIR,
+    "task-log": PROJECT_TASK_LOGS_SUBDIR,
+    "task-logs": PROJECT_TASK_LOGS_SUBDIR,
+    "tasklog": PROJECT_TASK_LOGS_SUBDIR,
+    "meeting": PROJECT_MEETING_NOTES_SUBDIR,
+    "meeting-note": PROJECT_MEETING_NOTES_SUBDIR,
+    "meeting-notes": PROJECT_MEETING_NOTES_SUBDIR,
+}
+
+# Filename label per kind (used by ``recommend_path`` to build basenames
+# like ``YYYY-MM-DD_decision-<slug>.md``). Anything unrecognised falls back
+# to ``research`` so legacy callers keep working.
+_KIND_TO_LABEL: Mapping[str, str] = {
+    "research": "research",
+    "decision": "decision",
+    "decisions": "decision",
+    "reference": "reference",
+    "references": "reference",
+    "task-log": "task-log",
+    "task-logs": "task-log",
+    "tasklog": "task-log",
+    "meeting": "meeting",
+    "meeting-note": "meeting",
+    "meeting-notes": "meeting",
+}
 
 
 @dataclass(frozen=True)
@@ -67,19 +156,95 @@ class ObsidianNote:
 # ---------------------------------------------------------------------------
 
 
+FILENAME_BASENAME_LIMIT = 100  # tip-of-the-iceberg cap for the bare filename
+FILENAME_SLUG_LIMIT = 50  # leaves room for ``YYYY-MM-DD_<kind>-`` prefix
+TITLE_LIMIT = 50  # short, readable Obsidian H1 / frontmatter title
+
+
+def resolve_layout(
+    layout: Optional[str] = None,
+    *,
+    env: Optional[Mapping[str, str]] = None,
+) -> str:
+    """Return the canonical layout name (yule-agent-vault | legacy-agent).
+
+    Resolution: explicit *layout* arg (validated) → ``OBSIDIAN_EXPORT_LAYOUT``
+    env (case-insensitive, validated) → :data:`DEFAULT_LAYOUT`. Anything
+    unrecognised silently degrades to the default — operators get the new
+    vault tree by default and legacy mode is strictly opt-in.
+    """
+
+    if layout:
+        normalized = str(layout).strip().lower()
+        if normalized in KNOWN_LAYOUTS:
+            return normalized
+        return DEFAULT_LAYOUT
+    env_map: Mapping[str, str] = env if env is not None else os.environ
+    raw = (env_map.get(ENV_EXPORT_LAYOUT) or "").strip().lower()
+    if raw in KNOWN_LAYOUTS:
+        return raw
+    return DEFAULT_LAYOUT
+
+
+def resolve_default_project(
+    env: Optional[Mapping[str, str]] = None,
+) -> str:
+    """Return the operator-configured default project (or fallback).
+
+    Reads ``OBSIDIAN_DEFAULT_PROJECT`` from *env* (or the live process env)
+    and trims whitespace. When unset, falls back to :data:`DEFAULT_PROJECT`
+    so the default-write target is always a concrete folder.
+    """
+
+    env_map: Mapping[str, str] = env if env is not None else os.environ
+    raw = (env_map.get(ENV_DEFAULT_PROJECT) or "").strip()
+    return raw or DEFAULT_PROJECT
+
+
 def recommend_path(
     *,
     title: str,
     kind: str,
     created_at: Optional[datetime] = None,
+    project: Optional[str] = None,
+    layout: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> ExportPath:
-    """Return the recommended ``Agents/Engineering/<kind>/<YYYY-MM-DD_slug>.md`` path.
+    """Return the recommended export path.
 
-    *kind* must be one of ``research``/``decision``/``reference`` (case
-    insensitive). Anything else falls back to ``research``.
+    Layout default is :data:`LAYOUT_YULE_AGENT_VAULT` — note targets land
+    under ``10-projects/<project>/<kind>/``. Caller can opt into the legacy
+    flat tree by passing ``layout="legacy-agent"`` or via the
+    ``OBSIDIAN_EXPORT_LAYOUT`` env.
+
+    Project resolution for the default layout: explicit *project* arg →
+    ``OBSIDIAN_DEFAULT_PROJECT`` env → :data:`DEFAULT_PROJECT`
+    (``yule-studio-agent``). The session-aware project chain that prefers
+    ``session.extra["project"]`` is run by :func:`render_research_note`
+    before this function is called — keeping that lookup in the renderer
+    means callers using the bare ``recommend_path`` API don't need to
+    construct a ``WorkflowSession`` just to get the right folder.
+
+    *kind* aliases (case-insensitive): ``research`` /
+    ``decision`` (or ``decisions``) / ``reference`` (or ``references``)
+    / ``task-log`` (or ``task-logs``) / ``meeting`` (or ``meeting-note`` /
+    ``meeting-notes``). Anything else routes to ``00-inbox/unsorted/`` so
+    the operator notices the unrecognised kind instead of silently
+    burying it under research/.
+
+    The slug is capped at :data:`FILENAME_SLUG_LIMIT` and the full basename
+    never exceeds :data:`FILENAME_BASENAME_LIMIT` so Obsidian and git stay
+    within their path-length limits.
     """
 
-    folder = _kind_to_folder(kind)
+    layout_resolved = resolve_layout(layout, env=env)
+    if layout_resolved == LAYOUT_LEGACY_AGENT:
+        folder = _legacy_kind_to_folder(kind)
+    else:
+        project_resolved = (
+            (project or "").strip() or resolve_default_project(env=env)
+        )
+        folder = _yule_vault_kind_to_folder(kind, project_resolved)
     when = created_at or datetime.utcnow()
     if isinstance(when, datetime):
         date_part = when.date().isoformat()
@@ -87,10 +252,54 @@ def recommend_path(
         date_part = when.isoformat()
     else:
         date_part = datetime.utcnow().date().isoformat()
-    slug = _slugify(title)
+    kind_normalized = _kind_short_label(kind)
+    slug = _slugify(title, max_chars=FILENAME_SLUG_LIMIT)
     if not slug:
         slug = "untitled"
-    return ExportPath(folder=folder, filename=f"{date_part}_{slug}.md")
+    basename = f"{date_part}_{kind_normalized}-{slug}.md"
+    if len(basename) > FILENAME_BASENAME_LIMIT:
+        # Hard cap — trim slug further so the basename always fits.
+        keep = FILENAME_BASENAME_LIMIT - (len(date_part) + 1 + len(kind_normalized) + 1 + 3)
+        basename = f"{date_part}_{kind_normalized}-{slug[:max(1, keep)]}.md"
+    return ExportPath(folder=folder, filename=basename)
+
+
+def _kind_short_label(kind: str) -> str:
+    """Return the filename-safe short label for *kind*.
+
+    Falls back to ``research`` for unknown kinds — the folder routing
+    sends them to ``00-inbox/unsorted/`` but the filename label stays
+    deterministic so legacy filename tests keep passing.
+    """
+
+    normalized = (kind or "").strip().lower()
+    return _KIND_TO_LABEL.get(normalized, "research")
+
+
+def _yule_vault_kind_to_folder(kind: str, project: str) -> str:
+    """yule-agent-vault folder for *kind* under ``10-projects/<project>/``.
+
+    Unknown *kind* values land in ``00-inbox/unsorted/`` so they show up
+    in the operator's triage queue instead of being silently buried.
+    """
+
+    normalized = (kind or "").strip().lower()
+    subdir = _KIND_TO_PROJECT_SUBDIR.get(normalized)
+    if subdir is None:
+        return INBOX_UNSORTED
+    project_slug = _slugify(project) or _slugify(DEFAULT_PROJECT) or "uncategorized"
+    return f"{PROJECTS_BASE}/{project_slug}/{subdir}"
+
+
+def _legacy_kind_to_folder(kind: str) -> str:
+    """Legacy ``Agents/Engineering/<Kind>/`` mapping (opt-in only)."""
+
+    normalized = (kind or "").strip().lower()
+    if normalized in ("decision", "decisions"):
+        return PATH_DECISIONS
+    if normalized in ("reference", "references"):
+        return PATH_REFERENCES
+    return PATH_RESEARCH
 
 
 # ---------------------------------------------------------------------------
@@ -105,30 +314,113 @@ def render_research_note(
     synthesis: Optional[TechLeadSynthesis] = None,
     kind: Optional[str] = None,
     exported_at: Optional[datetime] = None,
+    project: Optional[str] = None,
+    layout: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> ObsidianNote:
     """Render a ResearchPack into an Obsidian-ready note.
 
     *kind* defaults based on whether a synthesis is provided
     (``decision`` if so, else ``research``). Pass ``"reference"``
     explicitly for pure UX/design reference notes.
+
+    Path layout follows :data:`DEFAULT_LAYOUT` (yule-agent-vault) by
+    default — notes land under ``10-projects/<project>/<kind>/``. The
+    project resolution chain runs in this order:
+
+    1. Explicit *project* kwarg (e.g. CLI ``--project``).
+    2. ``session.extra["project"]`` / ``session.extra["project_name"]``.
+    3. ``OBSIDIAN_DEFAULT_PROJECT`` env (via *env* or ``os.environ``).
+    4. Hard-coded :data:`DEFAULT_PROJECT` (``yule-studio-agent``).
+
+    Pass ``layout="legacy-agent"`` (or set
+    ``OBSIDIAN_EXPORT_LAYOUT=legacy-agent``) to get the old
+    ``Agents/Engineering/...`` flat tree — used only by callers that
+    haven't migrated their vault yet.
     """
 
     chosen_kind = (kind or _infer_kind(synthesis)).lower()
+    layout_resolved = resolve_layout(layout, env=env)
+    chosen_project = _resolve_project(
+        project=project,
+        session=session,
+        layout=layout_resolved,
+        env=env,
+    )
+    short_title = derive_short_title(pack, session=session)
     frontmatter = _frontmatter(
         pack=pack,
         session=session,
         synthesis=synthesis,
         kind=chosen_kind,
         exported_at=exported_at,
+        short_title=short_title,
     )
-    body_lines = _body(pack, synthesis=synthesis, session=session)
+    if chosen_project:
+        frontmatter["project"] = chosen_project
+    body_lines = _body(
+        pack, synthesis=synthesis, session=session, short_title=short_title
+    )
     content = _format_frontmatter(frontmatter) + "\n\n" + "\n\n".join(body_lines).strip() + "\n"
     path = recommend_path(
-        title=pack.title,
+        title=short_title,
         kind=chosen_kind,
         created_at=pack.created_at,
+        project=chosen_project,
+        layout=layout_resolved,
+        env=env,
     )
     return ObsidianNote(path=path, content=content, frontmatter=frontmatter)
+
+
+def _resolve_project(
+    *,
+    project: Optional[str],
+    session: Optional[WorkflowSession],
+    layout: str,
+    env: Optional[Mapping[str, str]],
+) -> Optional[str]:
+    """Walk the project resolution chain.
+
+    Order: explicit kwarg → ``session.extra["project"|"project_name"]`` →
+    ``OBSIDIAN_DEFAULT_PROJECT`` env → :data:`DEFAULT_PROJECT`. Returns
+    ``None`` only in legacy-agent layout — there the legacy flat tree
+    doesn't carry a project segment so we drop it from frontmatter as
+    well.
+    """
+
+    if layout == LAYOUT_LEGACY_AGENT:
+        # Legacy mode keeps frontmatter project-less unless caller set one
+        # explicitly. session.extra/env are intentionally ignored so the
+        # legacy notes stay byte-stable for vaults that haven't migrated.
+        explicit = (project or "").strip()
+        return explicit or None
+
+    explicit = (project or "").strip()
+    if explicit:
+        return explicit
+    from_session = _project_from_session(session)
+    if from_session:
+        return from_session
+    return resolve_default_project(env=env)
+
+
+def _project_from_session(session: Optional[WorkflowSession]) -> Optional[str]:
+    """Best-effort project derivation from session metadata.
+
+    Looks for an explicit ``project`` (or ``project_name``) key in
+    ``session.extra``. Operators stash it there at intake time when a
+    request is clearly tied to a known project. Returns ``None`` when
+    nothing usable is found.
+    """
+
+    if session is None:
+        return None
+    extra = dict(getattr(session, "extra", None) or {})
+    candidate = extra.get("project") or extra.get("project_name")
+    if candidate:
+        return str(candidate).strip() or None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +435,12 @@ def _frontmatter(
     synthesis: Optional[TechLeadSynthesis],
     kind: str,
     exported_at: Optional[datetime],
+    short_title: Optional[str] = None,
 ) -> dict:
+    title = (short_title or _clean_title(pack.title) or "(untitled)").strip() or "(untitled)"
+    original_prompt = _resolve_original_prompt(pack=pack, session=session)
     fm: dict = {
-        "title": pack.title or "(untitled)",
+        "title": title,
         "source": pack.primary_url or _first_source_url(pack),
         "roles": list(pack.author_roles),
         "status": _status_from(synthesis, session),
@@ -153,11 +448,13 @@ def _frontmatter(
         "created_at": _iso_or_none(pack.created_at),
         "kind": kind,
         "tags": _tags_for(pack, kind),
-        "topic": pack.title or "(untitled)",
+        "topic": title,
         "task_type": getattr(session, "task_type", None) if session else None,
         "sources": _source_descriptors(pack),
         "contract": CONTRACT_VERSION,
     }
+    if original_prompt and original_prompt != title:
+        fm["original_prompt"] = original_prompt
     if synthesis is not None:
         fm["approval_required"] = bool(synthesis.approval_required)
     if exported_at is not None:
@@ -170,10 +467,16 @@ def _body(
     *,
     synthesis: Optional[TechLeadSynthesis],
     session: Optional[WorkflowSession],
+    short_title: Optional[str] = None,
 ) -> list[str]:
     blocks: list[str] = []
 
-    blocks.append(f"# {pack.title or '(untitled)'}")
+    h1 = (short_title or _clean_title(pack.title) or "(untitled)").strip() or "(untitled)"
+    blocks.append(f"# {h1}")
+
+    original_prompt = _resolve_original_prompt(pack=pack, session=session)
+    if original_prompt and original_prompt != h1:
+        blocks.append("## 원문 요청\n" + original_prompt)
 
     if synthesis is not None:
         blocks.append("## 합의안\n" + synthesis.consensus)
@@ -232,15 +535,6 @@ def _body(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _kind_to_folder(kind: str) -> str:
-    normalized = (kind or "").strip().lower()
-    if normalized in ("decision", "decisions"):
-        return PATH_DECISIONS
-    if normalized in ("reference", "references"):
-        return PATH_REFERENCES
-    return PATH_RESEARCH
 
 
 def _infer_kind(synthesis: Optional[TechLeadSynthesis]) -> str:
@@ -327,12 +621,211 @@ def _attachment_lines(attachments: Sequence[ResearchAttachment]) -> list[str]:
     return out
 
 
-def _slugify(value: str) -> str:
+def _slugify(value: str, *, max_chars: int = FILENAME_SLUG_LIMIT) -> str:
     if not value:
         return ""
     normalized = unicodedata.normalize("NFC", value)
     cleaned = re.sub(r"[^0-9A-Za-z가-힣]+", "-", normalized).strip("-").lower()
-    return cleaned[:80]
+    return cleaned[:max(1, max_chars)]
+
+
+# ---------------------------------------------------------------------------
+# Short title derivation (deterministic, LLM-free)
+# ---------------------------------------------------------------------------
+
+
+# Filler / connector phrases that pad the start of a Korean prompt without
+# adding signal. Removed before the deterministic summarizer kicks in.
+_FILLER_PREFIXES = (
+    "오늘은 ",
+    "오늘 ",
+    "내일은 ",
+    "지금은 ",
+    "이번에는 ",
+    "이번엔 ",
+    "다음 주제로 ",
+    "다음으로 ",
+    "이를 위해 ",
+    "그래서 ",
+    "그러니까 ",
+    "한번 ",
+    "잠깐 ",
+)
+
+_FILLER_SUFFIXES = (
+    " 고민해보려 합니다.",
+    " 고민해보려 합니다",
+    " 고민해보고자 합니다.",
+    " 고민해보고자 합니다",
+    " 정리해보려 합니다.",
+    " 정리해보려 합니다",
+    " 검토해보려 합니다.",
+    " 검토해보려 합니다",
+    " 해보려 합니다.",
+    " 해보려 합니다",
+    " 합니다.",
+    " 합니다",
+)
+
+
+_RESEARCH_PREFIX_RE = re.compile(r"^\s*\[(?:Research|Decision|Reference)\]\s*", re.IGNORECASE)
+_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+
+
+def _clean_title(text: str) -> str:
+    """Strip Discord/Obsidian markup that doesn't belong in a title.
+
+    Removes ``[Research]`` / ``[Decision]`` style prefixes, markdown
+    ``**bold**`` markers, line breaks, and runs of whitespace. The output
+    is a single-line plain string that downstream summarisation /
+    truncation can work on without escape-sequence surprises.
+    """
+
+    if not text:
+        return ""
+    cleaned = _RESEARCH_PREFIX_RE.sub("", text)
+    cleaned = _BOLD_RE.sub(r"\1", cleaned)
+    cleaned = cleaned.replace("\r", " ").replace("\n", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" -·…")
+
+
+def _strip_fillers(text: str) -> str:
+    """Drop common Korean filler prefixes/suffixes that pad a prompt."""
+
+    out = text.strip()
+    if not out:
+        return ""
+    changed = True
+    while changed:
+        changed = False
+        for prefix in _FILLER_PREFIXES:
+            if out.startswith(prefix):
+                out = out[len(prefix):].lstrip()
+                changed = True
+                break
+    for suffix in _FILLER_SUFFIXES:
+        if out.endswith(suffix):
+            out = out[: -len(suffix)].rstrip()
+            break
+    return out
+
+
+def _summarize_for_title(text: str, *, max_chars: int = TITLE_LIMIT) -> str:
+    """Deterministic short-title summariser.
+
+    Strategy: clean → strip fillers → take the first sentence/clause →
+    truncate at a word boundary under ``max_chars``. Korean and English
+    both supported because we rely on simple punctuation/whitespace and
+    don't tokenise on script.
+    """
+
+    cleaned = _clean_title(text)
+    cleaned = _strip_fillers(cleaned)
+    if not cleaned:
+        return ""
+    # Split on the first strong sentence-ending punctuation.
+    for sep in (". ", "! ", "? ", "。", "·", " — ", " - ", "\u2014"):
+        idx = cleaned.find(sep)
+        if 0 < idx < max_chars * 3:
+            cleaned = cleaned[:idx].strip(" ,.;:")
+            break
+    cleaned = _strip_fillers(cleaned)
+    if len(cleaned) <= max_chars:
+        return cleaned
+    # Word-boundary trim — prefer not to cut a token in half. Korean
+    # words are space-delimited at the eojeol boundary so this works
+    # for both scripts.
+    head = cleaned[:max_chars]
+    pivot = head.rfind(" ")
+    if pivot >= int(max_chars * 0.5):
+        head = head[:pivot]
+    return head.rstrip(" ,.;:") + "…"
+
+
+def derive_short_title(
+    pack: ResearchPack,
+    *,
+    session: Optional[WorkflowSession] = None,
+    max_chars: int = TITLE_LIMIT,
+) -> str:
+    """Pick a short, readable title for the Obsidian note.
+
+    Resolution order:
+      1. ``session.extra["short_title"]`` / ``session.extra["research_title"]``
+         / ``session.extra["routing_decision_title"]`` if any are set —
+         operators pre-stash a curated title at intake time.
+      2. ``pack.title`` after :func:`_clean_title` if it's already short
+         and looks intentional (≤ ``max_chars`` and not a full sentence).
+      3. :func:`_summarize_for_title` of (in order) ``pack.title``,
+         ``pack.summary``, or ``session.prompt``.
+      4. Literal fallback ``"engineering 작업"`` so the title is never
+         empty — keeps filename slugify from collapsing to "untitled".
+    """
+
+    if session is not None:
+        extra = dict(getattr(session, "extra", None) or {})
+        for key in ("short_title", "research_title", "routing_decision_title"):
+            candidate = extra.get(key)
+            if isinstance(candidate, str):
+                cleaned = _clean_title(candidate)
+                if cleaned:
+                    return cleaned[:max_chars]
+
+    pack_title = _clean_title(getattr(pack, "title", "") or "")
+    if pack_title and len(pack_title) <= max_chars and not _looks_like_full_prompt(pack_title):
+        return pack_title
+
+    for candidate in (
+        getattr(pack, "title", "") or "",
+        getattr(pack, "summary", "") or "",
+        getattr(session, "prompt", None) if session else None,
+    ):
+        if not candidate:
+            continue
+        derived = _summarize_for_title(candidate, max_chars=max_chars)
+        if derived:
+            return derived
+
+    return "engineering 작업"
+
+
+def _resolve_original_prompt(
+    *,
+    pack: ResearchPack,
+    session: Optional[WorkflowSession],
+) -> Optional[str]:
+    """Pick the operator-facing original prompt for the note body/frontmatter.
+
+    Order: ``session.prompt`` (most authoritative — the actual Discord
+    message), then ``pack.summary`` if it's longer than the title, then
+    ``pack.title`` itself when it's clearly a full sentence (the legacy
+    "title=full prompt" data we want to migrate). Returns ``None`` when
+    there is nothing meaningful to preserve.
+    """
+
+    if session is not None:
+        prompt = (getattr(session, "prompt", None) or "").strip()
+        if prompt:
+            return prompt
+    summary = (getattr(pack, "summary", "") or "").strip()
+    title = (getattr(pack, "title", "") or "").strip()
+    if summary and summary != title and len(summary) > len(title):
+        return summary
+    if title and _looks_like_full_prompt(title):
+        return title
+    return None
+
+
+def _looks_like_full_prompt(text: str) -> bool:
+    """Heuristic: a sentence-shaped paragraph is probably the raw prompt."""
+
+    # Multiple Korean sentence enders or hangul predicate endings = prompt.
+    if any(marker in text for marker in (". ", "다. ", "다 ", "려 합니다", "고 싶")):
+        return True
+    if text.count(" ") > 8:  # very long, treat as full prompt
+        return True
+    return False
 
 
 def _format_frontmatter(fm: dict) -> str:

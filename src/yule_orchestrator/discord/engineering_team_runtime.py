@@ -68,6 +68,7 @@ DEFAULT_RESEARCH_ROLE_SEQUENCE: Tuple[str, ...] = (
     "backend-engineer",
     "frontend-engineer",
     "qa-engineer",
+    "devops-engineer",
 )
 
 
@@ -495,12 +496,19 @@ def handle_research_turn_message(
 
     open_session_id = parse_research_open_marker(text)
     if open_session_id is not None:
-        return _handle_research_open_call(
+        if _was_recently_handled(role=role, session_id=open_session_id, kind="open"):
+            return None
+        outcome = _handle_research_open_call(
             role=role,
             session_id=open_session_id,
             session_loader=session_loader,
             pack_loader=pack_loader,
         )
+        if outcome is not None:
+            _mark_recently_handled(
+                role=role, session_id=open_session_id, kind="open"
+            )
+        return outcome
 
     parsed = parse_research_dispatch_marker(text)
     if parsed is None:
@@ -522,15 +530,26 @@ def handle_research_turn_message(
     if session is None:
         return None
 
+    if _was_recently_handled(
+        role=role, session_id=session_id, kind=str(effective_role)
+    ):
+        return None
+
     sequence = deliberation_research_role_sequence(session)
     if effective_role == RESEARCH_SYNTHESIS_ROLE:
-        # tech-lead synthesis comment closes the chain. Re-use the
-        # existing ``synthesize_thread`` so the forum and working thread
-        # converge on the same wording.
+        # tech-lead synthesis comment closes the chain. If a synthesis
+        # was already persisted (gateway forum hook), prefer the rendered
+        # text we kept in session.extra so the team sees one consistent
+        # wording across rebuilds. Otherwise re-run synthesize_thread.
         research_pack = _maybe_load_pack(pack_loader, session)
-        accumulated = _replay_role_takes(session, sequence, research_pack)
-        _, synthesis_text = synthesize_thread(
-            session, accumulated, research_pack=research_pack
+        synthesis_text = _load_synthesis_text_from_session_extra(session)
+        if not synthesis_text:
+            accumulated = _replay_role_takes(session, sequence, research_pack)
+            _, synthesis_text = synthesize_thread(
+                session, accumulated, research_pack=research_pack
+            )
+        _mark_recently_handled(
+            role=role, session_id=session_id, kind=str(effective_role)
         )
         return ResearchTurnOutcome(
             role=role,
@@ -551,6 +570,9 @@ def handle_research_turn_message(
         previous_turns=_replay_role_takes_until(
             session, sequence, effective_role, research_pack
         ),
+    )
+    _mark_recently_handled(
+        role=role, session_id=session_id, kind=str(effective_role)
     )
 
     next_role = _next_research_role(sequence, effective_role)
@@ -663,6 +685,67 @@ def _maybe_load_pack(
         return pack_loader(session)
     except Exception:  # noqa: BLE001 - never crash the chain
         return _load_pack_from_session_extra(session)
+
+
+# ---------------------------------------------------------------------------
+# Duplicate-turn suppression (process-local)
+# ---------------------------------------------------------------------------
+# Discord may redeliver a marker (e.g. when a member bot's reaction lands
+# late). Without a guard the bot would post the same role take twice in a
+# row. We keep a small in-memory set keyed by (role, session_id, kind)
+# bounded to ``MAX_HANDLED_KEYS`` to avoid unbounded growth.
+
+MAX_HANDLED_KEYS = 256
+_HANDLED_TURNS: list[tuple[str, str, str]] = []
+_HANDLED_TURNS_SET: set[tuple[str, str, str]] = set()
+
+
+def _was_recently_handled(*, role: str, session_id: str, kind: str) -> bool:
+    return (role, session_id, kind) in _HANDLED_TURNS_SET
+
+
+def _mark_recently_handled(*, role: str, session_id: str, kind: str) -> None:
+    key = (role, session_id, kind)
+    if key in _HANDLED_TURNS_SET:
+        return
+    _HANDLED_TURNS_SET.add(key)
+    _HANDLED_TURNS.append(key)
+    while len(_HANDLED_TURNS) > MAX_HANDLED_KEYS:
+        evicted = _HANDLED_TURNS.pop(0)
+        _HANDLED_TURNS_SET.discard(evicted)
+
+
+def reset_handled_turns_for_tests() -> None:
+    """Test hook to clear duplicate-suppression state between cases."""
+
+    _HANDLED_TURNS.clear()
+    _HANDLED_TURNS_SET.clear()
+
+
+def _load_synthesis_text_from_session_extra(session: WorkflowSession) -> Optional[str]:
+    """Return the persisted synthesis text from session.extra if any.
+
+    Falls back to rendering ``research_synthesis`` (structured) when only
+    the dict form is present. Empty/missing returns None so callers know
+    to recompute.
+    """
+
+    extra = getattr(session, "extra", None) or {}
+    raw_text = extra.get("research_synthesis_text") if isinstance(extra, dict) else None
+    if isinstance(raw_text, str) and raw_text.strip():
+        return raw_text
+    raw = extra.get("research_synthesis") if isinstance(extra, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    try:
+        from ..agents.deliberation import render_synthesis, synthesis_from_dict
+    except Exception:  # noqa: BLE001 - best-effort restore
+        return None
+    try:
+        synthesis = synthesis_from_dict(raw)
+    except Exception:  # noqa: BLE001
+        return None
+    return render_synthesis(synthesis)
 
 
 def _load_pack_from_session_extra(session: WorkflowSession) -> Any:
@@ -855,16 +938,59 @@ def deliberation_role_turn(
     contract instead of the bare templated line. ``runner_fn`` is the
     optional LLM hook; when None or when it raises, the deterministic
     fallback inside ``run_role_deliberation`` handles the response.
+
+    Right before the run, we ask the local memory layer for relevant
+    past notes/policies/workflow artifacts and stash them on the
+    ``DeliberationContext``. Retrieval failure is logged and ignored —
+    deterministic fallback runs unchanged.
     """
 
+    memory_context = _retrieve_memory_for_role(
+        role=role,
+        session=session,
+        research_pack=research_pack,
+    )
     context = DeliberationContext(
         session=session,
         role=role,
         research_pack=research_pack,
         previous_turns=tuple(previous_turns),
+        memory_context=memory_context,
     )
     take = run_role_deliberation(context, runner_fn=runner_fn)
     return take, render_role_take(take)
+
+
+def _retrieve_memory_for_role(
+    *,
+    role: str,
+    session: WorkflowSession,
+    research_pack: Optional[ResearchPack],
+):
+    """Best-effort memory retrieval — never raises into the caller."""
+
+    try:
+        from ..memory.retrieval import fetch_role_context
+    except Exception:  # noqa: BLE001 - memory layer optional
+        return ()
+    query_parts: list[str] = []
+    if research_pack is not None and getattr(research_pack, "title", None):
+        query_parts.append(str(research_pack.title))
+    if getattr(session, "prompt", None):
+        query_parts.append(str(session.prompt))
+    query = " ".join(query_parts).strip()
+    if not query:
+        return ()
+    try:
+        hits = fetch_role_context(
+            role=role,
+            query=query,
+            task_type=getattr(session, "task_type", None),
+            limit=3,
+        )
+    except Exception:  # noqa: BLE001 - retrieval is opportunistic
+        return ()
+    return tuple(hits)
 
 
 def synthesize_thread(
@@ -873,9 +999,31 @@ def synthesize_thread(
     *,
     research_pack: Optional[ResearchPack] = None,
 ) -> Tuple[TechLeadSynthesis, str]:
-    """Run tech-lead synthesis and return both the dataclass and rendered text."""
+    """Run tech-lead synthesis and return both the dataclass and rendered text.
 
-    synth = synthesize(session, role_takes, research_pack=research_pack)
+    Tech-lead memory is fetched right before synthesis and piped into
+    ``synthesize`` so prior decisions / policies show up in the consensus
+    prefix and open_research entries. Retrieval is opportunistic —
+    failure returns an empty tuple and synthesis runs unchanged.
+    """
+
+    raw_memory = _retrieve_memory_for_role(
+        role="tech-lead",
+        session=session,
+        research_pack=research_pack,
+    )
+    # Stamp citation IDs once so the synthesis text and any later
+    # observability hook (e.g. format_memory_block) refer to the same
+    # labels.
+    from ..agents.deliberation import assign_citation_ids
+
+    memory_context = assign_citation_ids(raw_memory) if raw_memory else ()
+    synth = synthesize(
+        session,
+        role_takes,
+        research_pack=research_pack,
+        memory_context=memory_context,
+    )
     return synth, render_synthesis(synth)
 
 

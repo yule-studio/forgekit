@@ -51,6 +51,7 @@ TASK_INTAKE_CANDIDATE = "task_intake_candidate"
 NEEDS_CLARIFICATION = "needs_clarification"
 CONFIRM_INTAKE = "confirm_intake"
 SPLIT_TASK_PROPOSAL = "split_task_proposal"
+STATUS_DIAGNOSTIC = "status_diagnostic"
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,11 @@ class EngineeringConversationResponse:
     mention_user_id: Optional[int] = None
     research_pack: Optional[Any] = None
     collection_outcome: Optional[Any] = None
+    # When True the gateway must NOT auto-collect, NOT create a new
+    # session, NOT ask for confirmation. The user is asking what's
+    # currently happening, not requesting new work — the response
+    # already describes the existing state.
+    is_status_query: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +119,7 @@ def build_engineering_conversation_response(
     session_id: Optional[str] = None,
     collector_config: Optional[Any] = None,
     collector: Optional[Any] = None,
+    status_session_loader: Optional[Any] = None,
 ) -> EngineeringConversationResponse:
     """Classify *message_text* and produce an actionable response envelope.
 
@@ -135,6 +142,26 @@ def build_engineering_conversation_response(
 
     intent = detect_engineering_intent(message_text)
     mention_user_id = author_user_id if mention_user else None
+
+    if intent.intent_id == STATUS_DIAGNOSTIC:
+        # User is asking what's going on with the existing work, not
+        # filing a new task. Read the latest open session via the
+        # injected loader (bot.py wires find_latest_open_session) and
+        # describe its real state. We never trigger auto_collect or
+        # intake here.
+        session = None
+        if callable(status_session_loader):
+            try:
+                session = status_session_loader()
+            except Exception:  # noqa: BLE001 - loader failures must not crash gateway
+                session = None
+        body = format_status_diagnostic_response(session)
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=STATUS_DIAGNOSTIC,
+            mention_user_id=mention_user_id,
+            is_status_query=True,
+        )
 
     if intent.intent_id == CONFIRM_INTAKE:
         intake_prompt = last_proposed_prompt or message_text
@@ -453,6 +480,16 @@ def detect_engineering_intent(message_text: str) -> EngineeringIntentMatch:
             confidence="high",
         )
 
+    # Status / diagnostic intent must be checked BEFORE confirmation.
+    # "왜 안 됐어?", "운영 리서치는 안 열어?", "지금 뭐 하는 중?" must
+    # NOT be promoted to a new intake or read as a go-ahead.
+    if _is_status_diagnostic(normalized):
+        return EngineeringIntentMatch(
+            intent_id=STATUS_DIAGNOSTIC,
+            label="상태 확인",
+            confidence="high",
+        )
+
     if _is_confirmation(normalized):
         return EngineeringIntentMatch(
             intent_id=CONFIRM_INTAKE,
@@ -606,6 +643,98 @@ def _asks_to_start_new_thread(text: str) -> bool:
     )
 
 
+_STATUS_DIAGNOSTIC_PHRASES = (
+    "운영 리서치는 안 열",
+    "운영-리서치는 안 열",
+    "운영 리서치 안 열",
+    "운영-리서치 안 열",
+    "운영 리서치는 왜",
+    "운영-리서치는 왜",
+    "운영 리서치 왜",
+    "운영-리서치 왜",
+    "운영 리서치 왜 안 열",
+    "운영-리서치 왜 안 열",
+    "리서치 왜 실패",
+    "리서치 왜 안",
+    "리서치는 왜 안",
+    "리서치 어떻게 됐",
+    "왜 안 됐",
+    "왜 안됐",
+    "왜 멈췄",
+    "왜 멈춰",
+    "왜 막혔",
+    "왜 막혀",
+    "뭐가 막혔",
+    "어디서 막혔",
+    "왜 안 열",
+    "왜 안열",
+    "왜 안 열렸",
+    "왜 안열렸",
+    "왜 못",
+    "왜 실패",
+    "지금 뭐 하",
+    "지금 뭐하",
+    "지금 무엇",
+    "지금 어떤 상태",
+    "지금 어디까지",
+    "현재 상태",
+    "현재 진행",
+    "상태 알려",
+    "상태 알려줘",
+    "상태 좀 알려",
+    "상태 확인",
+    "상태 체크",
+    "다시 확인해",
+    "다시 한번 확인",
+    "다시 한 번 확인",
+    "진행 상황",
+    "진행상황",
+    "진행 어디",
+    "진행 어떻게",
+    "어디까지 됐",
+    "어디까지 갔",
+    "어디까지 진행",
+    "어떻게 됐",
+    "어떻게 되어",
+    "어떻게 되고",
+    "어떻게 진행",
+    "obsidian 왜 안",
+    "obsidian 왜 못",
+    "obsidian 안 들어갔",
+    "obsidian 안들어갔",
+    "옵시디언 왜 안",
+    "옵시디언 안 들어갔",
+    "forum 왜 안",
+    "forum 안 열",
+    "포럼 왜 안",
+    "포럼 안 열",
+    "what's the status",
+    "what is the status",
+    "what happened",
+    "where are we",
+    "why did it fail",
+    "why didn't it",
+    "status check",
+    "status update",
+    "progress check",
+)
+
+
+def _is_status_diagnostic(normalized: str) -> bool:
+    """Check whether the user is asking about state, not filing work.
+
+    Triggers on Korean and English diagnostic phrasings — "왜 안 됐어",
+    "지금 뭐 하는 중", "Obsidian 왜 안 들어갔", "운영-리서치는 안 열어",
+    etc. Important: a question mark alone is not enough — actual new
+    work requests can also end with "?". We require an explicit status
+    phrase so casual "이거 어때?" doesn't fall through.
+    """
+
+    if not normalized:
+        return False
+    return any(phrase in normalized for phrase in _STATUS_DIAGNOSTIC_PHRASES)
+
+
 _GENERAL_HELP_PHRASES = (
     "engineering-agent",
     "엔지니어링 에이전트",
@@ -753,6 +882,104 @@ def _format_general_help() -> str:
         "- 갈래가 여러 개면 한 번에 적어 주셔도 좋아요. 제가 나눠 제안해 드릴게요.\n\n"
         "확정할 때는 `이대로 진행`이라고 답해 주시면 그 다음 단계로 넘어갑니다."
     )
+
+
+def format_status_diagnostic_response(session: Optional[Any]) -> str:
+    """Render a real-state status answer for the gateway.
+
+    Reads ``session.state``, ``session.extra``, and known keys
+    (``research_pack``, ``forum_thread_id``/``research_forum_thread_id``,
+    ``research_loop_report``, ``forum_publish_error``) so the gateway
+    can say "research_pack: 있음 · forum: 게시 실패 · 마지막 오류: 4000자
+    초과" instead of guessing. When *session* is None we explicitly tell
+    the operator we couldn't find an open session.
+    """
+
+    if session is None:
+        return (
+            "현재 채널/스레드에 매칭되는 열린 engineering-agent 세션이 보이지 않아요.\n"
+            "확인하려는 작업의 session id를 알려 주시거나, "
+            "이어갈 thread 안에서 다시 말씀해 주세요."
+        )
+
+    extra = dict(getattr(session, "extra", {}) or {})
+    research_pack = extra.get("research_pack")
+    forum_thread_id = (
+        extra.get("research_forum_thread_id")
+        or extra.get("forum_thread_id")
+    )
+    forum_thread_url = extra.get("forum_thread_url") or extra.get(
+        "research_forum_thread_url"
+    )
+    forum_publish_error = (
+        extra.get("forum_publish_error")
+        or extra.get("research_forum_error")
+    )
+    research_loop_report = extra.get("research_loop_report")
+    synthesis = extra.get("research_synthesis")
+
+    state_value = getattr(session, "state", None)
+    state_label = getattr(state_value, "value", state_value) or "unknown"
+    session_id = getattr(session, "session_id", None) or "unknown"
+    task_type = getattr(session, "task_type", None) or "unknown"
+
+    lines = [
+        "현재 engineering-agent 세션 상태를 확인했어요.",
+        "",
+        f"- 세션: `{session_id}`",
+        f"- 상태: {state_label}",
+        f"- 종류: {task_type}",
+        f"- research_pack: {'있음' if research_pack else '없음'}",
+    ]
+
+    if forum_thread_id or forum_thread_url:
+        thread_label = forum_thread_url or f"thread `{forum_thread_id}`"
+        lines.append(f"- 운영-리서치 forum: 게시됨 ({thread_label})")
+    elif forum_publish_error:
+        lines.append("- 운영-리서치 forum: 게시 실패")
+        lines.append(f"  · 마지막 오류: {forum_publish_error}")
+    elif research_pack:
+        lines.append("- 운영-리서치 forum: 아직 게시되지 않음 (자료는 수집 완료)")
+    else:
+        lines.append("- 운영-리서치 forum: 자료 수집 전이라 게시 단계가 아님")
+
+    if research_loop_report:
+        report_error = None
+        report_status = None
+        if isinstance(research_loop_report, Mapping):
+            report_error = research_loop_report.get("error")
+            report_status = research_loop_report.get("forum_status_message")
+        else:
+            report_error = getattr(research_loop_report, "error", None)
+            report_status = getattr(
+                research_loop_report, "forum_status_message", None
+            )
+        if report_error:
+            lines.append(f"- research loop 오류: {report_error}")
+        elif report_status:
+            short = " ".join(str(report_status).split())
+            if len(short) > 160:
+                short = short[:157] + "..."
+            lines.append(f"- 최근 보고: {short}")
+
+    if synthesis:
+        lines.append("- tech-lead synthesis: 기록됨")
+    elif research_pack:
+        lines.append("- tech-lead synthesis: 아직 기록되지 않음")
+
+    progress_notes = tuple(getattr(session, "progress_notes", ()) or ())
+    if progress_notes:
+        last = progress_notes[-1]
+        last_short = " ".join(str(last).split())
+        if len(last_short) > 160:
+            last_short = last_short[:157] + "..."
+        lines.append(f"- 마지막 진행 노트: {last_short}")
+
+    lines.append("")
+    lines.append(
+        "추가로 보고 싶은 항목(예: 출처 목록, role take 진행)을 알려 주시면 그 부분만 더 자세히 정리해 드릴게요."
+    )
+    return "\n".join(lines)
 
 
 def _format_clarification_question(message_text: str) -> str:
@@ -1057,6 +1284,14 @@ ROLE_RESEARCH_PROFILES: Mapping[str, tuple[str, ...]] = {
         SOURCE_TYPE_GITHUB_ISSUE,
         SOURCE_TYPE_GITHUB_PR,
         SOURCE_TYPE_COMMUNITY_SIGNAL,
+        SOURCE_TYPE_URL,
+        SOURCE_TYPE_USER_MESSAGE,
+    ),
+    "devops-engineer": (
+        SOURCE_TYPE_OFFICIAL_DOCS,
+        SOURCE_TYPE_GITHUB_PR,
+        SOURCE_TYPE_GITHUB_ISSUE,
+        SOURCE_TYPE_CODE_CONTEXT,
         SOURCE_TYPE_URL,
         SOURCE_TYPE_USER_MESSAGE,
     ),

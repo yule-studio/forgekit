@@ -16,7 +16,8 @@ from .engineering_team_runtime import (
     mark_turn_played,
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
-from .research_forum import ResearchForumContext
+from .research_forum import ResearchForumContext, chunk_for_discord_message
+from .typing_indicator import typing_context
 
 
 @dataclass(frozen=True)
@@ -97,12 +98,22 @@ def run_member_bot(profile: MemberBotProfile) -> None:
             # Research-turn (운영-리서치 forum thread) takes precedence
             # because research markers and team markers can both land in
             # threads the bot can see. We process whichever shows up.
+            # Compose + post happens inside a typing context so the
+            # member bot's account shows ``입력 중...`` while its take is
+            # being assembled.
+            #
+            # tech-lead role: when ``profile.role == 'tech-lead'`` and the
+            # marker is ``RESEARCH_SYNTHESIS_ROLE``, this same wrap covers
+            # the synthesis comment so the tech-lead bot account types in
+            # the forum thread. The gateway-side legacy synthesis path is
+            # covered by the typing wrap in bot.py:on_message.
             research_outcome = handle_research_turn_message(
                 role=profile.role,
                 text=text,
             )
             if research_outcome is not None:
-                await _post_research_turn(message.channel, research_outcome)
+                async with typing_context(message.channel):
+                    await _post_research_turn(message.channel, research_outcome)
                 return
 
             team_outcome = handle_team_turn_message(
@@ -112,7 +123,8 @@ def run_member_bot(profile: MemberBotProfile) -> None:
             if team_outcome is None:
                 return
 
-            await _post_team_turn(message.channel, team_outcome)
+            async with typing_context(message.channel):
+                await _post_team_turn(message.channel, team_outcome)
 
     bot = MemberBot(command_prefix=commands.when_mentioned, intents=intents)
     print(
@@ -300,11 +312,13 @@ async def _post_team_turn(channel, outcome: TeamTurnOutcome) -> None:
     """Send the rendered turn (and chain directive, if any) into *channel*.
 
     Extracted so tests can drive the post path without a live Discord
-    client. Splitting the message + directive into one ``send`` keeps the
-    handoff visually grouped in the thread.
+    client. Long takes get chunked at ≤ 1900 chars per send so Discord's
+    50035 ``content`` validator never rejects a turn for being too long.
     """
 
-    await channel.send(outcome.full_post())
+    body = outcome.full_post()
+    for piece in chunk_for_discord_message(body) or (body,):
+        await channel.send(piece)
     _mark_team_turn_persisted(outcome)
 
 
@@ -313,10 +327,14 @@ async def _post_research_turn(channel, outcome: ResearchTurnOutcome) -> None:
 
     The render already embeds the next directive (``[research-turn:...]``)
     when applicable, so each member bot's comment naturally hands off to
-    the next role bot without the gateway impersonating anyone.
+    the next role bot without the gateway impersonating anyone. Long
+    takes get chunked the same way as ``_post_team_turn`` so a verbose
+    take never trips Discord's per-message limit.
     """
 
-    await channel.send(outcome.message)
+    body = outcome.message
+    for piece in chunk_for_discord_message(body) or (body,):
+        await channel.send(piece)
 
 
 def _mark_team_turn_persisted(outcome: TeamTurnOutcome) -> None:
