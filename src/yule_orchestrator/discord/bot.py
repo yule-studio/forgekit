@@ -1688,6 +1688,23 @@ def _make_default_thread_continuation_fn(discord_module: "discord"):
         for piece in chunk_for_discord_message(continuation_text) or (continuation_text,):
             await thread.send(piece)
         _clear_engineering_last_proposed_for_channel(message)
+
+        # Persist the continuation prompt onto session.extra. The
+        # session was created with a confirmation phrase like "새 작업으로
+        # 진행" or "기존 세션으로 진행" as ``session.prompt`` — that
+        # leaves the canonical task description blank, so a later
+        # status / research / export turn looks at the wrong text. We
+        # save the latest continuation under ``latest_continuation_prompt``
+        # always, and also flip ``canonical_prompt_override`` to the
+        # continuation prompt when the original was command-only.
+        persisted = _record_engineering_continuation(
+            session=session,
+            continuation_prompt=prompt,
+            resumed_thread_id=current_thread_id or thread_id,
+        )
+        if persisted is not None:
+            session = persisted
+
         status = (
             "**[engineering-agent] 기존 thread에 이어서 접수**\n"
             f"세션 ID: `{session.session_id}`\n"
@@ -1701,6 +1718,103 @@ def _make_default_thread_continuation_fn(discord_module: "discord"):
         )
 
     return _continue
+
+
+# Phrases we treat as "no actual task description" — when
+# ``session.prompt`` equals one of these we know the user said
+# something like "이대로 진행" / "기존 세션으로 진행" without giving
+# the gateway a real task description, so the continuation prompt
+# should override it as the canonical record.
+_CONTINUATION_COMMAND_ONLY_PROMPTS: tuple[str, ...] = (
+    "새 작업으로 진행",
+    "새 작업으로 시작",
+    "이대로 진행",
+    "이대로 등록",
+    "그대로 진행",
+    "그대로 등록",
+    "기존 세션으로 진행",
+    "기존 세션으로 시작",
+    "기존 세션 진행",
+    "기존 작업으로 진행",
+    "기존 작업으로 시작",
+    "기존 작업 진행",
+    "이 thread로 진행",
+    "이 thread에서 진행",
+    "여기서 진행",
+    "여기서 이어가",
+    "확정",
+    "진행",
+    "ok",
+)
+
+
+def _is_command_only_prompt(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalised = " ".join(value.lower().split())
+    if not normalised:
+        return True
+    if len(normalised) <= 2:
+        return True
+    return normalised in _CONTINUATION_COMMAND_ONLY_PROMPTS
+
+
+def _record_engineering_continuation(
+    *,
+    session,
+    continuation_prompt: str,
+    resumed_thread_id: int | None,
+):
+    """Append the continuation prompt to ``session.extra`` and persist.
+
+    Returns the updated session (or the original when persistence isn't
+    possible — production WorkflowSession is frozen, so we always
+    return a replaced copy on success).
+    """
+
+    cleaned_prompt = (continuation_prompt or "").strip()
+    if not cleaned_prompt:
+        return session
+
+    extra = dict(getattr(session, "extra", {}) or {})
+
+    history = list(extra.get("continuation_requests") or ())
+    history.append(
+        {
+            "prompt": cleaned_prompt,
+            "thread_id": resumed_thread_id,
+            "recorded_at": datetime.now().astimezone().isoformat(),
+        }
+    )
+    # Cap the history so a single long-running session doesn't bloat
+    # the SQLite cache row indefinitely.
+    if len(history) > 20:
+        history = history[-20:]
+    extra["continuation_requests"] = history
+    extra["latest_continuation_prompt"] = cleaned_prompt
+    if resumed_thread_id is not None:
+        extra["resumed_thread_id"] = resumed_thread_id
+    if _is_command_only_prompt(getattr(session, "prompt", None)):
+        # The original prompt was a command, not a task description —
+        # let downstream readers prefer the continuation as the
+        # canonical record.
+        extra["canonical_prompt_override"] = cleaned_prompt
+
+    try:
+        from dataclasses import replace
+        from ..agents.workflow_state import update_session
+
+        updated = replace(session, extra=extra)
+    except Exception:  # noqa: BLE001 - degrade gracefully for stub sessions
+        live = getattr(session, "extra", None)
+        if isinstance(live, dict):
+            live.update(extra)
+        return session
+    try:
+        update_session(updated, now=datetime.now().astimezone())
+    except Exception:  # noqa: BLE001 - cache failure is non-fatal
+        pass
+    return updated
 
 
 def _clear_engineering_last_proposed_for_channel(message) -> None:
