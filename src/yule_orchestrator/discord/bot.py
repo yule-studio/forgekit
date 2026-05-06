@@ -15,7 +15,11 @@ from ..agents import (
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from ..agents.workflow_state import find_latest_open_session, update_session
+from ..agents.workflow_state import (
+    find_latest_open_session,
+    list_sessions as workflow_list_sessions,
+    update_session,
+)
 from ..integrations.calendar import list_naver_calendar_items
 from ..integrations.calendar.models import build_fallback_item_uid
 from ..integrations.github.issues import list_open_issues
@@ -187,6 +191,12 @@ def run_discord_bot(repo_root: Path) -> None:
                         send_chunks=send_chunks,
                         research_loop_fn=_make_default_engineering_research_loop_fn(discord),
                         thread_continuation_fn=_make_default_thread_continuation_fn(discord),
+                        # Phase 4 — runtime preflight uses the live
+                        # workflow session store so "어제 작업 이어서
+                        # 요약해줘" et al. never reach
+                        # auto_collect=True. Disabled flag-style by
+                        # tests that inject their own routing seam.
+                        list_sessions_fn=workflow_list_sessions,
                     )
                 if engineering_result.handled:
                     return

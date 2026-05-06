@@ -27,6 +27,20 @@ from ..agents.routing import (
     decide_routing,
     list_open_sessions,
 )
+from ..agents.runtime import (
+    ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
+    ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
+    ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,
+    INTENT_APPEND_CONTEXT as RUNTIME_INTENT_APPEND_CONTEXT,
+    INTENT_CONTINUE_EXISTING_WORK as RUNTIME_INTENT_CONTINUE_EXISTING_WORK,
+    INTENT_EXECUTE_EXISTING_STEP as RUNTIME_INTENT_EXECUTE_EXISTING_STEP,
+    INTENT_SUMMARIZE_PREVIOUS_WORK as RUNTIME_INTENT_SUMMARIZE_PREVIOUS_WORK,
+    RuntimeInput,
+    RuntimeResearchPlan,
+    classify_intent_deterministic,
+    decide_default,
+    make_recall_fn,
+)
 
 
 # Single-source confirmation lexicon; the engineering conversation layer
@@ -308,16 +322,25 @@ async def route_engineering_message(
     send_chunks: SendChunksFn,
     research_loop_fn: Optional[ResearchLoopFn] = None,
     thread_continuation_fn: Optional[ThreadContinuationFn] = None,
+    list_sessions_fn: Optional[Callable[..., Sequence[Any]]] = None,
 ) -> EngineeringRouteResult:
     """Drive the engineering channel response.
 
     Order:
       1. If the message is not in an engineering channel, return ``handled=False``.
-      2. Call the conversation layer; reply with whatever it produced.
-      3. If the conversation (or fallback heuristic) says the user just
+      2. Runtime preflight (only when ``list_sessions_fn`` is provided).
+         When the message intent is one of ``continue_existing_work``,
+         ``summarize_previous_work``, ``execute_existing_step`` or
+         ``append_context``, we recall the matching workflow session
+         and either join/append directly or send a clarification — both
+         paths skip ``conversation_fn`` so ``auto_collect=True`` never
+         runs for non-new-work intents.
+      3. Otherwise: call the conversation layer; reply with whatever it
+         produced.
+      4. If the conversation (or fallback heuristic) says the user just
          confirmed, call ``intake_fn`` to create a workflow session.
-      4. Post the intake summary, then kick off a thread.
-      5. If ``research_loop_fn`` is provided, run it after kickoff and
+      5. Post the intake summary, then kick off a thread.
+      6. If ``research_loop_fn`` is provided, run it after kickoff and
          surface its follow-up / forum status message back to the user.
          Failures in the research loop are *non-fatal*: intake + kickoff
          already landed, so we report a `⚠️` line and return.
@@ -330,6 +353,23 @@ async def route_engineering_message(
     prompt_text = (prompt_text or "").strip()
     if not prompt_text:
         return EngineeringRouteResult(handled=False)
+
+    # Runtime preflight — opt-in via ``list_sessions_fn``. The production
+    # gateway in bot.py wires this to ``workflow_state.list_sessions`` so
+    # auto_collect-first traffic for "어제 작업 이어서 요약해줘" and
+    # similar back-references is intercepted before conversation_fn is
+    # reached. Tests that don't inject a sessions source skip preflight,
+    # preserving the legacy keyword-driven flow.
+    if list_sessions_fn is not None:
+        preflight = await _run_runtime_preflight(
+            message=message,
+            prompt_text=prompt_text,
+            list_sessions_fn=list_sessions_fn,
+            send_chunks=send_chunks,
+            thread_continuation_fn=thread_continuation_fn,
+        )
+        if preflight is not None:
+            return preflight
 
     attachments = extract_message_attachments(message)
     user_links = extract_user_links_from_message(message, prompt_text)
@@ -543,6 +583,204 @@ async def route_engineering_message(
         error=kickoff_error,
         routing_decision=routing_decision,
     )
+
+
+_PREFLIGHT_SHORT_CIRCUIT_INTENTS = frozenset(
+    {
+        RUNTIME_INTENT_CONTINUE_EXISTING_WORK,
+        RUNTIME_INTENT_SUMMARIZE_PREVIOUS_WORK,
+        RUNTIME_INTENT_EXECUTE_EXISTING_STEP,
+        RUNTIME_INTENT_APPEND_CONTEXT,
+    }
+)
+
+
+async def _run_runtime_preflight(
+    *,
+    message: Any,
+    prompt_text: str,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+    send_chunks: SendChunksFn,
+    thread_continuation_fn: Optional[ThreadContinuationFn],
+) -> Optional[EngineeringRouteResult]:
+    """Try to handle the message with the runtime loop's intent +
+    recall result. Returns a populated :class:`EngineeringRouteResult`
+    when the runtime took over (so the legacy flow must skip), or
+    ``None`` to fall through to ``conversation_fn`` + intake.
+
+    Short-circuits only the four "pointing-back-at-existing-work"
+    intents: ``continue_existing_work``, ``summarize_previous_work``,
+    ``execute_existing_step``, ``append_context``. Status / diagnostic
+    questions still flow through ``conversation_fn`` because the
+    existing layer has the actual session-state responder; new-work
+    requests, confirmations, vague text, and pleasantries also flow
+    through unchanged so all existing tests keep their contracts.
+    """
+
+    runtime_input = RuntimeInput(
+        role_id="gateway",
+        message_text=prompt_text,
+        channel_id=getattr(getattr(message, "channel", None), "id", None),
+        thread_id=_thread_id_for_runtime(message),
+        author_id=getattr(getattr(message, "author", None), "id", None),
+        message_id=getattr(message, "id", None),
+    )
+    observation = _observation_for_runtime(runtime_input)
+    intent = classify_intent_deterministic(observation, runtime_input)
+    if intent.intent_id not in _PREFLIGHT_SHORT_CIRCUIT_INTENTS:
+        return None
+
+    recall_fn = make_recall_fn(list_sessions_fn=list_sessions_fn)
+    recall = recall_fn(observation, intent, runtime_input)
+    decision = decide_default(
+        observation,
+        intent,
+        recall,
+        RuntimeResearchPlan(),
+        runtime_input,
+    )
+    if not decision.actions:
+        return None
+
+    primary = decision.actions[0]
+    if primary.action_id == RUNTIME_ACTION_JOIN_SESSION and thread_continuation_fn is not None:
+        # Re-use the legacy join/append helper so research_loop_hook
+        # still runs against the resumed session. The helper expects an
+        # EngineeringConversationOutcome shape; we synthesise a minimal
+        # one carrying the prompt text as ``intake_prompt``.
+        synthetic_outcome = EngineeringConversationOutcome(
+            content="",
+            intake_prompt=prompt_text,
+        )
+        synthetic_decision = EngineeringRoutingDecision(
+            action=ACTION_JOIN,
+            matched_session_id=primary.payload.get("session_id"),
+            matched_thread_id=primary.payload.get("thread_id"),
+            matched_forum_thread_id=primary.payload.get("forum_thread_id"),
+            confidence=intent.confidence,
+            reason=f"runtime preflight · {intent.intent_id}",
+        )
+        result = await _handle_join_or_append(
+            message=message,
+            outcome=synthetic_outcome,
+            decision=synthetic_decision,
+            intake_prompt=prompt_text,
+            send_chunks=send_chunks,
+            thread_continuation_fn=thread_continuation_fn,
+            research_loop_fn=None,  # Phase 4 MVP: no auto research loop here
+        )
+        if result is not None:
+            return result
+        # Fallthrough to clarification when continuation couldn't reach
+        # the matched thread (e.g. it's archived) — do NOT silently
+        # create a new session.
+        await send_chunks(
+            message.channel,
+            _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
+        )
+        return EngineeringRouteResult(
+            handled=True,
+            error="runtime preflight: continuation thread not reachable",
+        )
+
+    if primary.action_id in (
+        RUNTIME_ACTION_ASK_CLARIFICATION,
+        RUNTIME_ACTION_APPEND_CONTEXT,
+    ):
+        # ASK_CLARIFICATION: not enough confidence in any session match.
+        # APPEND_CONTEXT with no thread_continuation_fn fallback: degrade
+        # to clarification rather than silently dropping the user's
+        # context append. Either way the message reuses the same
+        # template so the operator sees what's missing.
+        await send_chunks(
+            message.channel,
+            _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
+        )
+        return EngineeringRouteResult(handled=True)
+
+    if primary.action_id == RUNTIME_ACTION_APPEND_CONTEXT:
+        # Future: route into a dedicated append helper. For Phase 4 MVP
+        # we treat append as a join + ack without re-running research.
+        if thread_continuation_fn is None:
+            await send_chunks(
+                message.channel,
+                _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
+            )
+            return EngineeringRouteResult(handled=True)
+
+    return None
+
+
+def _thread_id_for_runtime(message: Any) -> Optional[int]:
+    channel = getattr(message, "channel", None)
+    if channel is None:
+        return None
+    # Discord threads expose ``id`` (the thread id) and ``parent_id``
+    # (the channel they live under). For non-thread channels we leave
+    # thread_id None so recall doesn't apply a spurious anchor.
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is None and getattr(channel, "parent", None) is None:
+        return None
+    return getattr(channel, "id", None)
+
+
+def _observation_for_runtime(input_: RuntimeInput):
+    """Build a minimal observation locally so we don't import the
+    runtime loop's default observe (keeps the router's import surface
+    small)."""
+
+    from ..agents.runtime.models import RuntimeObservation
+
+    text = input_.message_text or ""
+    return RuntimeObservation(
+        role_id=input_.role_id,
+        message_text=text,
+        normalized_text=" ".join(text.lower().split()),
+        channel_id=input_.channel_id,
+        thread_id=input_.thread_id,
+        author_id=input_.author_id,
+        message_id=input_.message_id,
+        has_attachments=bool(input_.attachments),
+        last_proposed_prompt=input_.last_proposed_prompt,
+    )
+
+
+def _format_runtime_preflight_clarification(intent_id: str, candidates) -> str:
+    """Render a clarification message for the four short-circuited
+    intents when no session matched.
+
+    Surfaces up to three candidate session ids so the operator can
+    point at the right one with ``기존 세션 <id>``.
+    """
+
+    intent_labels = {
+        RUNTIME_INTENT_CONTINUE_EXISTING_WORK: "기존 작업 이어가기",
+        RUNTIME_INTENT_SUMMARIZE_PREVIOUS_WORK: "이전 작업 요약",
+        RUNTIME_INTENT_EXECUTE_EXISTING_STEP: "기존 작업 후속 실행",
+        RUNTIME_INTENT_APPEND_CONTEXT: "기존 작업에 자료 첨부",
+    }
+    label = intent_labels.get(intent_id, "기존 작업 처리")
+    lines = [
+        f"**[engineering-agent] 어떤 작업을 가리키시는지 확인이 필요해요.**",
+        f"요청 의도: {label}",
+        "",
+    ]
+    if candidates:
+        lines.append("최근 열린 후보 세션이에요:")
+        for cand in list(candidates)[:3]:
+            tail = []
+            if cand.task_type:
+                tail.append(cand.task_type)
+            if cand.thread_id is not None:
+                tail.append(f"thread `{cand.thread_id}`")
+            tail.append(f"score {cand.score:.2f}")
+            head = cand.title or cand.session_id
+            lines.append(f"- `{cand.session_id}` — {head} ({' · '.join(tail)})")
+        lines.append("")
+    lines.append(
+        "이어갈 세션 ID를 `기존 세션 <id>` 처럼 답하시거나, 새 작업이라면 `새 작업으로 진행`이라고 답해 주세요."
+    )
+    return "\n".join(lines)
 
 
 async def _handle_join_or_append(
