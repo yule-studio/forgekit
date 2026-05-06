@@ -131,6 +131,61 @@ class ContinueExistingWorkTests(unittest.TestCase):
         self.assertEqual(intent.intent_id, INTENT_CONTINUE_EXISTING_WORK)
 
 
+class ForceContinuePhraseTests(unittest.TestCase):
+    """Phase A: explicit continuation phrases that historically were
+    misclassified as new_work_request because they only contain
+    confirm-shaped text + a back-reference noun (no continue verb)."""
+
+    def test_existing_session_progress_phrase(self) -> None:
+        intent = _classify("기존 세션으로 진행")
+        self.assertEqual(intent.intent_id, INTENT_CONTINUE_EXISTING_WORK)
+        self.assertEqual(intent.confidence, "high")
+
+    def test_existing_work_progress_phrase(self) -> None:
+        intent = _classify("기존 작업으로 진행")
+        self.assertEqual(intent.intent_id, INTENT_CONTINUE_EXISTING_WORK)
+
+    def test_existing_session_continue_phrase(self) -> None:
+        intent = _classify("기존 세션으로 이어가자")
+        self.assertEqual(intent.intent_id, INTENT_CONTINUE_EXISTING_WORK)
+
+    def test_in_this_thread_phrase(self) -> None:
+        for text in (
+            "이 thread에서 이어가자",
+            "이 thread로 진행",
+            "이 스레드에서 진행",
+            "여기서 진행해줘",
+            "여기서 이어가자",
+        ):
+            with self.subTest(text=text):
+                intent = _classify(text)
+                self.assertEqual(intent.intent_id, INTENT_CONTINUE_EXISTING_WORK)
+
+    def test_force_new_work_still_wins_over_continue(self) -> None:
+        # Even with "기존" present, an explicit "새 작업으로 진행" must
+        # remain a brand-new session — force-new is checked first.
+        intent = _classify("기존 작업이랑 비슷하지만 새 작업으로 진행")
+        self.assertEqual(intent.intent_id, INTENT_NEW_WORK_REQUEST)
+
+
+class ExpandedExecuteStepTests(unittest.TestCase):
+    def test_research_forum_directive(self) -> None:
+        intent = _classify("운영-리서치에 정리해줘")
+        self.assertEqual(intent.intent_id, INTENT_EXECUTE_EXISTING_STEP)
+
+    def test_research_forum_directive_no_dash(self) -> None:
+        intent = _classify("운영 리서치에 정리해줘")
+        self.assertEqual(intent.intent_id, INTENT_EXECUTE_EXISTING_STEP)
+
+    def test_session_scoped_summary(self) -> None:
+        intent = _classify("이 세션 기준으로 정리해줘")
+        self.assertEqual(intent.intent_id, INTENT_EXECUTE_EXISTING_STEP)
+
+    def test_thread_scoped_summary(self) -> None:
+        intent = _classify("이 스레드 기준으로 정리해줘")
+        self.assertEqual(intent.intent_id, INTENT_EXECUTE_EXISTING_STEP)
+
+
 class ExecuteExistingStepTests(unittest.TestCase):
     def test_obsidian_export_request(self) -> None:
         intent = _classify("이건 Obsidian에 정리해줘")

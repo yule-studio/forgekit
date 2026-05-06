@@ -166,6 +166,12 @@ _EXECUTE_STEP_PHRASES: tuple[str, ...] = (
     "obsidian export",
     "obsidian 동기화",
     "옵시디언 동기화",
+    "운영-리서치에 정리",
+    "운영 리서치에 정리",
+    "운영-리서치 정리",
+    "운영 리서치 정리",
+    "운영-리서치에 저장",
+    "운영 리서치에 저장",
     "토의 기록 정리",
     "토의기록 정리",
     "토의 결과 정리",
@@ -175,11 +181,60 @@ _EXECUTE_STEP_PHRASES: tuple[str, ...] = (
     "회고 정리",
     "노트 정리",
     "결과 정리",
+    "이 세션 기준",
+    "이 세션 기준으로",
+    "이 세션 정리",
+    "이 세션 기록",
+    "이 thread 기준",
+    "이 스레드 기준",
     "approval 만들",
     "승인 문서 만들",
     "approval 문서",
     "vault 에 저장",
     "vault에 저장",
+)
+
+
+# Phrases that explicitly mean "stay on the existing work" — they
+# come up after the gateway has already shown a clarification (or the
+# user is sitting inside a work thread) and replies with a plain
+# "기존 세션으로 진행" / "여기서 이어가자" rather than naming the
+# session. These must NOT collide with ``_FORCE_NEW_WORK_PHRASES``
+# (which contains "새 작업으로 진행"); detection order in
+# :func:`classify_intent_deterministic` checks force-new first so
+# "새 작업으로 진행" still wins.
+_FORCE_CONTINUE_WORK_PHRASES: tuple[str, ...] = (
+    "기존 세션으로 진행",
+    "기존 세션으로 시작",
+    "기존 세션 진행",
+    "기존 세션으로 이어",
+    "기존 작업으로 진행",
+    "기존 작업으로 시작",
+    "기존 작업 진행",
+    "기존 작업으로 이어",
+    "기존 작업으로 등록",
+    "기존 thread로 진행",
+    "기존 thread에서 진행",
+    "기존 thread에서 이어",
+    "기존 스레드로 진행",
+    "기존 스레드에서 진행",
+    "기존 스레드에서 이어",
+    "이 thread로 진행",
+    "이 thread에서 진행",
+    "이 thread에서 이어",
+    "이 thread에서 가",
+    "이 스레드로 진행",
+    "이 스레드에서 진행",
+    "이 스레드에서 이어",
+    "여기서 진행",
+    "여기서 이어",
+    "여기 thread에서",
+    "여기 스레드에서",
+    "이 세션으로 진행",
+    "이 세션으로 이어",
+    "continue this thread",
+    "continue this session",
+    "stay on this thread",
 )
 
 
@@ -395,6 +450,18 @@ def classify_intent_deterministic(
             intent_id=INTENT_NEW_WORK_REQUEST,
             confidence="high",
             reason="explicit new-work phrase",
+        )
+
+    # 2b. Explicit "stay on existing work" override. Detected before
+    # status/diagnostic so a phrase like "기존 세션으로 진행" doesn't
+    # accidentally match a status pattern (e.g. "진행 상황" inside the
+    # diagnostic bank). Order matters: force-new wins above so
+    # "새 작업으로 진행" still creates a fresh session.
+    if _matches_any(text, _FORCE_CONTINUE_WORK_PHRASES):
+        return RuntimeIntent(
+            intent_id=INTENT_CONTINUE_EXISTING_WORK,
+            confidence="high",
+            reason="explicit continuation phrase",
         )
 
     # 3. Status / diagnostic.
