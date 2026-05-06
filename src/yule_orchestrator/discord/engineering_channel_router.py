@@ -42,6 +42,7 @@ from ..agents.routing import (
     ACTION_CREATE,
     ACTION_JOIN,
     EngineeringRoutingDecision,
+    _explicit_session_request,
     decide_routing,
     is_bot_echo_phrase,
     is_command_only_prompt,
@@ -1929,6 +1930,19 @@ async def _run_runtime_preflight(
     # preflight returns None, and runs the legacy CREATE branch with
     # the cached canonical_prompt as ``intake_prompt``.
 
+    # 0c. Explicit "기존 세션 <id>" reply with a stored canonical_prompt:
+    # the runtime recall doesn't parse the explicit-session-id pattern
+    # so it would force ASK_CLARIFICATION here even though decide_routing
+    # could resolve the JOIN cleanly. Hand off to the legacy flow so
+    # the canonical_prompt rewrite in ``route_engineering_message``
+    # handles the append payload.
+    if (
+        stored_canonical
+        and isinstance(prompt_text, str)
+        and _explicit_session_request(prompt_text)
+    ):
+        return None
+
     runtime_input = RuntimeInput(
         role_id="gateway",
         message_text=prompt_text,
@@ -1977,10 +1991,15 @@ async def _run_runtime_preflight(
         # Re-use the legacy join/append helper so research_loop_hook
         # still runs against the resumed session. The helper expects an
         # EngineeringConversationOutcome shape; we synthesise a minimal
-        # one carrying the prompt text as ``intake_prompt``.
+        # one carrying the prompt text as ``intake_prompt``. When a
+        # clarification cache stashed a canonical_prompt last turn we
+        # use that instead so the append payload carries the original
+        # task description, not the routing-command reply.
+        canonical_for_join = _recall_clarification_canonical_prompt(message)
+        join_intake_prompt = canonical_for_join or prompt_text
         synthetic_outcome = EngineeringConversationOutcome(
             content="",
-            intake_prompt=prompt_text,
+            intake_prompt=join_intake_prompt,
         )
         synthetic_decision = EngineeringRoutingDecision(
             action=ACTION_JOIN,
@@ -2017,12 +2036,14 @@ async def _run_runtime_preflight(
             message=message,
             outcome=synthetic_outcome,
             decision=synthetic_decision,
-            intake_prompt=prompt_text,
+            intake_prompt=join_intake_prompt,
             send_chunks=send_chunks,
             thread_continuation_fn=thread_continuation_fn,
             research_loop_fn=effective_research_loop_fn,
         )
         if result is not None:
+            if canonical_for_join:
+                _clear_clarification_context(message)
             return result
         # Fallthrough to clarification when continuation couldn't reach
         # the matched thread (e.g. it's archived) — do NOT silently
