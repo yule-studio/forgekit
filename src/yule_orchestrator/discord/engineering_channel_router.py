@@ -439,6 +439,48 @@ async def route_engineering_message(
         if preflight is not None:
             return preflight
 
+    # Clarification follow-up CREATE branch — when the prior turn
+    # showed candidates and the user replied "새 작업으로 진행" (or a
+    # verbose paraphrase like "기존 후보들은 다 제거해주고 새 작업으로
+    # 진행해줘"), the cached canonical_prompt is the actionable
+    # Research원문 — NOT the user's routing-command reply. Drive
+    # intake + kickoff + research_loop with the canonical so
+    # session.prompt / forum body / role-bot context all see the real
+    # task. Without a cached canonical we refuse outright (no zombie
+    # session whose prompt is the routing-command phrase).
+    if _looks_like_new_work_selection(prompt_text):
+        clarification_canonical = _recall_clarification_canonical_prompt(message)
+        clarification_candidates = _recall_clarification_candidates(message)
+        clarification_cache_present = (
+            _clarification_context_key(message) in _GATEWAY_CLARIFICATION_CONTEXT
+        )
+        if clarification_canonical:
+            create_result = await _drive_clarification_create_new_work(
+                message=message,
+                canonical_prompt=clarification_canonical,
+                intake_fn=intake_fn,
+                thread_kickoff_fn=thread_kickoff_fn,
+                send_chunks=send_chunks,
+                research_loop_fn=research_loop_fn,
+            )
+            if create_result is not None:
+                _clear_clarification_context(message)
+                return create_result
+        elif clarification_candidates or clarification_cache_present:
+            # Older cache entry from before the canonical_prompt fix
+            # (or candidates lost during truncation) — refuse to spawn
+            # a session with the routing-command phrase as session.prompt.
+            await send_chunks(
+                message.channel,
+                (
+                    "직전 clarification 캐시에서 원문 task 본문을 찾지 못했어요.\n"
+                    "진행할 업무 원문을 다시 알려주세요. \"새 작업으로 진행\"은 "
+                    "routing 명령이라 작업 본문으로 사용할 수 없어요."
+                ),
+            )
+            _clear_clarification_context(message)
+            return EngineeringRouteResult(handled=True)
+
     attachments = extract_message_attachments(message)
     user_links = extract_user_links_from_message(message, prompt_text)
     raw_outcome = await _maybe_await(
@@ -470,6 +512,25 @@ async def route_engineering_message(
 
     confirmed = outcome.confirmed or detect_confirmation_signal(prompt_text)
     intake_prompt = (outcome.intake_prompt or prompt_text).strip()
+
+    # Clarification follow-up canonical-prompt rewrite. Last turn's
+    # clarification stashed the original task description (e.g. "[Research]
+    # 하네스 엔지니어링…"). When the user replies with a routing-command
+    # phrase ("새 작업으로 진행" / "기존 세션 abc"), we substitute the
+    # cached canonical text into ``intake_prompt`` so every downstream
+    # writer (intake_fn → session.prompt, _handle_join_or_append → append
+    # payload, research_loop_fn → forum body / research query) sees the
+    # real task instead of the routing-command reply. ``decide_routing``
+    # still receives the user's literal reply via ``routing_input`` so
+    # explicit-session and "새 작업으로 진행" parsing still fire.
+    clarification_canonical = _recall_clarification_canonical_prompt(message)
+    if clarification_canonical:
+        intake_prompt = clarification_canonical
+        # The follow-up reply is the user's decision after seeing the
+        # original prompt last turn, so it's confirmed even when the
+        # literal text is just "새 작업으로 진행" / "1번".
+        confirmed = True
+
     if not confirmed or not intake_prompt:
         return EngineeringRouteResult(
             handled=True,
@@ -481,31 +542,32 @@ async def route_engineering_message(
     # returns one of join/create/ask/append-context. Failures fall back to the
     # legacy "create new" path so the bot never gets wedged.
     #
-    # Use ``intake_prompt`` (the canonical task description) instead of
-    # ``prompt_text`` (which is just the user's confirmation reply like
-    # "이대로 진행") so similarity scoring runs on the actual work content,
-    # not on the short confirm phrase. ``intake_prompt`` already falls back
-    # to ``prompt_text`` when the conversation layer has no separate task
-    # text (direct-confirm / single-message confirmation).
-    routing_prompt = intake_prompt or prompt_text
+    # Routing input vs intake_prompt:
+    # - ``routing_input`` is what ``decide_routing`` parses for explicit
+    #   session ids ("기존 세션 abc"), explicit new-work signals
+    #   ("새 작업으로 진행"), and similarity scoring against open sessions.
+    # - ``intake_prompt`` is what we persist as ``session.prompt`` (CREATE)
+    #   or hand to ``_handle_join_or_append`` as the append payload (JOIN).
+    # In a clarification follow-up these diverge — the user's reply is the
+    # routing signal but the cached canonical_prompt is the task content.
+    if clarification_canonical:
+        routing_input = (prompt_text or "").strip() or clarification_canonical
+    else:
+        routing_input = intake_prompt or prompt_text
+    routing_prompt = routing_input
     routing_thread_id = _thread_id_for_runtime(message)
 
-    # Confirm-routing + bot-echo guard. ``routing_prompt`` is what
-    # we'll feed into ``decide_routing`` AND, on the CREATE branch,
-    # what we'll persist as ``session.prompt`` via ``intake_fn``. So
-    # if it's a bare confirm phrase ("이대로 진행" / "새 작업으로
-    # 진행") or a verbatim bot-echo paste-back ("좋습니다. 이대로
-    # 작업을 등록할게요…"), we must refuse to act on it:
-    #   • token scorer would 1.0-match zombie sessions whose prompt
-    #     is the same confirm phrase
-    #   • CREATE would silently spawn another zombie row whose
-    #     session.prompt is "새 작업으로 진행" (the live bot-echo
-    #     loop reported in the MVP test)
-    # When the user is sitting in an open work thread we don't bail
-    # — the thread anchor inside ``decide_routing`` will still pick
-    # that session up and route to JOIN.
-    if is_non_actionable_prompt(routing_prompt) and routing_thread_id is None:
-        if is_bot_echo_phrase(routing_prompt):
+    # Confirm-routing + bot-echo guard. The firewall rejects when the
+    # user's reply is a non-actionable phrase AND we have no canonical
+    # task description to substitute. With a stored canonical_prompt
+    # the rewrite above already swapped intake_prompt to actionable
+    # text so a CREATE/JOIN can land safely on the canonical content.
+    if (
+        is_non_actionable_prompt(routing_input)
+        and not clarification_canonical
+        and routing_thread_id is None
+    ):
+        if is_bot_echo_phrase(routing_input):
             clarification = (
                 "방금 받은 메시지가 gateway가 보낸 안내문 문구와 똑같아서 "
                 "새 작업으로 등록하지 않았어요.\n"
@@ -537,7 +599,27 @@ async def route_engineering_message(
             confidence="low",
         )
 
+    # Clarification follow-up cleanup — the canonical_prompt is about to
+    # be consumed (CREATE writes it as session.prompt, JOIN/append uses
+    # it as the payload). Drop the cache so the next message in this
+    # channel does not re-use the same canonical against an unrelated
+    # routing-command reply.
+    if clarification_canonical:
+        _clear_clarification_context(message)
+
     if routing_decision.action == ACTION_ASK:
+        # Stash the routing decision's candidates AND the canonical
+        # task description so the next-turn follow-up ("1번" / "기존
+        # 세션 …" / "새 작업으로 진행") joins the right session OR
+        # creates a new one with the real intake_prompt — never with
+        # the routing-command phrase. ``intake_prompt`` here is the
+        # canonical task text (long Research원문 in the live MVP bug)
+        # that ``decide_routing`` just scored against.
+        _remember_clarification_candidates(
+            message,
+            routing_decision.candidate_summaries,
+            canonical_prompt=intake_prompt,
+        )
         clarification = _format_clarification_message(routing_decision)
         await send_chunks(message.channel, clarification)
         return EngineeringRouteResult(
@@ -735,8 +817,15 @@ _PREFLIGHT_SHORT_CIRCUIT_INTENTS = frozenset(
 # ---------------------------------------------------------------------------
 
 
+# Cached value shape:
+#   {"candidates": tuple[dict, ...], "canonical_prompt": Optional[str]}
+# ``canonical_prompt`` is the original task description that triggered the
+# clarification — used on a follow-up "새 작업으로 진행" / "1번" / "기존
+# 세션 <id>" reply so the next session/forum/research call gets the real
+# task text instead of the routing-command phrase ("새 작업으로 진행" is
+# never a valid session.prompt).
 _GATEWAY_CLARIFICATION_CONTEXT: dict[
-    tuple[Optional[int], Optional[int]], tuple[dict, ...]
+    tuple[Optional[int], Optional[int]], dict
 ] = {}
 
 
@@ -807,15 +896,26 @@ def _clarification_context_key(message: Any) -> tuple[Optional[int], Optional[in
 def _remember_clarification_candidates(
     message: Any,
     candidates: Sequence[Any],
+    *,
+    canonical_prompt: Optional[str] = None,
 ) -> None:
-    """Stash candidate session ids + thread ids from the recall result.
+    """Stash candidate session ids + thread ids + the original task prompt.
 
-    Stored as plain dicts so the cache value round-trips through
-    pickling-friendly types and we never hold a reference to a
-    dataclass that may grow new fields underneath us.
+    ``canonical_prompt`` is the actionable task text that was active when
+    the gateway showed the clarification ("Research 하네스 엔지니어링…"
+    style). On a follow-up turn ("새 작업으로 진행" / "1번" / "기존 세션
+    abc") the router pulls this back out so session.prompt + research
+    forum body + research_loop prompt_text all use the real task instead
+    of the routing-command phrase. Caller may pass ``None`` when only an
+    update of the candidate list is intended — in that case any
+    previously-cached canonical_prompt is preserved.
+
+    Stored as a plain dict so the cache value round-trips through
+    pickling-friendly types and we never hold a reference to a dataclass
+    that may grow new fields underneath us.
     """
 
-    if not candidates:
+    if not candidates and canonical_prompt is None:
         return
     serialized = tuple(
         {
@@ -826,15 +926,65 @@ def _remember_clarification_candidates(
             "forum_thread_id": getattr(cand, "forum_thread_id", None),
             "task_type": getattr(cand, "task_type", None),
         }
-        for cand in candidates[:5]
+        for cand in (candidates or ())[:5]
         if getattr(cand, "session_id", None)
     )
+    key = _clarification_context_key(message)
+    existing = _GATEWAY_CLARIFICATION_CONTEXT.get(key) or {}
+    # Only overwrite ``canonical_prompt`` when the caller actually
+    # supplied a non-empty actionable string — a downstream re-cache that
+    # only refreshes the candidate list must not erase the original
+    # task text that an earlier turn captured.
+    if canonical_prompt is not None:
+        cleaned_canonical = canonical_prompt.strip() or None
+    else:
+        cleaned_canonical = existing.get("canonical_prompt")
+    payload: dict = {}
     if serialized:
-        _GATEWAY_CLARIFICATION_CONTEXT[_clarification_context_key(message)] = serialized
+        payload["candidates"] = serialized
+    elif "candidates" in existing:
+        payload["candidates"] = existing["candidates"]
+    if cleaned_canonical:
+        payload["canonical_prompt"] = cleaned_canonical
+    if not payload:
+        return
+    _GATEWAY_CLARIFICATION_CONTEXT[key] = payload
 
 
 def _recall_clarification_candidates(message: Any) -> tuple[dict, ...]:
-    return _GATEWAY_CLARIFICATION_CONTEXT.get(_clarification_context_key(message), ())
+    cached = _GATEWAY_CLARIFICATION_CONTEXT.get(_clarification_context_key(message))
+    if cached is None:
+        return ()
+    # Backward-compat: older callers (and a couple of test fixtures)
+    # wrote a bare ``tuple[dict, ...]`` directly into the cache. Treat
+    # those as candidates-only so the runtime preflight still resolves
+    # "1번" / demonstrative selections cleanly. New code goes through
+    # ``_remember_clarification_candidates`` which writes a dict.
+    if isinstance(cached, tuple):
+        return cached
+    if isinstance(cached, dict):
+        return tuple(cached.get("candidates") or ())
+    return ()
+
+
+def _recall_clarification_canonical_prompt(message: Any) -> Optional[str]:
+    """Return the actionable task text captured at clarification time.
+
+    Returns ``None`` when no clarification cache exists for this
+    channel/user pair, or when the cache was populated without a
+    canonical_prompt (older entries before the Phase B fix). Callers
+    must refuse to spawn a new session in that case — falling back to
+    the routing-command phrase as session.prompt is exactly the bug we
+    are fixing.
+    """
+
+    cached = _GATEWAY_CLARIFICATION_CONTEXT.get(_clarification_context_key(message))
+    if not isinstance(cached, dict):
+        return None
+    raw = cached.get("canonical_prompt")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
 
 
 def _clear_clarification_context(message: Any) -> None:
@@ -885,23 +1035,155 @@ def _try_select_candidate(
     return None
 
 
+_NEW_WORK_SELECTION_PHRASES: tuple[str, ...] = (
+    "새 작업으로 진행",
+    "새 작업으로 등록",
+    "새 작업으로 시작",
+    "새 작업 만들어",
+    "새 세션으로 진행",
+    "새 세션으로 등록",
+    "새 thread로",
+    "새 스레드로",
+    "create new work",
+    "create a new task",
+    "start a new session",
+    "new thread",
+    "new session",
+)
+
+
+def _looks_like_new_work_selection(text: str) -> bool:
+    """True when *text* is a routing-command meaning "make a new session".
+
+    Used for the clarification follow-up branch — when the gateway just
+    asked "어느 작업에 합류할까요?" and the user replies "새 작업으로
+    진행", we go to CREATE *with the cached canonical_prompt*, not with
+    the routing-command phrase. Without a cached canonical_prompt the
+    router refuses (clarification) so this phrase can never become
+    session.prompt on its own.
+    """
+
+    cleaned = " ".join((text or "").lower().split()).strip(" .!?")
+    if not cleaned:
+        return False
+    return any(phrase in cleaned for phrase in _NEW_WORK_SELECTION_PHRASES)
+
+
+async def _drive_clarification_create_new_work(
+    *,
+    message: Any,
+    canonical_prompt: str,
+    intake_fn: "IntakeFn",
+    thread_kickoff_fn: "ThreadKickoffFn",
+    send_chunks: SendChunksFn,
+    research_loop_fn: Optional["ResearchLoopFn"],
+) -> Optional[EngineeringRouteResult]:
+    """Drive intake → kickoff → research_loop with a cached canonical
+    prompt when the user's clarification follow-up was "새 작업으로
+    진행".
+
+    Bypasses ``conversation_fn`` and ``decide_routing`` entirely so
+    the new ``session.prompt`` is the canonical task text — never the
+    routing-command phrase the user just typed. Defensive guards
+    refuse non-actionable canonicals (the same firewall as the legacy
+    intake path).
+    """
+
+    if is_non_actionable_prompt(canonical_prompt):
+        clarification = (
+            "방금 받은 메시지는 routing 명령(`새 작업으로 진행`) 이라 "
+            "session.prompt 로 쓸 수 없고, 직전 clarification 캐시에서도 "
+            "원문 task 본문을 찾지 못했어요. 진행할 업무 원문을 다시 "
+            "알려주세요."
+        )
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(handled=True)
+
+    try:
+        intake = intake_fn(
+            prompt=canonical_prompt,
+            write_requested=False,
+            channel_id=getattr(getattr(message, "channel", None), "id", None),
+            user_id=getattr(getattr(message, "author", None), "id", None),
+        )
+        intake = await _maybe_await(intake)
+    except Exception as exc:  # noqa: BLE001 - surface error to user, do not crash bot
+        await send_chunks(message.channel, f"⚠️ engineer intake 실패: {exc}")
+        return EngineeringRouteResult(handled=True, error=str(exc))
+
+    intake_message = getattr(intake, "message", None)
+    session = getattr(intake, "session", None)
+    plan = getattr(intake, "plan", None)
+    session_id = getattr(session, "session_id", None)
+
+    if intake_message:
+        await send_chunks(message.channel, intake_message)
+
+    kickoff_message: Optional[str] = None
+    thread_id: Optional[int] = None
+    kickoff_error: Optional[str] = None
+    try:
+        kickoff = await thread_kickoff_fn(
+            channel=message.channel,
+            session=session,
+            plan=plan,
+            topic=None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        kickoff_error = str(exc)
+        await send_chunks(message.channel, f"⚠️ thread kickoff 실패: {exc}")
+        kickoff = None
+    if kickoff is not None:
+        kickoff_message = getattr(kickoff, "message", None)
+        thread_id = getattr(kickoff, "thread_id", None)
+        if kickoff_message:
+            await send_chunks(message.channel, kickoff_message)
+
+    research_loop_report = None
+    if research_loop_fn is not None and session is not None and kickoff is not None:
+        research_loop_report = await _run_research_loop_hook(
+            research_loop_fn=research_loop_fn,
+            message=message,
+            session=session,
+            prompt_text=canonical_prompt,
+            send_chunks=send_chunks,
+            thread_id=thread_id,
+        )
+
+    return EngineeringRouteResult(
+        handled=True,
+        session_id=session_id,
+        thread_id=thread_id,
+        kickoff_message=kickoff_message,
+        research_loop_report=research_loop_report,
+        error=kickoff_error,
+    )
+
+
 async def _handle_clarification_selection(
     *,
     message: Any,
     selected: dict,
     prompt_text: str,
+    canonical_prompt: Optional[str],
     send_chunks: SendChunksFn,
     thread_continuation_fn: Optional[ThreadContinuationFn],
 ) -> Optional[EngineeringRouteResult]:
     """Drive the legacy join helper for a clarification follow-up
-    selection. Returns a populated result on success or ``None`` to
-    leave the cache in place and fall through to the regular flow."""
+    selection. ``canonical_prompt`` (when present) is the original task
+    description captured at clarification time — used as the join /
+    append payload so session.extra and forum body see real content.
+    The user's routing-command reply (``prompt_text``) is dropped from
+    the join payload entirely. Returns a populated result on success or
+    ``None`` to leave the cache in place and fall through to the regular
+    flow."""
 
     if thread_continuation_fn is None:
         return None
+    intake_prompt = (canonical_prompt or "").strip() or prompt_text
     synthetic_outcome = EngineeringConversationOutcome(
         content="",
-        intake_prompt=prompt_text,
+        intake_prompt=intake_prompt,
     )
     synthetic_decision = EngineeringRoutingDecision(
         action=ACTION_JOIN,
@@ -915,7 +1197,7 @@ async def _handle_clarification_selection(
         message=message,
         outcome=synthetic_outcome,
         decision=synthetic_decision,
-        intake_prompt=prompt_text,
+        intake_prompt=intake_prompt,
         send_chunks=send_chunks,
         thread_continuation_fn=thread_continuation_fn,
         research_loop_fn=None,
@@ -1624,6 +1906,7 @@ async def _run_runtime_preflight(
     # context to classify on their own. Only consulted when we have a
     # cached set of candidates from a prior clarification turn.
     stored_candidates = _recall_clarification_candidates(message)
+    stored_canonical = _recall_clarification_canonical_prompt(message)
     if stored_candidates:
         selected = _try_select_candidate(prompt_text, stored_candidates)
         if selected is not None:
@@ -1631,12 +1914,20 @@ async def _run_runtime_preflight(
                 message=message,
                 selected=selected,
                 prompt_text=prompt_text,
+                canonical_prompt=stored_canonical,
                 send_chunks=send_chunks,
                 thread_continuation_fn=thread_continuation_fn,
             )
             if join_result is not None:
                 _clear_clarification_context(message)
                 return join_result
+
+    # 0b. Clarification follow-up "새 작업으로 진행" path is *not*
+    # handled in the preflight (we do not own intake_fn / kickoff_fn
+    # here). The caller (``route_engineering_message``) inspects the
+    # same cache via ``_recall_clarification_canonical_prompt`` after
+    # preflight returns None, and runs the legacy CREATE branch with
+    # the cached canonical_prompt as ``intake_prompt``.
 
     runtime_input = RuntimeInput(
         role_id="gateway",
@@ -1737,7 +2028,11 @@ async def _run_runtime_preflight(
         # the matched thread (e.g. it's archived) — do NOT silently
         # create a new session. Stash the candidates so the user can
         # reply with "1번" / "기존 세션으로 진행" on the next turn.
-        _remember_clarification_candidates(message, recall.candidates)
+        _remember_clarification_candidates(
+            message,
+            recall.candidates,
+            canonical_prompt=prompt_text,
+        )
         await send_chunks(
             message.channel,
             _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
@@ -1757,7 +2052,11 @@ async def _run_runtime_preflight(
         # context append. Either way the message reuses the same
         # template so the operator sees what's missing — and we cache
         # the candidate list so a follow-up "1번" turn resolves cleanly.
-        _remember_clarification_candidates(message, recall.candidates)
+        _remember_clarification_candidates(
+            message,
+            recall.candidates,
+            canonical_prompt=prompt_text,
+        )
         await send_chunks(
             message.channel,
             _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),

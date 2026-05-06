@@ -485,7 +485,9 @@ class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
         from yule_orchestrator.discord import engineering_channel_router as router
         cached = router._GATEWAY_CLARIFICATION_CONTEXT.get((111, 4242))
         self.assertIsNotNone(cached)
-        self.assertEqual(len(cached), 2)
+        # New schema: dict with "candidates" tuple + "canonical_prompt".
+        candidates = cached.get("candidates") if isinstance(cached, dict) else cached
+        self.assertEqual(len(candidates), 2)
         # Sanity: gateway sent the clarification template.
         sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
         self.assertIn("어떤 작업을 가리키시는지", sent)
@@ -820,6 +822,312 @@ class ContinuationResearchRestartTests(_PreflightRouteHarness):
         )
         self.assertTrue(result.handled)
         self.assertEqual(loop_called["count"], 0)
+
+
+class ClarificationCanonicalPromptHandoffTests(unittest.TestCase):
+    """Live MVP regression: when the gateway shows a candidate
+    clarification on turn 1 (`이어갈 세션 ID를…`) and the user replies
+    with a routing-command on turn 2 (`새 작업으로 진행` or
+    `1번` / `기존 세션 …`), the canonical Research원문 from turn 1
+    must be re-used for session.prompt + research_loop prompt_text +
+    forum body. Pure routing-command text must never become the
+    canonical prompt.
+    """
+
+    def setUp(self) -> None:  # noqa: D401
+        _isolate_cache_for_test(self)
+        self.context = EngineeringRouteContext(
+            intake_channel_id=111, intake_channel_name="업무-접수"
+        )
+        self.send_chunks = AsyncMock()
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        router._GATEWAY_CLARIFICATION_CONTEXT.clear()
+
+    def _seed_canonical(
+        self,
+        *,
+        canonical_prompt: str,
+        scope_key: tuple,
+        candidates: tuple = (),
+    ) -> None:
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
+            "candidates": candidates,
+            "canonical_prompt": canonical_prompt,
+        }
+
+    def _route(
+        self,
+        *,
+        message,
+        intake_fn,
+        kickoff_fn,
+        research_loop_fn=None,
+        list_sessions_fn=None,
+        thread_continuation_fn=None,
+    ):
+        return _run(
+            route_engineering_message(
+                message=message,
+                bot_user=object(),
+                route_context=self.context,
+                extract_prompt=_extract_prompt,
+                conversation_fn=AsyncMock(
+                    side_effect=AssertionError(
+                        "conversation_fn must NOT run for clarification "
+                        "follow-up create-override"
+                    )
+                ),
+                intake_fn=intake_fn,
+                thread_kickoff_fn=kickoff_fn,
+                send_chunks=self.send_chunks,
+                research_loop_fn=research_loop_fn,
+                thread_continuation_fn=thread_continuation_fn,
+                list_sessions_fn=list_sessions_fn or (lambda **_kw: []),
+            )
+        )
+
+    def test_new_work_selection_uses_canonical_for_intake(self) -> None:
+        canonical = (
+            "[Research] 하네스 엔지니어링을 yule-studio-agent에 어떻게 도입할 수 "
+            "있을지 조사해줘. 운영 흐름과 메모리 회수 정책 포함."
+        )
+        scope_key = (111, 4242)
+        self._seed_canonical(
+            canonical_prompt=canonical,
+            scope_key=scope_key,
+            candidates=(
+                {
+                    "session_id": "old-1",
+                    "title": "이전 후보 1",
+                    "score": 0.4,
+                    "thread_id": None,
+                    "forum_thread_id": None,
+                    "task_type": "research",
+                },
+            ),
+        )
+
+        intake_fn = AsyncMock(
+            return_value=FakeIntakeResult(
+                session=LegacyFakeSession(
+                    session_id="new-1", task_type="research"
+                ),
+                plan=FakePlan(),
+                message="**[engineering-agent] 새 작업 접수**",
+            )
+        )
+        kickoff_fn = AsyncMock(
+            return_value=EngineeringThreadKickoff(
+                thread_id=9999, message="kickoff"
+            )
+        )
+
+        message = FakeMessage(
+            content="기존 후보들은 다 제거 해주고 새 작업으로 진행해줘",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 4242})()
+
+        result = self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "new-1")
+        intake_fn.assert_awaited_once()
+        kw = intake_fn.await_args.kwargs
+        # The smoking gun: intake_fn must receive the canonical
+        # Research원문, NOT the verbose routing-command paraphrase.
+        self.assertEqual(kw["prompt"], canonical)
+
+    def test_new_work_selection_passes_canonical_to_research_loop(self) -> None:
+        canonical = (
+            "[Research] 결제 모듈 멱등성 검증 흐름 백엔드 추가 + 회귀 시나리오"
+        )
+        scope_key = (111, 5252)
+        self._seed_canonical(canonical_prompt=canonical, scope_key=scope_key)
+
+        intake_fn = AsyncMock(
+            return_value=FakeIntakeResult(
+                session=LegacyFakeSession(
+                    session_id="new-2", task_type="feature"
+                ),
+                plan=FakePlan(),
+                message="**[engineering-agent] 새 작업 접수**",
+            )
+        )
+        kickoff_fn = AsyncMock(
+            return_value=EngineeringThreadKickoff(
+                thread_id=12345, message="kickoff"
+            )
+        )
+
+        loop_calls: list[dict] = []
+
+        async def loop_fn(**kwargs):
+            loop_calls.append(kwargs)
+            return EngineeringResearchLoopReport()
+
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 5252})()
+
+        result = self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+            research_loop_fn=loop_fn,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(len(loop_calls), 1)
+        # research_loop_fn must see the canonical Research원문 — never
+        # the routing-command "새 작업으로 진행". Forum publishers and
+        # role-bot prefaces all read off this prompt_text.
+        self.assertEqual(loop_calls[0]["message_text"], canonical)
+
+    def test_clarification_cache_cleared_after_successful_create(self) -> None:
+        canonical = "[Research] something substantive"
+        scope_key = (111, 6363)
+        self._seed_canonical(canonical_prompt=canonical, scope_key=scope_key)
+
+        intake_fn = AsyncMock(
+            return_value=FakeIntakeResult(
+                session=LegacyFakeSession(
+                    session_id="new-3", task_type="research"
+                ),
+                plan=FakePlan(),
+                message="ok",
+            )
+        )
+        kickoff_fn = AsyncMock(
+            return_value=EngineeringThreadKickoff(thread_id=22, message="ok")
+        )
+
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 6363})()
+
+        self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+        )
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
+
+    def test_no_canonical_means_no_session_created(self) -> None:
+        # Cache exists with candidates but missing canonical_prompt —
+        # older entry from before the Phase B fix. The router must
+        # NOT spawn a session whose prompt is the routing-command
+        # phrase ("새 작업으로 진행").
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        scope_key = (111, 7474)
+        router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
+            "candidates": (
+                {
+                    "session_id": "old",
+                    "title": "stale",
+                    "score": 0.3,
+                    "thread_id": None,
+                    "forum_thread_id": None,
+                    "task_type": "research",
+                },
+            ),
+            # canonical_prompt intentionally missing
+        }
+
+        intake_fn = AsyncMock(
+            side_effect=AssertionError(
+                "intake_fn must NOT run without a canonical prompt"
+            )
+        )
+        kickoff_fn = AsyncMock(
+            side_effect=AssertionError(
+                "kickoff_fn must NOT run without a canonical prompt"
+            )
+        )
+
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 7474})()
+
+        result = self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+        )
+        self.assertTrue(result.handled)
+        # Routing-prompt guard fired — clarification message sent.
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("진행할 업무 원문", sent)
+
+    def test_existing_session_pick_uses_canonical_for_append(self) -> None:
+        # Live regression: user picks "1번" — the join helper must
+        # append the stored canonical_prompt to the matched session,
+        # not the bare "1번" reply.
+        canonical = "[Research] 운영 메트릭 수집 자동화 검토 + KPI 정의"
+        scope_key = (111, 8585)
+        candidate = {
+            "session_id": "match-1",
+            "title": "운영 메트릭",
+            "score": 0.42,
+            "thread_id": 4444,
+            "forum_thread_id": None,
+            "task_type": "research",
+        }
+        self._seed_canonical(
+            canonical_prompt=canonical,
+            scope_key=scope_key,
+            candidates=(candidate,),
+        )
+
+        captured: dict = {}
+
+        async def continuation_fn(**kwargs):
+            captured.update(kwargs)
+            return EngineeringThreadContinuation(
+                session=LegacyFakeSession(
+                    session_id="match-1", task_type="research"
+                ),
+                thread_id=4444,
+                message="기존 thread에 이어 붙였습니다.",
+            )
+
+        intake_fn = AsyncMock(
+            side_effect=AssertionError("intake must NOT run on candidate pick")
+        )
+        kickoff_fn = AsyncMock(
+            side_effect=AssertionError("kickoff must NOT run on candidate pick")
+        )
+
+        message = FakeMessage(
+            content="1번",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 8585})()
+
+        self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+            thread_continuation_fn=continuation_fn,
+            list_sessions_fn=lambda **_kw: [],
+        )
+        # The continuation helper must have received the canonical
+        # Research원문 as the appended prompt — not the "1번" reply.
+        self.assertEqual(captured.get("prompt"), canonical)
 
 
 if __name__ == "__main__":
