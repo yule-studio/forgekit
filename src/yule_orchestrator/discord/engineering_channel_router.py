@@ -801,6 +801,10 @@ async def route_engineering_message(
         research_pack=outcome.research_pack,
         collection_outcome=outcome.collection_outcome,
     )
+    # Phase 1 wiring: stash active role selection on the new session so
+    # downstream research_loop / work_report / status diagnostic all
+    # see the same set without re-running the rule bank.
+    session = _persist_role_selection(session, intake_prompt)
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -840,6 +844,17 @@ async def route_engineering_message(
             role_for_research=outcome.role_for_research,
             thread_id=thread_id,
         )
+
+    # Phase 4: post a deterministic work report once the research +
+    # synthesis pass closes. Always best-effort; a failure here keeps
+    # the existing reply chain intact.
+    await _emit_work_report_preview(
+        message=message,
+        session=session,
+        canonical_prompt=intake_prompt,
+        send_chunks=send_chunks,
+        collection_outcome=outcome.collection_outcome,
+    )
 
     return EngineeringRouteResult(
         handled=True,
@@ -1174,6 +1189,10 @@ async def _drive_clarification_create_new_work(
     intake_message = getattr(intake, "message", None)
     session = getattr(intake, "session", None)
     plan = getattr(intake, "plan", None)
+    # Phase 1 wiring: stash active role selection on the freshly
+    # spawned session before kickoff / research_loop / work_report
+    # consume it.
+    session = _persist_role_selection(session, canonical_prompt)
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -1209,6 +1228,15 @@ async def _drive_clarification_create_new_work(
             send_chunks=send_chunks,
             thread_id=thread_id,
         )
+
+    # Phase 4: post the deterministic work report at lifecycle close.
+    await _emit_work_report_preview(
+        message=message,
+        session=session,
+        canonical_prompt=canonical_prompt,
+        send_chunks=send_chunks,
+        collection_outcome=None,
+    )
 
     return EngineeringRouteResult(
         handled=True,
@@ -1512,6 +1540,172 @@ def _persist_coding_job(session: Any, job_payload: Mapping[str, object]) -> Any:
             "coding_proposal": None,  # consumed
         },
     )
+
+
+def _persist_role_selection(
+    session: Any,
+    canonical_prompt: str,
+) -> Any:
+    """Run :func:`role_selection.recommend_active_roles` against
+    *canonical_prompt* and stash the result on ``session.extra``.
+
+    Best-effort: import or persistence failures simply skip — the
+    legacy "all roles" fallback path remains operational. Used right
+    after intake so the work-report builder + research scoping see a
+    populated ``active_research_roles`` from turn one.
+    """
+
+    if session is None:
+        return session
+    try:
+        from ..agents.role_selection import (
+            apply_role_selection_to_extra,
+            recommend_active_roles,
+        )
+    except Exception:  # noqa: BLE001
+        return session
+    try:
+        hint_sequence = tuple(getattr(session, "role_sequence", ()) or ())
+    except Exception:  # noqa: BLE001
+        hint_sequence = ()
+    try:
+        selection = recommend_active_roles(
+            user_prompt=canonical_prompt or "",
+            hint_role_sequence=hint_sequence,
+        )
+    except Exception:  # noqa: BLE001
+        return session
+    try:
+        existing = dict(getattr(session, "extra", {}) or {})
+    except Exception:  # noqa: BLE001
+        existing = {}
+    merged = apply_role_selection_to_extra(existing, selection)
+    # Only forward the four selection-specific keys to _persist_extra_keys
+    # so we don't accidentally rewrite unrelated extras with stale copies.
+    selection_updates = {
+        key: merged[key]
+        for key in (
+            "active_research_roles",
+            "excluded_research_roles",
+            "role_selection_source",
+            "role_selection_reasons",
+        )
+        if key in merged
+    }
+    if not selection_updates:
+        return session
+    return _persist_extra_keys(session, selection_updates)
+
+
+def _work_report_to_dict(report: Any) -> dict:
+    """Serialise a :class:`agents.work_report.WorkReport` into a plain
+    JSON-friendly dict so the workflow store can persist it under
+    ``session.extra['work_report']``."""
+
+    return {
+        "session_id": getattr(report, "session_id", None),
+        "title": getattr(report, "title", "") or "",
+        "canonical_prompt": getattr(report, "canonical_prompt", "") or "",
+        "executive_summary": getattr(report, "executive_summary", "") or "",
+        "research_summary": getattr(report, "research_summary", "") or "",
+        "tech_lead_recommendation": getattr(
+            report, "tech_lead_recommendation", ""
+        )
+        or "",
+        "role_decisions": dict(getattr(report, "role_decisions", {}) or {}),
+        "risks": list(getattr(report, "risks", ()) or ()),
+        "proposed_next_steps": list(
+            getattr(report, "proposed_next_steps", ()) or ()
+        ),
+        "requires_code_change": bool(
+            getattr(report, "requires_code_change", False)
+        ),
+        "recommended_executor_role": getattr(
+            report, "recommended_executor_role", None
+        ),
+        "approval_request": getattr(report, "approval_request", None),
+        "participants": list(getattr(report, "participants", ()) or ()),
+        "reference_count": int(getattr(report, "reference_count", 0) or 0),
+        "research_stop_reason": getattr(report, "research_stop_reason", None),
+        "under_covered_roles": list(
+            getattr(report, "under_covered_roles", ()) or ()
+        ),
+    }
+
+
+async def _emit_work_report_preview(
+    *,
+    message: Any,
+    session: Any,
+    canonical_prompt: str,
+    send_chunks: SendChunksFn,
+    collection_outcome: Any = None,
+    fallback_participants: Sequence[str] = (),
+) -> None:
+    """Build + persist + post a :class:`WorkReport` for *session*.
+
+    Best-effort end-of-lifecycle hook: builds a deterministic work
+    report from ``session.extra``, stashes a snapshot under
+    ``session.extra['work_report']`` so the status diagnostic + Phase
+    5 Obsidian export can read it back, and posts a Markdown preview
+    to the originating Discord channel. Any failure here must NOT
+    undo the intake / kickoff / research_loop that already landed —
+    every step is wrapped so the user-visible reply is always
+    delivered.
+    """
+
+    if session is None:
+        return
+    try:
+        from ..agents.work_report import (
+            build_work_report,
+            format_work_report_markdown,
+        )
+    except Exception:  # noqa: BLE001 - import wiring failure must not crash bot
+        return
+
+    try:
+        extra = dict(getattr(session, "extra", {}) or {})
+    except Exception:  # noqa: BLE001
+        extra = {}
+
+    stop_reason: Optional[str] = None
+    under_covered: tuple = ()
+    if collection_outcome is not None:
+        stop_reason = getattr(collection_outcome, "stop_reason", None)
+        try:
+            under_covered = tuple(
+                getattr(collection_outcome, "under_covered_roles", ()) or ()
+            )
+        except TypeError:
+            under_covered = ()
+
+    try:
+        report = build_work_report(
+            session_id=getattr(session, "session_id", None),
+            canonical_prompt=canonical_prompt,
+            extra=extra,
+            research_stop_reason=stop_reason,
+            under_covered_roles=under_covered,
+            fallback_participants=fallback_participants,
+        )
+    except Exception:  # noqa: BLE001 - report build is non-fatal
+        return
+
+    try:
+        _persist_extra_keys(session, {"work_report": _work_report_to_dict(report)})
+    except Exception:  # noqa: BLE001 - cache failures must not block the user reply
+        pass
+
+    try:
+        body = format_work_report_markdown(report)
+    except Exception:  # noqa: BLE001
+        body = ""
+    if body:
+        try:
+            await send_chunks(message.channel, body)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
@@ -2288,6 +2482,16 @@ async def _handle_join_or_append(
             research_pack=outcome.research_pack,
             role_for_research=outcome.role_for_research,
             thread_id=thread_id,
+        )
+        # Phase 4: post the deterministic work report at lifecycle close.
+        # Skipped on pure ACTION_APPEND_CONTEXT — append-only turns
+        # don't have a fresh research outcome to summarise.
+        await _emit_work_report_preview(
+            message=message,
+            session=continued_session,
+            canonical_prompt=intake_prompt,
+            send_chunks=send_chunks,
+            collection_outcome=outcome.collection_outcome,
         )
 
     return EngineeringRouteResult(

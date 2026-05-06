@@ -1159,6 +1159,45 @@ def format_status_diagnostic_response(
     elif research_pack:
         lines.append("- tech-lead synthesis: 아직 기록되지 않음")
 
+    # Phase 4 — surface role_selection + work_report so the user can
+    # see *who* participated and *whether* a deliverable already
+    # landed. ``active_research_roles`` comes from the role_selection
+    # module; ``work_report`` is the snapshot the gateway posts at
+    # lifecycle close.
+    active_roles_value = extra.get("active_research_roles")
+    if isinstance(active_roles_value, list) and active_roles_value:
+        role_names = ", ".join(str(r) for r in active_roles_value if r)
+        if role_names:
+            selection_source = extra.get("role_selection_source") or "?"
+            lines.append(
+                f"- 활성 role: {role_names} (선정: {selection_source})"
+            )
+
+    work_report_payload = extra.get("work_report")
+    if isinstance(work_report_payload, Mapping):
+        title = str(work_report_payload.get("title") or "?")
+        if len(title) > 80:
+            title = title[:77] + "..."
+        requires_change = bool(
+            work_report_payload.get("requires_code_change")
+        )
+        code_flag = (
+            "코드 수정 필요"
+            if requires_change
+            else "코드 수정 없음"
+        )
+        ref_count = work_report_payload.get("reference_count") or 0
+        stop_reason = work_report_payload.get("research_stop_reason")
+        meta_bits = [f"자료 {ref_count}건", code_flag]
+        if stop_reason:
+            meta_bits.append(f"stop: {stop_reason}")
+        lines.append(
+            f"- 업무 보고서: 작성됨 — \"{title}\" · "
+            + " · ".join(meta_bits)
+        )
+    elif synthesis:
+        lines.append("- 업무 보고서: 아직 미작성")
+
     progress_notes = tuple(getattr(session, "progress_notes", ()) or ())
     if progress_notes:
         last = progress_notes[-1]
