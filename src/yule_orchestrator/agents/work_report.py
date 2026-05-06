@@ -382,59 +382,50 @@ def build_work_report(
 
 
 def _resolve_pack_state(extra: Mapping[str, Any]) -> tuple[bool, int]:
-    """Return (has_research_pack, source_count). research_source_count
-    written by Phase 2 persistence is preferred; falls back to a live
-    pack inspection so older session rows still classify."""
+    """Return (has_research_pack, source_count) — thin shim over
+    :mod:`agents.lifecycle_status` so :mod:`agents.work_report` and
+    the Discord / Obsidian readers share one canonical computation.
+    Kept as a private wrapper because the older signature is part of
+    this module's intra-call contract."""
 
-    raw_count = extra.get("research_source_count")
-    if isinstance(raw_count, (int, float)):
-        count = int(raw_count)
-        return (count > 0, count)
-    pack = extra.get("research_pack")
-    if isinstance(pack, Mapping):
-        sources = pack.get("sources")
-        try:
-            count = len(sources) if sources is not None else 0
-        except TypeError:
-            count = 0
-        return (count > 0, count)
-    return (False, 0)
+    from .lifecycle_status import compute_research_source_count
+
+    count = compute_research_source_count(_StubExtra(extra))
+    return (count > 0, count)
+
+
+class _StubExtra:
+    """Adapter so :mod:`agents.lifecycle_status` (which expects a
+    session-like object with ``.extra``) can read a bare extras dict
+    without callers having to fabricate sessions."""
+
+    __slots__ = ("extra",)
+
+    def __init__(self, extra: Mapping[str, Any]) -> None:
+        self.extra = dict(extra or {})
 
 
 def _resolve_has_synthesis(extra: Mapping[str, Any]) -> bool:
-    synthesis = extra.get("research_synthesis")
-    if not isinstance(synthesis, Mapping):
-        return False
-    consensus = synthesis.get("consensus")
-    if isinstance(consensus, str) and consensus.strip():
-        return True
-    # Synthesis dict present but no consensus text — treat as missing
-    # to be conservative.
-    return False
+    from .lifecycle_status import has_synthesis as _has_synthesis
+
+    return _has_synthesis(_StubExtra(extra))
 
 
 def _resolve_missing_roles(extra: Mapping[str, Any]) -> Tuple[str, ...]:
-    """Compute active_research_roles - played_roles set difference.
-
-    ``played_roles`` is recorded by the team_runtime when a role bot
-    actually contributes (research-open response or deliberation
-    take). When the diff is non-empty the work-report stays in
-    ``interim`` status so the gateway doesn't ship a deliverable
-    while half the team is still silent.
+    """Active_roles − played_roles, computed via the canonical
+    :mod:`agents.lifecycle_status` helper.
     """
+
+    from .lifecycle_status import (
+        compute_role_coverage,
+        _resolve_played_roles,
+    )
 
     active = _coerce_str_list(extra.get("active_research_roles"))
     if not active:
         return ()
-    played_raw = extra.get("played_roles") or extra.get("team_played_roles")
-    played = _coerce_str_list(played_raw)
-    # team_conversation might also store under nested key.
-    team = extra.get("team_conversation")
-    if isinstance(team, Mapping):
-        nested = team.get("played_roles")
-        played = played + _coerce_str_list(nested)
-    played_set = {role for role in played}
-    missing = tuple(role for role in active if role not in played_set)
+    played = _resolve_played_roles(extra)
+    _, missing = compute_role_coverage(active, played)
     return missing
 
 

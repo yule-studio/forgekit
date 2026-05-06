@@ -2072,59 +2072,13 @@ def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
     "missing canonical readiness" reason rather than a hard pass.
     """
 
-    if session is None:
-        return False, "세션 객체를 찾지 못했어요"
-    extra = dict(getattr(session, "extra", {}) or {})
-    research_status = str(extra.get("research_status") or "").lower()
-    source_count = extra.get("research_source_count")
-    pack = extra.get("research_pack")
+    # Refactor: delegate to the canonical :mod:`agents.lifecycle_status`
+    # helper so the router, work_report builder, and Discord status
+    # diagnostic all share one set of "can we save?" rules. The block
+    # reasons stay identical to keep operator-visible messages stable.
+    from ..agents.lifecycle_status import can_write_obsidian_record
 
-    # Three ways to clear the "research present" check, in order of
-    # confidence:
-    #   1. Phase 2 stamped research_status="ready".
-    #   2. research_source_count is explicitly > 0.
-    #   3. The pack dict carries a non-empty ``sources`` list (older
-    #      sessions written before Phase 2 don't have the count key,
-    #      so we re-derive it here so the existing approval flow keeps
-    #      working).
-    pack_source_count = 0
-    if isinstance(pack, Mapping):
-        sources = pack.get("sources")
-        try:
-            pack_source_count = len(sources) if sources is not None else 0
-        except TypeError:
-            pack_source_count = 0
-    has_research = (
-        research_status == "ready"
-        or (isinstance(source_count, (int, float)) and int(source_count) > 0)
-        or pack_source_count > 0
-    )
-    if not has_research:
-        return False, "research_pack 미수집 (자료 0건) 상태라 저장할 수 없어요"
-
-    work_report = extra.get("work_report")
-    if isinstance(work_report, Mapping):
-        wr_status = str(work_report.get("status") or "").lower()
-        if wr_status in ("insufficient", "interim"):
-            missing = work_report.get("missing_roles") or []
-            if missing:
-                return (
-                    False,
-                    f"역할 토의 미완료 ({', '.join(str(r) for r in missing)}) 라 저장할 수 없어요",
-                )
-            return (
-                False,
-                f"work_report status={wr_status} 라 final 저장 단계가 아니에요",
-            )
-    forum_thread_id = (
-        extra.get("research_forum_thread_id")
-        or extra.get("forum_thread_id")
-    )
-    if not forum_thread_id:
-        # forum thread 가 없어도 research_pack 만 있으면 저장 자체는
-        # 가능 — forum 미연결은 경고만 띄우고 통과.
-        return True, None
-    return True, None
+    return can_write_obsidian_record(session)
 
 
 async def _run_obsidian_approval_gate(
