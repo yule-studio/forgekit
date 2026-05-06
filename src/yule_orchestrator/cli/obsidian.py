@@ -19,7 +19,7 @@ from ..agents.research_pack import pack_from_dict
 from ..agents.workflow_state import load_session
 
 
-VALID_KINDS = ("research", "decision", "reference")
+VALID_KINDS = ("research", "decision", "reference", "knowledge")
 
 
 def run_obsidian_sync_command(
