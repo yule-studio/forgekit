@@ -49,6 +49,13 @@ from .models import (
     SessionCandidate,
 )
 from .loop import run_runtime_loop
+from .recall import (
+    AMBIGUITY_MARGIN,
+    RECALL_SEEKING_INTENTS,
+    SCORE_HIGH,
+    SCORE_MEDIUM,
+    make_recall_fn,
+)
 from .understand import (
     IntentClassifier,
     classify_intent_deterministic,
@@ -88,8 +95,13 @@ __all__ = (
     "RuntimeResearchPlan",
     "RuntimeResult",
     "SessionCandidate",
+    "AMBIGUITY_MARGIN",
     "IntentClassifier",
+    "RECALL_SEEKING_INTENTS",
+    "SCORE_HIGH",
+    "SCORE_MEDIUM",
     "classify_intent_deterministic",
+    "make_recall_fn",
     "make_understand_fn",
     "run_runtime_loop",
 )
