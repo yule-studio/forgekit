@@ -1072,109 +1072,21 @@ async def _handle_clarification_selection(
 # ---------------------------------------------------------------------------
 
 
-# Phrases that explicitly say "no code changes — research only". When
-# any of these is in the user's message we treat it as a hard "do not
-# trigger coding authorization" signal even if a proposal phrase
-# appears in the same sentence (e.g. "코드 수정하지 말고 리서치만 정리해줘").
-_NO_CODING_INTENT_PHRASES: tuple[str, ...] = (
-    "코드 수정하지 말",
-    "코드 수정 하지 말",
-    "코드 수정 금지",
-    "수정하지 말고 리서치",
-    "수정 하지 말고 리서치",
-    "수정하지 말고 조사",
-    "리서치만 해",
-    "리서치만 정리",
-    "조사만 해",
-    "조사만 정리",
-    "코드 변경 하지 말",
-    "코드 변경하지 말",
-    "코딩 하지 말고",
-    "코딩하지 말고",
-    "no code change",
-    "research only",
+# MVP closure refactor — phrase-detection predicates moved to
+# :mod:`discord.engineering.phrase_detect`. Re-exported here under
+# the historical underscore-prefixed names so existing tests / callers
+# (e.g. ``engineering_channel_router.is_coding_approval_phrase``) keep
+# working.
+from .engineering.phrase_detect import (
+    CODING_APPROVAL_PHRASES as _CODING_APPROVAL_PHRASES,
+    CODING_PROPOSAL_REQUEST_PHRASES as _CODING_PROPOSAL_REQUEST_PHRASES,
+    CONTINUATION_RESEARCH_KEYWORDS as _CONTINUATION_RESEARCH_KEYWORDS,
+    NO_CODING_INTENT_PHRASES as _NO_CODING_INTENT_PHRASES,
+    continuation_requests_research as _continuation_requests_research,
+    is_coding_approval_phrase,
+    is_coding_proposal_request,
+    user_explicitly_blocked_coding as _user_explicitly_blocked_coding,
 )
-
-
-def _user_explicitly_blocked_coding(text: str) -> bool:
-    if not text:
-        return False
-    normalised = " ".join(text.lower().split())
-    return any(phrase in normalised for phrase in _NO_CODING_INTENT_PHRASES)
-
-
-# Phrases that signal the continuation prompt is asking for fresh
-# research (forum collection / pack rebuild) rather than just resuming
-# an idle thread. The runtime preflight passes ``research_loop_fn``
-# through to ``_handle_join_or_append`` only when one of these matches
-# *and* the session has no research_pack yet.
-_CONTINUATION_RESEARCH_KEYWORDS: tuple[str, ...] = (
-    "[research]",
-    "[리서치]",
-    "운영-리서치",
-    "운영 리서치",
-    "리서치",
-    "조사",
-    "자료 모아",
-    "자료 모집",
-    "자료 정리",
-    "자료 좀",
-    "research",
-)
-
-
-def _continuation_requests_research(text: str) -> bool:
-    if not text:
-        return False
-    normalised = " ".join(text.lower().split())
-    return any(phrase in normalised for phrase in _CONTINUATION_RESEARCH_KEYWORDS)
-
-
-_CODING_PROPOSAL_REQUEST_PHRASES: tuple[str, ...] = (
-    "코딩 권한 제안",
-    "수정 권한 제안",
-    "구현 권한 제안",
-    "코딩 권한 정리",
-    "수정 권한 정리",
-    "코딩 권한 받자",
-    "코딩 권한 잡자",
-    "이 작업 코딩 권한",
-    "이 작업 수정 권한",
-    "이 작업 구현 권한",
-    "코딩 권한 만들",
-)
-
-
-_CODING_APPROVAL_PHRASES: tuple[str, ...] = (
-    "수정 승인",
-    "코딩 진행 승인",
-    "코딩 승인",
-    "구현 진행 승인",
-    "구현 승인",
-    "이대로 구현 진행",
-    "이대로 코딩 진행",
-    "구현 시작",
-    "코딩 시작",
-    "권한 승인",
-)
-
-
-def is_coding_proposal_request(text: str) -> bool:
-    """True when *text* asks Tech Lead to draft a coding authorization."""
-
-    if not text:
-        return False
-    normalised = " ".join(text.lower().split())
-    return any(phrase in normalised for phrase in _CODING_PROPOSAL_REQUEST_PHRASES)
-
-
-def is_coding_approval_phrase(text: str) -> bool:
-    """True when *text* approves a previously-shown coding proposal."""
-
-    if not text:
-        return False
-    normalised = " ".join(text.lower().split())
-    return any(phrase in normalised for phrase in _CODING_APPROVAL_PHRASES)
 
 
 def _find_session_with_pending_coding_proposal(
