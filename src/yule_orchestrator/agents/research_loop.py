@@ -294,6 +294,7 @@ async def publish_research_loop_to_forum(
         collection_outcome=collection_outcome,
         collection_role=collection_role,
         collection_next_steps=collection_next_steps,
+        post_message_fn=post_message_fn,
     )
 
     role_comments: dict[str, ForumCommentOutcome] = {}

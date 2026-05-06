@@ -14,8 +14,8 @@ The forum is shared across departments; the env keys are
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import Any, Awaitable, Iterable, Mapping, Optional, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Iterable, Mapping, Optional, Sequence, Tuple
 
 from ..agents.research_pack import ResearchAttachment, ResearchPack, ResearchSource
 
@@ -81,8 +81,12 @@ TOPIC_BUDGET = 60  # leaves room for the prefix + safety margin
 # formatter glued in) doesn't push us over.
 DISCORD_MESSAGE_CONTENT_LIMIT = 4000
 FORUM_STARTER_CONTENT_LIMIT = 3900
+DISCORD_MESSAGE_REPLY_LIMIT = 1900
 FORUM_STARTER_OVERFLOW_NOTICE = (
     "_본문이 길어 일부를 생략했습니다. 상세 자료는 후속 댓글 또는 Obsidian export를 확인하세요._"
+)
+FORUM_STARTER_CONTINUATION_NOTICE = (
+    "_본문이 길어 상세 자료는 아래 댓글로 이어집니다. 원본은 Obsidian export에 보존됩니다._"
 )
 
 
@@ -229,43 +233,103 @@ def truncate_for_starter_message(
 ) -> str:
     """Trim *body* so it fits Discord's forum starter message limit.
 
-    The starter content cap is 4000 chars; we target a slightly lower
-    ``limit`` (default :data:`FORUM_STARTER_CONTENT_LIMIT`) so unicode
-    surprises don't push the API over. When the body fits as-is we
-    return it unchanged so short threads stay readable.
+    Single-piece truncation kept as a thin wrapper for callers that only
+    want a capped starter (no follow-up comments). For the full split
+    that produces both starter + reply chunks, use
+    :func:`split_forum_starter_and_replies`.
+    """
 
-    Truncation prefers paragraph then line boundaries, falling back to
-    a hard slice. The trailing ``notice`` is always appended when we cut
-    so operators see why the thread looks short and where to find the
-    full record (Obsidian export, follow-up comments).
+    starter, _ = split_forum_starter_and_replies(
+        body,
+        starter_limit=limit,
+        reply_limit=DISCORD_MESSAGE_REPLY_LIMIT,
+        starter_notice=notice,
+    )
+    return starter
+
+
+def split_forum_starter_and_replies(
+    body: str,
+    *,
+    starter_limit: int = FORUM_STARTER_CONTENT_LIMIT,
+    reply_limit: int = DISCORD_MESSAGE_REPLY_LIMIT,
+    starter_notice: str = FORUM_STARTER_CONTINUATION_NOTICE,
+) -> Tuple[str, Tuple[str, ...]]:
+    """Split *body* into a forum starter + zero-or-more reply chunks.
+
+    Returns ``(starter_body, reply_chunks)``. When the body fits in the
+    starter limit we return the body unchanged with an empty chunk
+    tuple; otherwise the head is truncated at a paragraph/line boundary
+    and a continuation notice is appended so the operator sees that the
+    rest is in the comments. The remainder is split into ``reply_limit``
+    sized chunks, again preferring paragraph/line boundaries before a
+    hard slice.
 
     The Obsidian/ResearchPack/persistence layers receive the *original*
-    body — only the starter content shown in Discord is shortened.
+    body — only the Discord-facing pieces are sized down.
     """
 
     if not body:
-        return body
-    if len(body) <= limit:
-        return body
+        return body, ()
+    if len(body) <= starter_limit:
+        return body, ()
 
-    notice_block = ("\n\n" + notice) if notice else ""
-    budget = limit - len(notice_block)
+    notice_block = ("\n\n" + starter_notice) if starter_notice else ""
+    budget = starter_limit - len(notice_block)
     if budget <= 0:
         # Pathological tiny limit — fall back to a hard slice of the
         # notice itself so the caller still gets a string under ``limit``.
-        return notice[:limit] if notice else body[:limit]
+        starter = (starter_notice or body)[:starter_limit]
+        chunks = _split_text_into_chunks(body, limit=reply_limit)
+        return starter, chunks
+
+    head, tail = _split_at_boundary(body, budget=budget)
+    starter = head.rstrip() + notice_block
+    chunks = _split_text_into_chunks(tail, limit=reply_limit)
+    return starter, chunks
+
+
+def _split_at_boundary(body: str, *, budget: int) -> Tuple[str, str]:
+    """Cut *body* at the best paragraph/line boundary inside *budget*.
+
+    Returns ``(head, tail)`` so the tail can be reused as continuation
+    content. Falls back to a hard slice when no whitespace pivot lives
+    inside the upper half of the budget.
+    """
 
     head = body[:budget]
-    # Prefer the last paragraph break inside the budget so we don't
-    # split sections like ``**요약**\n...`` mid-paragraph.
     pivot = head.rfind("\n\n")
     if pivot >= int(budget * 0.5):
-        head = head[:pivot]
-    else:
-        line_pivot = head.rfind("\n")
-        if line_pivot >= int(budget * 0.5):
-            head = head[:line_pivot]
-    return head.rstrip() + notice_block
+        return body[:pivot], body[pivot:].lstrip("\n")
+    line_pivot = head.rfind("\n")
+    if line_pivot >= int(budget * 0.5):
+        return body[:line_pivot], body[line_pivot:].lstrip("\n")
+    return body[:budget], body[budget:]
+
+
+def _split_text_into_chunks(text: str, *, limit: int) -> Tuple[str, ...]:
+    """Break *text* into ≤ ``limit`` char chunks at paragraph/line bounds.
+
+    Used for thread reply continuation. Each chunk stays whole-paragraph
+    when possible. Pathologically long single lines get hard-sliced so
+    the output is never empty.
+    """
+
+    if not text:
+        return ()
+    chunks: list[str] = []
+    remaining = text.strip("\n")
+    while remaining:
+        if len(remaining) <= limit:
+            chunks.append(remaining)
+            break
+        head, tail = _split_at_boundary(remaining, budget=limit)
+        if not head:
+            head = remaining[:limit]
+            tail = remaining[limit:]
+        chunks.append(head.rstrip())
+        remaining = tail.lstrip("\n")
+    return tuple(chunk for chunk in chunks if chunk)
 
 
 def _safe_truncate(text: str, *, max_chars: int) -> str:
@@ -594,8 +658,15 @@ class ForumPostOutcome:
     body: Optional[str] = None
     # Body that was actually sent to Discord as the starter message
     # (capped at FORUM_STARTER_CONTENT_LIMIT). Equals ``body`` when the
-    # body fit, otherwise a truncated version with the overflow notice.
+    # body fit, otherwise a truncated version with the continuation notice.
     starter_body: Optional[str] = None
+    # Continuation reply chunks that were posted to the thread after
+    # creation. Each chunk is ≤ DISCORD_MESSAGE_REPLY_LIMIT chars.
+    continuation_chunks: Tuple[str, ...] = field(default_factory=tuple)
+    # Errors from posting individual continuation chunks. Thread
+    # creation success is not undone by chunk failures — the chunk
+    # error string is just recorded here for diagnostics.
+    continuation_errors: Tuple[str, ...] = field(default_factory=tuple)
     fallback_markdown: Optional[str] = None
 
 
@@ -621,6 +692,7 @@ async def create_research_post(
     collection_outcome: Optional[Any] = None,
     collection_role: Optional[str] = None,
     collection_next_steps: Sequence[str] = (),
+    post_message_fn: Optional[PostMessageFn] = None,
 ) -> ForumPostOutcome:
     """Compose title+body, hand them to *create_thread_fn*, return outcome.
 
@@ -644,7 +716,7 @@ async def create_research_post(
         collection_role=collection_role,
         collection_next_steps=collection_next_steps,
     )
-    starter_body = truncate_for_starter_message(body)
+    starter_body, reply_chunks = split_forum_starter_and_replies(body)
 
     if not forum_context.configured:
         reason = "forum channel not configured"
@@ -654,6 +726,7 @@ async def create_research_post(
             title=title,
             body=body,
             starter_body=starter_body,
+            continuation_chunks=reply_chunks,
             fallback_markdown=format_thread_markdown_fallback(
                 pack,
                 title=title,
@@ -678,6 +751,7 @@ async def create_research_post(
             title=title,
             body=body,
             starter_body=starter_body,
+            continuation_chunks=reply_chunks,
             fallback_markdown=format_thread_markdown_fallback(
                 pack,
                 title=title,
@@ -688,6 +762,15 @@ async def create_research_post(
 
     thread_id = _extract_thread_id(result)
     thread_url = _extract_thread_url(result)
+
+    continuation_errors: Tuple[str, ...] = ()
+    if reply_chunks and post_message_fn is not None and thread_id is not None:
+        continuation_errors = await _post_continuation_chunks(
+            post_message_fn=post_message_fn,
+            thread_id=thread_id,
+            chunks=reply_chunks,
+        )
+
     return ForumPostOutcome(
         posted=True,
         thread_id=thread_id,
@@ -695,7 +778,34 @@ async def create_research_post(
         title=title,
         body=body,
         starter_body=starter_body,
+        continuation_chunks=reply_chunks,
+        continuation_errors=continuation_errors,
     )
+
+
+async def _post_continuation_chunks(
+    *,
+    post_message_fn: "PostMessageFn",
+    thread_id: int,
+    chunks: Sequence[str],
+) -> Tuple[str, ...]:
+    """Post each *chunks* entry into *thread_id* and gather any errors.
+
+    Per-chunk failures are recorded but do not abort the loop — the
+    thread itself was already created, so the operator should still see
+    whichever chunks succeeded. Returned tuple is empty when every chunk
+    posted cleanly.
+    """
+
+    errors: list[str] = []
+    for index, chunk in enumerate(chunks, start=1):
+        try:
+            await _maybe_await(
+                post_message_fn(thread_id=thread_id, content=chunk)
+            )
+        except Exception as exc:  # noqa: BLE001 - record per-chunk
+            errors.append(f"chunk {index}/{len(chunks)}: {exc}")
+    return tuple(errors)
 
 
 async def post_agent_comment(

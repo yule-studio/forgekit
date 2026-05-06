@@ -17,6 +17,7 @@ from .engineering_team_runtime import (
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
 from .research_forum import ResearchForumContext
+from .typing_indicator import typing_context
 
 
 @dataclass(frozen=True)
@@ -97,12 +98,16 @@ def run_member_bot(profile: MemberBotProfile) -> None:
             # Research-turn (운영-리서치 forum thread) takes precedence
             # because research markers and team markers can both land in
             # threads the bot can see. We process whichever shows up.
+            # Compose + post happens inside a typing context so the
+            # member bot's account shows ``입력 중...`` while its take is
+            # being assembled.
             research_outcome = handle_research_turn_message(
                 role=profile.role,
                 text=text,
             )
             if research_outcome is not None:
-                await _post_research_turn(message.channel, research_outcome)
+                async with typing_context(message.channel):
+                    await _post_research_turn(message.channel, research_outcome)
                 return
 
             team_outcome = handle_team_turn_message(
@@ -112,7 +117,8 @@ def run_member_bot(profile: MemberBotProfile) -> None:
             if team_outcome is None:
                 return
 
-            await _post_team_turn(message.channel, team_outcome)
+            async with typing_context(message.channel):
+                await _post_team_turn(message.channel, team_outcome)
 
     bot = MemberBot(command_prefix=commands.when_mentioned, intents=intents)
     print(

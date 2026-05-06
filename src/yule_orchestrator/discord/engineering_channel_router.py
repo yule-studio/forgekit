@@ -110,6 +110,11 @@ class EngineeringConversationOutcome:
     research_pack: Any = None
     collection_outcome: Any = None
     role_for_research: Optional[str] = None
+    # When True the conversation already answered a status/diagnostic
+    # question. The router must NOT route to intake/decide/auto_collect
+    # — the user wasn't filing new work, they were asking what's going
+    # on with existing work.
+    is_status_query: bool = False
 
 
 @dataclass(frozen=True)
@@ -343,6 +348,17 @@ async def route_engineering_message(
 
     if outcome.content:
         await send_chunks(message.channel, outcome.content)
+
+    # Status / diagnostic intent already answered with the real session
+    # state. The conversation layer reads ``session.extra`` directly so
+    # we must NOT proceed to intake / decide_routing / auto_collect —
+    # those would create a new session for what was just a "왜 안 됐어?"
+    # type question and re-trigger a "1차 자료 수집" template.
+    if outcome.is_status_query:
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
+        )
 
     confirmed = outcome.confirmed or detect_confirmation_signal(prompt_text)
     intake_prompt = (outcome.intake_prompt or prompt_text).strip()
@@ -954,6 +970,7 @@ def _coerce_outcome(
     role_for_research = (
         str(role_raw).strip() if role_raw is not None else None
     ) or None
+    is_status_query = bool(getattr(raw, "is_status_query", False))
     return EngineeringConversationOutcome(
         content=content,
         confirmed=confirmed,
@@ -963,6 +980,7 @@ def _coerce_outcome(
         research_pack=research_pack,
         collection_outcome=collection_outcome,
         role_for_research=role_for_research,
+        is_status_query=is_status_query,
     )
 
 

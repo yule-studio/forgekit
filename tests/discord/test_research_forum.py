@@ -20,7 +20,9 @@ from yule_orchestrator.agents.research_pack import (
 from yule_orchestrator.discord.research_forum import (
     ALL_PREFIXES,
     DISCORD_MESSAGE_CONTENT_LIMIT,
+    DISCORD_MESSAGE_REPLY_LIMIT,
     FORUM_STARTER_CONTENT_LIMIT,
+    FORUM_STARTER_CONTINUATION_NOTICE,
     FORUM_STARTER_OVERFLOW_NOTICE,
     PREFIX_DECISION,
     PREFIX_OBSIDIAN,
@@ -37,6 +39,7 @@ from yule_orchestrator.discord.research_forum import (
     format_thread_markdown_fallback,
     normalize_thread_title,
     post_agent_comment,
+    split_forum_starter_and_replies,
     truncate_for_starter_message,
 )
 
@@ -838,7 +841,11 @@ class StarterMessageTruncationTests(unittest.TestCase):
         sent = captured["content"]
         self.assertLessEqual(len(sent), DISCORD_MESSAGE_CONTENT_LIMIT)
         self.assertLessEqual(len(sent), FORUM_STARTER_CONTENT_LIMIT)
-        self.assertIn("일부를 생략", sent)
+        # When create_research_post is called without a post_message_fn
+        # the starter still carries the continuation notice — the
+        # remainder is preserved on outcome.continuation_chunks for the
+        # caller to surface (Obsidian / follow-up posting).
+        self.assertIn("아래 댓글", sent)
 
     def test_outcome_preserves_full_body_and_starter_separately(self) -> None:
         pack = self._huge_pack()
@@ -874,6 +881,8 @@ class StarterMessageTruncationTests(unittest.TestCase):
         )
         self.assertEqual(outcome.body, outcome.starter_body)
         self.assertNotIn("일부를 생략", outcome.starter_body or "")
+        self.assertNotIn("아래 댓글", outcome.starter_body or "")
+        self.assertEqual(outcome.continuation_chunks, ())
 
     def test_failure_path_still_sets_starter_body(self) -> None:
         pack = self._huge_pack()
@@ -905,6 +914,174 @@ class StarterMessageTruncationTests(unittest.TestCase):
         )
         self.assertLessEqual(len(capped), FORUM_STARTER_CONTENT_LIMIT)
         self.assertIn("일부를 생략", capped)
+
+
+class ForumStarterPlusRepliesSplitTests(unittest.TestCase):
+    """Discord rejects starter content > 4000 chars. We don't drop the
+    overflow — we split it into thread reply chunks each ≤ 1900 chars
+    and post them after thread creation. The starter carries a "상세
+    자료는 아래 댓글로 이어집니다" notice so the operator sees that the
+    content continues below."""
+
+    def _async_run(self, coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def _huge_pack(self) -> ResearchPack:
+        from yule_orchestrator.agents.research_pack import ResearchRequest
+
+        long_prompt = ("운영-리서치 forum 안정화 검토. " * 200).strip()
+        big_summary = ("매우 긴 본문 시나리오를 재현한다. " * 50)
+        many_sources = tuple(
+            ResearchSource(
+                source_url=(
+                    f"https://example.test/research-source-{i}/"
+                    "long/path/segment-which-pads-the-line"
+                ),
+                author_role=f"engineering-agent/role-{i}",
+                message_id=i,
+            )
+            for i in range(150)
+        )
+        return ResearchPack(
+            title="긴 운영-리서치 검토",
+            summary=big_summary,
+            sources=many_sources,
+            tags=("research", "ops"),
+            request=ResearchRequest(
+                request_id="r-long",
+                topic=long_prompt,
+                role="engineering-agent/tech-lead",
+            ),
+        )
+
+    def test_split_returns_starter_only_for_short_body(self) -> None:
+        starter, chunks = split_forum_starter_and_replies("짧은 본문")
+        self.assertEqual(starter, "짧은 본문")
+        self.assertEqual(chunks, ())
+
+    def test_split_yields_chunks_under_reply_limit(self) -> None:
+        body = "라\n" * 4000  # ~8000 chars
+        starter, chunks = split_forum_starter_and_replies(body)
+        self.assertLessEqual(len(starter), FORUM_STARTER_CONTENT_LIMIT)
+        self.assertGreater(len(chunks), 0)
+        for chunk in chunks:
+            self.assertLessEqual(len(chunk), DISCORD_MESSAGE_REPLY_LIMIT)
+            self.assertGreater(len(chunk), 0)
+
+    def test_starter_includes_continuation_notice_when_split(self) -> None:
+        body = "라\n" * 4000
+        starter, chunks = split_forum_starter_and_replies(body)
+        self.assertGreater(len(chunks), 0)
+        self.assertIn("아래 댓글", starter)
+
+    def test_continuation_chunks_concatenate_back_to_original(self) -> None:
+        # Starter notice + chunks should preserve all original content
+        # (modulo whitespace trimming at boundaries) so the operator
+        # never silently loses material.
+        body = "\n".join(f"line-{i:04d} 자료" for i in range(900))
+        starter, chunks = split_forum_starter_and_replies(body)
+        # Strip the appended notice block from starter for content check.
+        starter_content = starter.replace(
+            FORUM_STARTER_CONTINUATION_NOTICE, ""
+        ).rstrip()
+        joined = starter_content + "\n" + "\n".join(chunks)
+        self.assertIn("line-0000", joined)
+        self.assertIn("line-0899", joined)
+
+    def test_create_post_posts_continuation_via_post_message_fn(self) -> None:
+        pack = self._huge_pack()
+        body = format_research_post_body(pack, posted_by="bot:test")
+        self.assertGreater(len(body), DISCORD_MESSAGE_CONTENT_LIMIT)
+
+        captured: dict = {"thread": None, "replies": []}
+
+        async def thread_fn(**kwargs):
+            captured["thread"] = kwargs
+            return {"id": 99, "url": "https://discord.test/99"}
+
+        async def post_fn(**kwargs):
+            captured["replies"].append(kwargs)
+            return {"id": len(captured["replies"]) + 1000}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+                post_message_fn=post_fn,
+            )
+        )
+
+        self.assertTrue(outcome.posted)
+        self.assertLessEqual(
+            len(captured["thread"]["content"]), FORUM_STARTER_CONTENT_LIMIT
+        )
+        self.assertGreater(len(captured["replies"]), 0)
+        for reply in captured["replies"]:
+            self.assertLessEqual(
+                len(reply["content"]), DISCORD_MESSAGE_REPLY_LIMIT
+            )
+            self.assertEqual(reply["thread_id"], 99)
+        self.assertEqual(
+            len(outcome.continuation_chunks), len(captured["replies"])
+        )
+        self.assertEqual(outcome.continuation_errors, ())
+
+    def test_create_post_records_continuation_errors_but_keeps_posted(self) -> None:
+        pack = self._huge_pack()
+
+        async def thread_fn(**_):
+            return {"id": 7, "url": "https://discord.test/7"}
+
+        call_count = {"n": 0}
+
+        async def flaky_post_fn(**_):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("rate limit")
+            return {"id": call_count["n"]}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+                post_message_fn=flaky_post_fn,
+            )
+        )
+        # Thread creation succeeded — that must hold even when chunk
+        # delivery hiccups, because the starter is already in Discord.
+        self.assertTrue(outcome.posted)
+        self.assertEqual(outcome.thread_id, 7)
+        self.assertGreater(len(outcome.continuation_chunks), 0)
+        self.assertGreater(len(outcome.continuation_errors), 0)
+        self.assertIn("rate limit", outcome.continuation_errors[0])
+
+    def test_create_post_skips_continuation_when_no_post_fn(self) -> None:
+        # Backwards compatibility: callers who don't pass post_message_fn
+        # still get a working starter and the chunks recorded for later
+        # diagnostics, but no replies attempted.
+        pack = self._huge_pack()
+        captured: dict = {"thread": None}
+
+        async def thread_fn(**kwargs):
+            captured["thread"] = kwargs
+            return {"id": 5, "url": "https://discord.test/5"}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+            )
+        )
+        self.assertTrue(outcome.posted)
+        self.assertGreater(len(outcome.continuation_chunks), 0)
+        self.assertEqual(outcome.continuation_errors, ())
 
 
 if __name__ == "__main__":

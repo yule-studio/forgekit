@@ -47,6 +47,7 @@ from .research_forum import (
     ResearchForumContext,
     truncate_for_starter_message,
 )
+from .typing_indicator import typing_context
 from ..agents.research_loop import (
     publish_research_loop_to_forum,
     run_research_loop,
@@ -160,18 +161,24 @@ def run_discord_bot(repo_root: Path) -> None:
             engineering_context = EngineeringRouteContext.from_env()
             if engineering_context.configured:
                 send_chunks = _make_engineering_send_chunks(discord)
-                engineering_result = await route_engineering_message(
-                    message=message,
-                    bot_user=self.user,
-                    route_context=engineering_context,
-                    extract_prompt=_extract_conversation_prompt,
-                    conversation_fn=_default_engineering_conversation_fn,
-                    intake_fn=_default_engineering_intake_fn,
-                    thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
-                    send_chunks=send_chunks,
-                    research_loop_fn=_make_default_engineering_research_loop_fn(discord),
-                    thread_continuation_fn=_make_default_thread_continuation_fn(discord),
-                )
+                # Wrap the entire engineering route in a typing context so
+                # the gateway bot account shows ``입력 중...`` while it runs
+                # conversation classification, intake, kickoff, and the
+                # research loop. Without this the user has no signal that
+                # the gateway is alive during the multi-second flow.
+                async with typing_context(message.channel):
+                    engineering_result = await route_engineering_message(
+                        message=message,
+                        bot_user=self.user,
+                        route_context=engineering_context,
+                        extract_prompt=_extract_conversation_prompt,
+                        conversation_fn=_default_engineering_conversation_fn,
+                        intake_fn=_default_engineering_intake_fn,
+                        thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
+                        send_chunks=send_chunks,
+                        research_loop_fn=_make_default_engineering_research_loop_fn(discord),
+                        thread_continuation_fn=_make_default_thread_continuation_fn(discord),
+                    )
                 if engineering_result.handled:
                     return
 
@@ -1515,6 +1522,25 @@ def _default_engineering_conversation_fn(
     last_proposed = (
         _ENGINEERING_LAST_PROPOSED.get(channel_id) if channel_id is not None else None
     )
+
+    def _load_latest_open_session_for_status() -> Any:
+        """Resolve the latest open session for the channel/thread.
+
+        Wired into the conversation layer's ``status_session_loader``
+        seam so a "왜 안 됐어?" / "운영 리서치는 안 열어?" question
+        gets answered against real workflow state instead of triggering
+        a fresh intake. Falls back to ``None`` on lookup errors so the
+        conversation layer can render the no-session message.
+        """
+
+        try:
+            return find_latest_open_session(
+                channel_id=channel_id,
+                user_id=author_user_id,
+            )
+        except Exception:  # noqa: BLE001 - best-effort lookup
+            return None
+
     response = builder(
         message_text,
         author_user_id=author_user_id,
@@ -1525,6 +1551,7 @@ def _default_engineering_conversation_fn(
         user_attachments=tuple(attachments or ()),
         role_for_research=role_for_research,
         session_id=session_id,
+        status_session_loader=_load_latest_open_session_for_status,
     )
 
     intent_id = getattr(response, "intent_id", "")
@@ -1578,6 +1605,7 @@ def _default_engineering_conversation_fn(
         research_pack=research_pack,
         collection_outcome=collection_outcome,
         role_for_research=response_role_for_research,
+        is_status_query=bool(getattr(response, "is_status_query", False)),
     )
 
 
