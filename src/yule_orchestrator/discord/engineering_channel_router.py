@@ -2038,6 +2038,95 @@ async def _run_coding_authorization_gate(
     return None
 
 
+_EXPLICIT_SESSION_ID_RE = __import__("re").compile(
+    r"(?:세션|session)\s*(?:id\s*[:=]?\s*)?[`'\"]?([0-9a-fA-F]{12})[`'\"]?",
+    flags=__import__("re").IGNORECASE,
+)
+
+
+def _extract_session_id_from_router_text(text: str) -> Optional[str]:
+    """Phase 4 stab — pull a 12-hex session id out of a router-side
+    prompt ("세션 abc123def456 기준으로 …"). Mirrors the bot.py
+    helper so callers that don't bridge through bot.py (e.g. Obsidian
+    approval gate) can still resolve explicit ids.
+    """
+
+    if not text:
+        return None
+    match = _EXPLICIT_SESSION_ID_RE.search(text)
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
+    """Return (allowed, blocking_reason).
+
+    Phase 4 stab: an Obsidian write must NOT proceed when the
+    lifecycle hasn't actually closed. Reads ``session.extra`` for the
+    Phase 2/3 status keys and refuses if research is empty / forum
+    isn't connected / work_report is not ready/final.
+
+    Returns ``(True, None)`` to allow, ``(False, "<korean reason>")``
+    to block. Test stubs that don't carry rich extras get a generous
+    "missing canonical readiness" reason rather than a hard pass.
+    """
+
+    if session is None:
+        return False, "세션 객체를 찾지 못했어요"
+    extra = dict(getattr(session, "extra", {}) or {})
+    research_status = str(extra.get("research_status") or "").lower()
+    source_count = extra.get("research_source_count")
+    pack = extra.get("research_pack")
+
+    # Three ways to clear the "research present" check, in order of
+    # confidence:
+    #   1. Phase 2 stamped research_status="ready".
+    #   2. research_source_count is explicitly > 0.
+    #   3. The pack dict carries a non-empty ``sources`` list (older
+    #      sessions written before Phase 2 don't have the count key,
+    #      so we re-derive it here so the existing approval flow keeps
+    #      working).
+    pack_source_count = 0
+    if isinstance(pack, Mapping):
+        sources = pack.get("sources")
+        try:
+            pack_source_count = len(sources) if sources is not None else 0
+        except TypeError:
+            pack_source_count = 0
+    has_research = (
+        research_status == "ready"
+        or (isinstance(source_count, (int, float)) and int(source_count) > 0)
+        or pack_source_count > 0
+    )
+    if not has_research:
+        return False, "research_pack 미수집 (자료 0건) 상태라 저장할 수 없어요"
+
+    work_report = extra.get("work_report")
+    if isinstance(work_report, Mapping):
+        wr_status = str(work_report.get("status") or "").lower()
+        if wr_status in ("insufficient", "interim"):
+            missing = work_report.get("missing_roles") or []
+            if missing:
+                return (
+                    False,
+                    f"역할 토의 미완료 ({', '.join(str(r) for r in missing)}) 라 저장할 수 없어요",
+                )
+            return (
+                False,
+                f"work_report status={wr_status} 라 final 저장 단계가 아니에요",
+            )
+    forum_thread_id = (
+        extra.get("research_forum_thread_id")
+        or extra.get("forum_thread_id")
+    )
+    if not forum_thread_id:
+        # forum thread 가 없어도 research_pack 만 있으면 저장 자체는
+        # 가능 — forum 미연결은 경고만 띄우고 통과.
+        return True, None
+    return True, None
+
+
 async def _run_obsidian_approval_gate(
     *,
     message: Any,
@@ -2049,6 +2138,12 @@ async def _run_obsidian_approval_gate(
 ) -> Optional[EngineeringRouteResult]:
     """Try to interpret *prompt_text* as an Obsidian save approval.
 
+    Phase 4 stab: explicit "세션 <id> 기준으로 저장해줘" prompts now
+    resolve via the id first (load_session) — channel/thread walks
+    only fire when the user didn't name a session. Final write is
+    blocked when the lifecycle is incomplete (no research_pack,
+    interim/insufficient work_report, missing role coverage).
+
     Returns a populated :class:`EngineeringRouteResult` when the message
     was an approval phrase (regardless of whether the write succeeded),
     or ``None`` to fall through to the runtime preflight + conversation
@@ -2056,13 +2151,51 @@ async def _run_obsidian_approval_gate(
     so a bare "저장 승인" never gets promoted to ``new_work_request``.
     """
 
-    if not is_obsidian_approval(prompt_text):
+    # Phase 4 stab: accept "세션 <id> 기준으로 저장 승인" by stripping
+    # the explicit-id preamble before testing the approval phrase.
+    explicit_id = _extract_session_id_from_router_text(prompt_text)
+    test_text = prompt_text
+    if explicit_id and not is_obsidian_approval(test_text):
+        # Drop the "세션 <id> 기준으로" prefix and re-test so a
+        # session-scoped approval still routes through this gate.
+        stripped = _EXPLICIT_SESSION_ID_RE.sub("", prompt_text).strip()
+        if stripped:
+            for filler in ("기준으로", "기준 으로", "기준에서", "기준"):
+                if stripped.startswith(filler):
+                    stripped = stripped[len(filler):].strip()
+                    break
+            if is_obsidian_approval(stripped):
+                test_text = stripped
+
+    if not is_obsidian_approval(test_text):
         return None
 
-    candidate = _find_session_with_pending_proposal(
-        message=message,
-        list_sessions_fn=list_sessions_fn,
-    )
+    candidate: Optional[Any] = None
+    if explicit_id:
+        try:
+            from ..agents.workflow_state import load_session as _load_session
+
+            candidate = _load_session(explicit_id)
+        except Exception:  # noqa: BLE001 - lookup failure falls through
+            candidate = None
+        if candidate is None:
+            await send_chunks(
+                message.channel,
+                (
+                    f"세션 `{explicit_id}` 을 찾지 못했어요.\n"
+                    "session id 가 정확한지 확인하거나, 새 작업이라면 `새 작업으로 진행`이라고 답해 주세요."
+                ),
+            )
+            return EngineeringRouteResult(
+                handled=True,
+                error=f"obsidian approval: explicit session {explicit_id} not found",
+            )
+
+    if candidate is None:
+        candidate = _find_session_with_pending_proposal(
+            message=message,
+            list_sessions_fn=list_sessions_fn,
+        )
     if candidate is None:
         await send_chunks(
             message.channel,
@@ -2072,6 +2205,22 @@ async def _run_obsidian_approval_gate(
             ),
         )
         return EngineeringRouteResult(handled=True)
+
+    allowed, block_reason = _can_save_to_obsidian(candidate)
+    if not allowed:
+        await send_chunks(
+            message.channel,
+            (
+                "Obsidian 저장을 진행하지 않았어요.\n"
+                f"차단 사유: {block_reason}\n"
+                "lifecycle 이 완료되면 다시 `저장 승인` 으로 답해 주세요."
+            ),
+        )
+        return EngineeringRouteResult(
+            handled=True,
+            session_id=getattr(candidate, "session_id", None),
+            error=f"obsidian approval blocked: {block_reason}",
+        )
 
     try:
         updated, outcome = execute_pending_proposal(
