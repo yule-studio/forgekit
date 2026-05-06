@@ -18,6 +18,7 @@ from ..agents import (
 from ..agents.workflow_state import (
     find_latest_open_session,
     list_sessions as workflow_list_sessions,
+    load_session,
     update_session,
 )
 from ..integrations.calendar import list_naver_calendar_items
@@ -1542,16 +1543,59 @@ def _default_engineering_conversation_fn(
         _ENGINEERING_LAST_PROPOSED.get(channel_id) if channel_id is not None else None
     )
 
-    def _load_latest_open_session_for_status() -> Any:
-        """Resolve the latest open session for the channel/thread.
+    def _load_latest_open_session_for_status(*, message_text: str | None = None) -> Any:
+        """Resolve the session a status / diagnostic question targets.
 
-        Wired into the conversation layer's ``status_session_loader``
-        seam so a "왜 안 됐어?" / "운영 리서치는 안 열어?" question
-        gets answered against real workflow state instead of triggering
-        a fresh intake. Falls back to ``None`` on lookup errors so the
+        Lookup order — first hit wins:
+          1. Explicit ``세션 <id>`` mention parsed out of ``message_text``.
+          2. The session whose ``thread_id`` matches ``channel_id``
+             (Discord exposes the thread id under ``channel.id`` when
+             the user is sitting inside a work thread, so this hits
+             for thread-bound status questions).
+          3. The session whose ``extra['resumed_thread_id']`` matches
+             ``channel_id`` (continuation may resume on a thread
+             different from ``session.thread_id``).
+          4. The latest open session for the channel/user pair (legacy
+             behaviour kept as final fallback).
+
+        Falls back to ``None`` on every lookup error so the
         conversation layer can render the no-session message.
         """
 
+        # 1. Explicit session id in message body.
+        if message_text:
+            explicit_id = _extract_session_id_from_text(message_text)
+            if explicit_id:
+                try:
+                    explicit_session = load_session(explicit_id)
+                except Exception:  # noqa: BLE001
+                    explicit_session = None
+                if explicit_session is not None:
+                    return explicit_session
+
+        # 2. Thread anchor — when the user is asking from a work thread,
+        # ``channel_id`` is actually the thread id. find_latest_open_session
+        # returns None when no session has that thread_id (e.g. a
+        # plain channel message), so this is safe to attempt always.
+        if channel_id is not None:
+            try:
+                thread_match = find_latest_open_session(thread_id=channel_id)
+            except Exception:  # noqa: BLE001
+                thread_match = None
+            if thread_match is not None:
+                return thread_match
+
+            # 3. Resumed thread id stashed on session.extra (continuation
+            # may resume on a thread different from the original
+            # session.thread_id; we can match either).
+            try:
+                resumed = _find_session_with_resumed_thread(channel_id)
+            except Exception:  # noqa: BLE001
+                resumed = None
+            if resumed is not None:
+                return resumed
+
+        # 4. Channel + user fallback.
         try:
             return find_latest_open_session(
                 channel_id=channel_id,
@@ -1746,6 +1790,51 @@ _CONTINUATION_COMMAND_ONLY_PROMPTS: tuple[str, ...] = (
     "진행",
     "ok",
 )
+
+
+_SESSION_ID_PATTERN = __import__("re").compile(
+    r"(?:세션|session)\s*(?:id\s*[:=]?\s*)?[`'\"]?([0-9a-fA-F]{12})[`'\"]?",
+    flags=__import__("re").IGNORECASE,
+)
+
+
+def _extract_session_id_from_text(text: str) -> str | None:
+    """Pull a 12-hex session id out of a status / diagnostic question.
+
+    The pattern is permissive about phrasing — we accept "세션
+    abc123def456", "session abc123def456", and the same wrapped in
+    backticks/quotes. A bare 12-hex token elsewhere in the message is
+    NOT matched on purpose so a random hash in a URL doesn't hijack
+    the lookup.
+    """
+
+    if not text:
+        return None
+    match = _SESSION_ID_PATTERN.search(text)
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _find_session_with_resumed_thread(thread_id: int):
+    """Return the open session whose ``extra['resumed_thread_id']``
+    matches *thread_id*, or ``None``. Used as a fallback in the
+    status-loader when ``session.thread_id`` is set to the original
+    work thread but the user is asking from the resumed thread."""
+
+    try:
+        sessions = workflow_list_sessions(limit=50)
+    except Exception:  # noqa: BLE001
+        return None
+    for session in sessions or ():
+        state = getattr(session, "state", None)
+        state_value = getattr(state, "value", state)
+        if str(state_value).lower() in {"completed", "rejected"}:
+            continue
+        extra = dict(getattr(session, "extra", {}) or {})
+        if extra.get("resumed_thread_id") == thread_id:
+            return session
+    return None
 
 
 def _is_command_only_prompt(value: object) -> bool:

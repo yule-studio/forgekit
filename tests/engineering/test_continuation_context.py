@@ -166,5 +166,120 @@ class RecordEngineeringContinuationTests(unittest.TestCase):
         self.assertNotIn("continuation_requests", reloaded.extra)
 
 
+class ExtractSessionIdFromTextTests(unittest.TestCase):
+    def test_pulls_id_from_korean_status_question(self) -> None:
+        from yule_orchestrator.discord.bot import _extract_session_id_from_text
+
+        cases = (
+            "세션 a8d1707808ac 기준으로 운영 리서치 어디까지 됐어?",
+            "세션 `a8d1707808ac` 정리 좀",
+            "session a8d1707808ac 상태 알려줘",
+            "기존 세션id=a8d1707808ac 어디까지 됐어",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual(
+                    _extract_session_id_from_text(text), "a8d1707808ac"
+                )
+
+    def test_returns_none_when_no_session_keyword(self) -> None:
+        from yule_orchestrator.discord.bot import _extract_session_id_from_text
+
+        # A bare 12-hex token without "세션"/"session" must NOT match —
+        # otherwise random hashes in URLs / commit shas would hijack.
+        self.assertIsNone(
+            _extract_session_id_from_text("commit a8d1707808ac 정리 좀")
+        )
+        self.assertIsNone(_extract_session_id_from_text(""))
+
+    def test_returns_none_for_short_hex(self) -> None:
+        from yule_orchestrator.discord.bot import _extract_session_id_from_text
+
+        self.assertIsNone(_extract_session_id_from_text("세션 abcd 어디"))
+
+
+class FindSessionWithResumedThreadTests(unittest.TestCase):
+    def setUp(self) -> None:  # noqa: D401
+        _isolate_cache_for_test(self)
+
+    def test_finds_session_via_extra_resumed_thread_id(self) -> None:
+        from yule_orchestrator.discord.bot import _find_session_with_resumed_thread
+
+        session = _seed_session()
+        # Manually persist resumed_thread_id (not on session.thread_id)
+        # so the helper has to read session.extra.
+        from dataclasses import replace
+        from yule_orchestrator.agents.workflow_state import update_session
+
+        updated = replace(
+            session,
+            extra={"resumed_thread_id": 9999},
+        )
+        update_session(updated, now=datetime.now(timezone.utc))
+
+        match = _find_session_with_resumed_thread(9999)
+        self.assertIsNotNone(match)
+        self.assertEqual(match.session_id, "abc123def456")
+
+    def test_returns_none_when_no_match(self) -> None:
+        from yule_orchestrator.discord.bot import _find_session_with_resumed_thread
+
+        _seed_session()
+        self.assertIsNone(_find_session_with_resumed_thread(7777))
+
+
+class StatusDiagnosticSurfacingTests(unittest.TestCase):
+    def test_canonical_prompt_override_appears_in_diagnostic_body(self) -> None:
+        from yule_orchestrator.discord.engineering_conversation import (
+            format_status_diagnostic_response,
+        )
+
+        session = WorkflowSession(
+            session_id="abc123def456",
+            prompt="새 작업으로 진행",
+            task_type="research",
+            state=WorkflowState.IN_PROGRESS,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            extra={
+                "canonical_prompt_override": (
+                    "[Research] 하네스 엔지니어링 자동화 검토"
+                ),
+                "latest_continuation_prompt": (
+                    "[Research] 하네스 엔지니어링 자동화 검토"
+                ),
+                "resumed_thread_id": 1501466695251001434,
+            },
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("canonical 작업 prompt", body)
+        self.assertIn("하네스 엔지니어링", body)
+        self.assertIn("이어붙인 thread id", body)
+        # If canonical and latest are equal we don't print the
+        # continuation line twice.
+        self.assertNotIn("최근 continuation prompt", body)
+
+    def test_continuation_prompt_appears_when_distinct_from_canonical(self) -> None:
+        from yule_orchestrator.discord.engineering_conversation import (
+            format_status_diagnostic_response,
+        )
+
+        session = WorkflowSession(
+            session_id="abc123def456",
+            prompt="결제 모듈 멱등성 추가",  # real prompt, no override
+            task_type="research",
+            state=WorkflowState.IN_PROGRESS,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            extra={
+                "latest_continuation_prompt": "추가로 retry 정책도 정리해줘",
+            },
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("최근 continuation prompt", body)
+        self.assertIn("retry 정책", body)
+        self.assertNotIn("canonical 작업 prompt", body)
+
+
 if __name__ == "__main__":
     unittest.main()

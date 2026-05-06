@@ -153,10 +153,17 @@ def build_engineering_conversation_response(
         # injected loader (bot.py wires find_latest_open_session) and
         # describe its real state. We never trigger auto_collect or
         # intake here.
+        #
+        # The loader is allowed to take ``message_text`` as a kwarg so
+        # explicit "세션 a8d1707808ac" hints in the message body are
+        # preferred over the channel/user lookup.
         session = None
         if callable(status_session_loader):
             try:
-                session = status_session_loader()
+                try:
+                    session = status_session_loader(message_text=message_text)
+                except TypeError:
+                    session = status_session_loader()
             except Exception:  # noqa: BLE001 - loader failures must not crash gateway
                 session = None
         is_member_bot_question = _asks_about_member_bots(message_text)
@@ -898,6 +905,13 @@ def _format_general_help() -> str:
     )
 
 
+def _coerce_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _format_coding_status_line(
     proposal_payload: Any,
     job_payload: Any,
@@ -976,6 +990,11 @@ def format_status_diagnostic_response(
     forum_kickoff_error = extra.get("forum_kickoff_error")
     coding_proposal_payload = extra.get("coding_proposal")
     coding_job_payload = extra.get("coding_job")
+    canonical_prompt_override = _coerce_str(extra.get("canonical_prompt_override"))
+    latest_continuation_prompt = _coerce_str(
+        extra.get("latest_continuation_prompt")
+    )
+    resumed_thread_id = extra.get("resumed_thread_id")
 
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value) or "unknown"
@@ -996,6 +1015,22 @@ def format_status_diagnostic_response(
     )
     if coding_status_line:
         lines.append(coding_status_line)
+
+    if canonical_prompt_override:
+        canonical_short = canonical_prompt_override
+        if len(canonical_short) > 160:
+            canonical_short = canonical_short[:157] + "..."
+        lines.append(f"- canonical 작업 prompt: {canonical_short}")
+    if latest_continuation_prompt and (
+        not canonical_prompt_override
+        or latest_continuation_prompt != canonical_prompt_override
+    ):
+        cont_short = latest_continuation_prompt
+        if len(cont_short) > 160:
+            cont_short = cont_short[:157] + "..."
+        lines.append(f"- 최근 continuation prompt: {cont_short}")
+    if resumed_thread_id is not None:
+        lines.append(f"- 이어붙인 thread id: `{resumed_thread_id}`")
 
     if forum_thread_id or forum_thread_url:
         thread_label = forum_thread_url or f"thread `{forum_thread_id}`"
