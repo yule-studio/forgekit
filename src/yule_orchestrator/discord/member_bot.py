@@ -16,7 +16,7 @@ from .engineering_team_runtime import (
     mark_turn_played,
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
-from .research_forum import ResearchForumContext
+from .research_forum import ResearchForumContext, chunk_for_discord_message
 from .typing_indicator import typing_context
 
 
@@ -312,11 +312,13 @@ async def _post_team_turn(channel, outcome: TeamTurnOutcome) -> None:
     """Send the rendered turn (and chain directive, if any) into *channel*.
 
     Extracted so tests can drive the post path without a live Discord
-    client. Splitting the message + directive into one ``send`` keeps the
-    handoff visually grouped in the thread.
+    client. Long takes get chunked at ≤ 1900 chars per send so Discord's
+    50035 ``content`` validator never rejects a turn for being too long.
     """
 
-    await channel.send(outcome.full_post())
+    body = outcome.full_post()
+    for piece in chunk_for_discord_message(body) or (body,):
+        await channel.send(piece)
     _mark_team_turn_persisted(outcome)
 
 
@@ -325,10 +327,14 @@ async def _post_research_turn(channel, outcome: ResearchTurnOutcome) -> None:
 
     The render already embeds the next directive (``[research-turn:...]``)
     when applicable, so each member bot's comment naturally hands off to
-    the next role bot without the gateway impersonating anyone.
+    the next role bot without the gateway impersonating anyone. Long
+    takes get chunked the same way as ``_post_team_turn`` so a verbose
+    take never trips Discord's per-message limit.
     """
 
-    await channel.send(outcome.message)
+    body = outcome.message
+    for piece in chunk_for_discord_message(body) or (body,):
+        await channel.send(piece)
 
 
 def _mark_team_turn_persisted(outcome: TeamTurnOutcome) -> None:

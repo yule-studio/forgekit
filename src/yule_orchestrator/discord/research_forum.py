@@ -74,13 +74,19 @@ ALL_PREFIXES = THREAD_TITLE_PREFIXES + COMMENT_PREFIXES
 DISCORD_THREAD_TITLE_LIMIT = 100
 TOPIC_BUDGET = 60  # leaves room for the prefix + safety margin
 
-# Discord forum starter message content cap. The API hard-rejects bodies
-# > 4000 chars with ``error code 50035 — Must be 4000 or fewer in length``.
-# We post starters at the lower :data:`FORUM_STARTER_CONTENT_LIMIT` so a
-# single unicode-width surprise (e.g. emoji widening, paragraph the
-# formatter glued in) doesn't push us over.
+# Discord forum starter caps:
+# - Forum starter API spec accepts up to 4000 chars, but in production
+#   discord.py routes the starter through the same ``content=`` validator
+#   as a regular message and rejects > 2000 chars with
+#   ``50035 — In content: Must be 2000 or fewer in length``. To stay safe
+#   under both interpretations and the unicode width margin, we cap
+#   starter posts at 1900 — the same ceiling we use for thread replies
+#   and for ``channel.send`` chunks via :data:`split_discord_message`.
+# - ``DISCORD_MESSAGE_CONTENT_LIMIT`` is the upstream API hard cap that
+#   we never approach; it's kept here as a comparison reference for
+#   tests asserting our cap stays well under it.
 DISCORD_MESSAGE_CONTENT_LIMIT = 4000
-FORUM_STARTER_CONTENT_LIMIT = 3900
+FORUM_STARTER_CONTENT_LIMIT = 1900
 DISCORD_MESSAGE_REPLY_LIMIT = 1900
 FORUM_STARTER_OVERFLOW_NOTICE = (
     "_본문이 길어 일부를 생략했습니다. 상세 자료는 후속 댓글 또는 Obsidian export를 확인하세요._"
@@ -798,6 +804,31 @@ async def create_research_post(
     )
 
 
+def chunk_for_discord_message(
+    text: str,
+    *,
+    limit: int = DISCORD_MESSAGE_REPLY_LIMIT,
+) -> Tuple[str, ...]:
+    """Return *text* as a tuple of ≤ ``limit`` char Discord chunks.
+
+    Single source of truth for Discord-bound content sizing. Delegates
+    to :func:`split_discord_message` so long single lines get hard-
+    sliced and the chunker never emits a chunk over the cap. Empty or
+    None input returns an empty tuple so callers can short-circuit.
+
+    Production path: every ``post_message_fn(thread_id, content=...)``
+    and ``channel.send(content)`` call should run their content through
+    this helper (or the wrappers in this module) so Discord never sees
+    > 1900 chars.
+    """
+
+    if not text:
+        return ()
+    from .formatter import split_discord_message
+
+    return tuple(split_discord_message(text, limit=limit))
+
+
 async def _post_continuation_chunks(
     *,
     post_message_fn: "PostMessageFn",
@@ -810,16 +841,26 @@ async def _post_continuation_chunks(
     thread itself was already created, so the operator should still see
     whichever chunks succeeded. Returned tuple is empty when every chunk
     posted cleanly.
+
+    Defensive sizing: each *chunks* entry is re-run through the Discord
+    chunker. ``split_forum_starter_and_replies`` already targets the
+    reply cap, but a caller passing pre-built chunks at a different
+    boundary should still end up posting ≤ DISCORD_MESSAGE_REPLY_LIMIT.
     """
 
     errors: list[str] = []
-    for index, chunk in enumerate(chunks, start=1):
+    safe_pieces: list[str] = []
+    for chunk in chunks:
+        for piece in chunk_for_discord_message(chunk):
+            safe_pieces.append(piece)
+    total = len(safe_pieces)
+    for index, chunk in enumerate(safe_pieces, start=1):
         try:
             await _maybe_await(
                 post_message_fn(thread_id=thread_id, content=chunk)
             )
         except Exception as exc:  # noqa: BLE001 - record per-chunk
-            errors.append(f"chunk {index}/{len(chunks)}: {exc}")
+            errors.append(f"chunk {index}/{total}: {exc}")
     return tuple(errors)
 
 
@@ -874,14 +915,22 @@ async def post_agent_comment(
         confidence=confidence,
         confidence_reason=confidence_reason,
     )
-    try:
-        result = await _maybe_await(
-            post_message_fn(thread_id=thread_id, content=body)
-        )
-    except Exception as exc:  # noqa: BLE001
-        return ForumCommentOutcome(posted=False, error=str(exc), body=body)
-    message_id = _extract_message_id(result)
-    return ForumCommentOutcome(posted=True, message_id=message_id, body=body)
+    # Long-context evidence + multi-paragraph perspective can push role
+    # comments well past Discord's 2000-char ``content`` limit. Chunk
+    # before posting and return the first message's id (the post counts
+    # as posted as soon as any chunk lands).
+    pieces = chunk_for_discord_message(body) or (body,)
+    first_message_id: Optional[int] = None
+    for index, piece in enumerate(pieces, start=1):
+        try:
+            result = await _maybe_await(
+                post_message_fn(thread_id=thread_id, content=piece)
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ForumCommentOutcome(posted=False, error=str(exc), body=body)
+        if first_message_id is None:
+            first_message_id = _extract_message_id(result)
+    return ForumCommentOutcome(posted=True, message_id=first_message_id, body=body)
 
 
 # ---------------------------------------------------------------------------

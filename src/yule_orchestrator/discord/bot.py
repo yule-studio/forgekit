@@ -45,6 +45,7 @@ from .engineering_channel_router import (
 from .research_forum import (
     FORUM_STARTER_CONTENT_LIMIT,
     ResearchForumContext,
+    chunk_for_discord_message,
     truncate_for_starter_message,
 )
 from .typing_indicator import typing_context
@@ -1674,7 +1675,8 @@ def _make_default_thread_continuation_fn(discord_module: "discord"):
             write_requested=write_requested,
             topic=thread_topic,
         )
-        await thread.send(continuation_text)
+        for piece in chunk_for_discord_message(continuation_text) or (continuation_text,):
+            await thread.send(piece)
         _clear_engineering_last_proposed_for_channel(message)
         status = (
             "**[engineering-agent] 기존 thread에 이어서 접수**\n"
@@ -1712,7 +1714,13 @@ def _make_default_thread_kickoff_fn(discord_module: "discord"):
             thread_id = getattr(channel, "id", None)
             session_with_thread = _persist_engineering_thread_id(session, thread_id)
             kickoff_text = _format_engineering_kickoff_message(session_with_thread, plan)
-            await channel.send(_append_team_kickoff_directive(kickoff_text, session_with_thread))
+            kickoff_with_directive = _append_team_kickoff_directive(
+                kickoff_text, session_with_thread
+            )
+            for piece in chunk_for_discord_message(kickoff_with_directive) or (
+                kickoff_with_directive,
+            ):
+                await channel.send(piece)
             return EngineeringThreadKickoff(
                 thread_id=thread_id,
                 message=kickoff_text,
@@ -1725,14 +1733,21 @@ def _make_default_thread_kickoff_fn(discord_module: "discord"):
         )
         if thread is None:
             kickoff_text = _format_engineering_kickoff_message(session, plan)
-            await channel.send(kickoff_text)
+            for piece in chunk_for_discord_message(kickoff_text) or (kickoff_text,):
+                await channel.send(piece)
             return EngineeringThreadKickoff(thread_id=None, message=kickoff_text)
 
         thread_id = getattr(thread, "id", None)
         session_with_thread = _persist_engineering_thread_id(session, thread_id)
         kickoff_text = _format_engineering_kickoff_message(session_with_thread, plan)
         try:
-            await thread.send(_append_team_kickoff_directive(kickoff_text, session_with_thread))
+            kickoff_with_directive = _append_team_kickoff_directive(
+                kickoff_text, session_with_thread
+            )
+            for piece in chunk_for_discord_message(kickoff_with_directive) or (
+                kickoff_with_directive,
+            ):
+                await thread.send(piece)
         except Exception as exc:  # noqa: BLE001 - report and continue
             print(f"warning: engineering thread kickoff send failed: {exc}")
 
@@ -2139,8 +2154,19 @@ def _make_default_research_forum_post_message_fn(discord_module: "discord"):
                 thread = await bot.fetch_channel(int(thread_id))
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError(f"thread {thread_id} not reachable: {exc}") from exc
-        message = await thread.send(content)
-        return {"id": getattr(message, "id", None)}
+        # Defence in depth: callers in research_forum.py / research_loop.py
+        # already chunk before they reach this wrapper, but a stray caller
+        # (or a re-issued legacy code path) could still pass a > 1900 char
+        # string. Run it through the chunker once more so Discord never
+        # sees a content above the cap. ``id`` is the first chunk's id so
+        # downstream persistence keeps a stable handle.
+        pieces = chunk_for_discord_message(content) or (content,)
+        first_message_id = None
+        for piece in pieces:
+            sent = await thread.send(piece)
+            if first_message_id is None:
+                first_message_id = getattr(sent, "id", None)
+        return {"id": first_message_id}
 
     return _post
 

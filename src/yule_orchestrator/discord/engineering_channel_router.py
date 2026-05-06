@@ -844,8 +844,13 @@ async def make_default_research_loop(
                     "추가 조사하고, 필요한 take를 독립적으로 남깁니다.\n\n"
                     f"{kickoff}"
                 )
+                from .research_forum import chunk_for_discord_message
+                pieces = chunk_for_discord_message(kickoff_message) or (
+                    kickoff_message,
+                )
                 try:
-                    await post_to_forum_thread(forum_thread_id, kickoff_message)
+                    for piece in pieces:
+                        await post_to_forum_thread(forum_thread_id, piece)
                 except Exception as exc:  # noqa: BLE001
                     error = (error + " · " if error else "") + (
                         f"forum kickoff 게시 실패: {exc}"
@@ -876,13 +881,20 @@ async def make_default_research_loop(
                 synthesis_text = _optional_str(
                     getattr(deliberation_result, "synthesis_text", None)
                 )
+                from .research_forum import chunk_for_discord_message
                 try:
                     for record in rendered:
                         text = _optional_str(getattr(record, "rendered", None))
-                        if text:
-                            await post_to_thread(thread_id, text)
+                        if not text:
+                            continue
+                        for piece in chunk_for_discord_message(text) or (text,):
+                            await post_to_thread(thread_id, piece)
                     if synthesis_text:
-                        await post_to_thread(thread_id, synthesis_text)
+                        for piece in (
+                            chunk_for_discord_message(synthesis_text)
+                            or (synthesis_text,)
+                        ):
+                            await post_to_thread(thread_id, piece)
                 except Exception as exc:  # noqa: BLE001
                     error = (error + " · " if error else "") + (
                         f"thread 게시 실패: {exc}"

@@ -47,6 +47,7 @@ from ..discord.research_forum import (
     ForumCommentOutcome,
     ForumPostOutcome,
     ResearchForumContext,
+    chunk_for_discord_message,
     create_research_post,
     format_agent_comment,
     post_agent_comment,
@@ -416,10 +417,13 @@ async def _post_research_kickoff_comment(
         "추가 조사하고, 필요한 take를 독립적으로 남깁니다.\n\n"
         f"{directive}"
     )
-    try:
-        await post_message_fn(thread_id=thread_id, content=body)
-    except Exception as exc:  # noqa: BLE001
-        return ForumCommentOutcome(posted=False, error=str(exc), body=body)
+    # Directive can grow with role lists / tags so chunk before posting.
+    # Each piece is ≤ DISCORD_MESSAGE_REPLY_LIMIT (1900) chars.
+    for piece in chunk_for_discord_message(body) or (body,):
+        try:
+            await post_message_fn(thread_id=thread_id, content=piece)
+        except Exception as exc:  # noqa: BLE001
+            return ForumCommentOutcome(posted=False, error=str(exc), body=body)
     return ForumCommentOutcome(posted=True, body=body)
 
 
@@ -612,12 +616,20 @@ async def _post_decision_comment(
 
     body_lines = [f"{PREFIX_DECISION} 합의안 — {synthesis.consensus.strip()}", "", synthesis_text]
     body = "\n".join(body_lines).strip()
-    try:
-        result = await _maybe_await(post_message_fn(thread_id=thread_id, content=body))
-    except Exception as exc:  # noqa: BLE001 - surface to caller
-        return ForumCommentOutcome(posted=False, error=str(exc), body=body)
-    message_id = _extract_id(result)
-    return ForumCommentOutcome(posted=True, message_id=message_id, body=body)
+    # Synthesis text can be multi-paragraph and easily exceeds the
+    # 2000-char ``content`` limit for thread messages. Chunk before
+    # posting; the first chunk's id stands in for the comment id so
+    # callers (StoredOutcome / persistence) keep a stable handle.
+    pieces = chunk_for_discord_message(body) or (body,)
+    first_message_id: Optional[int] = None
+    for piece in pieces:
+        try:
+            result = await _maybe_await(post_message_fn(thread_id=thread_id, content=piece))
+        except Exception as exc:  # noqa: BLE001 - surface to caller
+            return ForumCommentOutcome(posted=False, error=str(exc), body=body)
+        if first_message_id is None:
+            first_message_id = _extract_id(result)
+    return ForumCommentOutcome(posted=True, message_id=first_message_id, body=body)
 
 
 async def _maybe_await(value: Any) -> Any:
