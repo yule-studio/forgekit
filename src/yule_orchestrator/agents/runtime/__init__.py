@@ -12,9 +12,6 @@ operation) and an LLM-backed runtime (added in later phases).
 Phase 1 lands the dataclasses + skeleton loop only. The Discord
 gateway and member bots keep using their existing routing modules; the
 runtime is wired in incrementally in later phases.
-
-This commit lands the model layer; the loop driver lands in the next
-commit.
 """
 
 from .models import (
@@ -51,6 +48,7 @@ from .models import (
     RuntimeResult,
     SessionCandidate,
 )
+from .loop import run_runtime_loop
 
 __all__ = (
     "ACTION_APPEND_CONTEXT",
@@ -85,4 +83,5 @@ __all__ = (
     "RuntimeResearchPlan",
     "RuntimeResult",
     "SessionCandidate",
+    "run_runtime_loop",
 )
