@@ -48,6 +48,7 @@ from .models import (
     RuntimeResult,
     SessionCandidate,
 )
+from .decide import decide_default
 from .loop import run_runtime_loop
 from .policies import RolePolicy, all_role_policies, role_policy_for
 from .recall import (
@@ -104,6 +105,7 @@ __all__ = (
     "SCORE_MEDIUM",
     "all_role_policies",
     "classify_intent_deterministic",
+    "decide_default",
     "make_recall_fn",
     "make_understand_fn",
     "role_policy_for",
