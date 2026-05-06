@@ -182,6 +182,105 @@ class StatusDiagnosticResponseFormatterTests(unittest.TestCase):
         self.assertIn("research loop 오류", body)
         self.assertIn("forum starter", body)
 
+    def test_member_bots_mode_with_kickoff_posted(self) -> None:
+        # When the publisher set member-bots mode and the open-call
+        # directive landed cleanly, the diagnostic must say so and
+        # point operators to the forum thread for actual role comments.
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "forum_kickoff_posted": True,
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("모드: member-bots", body)
+        self.assertIn("open-call directive: 게시 완료", body)
+        self.assertIn("후속 댓글은 운영-리서치 thread", body)
+
+    def test_member_bots_mode_with_kickoff_failed_surfaces_reason(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "forum_kickoff_posted": False,
+                "forum_kickoff_error": "rate limit 503",
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("모드: member-bots", body)
+        self.assertIn("open-call directive: 게시 실패", body)
+        self.assertIn("rate limit 503", body)
+
+    def test_gateway_mode_describes_gateway_comment_path(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "gateway",
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("모드: gateway", body)
+        # member-bots-only wording must not appear in gateway mode.
+        self.assertNotIn("open-call directive", body)
+        self.assertNotIn("멤버 봇이 자기 계정으로", body)
+
+    def test_role_turns_section_lists_recorded_role_activity(self) -> None:
+        # Phase B: when member bots record their activity onto
+        # session.extra["role_turns"], the diagnostic responder must
+        # surface each role's status / kind / posted_at and any error.
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "research_open_call_posted": True,
+                "role_turns": {
+                    "ai-engineer": {
+                        "status": "posted",
+                        "kind": "open",
+                        "posted_at": "2026-05-06T10:00:00+09:00",
+                    },
+                    "qa-engineer": {
+                        "status": "error",
+                        "kind": "turn",
+                        "posted_at": "2026-05-06T10:01:00+09:00",
+                        "error": "discord 5xx",
+                    },
+                },
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("역할 활동 기록", body)
+        self.assertIn("ai-engineer", body)
+        self.assertIn("posted (open", body)
+        self.assertIn("qa-engineer", body)
+        self.assertIn("error (turn", body)
+        self.assertIn("discord 5xx", body)
+
+    def test_research_open_call_keys_take_precedence_over_legacy(self) -> None:
+        # Phase B canonical keys (research_open_call_*) must override
+        # the legacy forum_kickoff_* keys when both are present so the
+        # diagnostic always reflects the latest writer's intent.
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "research_open_call_posted": False,
+                "research_open_call_error": "rate limit 503",
+                # Legacy keys say "ok" — must be ignored.
+                "forum_kickoff_posted": True,
+                "forum_kickoff_error": None,
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("open-call directive: 게시 실패", body)
+        self.assertIn("rate limit 503", body)
+
 
 class BuildResponseStatusQueryTests(unittest.TestCase):
     """End-to-end: status questions never set ready_to_intake and never
@@ -309,6 +408,97 @@ class RouterStatusQueryShortCircuitTests(unittest.TestCase):
         # The conversation status answer was the only message sent.
         self.assertEqual(len(sent), 1)
         self.assertIn("운영-리서치 forum 게시 실패", sent[0])
+
+
+class MemberBotPhraseDetectionTests(unittest.TestCase):
+    """Phase E expansion — explicit "멤버 봇" questions must route to
+    the status diagnostic intent so the response can include the
+    member-bot summary block instead of falling through to intake."""
+
+    def test_korean_member_bot_phrasings_detected_as_status(self) -> None:
+        cases = (
+            "멤버 봇들은 뭐 하고 있어?",
+            "멤버봇 진행 상황 알려줘",
+            "역할 봇들 어떻게 됐어?",
+            "member bot 상태 확인",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                intent = detect_engineering_intent(text)
+                self.assertEqual(intent.intent_id, STATUS_DIAGNOSTIC, text)
+
+
+class DiagnosticSignalsAppearInResponseTests(unittest.TestCase):
+    """The format function must surface the structured signals so
+    the operator sees "왜 멈췄는지" without re-deriving the rules."""
+
+    def test_research_pack_without_open_call_appends_stale_signal(self) -> None:
+        session = _session(extra={"research_pack": {"title": "x"}})
+        body = format_status_diagnostic_response(session)
+        self.assertIn("감지된 다음 단계:", body)
+        self.assertIn("[STALE]", body)
+        self.assertIn("research_pack 있음", body)
+
+    def test_obsidian_pending_approval_renders_blocked_tag(self) -> None:
+        session = _session(
+            write_requested=True,
+            write_blocked_reason="작성 승인이 필요합니다",
+            extra={
+                "research_pack": {"title": "x"},
+                "research_synthesis": {"summary": "ok"},
+            },
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("[BLOCKED]", body)
+        self.assertIn("Obsidian write 승인 대기", body)
+        self.assertIn("yule engineer approve", body)
+
+    def test_obsidian_write_failed_renders_failed_tag(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_synthesis": {"summary": "ok"},
+                "obsidian_write_error": "Permission denied at /vault",
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("[FAILED]", body)
+        self.assertIn("Obsidian write 실패", body)
+        self.assertIn("Permission denied", body)
+
+    def test_member_bot_question_appends_member_bot_summary(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "forum_kickoff_posted": True,
+                "team_conversation": {"played_roles": ["tech-lead"]},
+            }
+        )
+        # Simulate the gateway reaching format with the flag on.
+        body = format_status_diagnostic_response(
+            session, is_member_bot_question=True
+        )
+        self.assertIn("멤버 봇 진행 상태", body)
+        self.assertIn("응답한 역할(1)", body)
+
+
+class StatusQueryNoMemberBotPathDoesNotLeakBlockTests(unittest.TestCase):
+    """Calling without the flag must NOT include the member-bot block —
+    keeps the regular '지금 뭐 하는 중?' answer compact."""
+
+    def test_default_call_omits_member_bot_block(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "forum_kickoff_posted": True,
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertNotIn("멤버 봇 진행 상태", body)
 
 
 if __name__ == "__main__":

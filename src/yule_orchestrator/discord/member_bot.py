@@ -9,11 +9,17 @@ from ..agents.workflow_state import load_session, update_session
 from .config import DiscordBotConfig
 from .engineering_channel_router import EngineeringRouteContext
 from .engineering_team_runtime import (
+    ROLE_TURN_KIND_OPEN,
+    ROLE_TURN_KIND_SYNTHESIS,
+    ROLE_TURN_KIND_TURN,
+    ROLE_TURN_STATUS_ERROR,
+    ROLE_TURN_STATUS_POSTED,
     ResearchTurnOutcome,
     TeamTurnOutcome,
     handle_research_turn_message,
     handle_team_turn_message,
     mark_turn_played,
+    record_role_turn_event,
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
 from .research_forum import ResearchForumContext, chunk_for_discord_message
@@ -330,11 +336,62 @@ async def _post_research_turn(channel, outcome: ResearchTurnOutcome) -> None:
     the next role bot without the gateway impersonating anyone. Long
     takes get chunked the same way as ``_post_team_turn`` so a verbose
     take never trips Discord's per-message limit.
+
+    After the post lands, the bot records a role-turn event under
+    ``session.extra["role_turns"][<role>]`` so the gateway diagnostic
+    responder can describe which roles actually spoke. Persistence
+    failure is silenced (``record_role_turn_event`` swallows internally)
+    so a logging miss never blocks the Discord post.
     """
 
     body = outcome.message
-    for piece in chunk_for_discord_message(body) or (body,):
-        await channel.send(piece)
+    # Pull recorder-relevant fields defensively so the test/dev seams that
+    # pass a partial outcome (e.g. SimpleNamespace with only ``message``)
+    # still go through the chunk path. We only record an event when both
+    # session_id and role are present — otherwise the recorder has nothing
+    # to anchor against.
+    session_id = getattr(outcome, "session_id", None) or ""
+    role = getattr(outcome, "role", None) or ""
+    kind = _research_turn_event_kind(outcome)
+    try:
+        for piece in chunk_for_discord_message(body) or (body,):
+            await channel.send(piece)
+    except Exception as exc:  # noqa: BLE001 - record failure then re-raise
+        if session_id and role:
+            record_role_turn_event(
+                session_id=session_id,
+                role=role,
+                kind=kind,
+                status=ROLE_TURN_STATUS_ERROR,
+                error=str(exc),
+            )
+        raise
+    if session_id and role:
+        record_role_turn_event(
+            session_id=session_id,
+            role=role,
+            kind=kind,
+            status=ROLE_TURN_STATUS_POSTED,
+        )
+
+
+def _research_turn_event_kind(outcome: Any) -> str:
+    """Pick the role-turn event ``kind`` based on the outcome shape.
+
+    - ``synthesis`` for the closing tech-lead comment.
+    - ``open`` for open-call replies (no chained next directive).
+    - ``turn`` for legacy chained dispatch turns.
+
+    Tolerant of partial outcomes (``SimpleNamespace`` with only
+    ``message`` set, used by chunk-cap tests) — defaults to ``open`` in
+    that case so the chunk-cap test path still hits the chunker.
+    """
+
+    if getattr(outcome, "is_synthesis", False):
+        return ROLE_TURN_KIND_SYNTHESIS
+    if getattr(outcome, "next_directive", None) is None:
+        return ROLE_TURN_KIND_OPEN
+    return ROLE_TURN_KIND_TURN
 
 
 def _mark_team_turn_persisted(outcome: TeamTurnOutcome) -> None:

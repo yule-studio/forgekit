@@ -82,6 +82,7 @@ PROJECT_DECISIONS_SUBDIR = "decisions"
 PROJECT_REFERENCES_SUBDIR = "references"
 PROJECT_TASK_LOGS_SUBDIR = "task-logs"
 PROJECT_MEETING_NOTES_SUBDIR = "meeting-notes"
+PROJECT_KNOWLEDGE_SUBDIR = "knowledge"
 
 # Legacy-agent layout (kept for opt-in legacy mode + back-compat imports).
 VAULT_BASE = "Agents/Engineering"
@@ -104,6 +105,7 @@ _KIND_TO_PROJECT_SUBDIR: Mapping[str, str] = {
     "meeting": PROJECT_MEETING_NOTES_SUBDIR,
     "meeting-note": PROJECT_MEETING_NOTES_SUBDIR,
     "meeting-notes": PROJECT_MEETING_NOTES_SUBDIR,
+    "knowledge": PROJECT_KNOWLEDGE_SUBDIR,
 }
 
 # Filename label per kind (used by ``recommend_path`` to build basenames
@@ -121,6 +123,7 @@ _KIND_TO_LABEL: Mapping[str, str] = {
     "meeting": "meeting",
     "meeting-note": "meeting",
     "meeting-notes": "meeting",
+    "knowledge": "knowledge",
 }
 
 
@@ -340,6 +343,22 @@ def render_research_note(
     """
 
     chosen_kind = (kind or _infer_kind(synthesis)).lower()
+    if chosen_kind == "knowledge":
+        # Knowledge mode delegates to the richer template — semantic
+        # title, role-by-role review, decisions/next-actions split — so
+        # the existing research/decision/reference branches stay
+        # byte-stable for vaults that haven't migrated.
+        from .knowledge_writer import render_knowledge_note
+
+        return render_knowledge_note(
+            pack=pack,
+            session=session,
+            synthesis=synthesis,
+            project=project,
+            layout=layout,
+            env=env,
+            exported_at=exported_at,
+        )
     layout_resolved = resolve_layout(layout, env=env)
     chosen_project = _resolve_project(
         project=project,
@@ -668,23 +687,40 @@ _FILLER_SUFFIXES = (
 )
 
 
-_RESEARCH_PREFIX_RE = re.compile(r"^\s*\[(?:Research|Decision|Reference)\]\s*", re.IGNORECASE)
+_RESEARCH_PREFIX_RE = re.compile(
+    r"^\s*\[(?:Research|Decision|Reference|Knowledge)\]\s*",
+    re.IGNORECASE,
+)
 _BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_URL_IN_TEXT_RE = re.compile(r"https?://\S+", re.IGNORECASE)
+# Filler phrases the title generator must drop *before* truncation —
+# they shorten the available budget without adding signal.
+_TITLE_FILLER_PHRASES: tuple[str, ...] = (
+    "자료 링크 모음",
+    "자료 링크",
+    "이대로",
+)
 
 
 def _clean_title(text: str) -> str:
     """Strip Discord/Obsidian markup that doesn't belong in a title.
 
-    Removes ``[Research]`` / ``[Decision]`` style prefixes, markdown
-    ``**bold**`` markers, line breaks, and runs of whitespace. The output
-    is a single-line plain string that downstream summarisation /
-    truncation can work on without escape-sequence surprises.
+    Removes ``[Research]`` / ``[Decision]`` / ``[Knowledge]`` style
+    prefixes, markdown ``**bold**`` markers, raw URLs (which sometimes
+    end up in auto-generated titles like ``자료 링크 https://...``),
+    body filler phrases (``자료 링크``, ``이대로``), line breaks, and
+    runs of whitespace. The output is a single-line plain string that
+    downstream summarisation / truncation can work on without escape-
+    sequence surprises.
     """
 
     if not text:
         return ""
     cleaned = _RESEARCH_PREFIX_RE.sub("", text)
     cleaned = _BOLD_RE.sub(r"\1", cleaned)
+    cleaned = _URL_IN_TEXT_RE.sub(" ", cleaned)
+    for phrase in _TITLE_FILLER_PHRASES:
+        cleaned = cleaned.replace(phrase, " ")
     cleaned = cleaned.replace("\r", " ").replace("\n", " ")
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.strip(" -·…")

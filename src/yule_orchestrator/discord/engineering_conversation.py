@@ -39,6 +39,10 @@ from ..agents.research_pack import (
     ResearchSource,
     extract_urls,
 )
+from ..agents.session_status import (
+    diagnose_session,
+    render_member_bot_summary,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +159,11 @@ def build_engineering_conversation_response(
                 session = status_session_loader()
             except Exception:  # noqa: BLE001 - loader failures must not crash gateway
                 session = None
-        body = format_status_diagnostic_response(session)
+        is_member_bot_question = _asks_about_member_bots(message_text)
+        body = format_status_diagnostic_response(
+            session,
+            is_member_bot_question=is_member_bot_question,
+        )
         return EngineeringConversationResponse(
             content=_prepend_mention(body, mention_user_id),
             intent_id=STATUS_DIAGNOSTIC,
@@ -644,6 +652,12 @@ def _asks_to_start_new_thread(text: str) -> bool:
 
 
 _STATUS_DIAGNOSTIC_PHRASES = (
+    "멤버 봇",
+    "멤버봇",
+    "역할 봇",
+    "역할봇",
+    "member bot",
+    "member-bot",
     "운영 리서치는 안 열",
     "운영-리서치는 안 열",
     "운영 리서치 안 열",
@@ -884,7 +898,11 @@ def _format_general_help() -> str:
     )
 
 
-def format_status_diagnostic_response(session: Optional[Any]) -> str:
+def format_status_diagnostic_response(
+    session: Optional[Any],
+    *,
+    is_member_bot_question: bool = False,
+) -> str:
     """Render a real-state status answer for the gateway.
 
     Reads ``session.state``, ``session.extra``, and known keys
@@ -893,6 +911,11 @@ def format_status_diagnostic_response(session: Optional[Any]) -> str:
     can say "research_pack: 있음 · forum: 게시 실패 · 마지막 오류: 4000자
     초과" instead of guessing. When *session* is None we explicitly tell
     the operator we couldn't find an open session.
+
+    *is_member_bot_question* tilts the answer toward "멤버 봇들은 뭐 하고
+    있어?" — we still print the full state header but append a short
+    member-bot focused section pointing at the forum thread instead of
+    duplicating role comments here.
     """
 
     if session is None:
@@ -917,6 +940,9 @@ def format_status_diagnostic_response(session: Optional[Any]) -> str:
     )
     research_loop_report = extra.get("research_loop_report")
     synthesis = extra.get("research_synthesis")
+    forum_comment_mode = extra.get("forum_comment_mode")
+    forum_kickoff_posted = extra.get("forum_kickoff_posted")
+    forum_kickoff_error = extra.get("forum_kickoff_error")
 
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value) or "unknown"
@@ -942,6 +968,55 @@ def format_status_diagnostic_response(session: Optional[Any]) -> str:
         lines.append("- 운영-리서치 forum: 아직 게시되지 않음 (자료는 수집 완료)")
     else:
         lines.append("- 운영-리서치 forum: 자료 수집 전이라 게시 단계가 아님")
+
+    # Forum comment mode signals — only meaningful once the forum
+    # publish actually ran (so we condition on having a thread or an
+    # explicit error). In member-bots mode we explain that per-role
+    # comments come from each member bot, not the gateway.
+    if forum_comment_mode == "member-bots":
+        lines.append("- 모드: member-bots (각 멤버 봇이 자기 계정으로 댓글)")
+        # Phase B canonical names (research_open_call_*) override the
+        # legacy forum_kickoff_* keys when both are present so the
+        # diagnostic always describes the latest writer's intent.
+        kickoff_posted = extra.get("research_open_call_posted")
+        kickoff_error = extra.get("research_open_call_error")
+        if kickoff_posted is None and forum_kickoff_posted is not None:
+            kickoff_posted = forum_kickoff_posted
+            kickoff_error = forum_kickoff_error
+        if kickoff_posted is True:
+            lines.append("  · open-call directive: 게시 완료")
+        elif kickoff_posted is False:
+            reason = kickoff_error or "원인 미확인"
+            lines.append(f"  · open-call directive: 게시 실패 — {reason}")
+        # Always close with a pointer to where the actual role comments
+        # land so the operator knows the gateway summary isn't where to
+        # judge member bot work.
+        lines.append(
+            "  · 후속 댓글은 운영-리서치 thread에서 직접 확인해 주세요."
+        )
+    elif forum_comment_mode == "gateway":
+        lines.append("- 모드: gateway (역할별 댓글을 게이트웨이가 직접 게시)")
+
+    role_turns = extra.get("role_turns")
+    if isinstance(role_turns, Mapping) and role_turns:
+        # Phase B activity log — show each role that actually spoke (or
+        # tried to). Sorted by role name for stable diagnostic output.
+        lines.append("- 역할 활동 기록:")
+        for role_name in sorted(role_turns.keys()):
+            entry = role_turns.get(role_name)
+            if not isinstance(entry, Mapping):
+                continue
+            status = entry.get("status") or "?"
+            kind = entry.get("kind") or "?"
+            posted_at = entry.get("posted_at")
+            error = entry.get("error")
+            descriptor = f"{role_name}: {status} ({kind}"
+            if posted_at:
+                descriptor += f", {posted_at}"
+            descriptor += ")"
+            if error:
+                descriptor += f" — {error}"
+            lines.append(f"  · {descriptor}")
 
     if research_loop_report:
         report_error = None
@@ -975,11 +1050,62 @@ def format_status_diagnostic_response(session: Optional[Any]) -> str:
             last_short = last_short[:157] + "..."
         lines.append(f"- 마지막 진행 노트: {last_short}")
 
+    # Phase E: surface the structured diagnostic helper signals so the
+    # operator sees "왜 멈췄는지" without re-deriving the rules.
+    # ``primary_signal`` skips info-only signals so we never crowd the
+    # response with "research_pack 미수집" noise when the session is
+    # genuinely just at the start.
+    report = diagnose_session(session)
+    actionable = tuple(s for s in report.signals if s.severity != "info")
+    if actionable:
+        lines.append("")
+        lines.append("감지된 다음 단계:")
+        for signal in actionable:
+            tag = _STATUS_SEVERITY_TAGS.get(signal.severity, signal.severity)
+            lines.append(f"- {tag} {signal.title}")
+            if signal.detail:
+                detail = " ".join(str(signal.detail).split())
+                if len(detail) > 200:
+                    detail = detail[:197] + "..."
+                lines.append(f"  · 원인: {detail}")
+            if signal.propose:
+                propose = " ".join(str(signal.propose).split())
+                if len(propose) > 200:
+                    propose = propose[:197] + "..."
+                lines.append(f"  · 제안: {propose}")
+
+    if is_member_bot_question:
+        lines.append("")
+        lines.extend(render_member_bot_summary(report).splitlines())
+
     lines.append("")
     lines.append(
         "추가로 보고 싶은 항목(예: 출처 목록, role take 진행)을 알려 주시면 그 부분만 더 자세히 정리해 드릴게요."
     )
     return "\n".join(lines)
+
+
+_STATUS_SEVERITY_TAGS = {
+    "failed": "[FAILED]",
+    "blocked": "[BLOCKED]",
+    "stale": "[STALE]",
+    "info": "[INFO]",
+}
+
+
+_MEMBER_BOT_PHRASES = (
+    "멤버 봇",
+    "멤버봇",
+    "역할 봇",
+    "역할봇",
+    "member bot",
+    "member-bot",
+)
+
+
+def _asks_about_member_bots(message_text: str) -> bool:
+    normalized = _normalize(message_text)
+    return any(phrase in normalized for phrase in _MEMBER_BOT_PHRASES)
 
 
 def _format_clarification_question(message_text: str) -> str:

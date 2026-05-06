@@ -15,7 +15,11 @@ from ..agents import (
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from ..agents.workflow_state import find_latest_open_session, update_session
+from ..agents.workflow_state import (
+    find_latest_open_session,
+    list_sessions as workflow_list_sessions,
+    update_session,
+)
 from ..integrations.calendar import list_naver_calendar_items
 from ..integrations.calendar.models import build_fallback_item_uid
 from ..integrations.github.issues import list_open_issues
@@ -187,6 +191,12 @@ def run_discord_bot(repo_root: Path) -> None:
                         send_chunks=send_chunks,
                         research_loop_fn=_make_default_engineering_research_loop_fn(discord),
                         thread_continuation_fn=_make_default_thread_continuation_fn(discord),
+                        # Phase 4 — runtime preflight uses the live
+                        # workflow session store so "어제 작업 이어서
+                        # 요약해줘" et al. never reach
+                        # auto_collect=True. Disabled flag-style by
+                        # tests that inject their own routing seam.
+                        list_sessions_fn=workflow_list_sessions,
                     )
                 if engineering_result.handled:
                     return
@@ -1983,9 +1993,51 @@ def _make_default_engineering_research_loop_fn(discord_module: "discord"):
                 error=f"forum publish 실패: {exc}",
             )
 
+        # Persist forum publication mode + kickoff outcome onto the
+        # session so the status / diagnostic responder can describe the
+        # live setup ("member-bots 모드, open-call 게시 완료") without
+        # having to reach back into the publish object. Best-effort —
+        # the report itself is what the user sees right now, so a
+        # cache write failure must not crash the hook.
+        try:
+            _persist_forum_comment_mode_to_session(
+                session=outcome.session,
+                publish=publish,
+            )
+        except Exception:  # noqa: BLE001 - cache failure is non-fatal
+            pass
+
         return _research_loop_report_from_publish(outcome, publish)
 
     return _hook
+
+
+def _persist_forum_comment_mode_to_session(*, session, publish) -> None:
+    """Merge member-bots / gateway mode signals into ``session.extra``.
+
+    Called after every successful forum publish so subsequent status
+    diagnostic answers reflect the actual mode that ran. Idempotent —
+    if the same session is republished the keys are simply overwritten.
+    """
+
+    kickoff = getattr(publish, "kickoff_comment", None)
+    is_member_bots = kickoff is not None
+    extra_updates = {
+        "forum_comment_mode": "member-bots" if is_member_bots else "gateway",
+    }
+    if is_member_bots:
+        extra_updates["forum_kickoff_posted"] = bool(getattr(kickoff, "posted", False))
+        kickoff_error = getattr(kickoff, "error", None)
+        if kickoff_error is not None:
+            extra_updates["forum_kickoff_error"] = str(kickoff_error)
+        else:
+            # Drop a stale error from a previous failure so the next
+            # diagnostic doesn't surface it after a retry succeeded.
+            extra_updates["forum_kickoff_error"] = None
+
+    merged_extra = {**dict(getattr(session, "extra", {}) or {}), **extra_updates}
+    updated = replace(session, extra=merged_extra)
+    update_session(updated, now=datetime.now().astimezone())
 
 
 def _persist_research_pack_for_member_bots(
@@ -2082,16 +2134,48 @@ def _research_loop_report_from_publish(
             error=thread.error,
         )
 
-    role_count = len(publish.role_comments)
-    decision_ok = bool(publish.decision_comment and publish.decision_comment.posted)
-    lines = ["✅ 운영-리서치 forum 게시 완료"]
+    # member-bots mode signal: the publisher only sets
+    # ``kickoff_comment`` when it tried to post the open-call directive
+    # that the per-role member bots react to. Gateway mode never sets
+    # it. Use that to switch summary wording — gateway-mode "역할별
+    # 댓글 N건" is misleading in member-bots mode where the gateway
+    # never posts those comments by design.
+    kickoff_comment = getattr(publish, "kickoff_comment", None)
+    is_member_bots_mode = kickoff_comment is not None
+    kickoff_posted_flag: Optional[bool] = (
+        bool(getattr(kickoff_comment, "posted", False))
+        if kickoff_comment is not None
+        else None
+    )
+    kickoff_error_text: Optional[str] = (
+        _optional_str_value(getattr(kickoff_comment, "error", None))
+        if kickoff_comment is not None
+        else None
+    )
+
+    lines: list[str] = ["✅ 운영-리서치 forum 게시 완료"]
     if thread.thread_url:
         lines.append(f"thread: {thread.thread_url}")
     elif thread.thread_id:
         lines.append(f"thread id: {thread.thread_id}")
-    lines.append(
-        f"역할별 댓글 {role_count}건 · tech-lead 종합 {'기록' if decision_ok else '미기록'}"
-    )
+
+    if is_member_bots_mode:
+        lines.append("모드: member-bots (각 멤버 봇이 자기 계정으로 댓글)")
+        if kickoff_posted_flag:
+            lines.append("open-call directive: 게시 완료")
+        else:
+            reason = kickoff_error_text or "원인 미확인"
+            lines.append(f"open-call directive: 게시 실패 — {reason}")
+        lines.append(
+            "각 멤버 봇의 후속 댓글은 운영-리서치 thread에서 확인하세요."
+        )
+    else:
+        role_count = len(publish.role_comments)
+        decision_ok = bool(publish.decision_comment and publish.decision_comment.posted)
+        lines.append(
+            f"역할별 댓글 {role_count}건 · tech-lead 종합 {'기록' if decision_ok else '미기록'}"
+        )
+
     if outcome.assignments:
         executor = next((a for a in outcome.assignments if a.is_executor), None)
         if executor:
@@ -2107,7 +2191,21 @@ def _research_loop_report_from_publish(
         forum_status_message="\n".join(lines),
         forum_thread_id=thread.thread_id,
         forum_thread_url=thread.thread_url,
+        forum_comment_mode="member-bots" if is_member_bots_mode else "gateway",
+        kickoff_posted=kickoff_posted_flag,
+        kickoff_error=kickoff_error_text,
     )
+
+
+def _optional_str_value(value: Any) -> Optional[str]:
+    """Tiny helper for normalising error strings — kept out of the
+    `_research_loop_report_from_publish` body so the top-level reads as
+    ``mode → wording → return``."""
+
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _make_default_research_forum_create_thread_fn(discord_module: "discord"):
