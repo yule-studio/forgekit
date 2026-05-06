@@ -182,6 +182,52 @@ class StatusDiagnosticResponseFormatterTests(unittest.TestCase):
         self.assertIn("research loop 오류", body)
         self.assertIn("forum starter", body)
 
+    def test_member_bots_mode_with_kickoff_posted(self) -> None:
+        # When the publisher set member-bots mode and the open-call
+        # directive landed cleanly, the diagnostic must say so and
+        # point operators to the forum thread for actual role comments.
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "forum_kickoff_posted": True,
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("모드: member-bots", body)
+        self.assertIn("open-call directive: 게시 완료", body)
+        self.assertIn("후속 댓글은 운영-리서치 thread", body)
+
+    def test_member_bots_mode_with_kickoff_failed_surfaces_reason(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "member-bots",
+                "forum_kickoff_posted": False,
+                "forum_kickoff_error": "rate limit 503",
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("모드: member-bots", body)
+        self.assertIn("open-call directive: 게시 실패", body)
+        self.assertIn("rate limit 503", body)
+
+    def test_gateway_mode_describes_gateway_comment_path(self) -> None:
+        session = _session(
+            extra={
+                "research_pack": {"title": "x"},
+                "research_forum_thread_id": 4242,
+                "forum_comment_mode": "gateway",
+            }
+        )
+        body = format_status_diagnostic_response(session)
+        self.assertIn("모드: gateway", body)
+        # member-bots-only wording must not appear in gateway mode.
+        self.assertNotIn("open-call directive", body)
+        self.assertNotIn("멤버 봇이 자기 계정으로", body)
+
 
 class BuildResponseStatusQueryTests(unittest.TestCase):
     """End-to-end: status questions never set ready_to_intake and never

@@ -917,6 +917,9 @@ def format_status_diagnostic_response(session: Optional[Any]) -> str:
     )
     research_loop_report = extra.get("research_loop_report")
     synthesis = extra.get("research_synthesis")
+    forum_comment_mode = extra.get("forum_comment_mode")
+    forum_kickoff_posted = extra.get("forum_kickoff_posted")
+    forum_kickoff_error = extra.get("forum_kickoff_error")
 
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value) or "unknown"
@@ -942,6 +945,26 @@ def format_status_diagnostic_response(session: Optional[Any]) -> str:
         lines.append("- 운영-리서치 forum: 아직 게시되지 않음 (자료는 수집 완료)")
     else:
         lines.append("- 운영-리서치 forum: 자료 수집 전이라 게시 단계가 아님")
+
+    # Forum comment mode signals — only meaningful once the forum
+    # publish actually ran (so we condition on having a thread or an
+    # explicit error). In member-bots mode we explain that per-role
+    # comments come from each member bot, not the gateway.
+    if forum_comment_mode == "member-bots":
+        lines.append("- 모드: member-bots (각 멤버 봇이 자기 계정으로 댓글)")
+        if forum_kickoff_posted is True:
+            lines.append("  · open-call directive: 게시 완료")
+        elif forum_kickoff_posted is False:
+            reason = forum_kickoff_error or "원인 미확인"
+            lines.append(f"  · open-call directive: 게시 실패 — {reason}")
+        # Always close with a pointer to where the actual role comments
+        # land so the operator knows the gateway summary isn't where to
+        # judge member bot work.
+        lines.append(
+            "  · 후속 댓글은 운영-리서치 thread에서 직접 확인해 주세요."
+        )
+    elif forum_comment_mode == "gateway":
+        lines.append("- 모드: gateway (역할별 댓글을 게이트웨이가 직접 게시)")
 
     if research_loop_report:
         report_error = None

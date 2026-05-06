@@ -1993,9 +1993,51 @@ def _make_default_engineering_research_loop_fn(discord_module: "discord"):
                 error=f"forum publish 실패: {exc}",
             )
 
+        # Persist forum publication mode + kickoff outcome onto the
+        # session so the status / diagnostic responder can describe the
+        # live setup ("member-bots 모드, open-call 게시 완료") without
+        # having to reach back into the publish object. Best-effort —
+        # the report itself is what the user sees right now, so a
+        # cache write failure must not crash the hook.
+        try:
+            _persist_forum_comment_mode_to_session(
+                session=outcome.session,
+                publish=publish,
+            )
+        except Exception:  # noqa: BLE001 - cache failure is non-fatal
+            pass
+
         return _research_loop_report_from_publish(outcome, publish)
 
     return _hook
+
+
+def _persist_forum_comment_mode_to_session(*, session, publish) -> None:
+    """Merge member-bots / gateway mode signals into ``session.extra``.
+
+    Called after every successful forum publish so subsequent status
+    diagnostic answers reflect the actual mode that ran. Idempotent —
+    if the same session is republished the keys are simply overwritten.
+    """
+
+    kickoff = getattr(publish, "kickoff_comment", None)
+    is_member_bots = kickoff is not None
+    extra_updates = {
+        "forum_comment_mode": "member-bots" if is_member_bots else "gateway",
+    }
+    if is_member_bots:
+        extra_updates["forum_kickoff_posted"] = bool(getattr(kickoff, "posted", False))
+        kickoff_error = getattr(kickoff, "error", None)
+        if kickoff_error is not None:
+            extra_updates["forum_kickoff_error"] = str(kickoff_error)
+        else:
+            # Drop a stale error from a previous failure so the next
+            # diagnostic doesn't surface it after a retry succeeded.
+            extra_updates["forum_kickoff_error"] = None
+
+    merged_extra = {**dict(getattr(session, "extra", {}) or {}), **extra_updates}
+    updated = replace(session, extra=merged_extra)
+    update_session(updated, now=datetime.now().astimezone())
 
 
 def _persist_research_pack_for_member_bots(
