@@ -83,6 +83,7 @@ PROJECT_REFERENCES_SUBDIR = "references"
 PROJECT_TASK_LOGS_SUBDIR = "task-logs"
 PROJECT_MEETING_NOTES_SUBDIR = "meeting-notes"
 PROJECT_KNOWLEDGE_SUBDIR = "knowledge"
+PROJECT_WORK_REPORTS_SUBDIR = "reports"
 
 # Legacy-agent layout (kept for opt-in legacy mode + back-compat imports).
 VAULT_BASE = "Agents/Engineering"
@@ -106,6 +107,14 @@ _KIND_TO_PROJECT_SUBDIR: Mapping[str, str] = {
     "meeting-note": PROJECT_MEETING_NOTES_SUBDIR,
     "meeting-notes": PROJECT_MEETING_NOTES_SUBDIR,
     "knowledge": PROJECT_KNOWLEDGE_SUBDIR,
+    # Phase 5: Engineering Agent's "업무 보고서" — one note per
+    # research+deliberation cycle. Lands under ``reports/`` so it
+    # sits next to task-logs but stays distinct (task-logs are
+    # operator-driven; work-reports are gateway-emitted summaries).
+    "work-report": PROJECT_WORK_REPORTS_SUBDIR,
+    "work_report": PROJECT_WORK_REPORTS_SUBDIR,
+    "report": PROJECT_WORK_REPORTS_SUBDIR,
+    "reports": PROJECT_WORK_REPORTS_SUBDIR,
 }
 
 # Filename label per kind (used by ``recommend_path`` to build basenames
@@ -124,6 +133,10 @@ _KIND_TO_LABEL: Mapping[str, str] = {
     "meeting-note": "meeting",
     "meeting-notes": "meeting",
     "knowledge": "knowledge",
+    "work-report": "work-report",
+    "work_report": "work-report",
+    "report": "work-report",
+    "reports": "work-report",
 }
 
 
@@ -912,3 +925,164 @@ def _yaml_scalar(value) -> str:
         escaped = text.replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
     return text
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — Work-report renderer
+# ---------------------------------------------------------------------------
+
+
+def render_work_report_note(
+    *,
+    report: Any,
+    session_id: Optional[str] = None,
+    project: Optional[str] = None,
+    layout: Optional[str] = None,
+    env: Optional[Mapping[str, str]] = None,
+    exported_at: Optional[datetime] = None,
+) -> ObsidianNote:
+    """Render a :class:`agents.work_report.WorkReport` (or its dict
+    snapshot persisted in ``session.extra['work_report']``) as an
+    Obsidian note under ``10-projects/<project>/reports/``.
+
+    Accepts either the dataclass instance or the JSON-friendly dict
+    that :func:`engineering_channel_router._work_report_to_dict`
+    persists. Body sections mirror the Discord preview but stay
+    longer-form because Obsidian doesn't have a 2000-char ceiling.
+    """
+
+    payload = _coerce_work_report_payload(report)
+    if not payload:
+        raise ValueError("render_work_report_note: report payload is empty")
+    title = str(payload.get("title") or "untitled work report").strip()
+    canonical = str(payload.get("canonical_prompt") or "").strip()
+    short_title = title or canonical[:80] or "work report"
+    when = exported_at or datetime.utcnow()
+    chosen_kind = "work-report"
+    layout_resolved = resolve_layout(layout, env=env)
+    project_resolved = (project or "").strip() or resolve_default_project(env=env)
+
+    frontmatter: dict = {
+        "title": _frontmatter_title(short_title),
+        "kind": chosen_kind,
+        "exported_at": when.replace(microsecond=0).isoformat(timespec="seconds"),
+        "session_id": payload.get("session_id") or session_id or "unknown",
+        "participants": list(payload.get("participants") or []),
+        "requires_code_change": bool(payload.get("requires_code_change")),
+        "research_stop_reason": payload.get("research_stop_reason"),
+        "reference_count": int(payload.get("reference_count") or 0),
+    }
+    if project_resolved:
+        frontmatter["project"] = project_resolved
+    executor = payload.get("recommended_executor_role")
+    if executor:
+        frontmatter["recommended_executor_role"] = executor
+
+    body_lines: list[str] = [f"# {short_title}"]
+    if canonical:
+        body_lines.append("\n## 원문\n\n> " + canonical.replace("\n", "\n> "))
+    summary = str(payload.get("executive_summary") or "").strip()
+    if summary:
+        body_lines.append("\n## 요약\n\n" + summary)
+    recommendation = str(payload.get("tech_lead_recommendation") or "").strip()
+    if recommendation and recommendation != summary:
+        body_lines.append("\n## Tech-lead 권고\n\n" + recommendation)
+
+    participants = list(payload.get("participants") or [])
+    if participants:
+        body_lines.append("\n## 참가자\n\n" + ", ".join(str(r) for r in participants))
+    role_decisions = dict(payload.get("role_decisions") or {})
+    if role_decisions:
+        decision_lines = [
+            f"- `{role}` — {reason}" for role, reason in role_decisions.items()
+        ]
+        body_lines.append("\n## 역할별 참여 사유\n\n" + "\n".join(decision_lines))
+
+    risks = list(payload.get("risks") or [])
+    if risks:
+        body_lines.append(
+            "\n## 위험 / open research\n\n" + "\n".join(f"- {r}" for r in risks)
+        )
+    next_steps = list(payload.get("proposed_next_steps") or [])
+    if next_steps:
+        body_lines.append(
+            "\n## 다음 액션\n\n" + "\n".join(f"- {s}" for s in next_steps)
+        )
+
+    if payload.get("requires_code_change"):
+        cta_lines = ["\n## 코드 수정 권한"]
+        if executor:
+            cta_lines.append(f"\nrecommended executor: `{executor}`")
+        approval = str(payload.get("approval_request") or "").strip()
+        if approval:
+            cta_lines.append("\n" + approval)
+        body_lines.append("\n".join(cta_lines))
+
+    stop_reason = payload.get("research_stop_reason")
+    under_covered = list(payload.get("under_covered_roles") or [])
+    if stop_reason or under_covered:
+        meta_lines = ["\n## research 메타"]
+        if stop_reason:
+            meta_lines.append(f"- stop_reason: {stop_reason}")
+        if under_covered:
+            meta_lines.append(
+                "- under_covered_roles: " + ", ".join(str(r) for r in under_covered)
+            )
+        body_lines.append("\n".join(meta_lines))
+
+    content = (
+        _format_frontmatter(frontmatter)
+        + "\n\n"
+        + "\n".join(line for line in body_lines if line is not None).strip()
+        + "\n"
+    )
+    path = recommend_path(
+        title=short_title,
+        kind=chosen_kind,
+        created_at=when,
+        project=project_resolved,
+        layout=layout_resolved,
+        env=env,
+    )
+    return ObsidianNote(path=path, content=content, frontmatter=frontmatter)
+
+
+def _coerce_work_report_payload(report: Any) -> dict:
+    """Accept either a ``WorkReport`` dataclass or its dict snapshot."""
+
+    if report is None:
+        return {}
+    if isinstance(report, Mapping):
+        return dict(report)
+    payload: dict = {}
+    for key in (
+        "session_id",
+        "title",
+        "canonical_prompt",
+        "executive_summary",
+        "research_summary",
+        "tech_lead_recommendation",
+        "role_decisions",
+        "risks",
+        "proposed_next_steps",
+        "requires_code_change",
+        "recommended_executor_role",
+        "approval_request",
+        "participants",
+        "reference_count",
+        "research_stop_reason",
+        "under_covered_roles",
+    ):
+        if hasattr(report, key):
+            payload[key] = getattr(report, key)
+    return payload
+
+
+def _frontmatter_title(title: str) -> str:
+    """Trim *title* to the obsidian-export TITLE_LIMIT for frontmatter."""
+
+    if not title:
+        return "work report"
+    if len(title) <= TITLE_LIMIT:
+        return title
+    return title[: TITLE_LIMIT - 1].rstrip() + "…"
