@@ -41,6 +41,7 @@ from .planning import (
     run_planning_daily_command,
     run_planning_snapshot_command,
 )
+from .supervisor import run_supervisor_run_once_command
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -559,7 +560,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     obsidian_sync_parser.add_argument(
         "--kind",
-        choices=("research", "decision", "reference"),
+        choices=("research", "decision", "reference", "knowledge"),
         help="Override export kind. Defaults to research (or decision when synthesis is present).",
     )
     obsidian_sync_parser.add_argument(
@@ -604,6 +605,42 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Override OBSIDIAN_EXPORT_LAYOUT. Defaults to yule-agent-vault. "
             "Use legacy-agent only for vaults still on Agents/Engineering/..."
+        ),
+    )
+
+    supervisor_parser = subparsers.add_parser(
+        "supervisor",
+        help="Read-only runtime status diagnostic for engineering-agent sessions.",
+    )
+    supervisor_subparsers = supervisor_parser.add_subparsers(
+        dest="supervisor_command", required=True
+    )
+    supervisor_run_parser = supervisor_subparsers.add_parser(
+        "run",
+        help=(
+            "Print a runtime status summary across recent sessions. "
+            "Detect/report/propose only — never auto-writes."
+        ),
+    )
+    supervisor_run_parser.add_argument(
+        "--once",
+        action="store_true",
+        help=(
+            "Run once and exit. Reserved for future continuous mode; "
+            "currently the supervisor always runs once."
+        ),
+    )
+    supervisor_run_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of recent sessions to inspect. Defaults to 20.",
+    )
+    supervisor_run_parser.add_argument(
+        "--only-actionable",
+        action="store_true",
+        help=(
+            "Only print sessions with at least one stale / blocked / failed signal."
         ),
     )
 
@@ -829,6 +866,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             )
         if args.command == "engineer":
             return _dispatch_engineer_command(repo_root, args)
+        if args.command == "supervisor" and args.supervisor_command == "run":
+            return run_supervisor_run_once_command(
+                limit=args.limit,
+                only_actionable=args.only_actionable,
+            )
         if args.command == "memory" and args.memory_command == "reindex":
             return run_memory_reindex_command(
                 repo_root,
