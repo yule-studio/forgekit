@@ -17,6 +17,15 @@ import os
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional, Sequence, Union
 
+from ..agents.obsidian_approval import (
+    ObsidianApprovalError,
+    build_save_proposal,
+    execute_pending_proposal,
+    get_pending_proposal,
+    is_obsidian_approval,
+    is_obsidian_save_request,
+    store_pending_proposal,
+)
 from ..agents.research_persistence import persist_research_artifacts
 from ..agents.routing import (
     ACTION_APPEND_CONTEXT,
@@ -334,6 +343,8 @@ async def route_engineering_message(
     research_loop_fn: Optional[ResearchLoopFn] = None,
     thread_continuation_fn: Optional[ThreadContinuationFn] = None,
     list_sessions_fn: Optional[Callable[..., Sequence[Any]]] = None,
+    obsidian_writer_fn: Optional[Callable[..., Any]] = None,
+    obsidian_env: Optional[Any] = None,
 ) -> EngineeringRouteResult:
     """Drive the engineering channel response.
 
@@ -365,6 +376,21 @@ async def route_engineering_message(
     if not prompt_text:
         return EngineeringRouteResult(handled=False)
 
+    # Obsidian approval gate — runs before runtime preflight so an
+    # explicit "저장 승인" / "이대로 저장" never falls through to the
+    # default new-work classifier and intakes a brand-new session.
+    if list_sessions_fn is not None:
+        approval = await _run_obsidian_approval_gate(
+            message=message,
+            prompt_text=prompt_text,
+            list_sessions_fn=list_sessions_fn,
+            send_chunks=send_chunks,
+            writer_fn=obsidian_writer_fn,
+            env=obsidian_env,
+        )
+        if approval is not None:
+            return approval
+
     # Runtime preflight — opt-in via ``list_sessions_fn``. The production
     # gateway in bot.py wires this to ``workflow_state.list_sessions`` so
     # auto_collect-first traffic for "어제 작업 이어서 요약해줘" and
@@ -378,6 +404,8 @@ async def route_engineering_message(
             list_sessions_fn=list_sessions_fn,
             send_chunks=send_chunks,
             thread_continuation_fn=thread_continuation_fn,
+            obsidian_writer_fn=obsidian_writer_fn,
+            obsidian_env=obsidian_env,
         )
         if preflight is not None:
             return preflight
@@ -606,6 +634,430 @@ _PREFLIGHT_SHORT_CIRCUIT_INTENTS = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Clarification follow-up memory
+#
+# When the gateway shows the user a clarification with multiple candidate
+# sessions, we cache the candidates per (channel_or_thread_id, user_id)
+# so the next message can be a short pick like "1번" or "이걸로". The
+# state is overwritten on each new clarification and cleared on any
+# successful selection — no TTL is enforced because a stale entry only
+# fires when the next message looks like a candidate selector, which is
+# the exact case where reusing it is correct.
+# ---------------------------------------------------------------------------
+
+
+_GATEWAY_CLARIFICATION_CONTEXT: dict[
+    tuple[Optional[int], Optional[int]], tuple[dict, ...]
+] = {}
+
+
+_NUMERIC_SELECTION_RE = __import__("re").compile(
+    r"^\s*(\d{1,2})\s*(번|번째|개|위치)?\s*\.?\s*$"
+)
+
+# Map a Korean ordinal/positional prefix to a 1-based candidate index.
+# We match by ``startswith`` after whitespace removal so phrases like
+# "첫 번째 거" / "두번째로" still resolve.
+_ORDINAL_KO_PREFIXES: tuple[tuple[str, int], ...] = (
+    ("첫번째", 1),
+    ("첫 번째", 1),
+    ("첫째", 1),
+    ("두번째", 2),
+    ("두 번째", 2),
+    ("둘째", 2),
+    ("세번째", 3),
+    ("세 번째", 3),
+    ("셋째", 3),
+    ("네번째", 4),
+    ("네 번째", 4),
+    ("넷째", 4),
+    ("다섯번째", 5),
+    ("다섯 번째", 5),
+    ("다섯째", 5),
+)
+
+
+# Phrases that mean "the one I just showed" — only meaningful with at
+# least one stored candidate. With multiple candidates these stay
+# ambiguous and we ask for a number; with a single candidate they pick
+# it. ``기존 세션으로 진행`` is included so users who saw a
+# single-candidate clarification can confirm with that exact wording.
+_DEMONSTRATIVE_SELECTION_PHRASES: tuple[str, ...] = (
+    "이걸로",
+    "이거로",
+    "이걸루",
+    "이거",
+    "저걸로",
+    "그걸로",
+    "위에 거",
+    "위에거",
+    "위 거",
+    "위 것",
+    "방금 그거",
+    "방금 그것",
+    "방금 거",
+    "기존 세션으로 진행",
+    "기존 작업으로 진행",
+)
+
+
+def _clarification_context_key(message: Any) -> tuple[Optional[int], Optional[int]]:
+    """Scope key for the clarification cache.
+
+    Uses the channel/thread id the user is currently typing in, plus
+    the author id, so a clarification shown to user A in #업무-접수
+    doesn't get hijacked by user B's "1번" reply in the same channel.
+    """
+
+    channel = getattr(message, "channel", None)
+    scope_id = getattr(channel, "id", None)
+    user_id = getattr(getattr(message, "author", None), "id", None)
+    return (scope_id, user_id)
+
+
+def _remember_clarification_candidates(
+    message: Any,
+    candidates: Sequence[Any],
+) -> None:
+    """Stash candidate session ids + thread ids from the recall result.
+
+    Stored as plain dicts so the cache value round-trips through
+    pickling-friendly types and we never hold a reference to a
+    dataclass that may grow new fields underneath us.
+    """
+
+    if not candidates:
+        return
+    serialized = tuple(
+        {
+            "session_id": getattr(cand, "session_id", None),
+            "title": getattr(cand, "title", "") or "",
+            "score": float(getattr(cand, "score", 0.0) or 0.0),
+            "thread_id": getattr(cand, "thread_id", None),
+            "forum_thread_id": getattr(cand, "forum_thread_id", None),
+            "task_type": getattr(cand, "task_type", None),
+        }
+        for cand in candidates[:5]
+        if getattr(cand, "session_id", None)
+    )
+    if serialized:
+        _GATEWAY_CLARIFICATION_CONTEXT[_clarification_context_key(message)] = serialized
+
+
+def _recall_clarification_candidates(message: Any) -> tuple[dict, ...]:
+    return _GATEWAY_CLARIFICATION_CONTEXT.get(_clarification_context_key(message), ())
+
+
+def _clear_clarification_context(message: Any) -> None:
+    _GATEWAY_CLARIFICATION_CONTEXT.pop(_clarification_context_key(message), None)
+
+
+def _try_select_candidate(
+    text: str,
+    candidates: tuple[dict, ...],
+) -> Optional[dict]:
+    """Resolve a follow-up message into a stored candidate, or None.
+
+    Recognises:
+    - bare number ``"1"`` / ordinal-shaped ``"1번"`` / ``"2번째"``
+    - Korean ordinals ``"첫 번째"`` / ``"두번째"`` / ...
+    - demonstrative phrases (``"이걸로"`` / ``"기존 세션으로 진행"``)
+      — only return a hit when there's exactly one stored candidate so
+      multi-candidate ambiguity falls through to a fresh clarification
+      instead of being silently resolved.
+
+    Out-of-range numbers (e.g. user typed "9번" but only 3 candidates)
+    return None so the router can re-ask. The cache is left in place
+    because the next reply might still be a valid pick.
+    """
+
+    if not candidates:
+        return None
+    cleaned = (text or "").strip().lower()
+    if not cleaned:
+        return None
+
+    numeric_match = _NUMERIC_SELECTION_RE.match(cleaned)
+    if numeric_match is not None:
+        index = int(numeric_match.group(1)) - 1
+        if 0 <= index < len(candidates):
+            return candidates[index]
+        return None
+
+    for prefix, idx in _ORDINAL_KO_PREFIXES:
+        if cleaned.startswith(prefix) and idx <= len(candidates):
+            return candidates[idx - 1]
+
+    if any(phrase in cleaned for phrase in _DEMONSTRATIVE_SELECTION_PHRASES):
+        if len(candidates) == 1:
+            return candidates[0]
+        return None
+
+    return None
+
+
+async def _handle_clarification_selection(
+    *,
+    message: Any,
+    selected: dict,
+    prompt_text: str,
+    send_chunks: SendChunksFn,
+    thread_continuation_fn: Optional[ThreadContinuationFn],
+) -> Optional[EngineeringRouteResult]:
+    """Drive the legacy join helper for a clarification follow-up
+    selection. Returns a populated result on success or ``None`` to
+    leave the cache in place and fall through to the regular flow."""
+
+    if thread_continuation_fn is None:
+        return None
+    synthetic_outcome = EngineeringConversationOutcome(
+        content="",
+        intake_prompt=prompt_text,
+    )
+    synthetic_decision = EngineeringRoutingDecision(
+        action=ACTION_JOIN,
+        matched_session_id=selected.get("session_id"),
+        matched_thread_id=selected.get("thread_id"),
+        matched_forum_thread_id=selected.get("forum_thread_id"),
+        confidence="high",
+        reason="clarification follow-up selection",
+    )
+    return await _handle_join_or_append(
+        message=message,
+        outcome=synthetic_outcome,
+        decision=synthetic_decision,
+        intake_prompt=prompt_text,
+        send_chunks=send_chunks,
+        thread_continuation_fn=thread_continuation_fn,
+        research_loop_fn=None,
+    )
+
+
+async def _run_obsidian_approval_gate(
+    *,
+    message: Any,
+    prompt_text: str,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+    send_chunks: SendChunksFn,
+    writer_fn: Optional[Callable[..., Any]] = None,
+    env: Optional[Any] = None,
+) -> Optional[EngineeringRouteResult]:
+    """Try to interpret *prompt_text* as an Obsidian save approval.
+
+    Returns a populated :class:`EngineeringRouteResult` when the message
+    was an approval phrase (regardless of whether the write succeeded),
+    or ``None`` to fall through to the runtime preflight + conversation
+    flow. We deliberately keep this branch above the runtime classifier
+    so a bare "저장 승인" never gets promoted to ``new_work_request``.
+    """
+
+    if not is_obsidian_approval(prompt_text):
+        return None
+
+    candidate = _find_session_with_pending_proposal(
+        message=message,
+        list_sessions_fn=list_sessions_fn,
+    )
+    if candidate is None:
+        await send_chunks(
+            message.channel,
+            (
+                "지금은 대기 중인 Obsidian 저장 제안이 없어요.\n"
+                "먼저 `Obsidian에 정리해줘` 처럼 저장 미리보기를 만들어 주세요."
+            ),
+        )
+        return EngineeringRouteResult(handled=True)
+
+    try:
+        updated, outcome = execute_pending_proposal(
+            candidate,
+            env=env,
+            writer_fn=writer_fn,
+        )
+    except ObsidianApprovalError as exc:
+        await send_chunks(message.channel, f"⚠️ Obsidian 저장 실패: {exc}")
+        return EngineeringRouteResult(handled=True, error=str(exc))
+    except Exception as exc:  # noqa: BLE001 — never let the bot crash on save
+        await send_chunks(
+            message.channel,
+            f"⚠️ Obsidian 저장 중 예상치 못한 오류: {exc}",
+        )
+        return EngineeringRouteResult(handled=True, error=str(exc))
+
+    await send_chunks(message.channel, outcome.message)
+    return EngineeringRouteResult(
+        handled=True,
+        session_id=getattr(updated, "session_id", None),
+    )
+
+
+async def _run_obsidian_preview_branch(
+    *,
+    message: Any,
+    prompt_text: str,
+    decision_payload: Any,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+    send_chunks: SendChunksFn,
+) -> Optional[EngineeringRouteResult]:
+    """Render the preview for an Obsidian save request and store the proposal.
+
+    Called from :func:`_run_runtime_preflight` when the runtime intent
+    classifier identified an Obsidian save request and Recall matched a
+    session. We never call ``thread_continuation_fn`` here — joining the
+    thread isn't the user's goal; they want to see what we'd write before
+    approving it.
+    """
+
+    target_session_id: Optional[str] = None
+    if hasattr(decision_payload, "get"):
+        raw = decision_payload.get("session_id")
+        target_session_id = str(raw) if raw is not None else None
+
+    session = _load_session_by_id(list_sessions_fn, target_session_id)
+    if session is None:
+        await send_chunks(
+            message.channel,
+            (
+                "**[engineering-agent] Obsidian 저장 대상 세션을 찾지 못했어요.**\n"
+                "어떤 세션을 저장할지 `기존 세션 <id>` 처럼 답해 주세요."
+            ),
+        )
+        return EngineeringRouteResult(
+            handled=True,
+            error="obsidian preview: matched session not loadable",
+        )
+
+    try:
+        proposal = build_save_proposal(
+            session,
+            actor_user_id=getattr(getattr(message, "author", None), "id", None),
+        )
+    except ObsidianApprovalError as exc:
+        await send_chunks(message.channel, f"⚠️ {exc}")
+        return EngineeringRouteResult(handled=True, error=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        await send_chunks(
+            message.channel,
+            f"⚠️ Obsidian 미리보기 생성 실패: {exc}",
+        )
+        return EngineeringRouteResult(handled=True, error=str(exc))
+
+    try:
+        store_pending_proposal(session, proposal)
+    except Exception as exc:  # noqa: BLE001 — preview survives even if persist fails
+        await send_chunks(
+            message.channel,
+            f"⚠️ 저장 제안 기록 실패: {exc}\n미리보기는 아래에서 확인하실 수 있어요.",
+        )
+
+    await send_chunks(message.channel, proposal.preview_message)
+    return EngineeringRouteResult(
+        handled=True,
+        session_id=session.session_id,
+        thread_id=getattr(session, "thread_id", None),
+    )
+
+
+def _find_session_with_pending_proposal(
+    *,
+    message: Any,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+) -> Optional[Any]:
+    """Return the session that owns the most relevant pending proposal.
+
+    Match priority:
+      1. Sessions whose ``thread_id`` equals the message's channel id
+         (for thread messages — Discord exposes the thread id as
+         ``channel.id`` and the channel id as ``channel.parent_id``).
+      2. Sessions in the same channel + same author with a proposal.
+      3. Most recently updated session with a proposal.
+
+    Returns ``None`` when no candidate has a pending proposal stashed in
+    ``session.extra``.
+    """
+
+    try:
+        try:
+            sessions = list_sessions_fn(limit=50)
+        except TypeError:
+            sessions = list_sessions_fn()
+    except Exception:  # noqa: BLE001 — recall outage must not crash bot
+        return None
+    if not sessions:
+        return None
+
+    channel = getattr(message, "channel", None)
+    channel_id = getattr(channel, "id", None)
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is None and getattr(channel, "parent", None) is None:
+        thread_id = None
+        scoped_channel_id = channel_id
+    else:
+        thread_id = channel_id
+        scoped_channel_id = parent_id
+    user_id = getattr(getattr(message, "author", None), "id", None)
+
+    candidates_with_proposal = [
+        s for s in sessions if get_pending_proposal(s) is not None
+    ]
+    if not candidates_with_proposal:
+        return None
+
+    if thread_id is not None:
+        for session in candidates_with_proposal:
+            if getattr(session, "thread_id", None) == thread_id:
+                return session
+
+    if scoped_channel_id is not None:
+        same_scope = [
+            s
+            for s in candidates_with_proposal
+            if getattr(s, "channel_id", None) == scoped_channel_id
+            and (user_id is None or getattr(s, "user_id", None) == user_id)
+        ]
+        if same_scope:
+            return _most_recent_session(same_scope)
+
+    return _most_recent_session(candidates_with_proposal)
+
+
+def _load_session_by_id(
+    list_sessions_fn: Callable[..., Sequence[Any]],
+    session_id: Optional[str],
+) -> Optional[Any]:
+    if not session_id:
+        return None
+    try:
+        try:
+            sessions = list_sessions_fn(limit=50)
+        except TypeError:
+            sessions = list_sessions_fn()
+    except Exception:  # noqa: BLE001
+        return None
+    for session in sessions or ():
+        if getattr(session, "session_id", None) == session_id:
+            return session
+    return None
+
+
+def _most_recent_session(sessions: Sequence[Any]) -> Optional[Any]:
+    if not sessions:
+        return None
+
+    def _sort_key(s: Any):
+        ts = getattr(s, "updated_at", None)
+        if ts is None:
+            return (0, 0)
+        try:
+            epoch = ts.timestamp()
+        except Exception:  # noqa: BLE001
+            epoch = 0
+        return (1, epoch)
+
+    return max(sessions, key=_sort_key)
+
+
 async def _run_runtime_preflight(
     *,
     message: Any,
@@ -613,6 +1065,8 @@ async def _run_runtime_preflight(
     list_sessions_fn: Callable[..., Sequence[Any]],
     send_chunks: SendChunksFn,
     thread_continuation_fn: Optional[ThreadContinuationFn],
+    obsidian_writer_fn: Optional[Callable[..., Any]] = None,
+    obsidian_env: Optional[Any] = None,
 ) -> Optional[EngineeringRouteResult]:
     """Try to handle the message with the runtime loop's intent +
     recall result. Returns a populated :class:`EngineeringRouteResult`
@@ -627,6 +1081,26 @@ async def _run_runtime_preflight(
     requests, confirmations, vague text, and pleasantries also flow
     through unchanged so all existing tests keep their contracts.
     """
+
+    # 0. Clarification follow-up — fires before the classifier so a
+    # short reply like "1번" or "기존 세션으로 진행" lands on the
+    # right session even though those messages don't carry enough
+    # context to classify on their own. Only consulted when we have a
+    # cached set of candidates from a prior clarification turn.
+    stored_candidates = _recall_clarification_candidates(message)
+    if stored_candidates:
+        selected = _try_select_candidate(prompt_text, stored_candidates)
+        if selected is not None:
+            join_result = await _handle_clarification_selection(
+                message=message,
+                selected=selected,
+                prompt_text=prompt_text,
+                send_chunks=send_chunks,
+                thread_continuation_fn=thread_continuation_fn,
+            )
+            if join_result is not None:
+                _clear_clarification_context(message)
+                return join_result
 
     runtime_input = RuntimeInput(
         role_id="gateway",
@@ -654,6 +1128,24 @@ async def _run_runtime_preflight(
         return None
 
     primary = decision.actions[0]
+
+    # Obsidian save request with a matched session: build a preview and
+    # store a pending proposal instead of joining + re-running research.
+    # The user explicitly asked to save, not to resume work — we surface
+    # the note we *would* write so they can confirm with `저장 승인`.
+    if (
+        intent.intent_id == RUNTIME_INTENT_EXECUTE_EXISTING_STEP
+        and is_obsidian_save_request(prompt_text)
+        and primary.action_id == RUNTIME_ACTION_JOIN_SESSION
+    ):
+        return await _run_obsidian_preview_branch(
+            message=message,
+            prompt_text=prompt_text,
+            decision_payload=primary.payload,
+            list_sessions_fn=list_sessions_fn,
+            send_chunks=send_chunks,
+        )
+
     if primary.action_id == RUNTIME_ACTION_JOIN_SESSION and thread_continuation_fn is not None:
         # Re-use the legacy join/append helper so research_loop_hook
         # still runs against the resumed session. The helper expects an
@@ -684,7 +1176,9 @@ async def _run_runtime_preflight(
             return result
         # Fallthrough to clarification when continuation couldn't reach
         # the matched thread (e.g. it's archived) — do NOT silently
-        # create a new session.
+        # create a new session. Stash the candidates so the user can
+        # reply with "1번" / "기존 세션으로 진행" on the next turn.
+        _remember_clarification_candidates(message, recall.candidates)
         await send_chunks(
             message.channel,
             _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
@@ -702,7 +1196,9 @@ async def _run_runtime_preflight(
         # APPEND_CONTEXT with no thread_continuation_fn fallback: degrade
         # to clarification rather than silently dropping the user's
         # context append. Either way the message reuses the same
-        # template so the operator sees what's missing.
+        # template so the operator sees what's missing — and we cache
+        # the candidate list so a follow-up "1번" turn resolves cleanly.
+        _remember_clarification_candidates(message, recall.candidates)
         await send_chunks(
             message.channel,
             _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
@@ -974,6 +1470,14 @@ async def _run_research_loop_hook(
         return report
 
     report = _coerce_research_loop_report(raw)
+    # Persist forum publication / open-call signals onto session.extra
+    # so the diagnostic responder can describe the live setup later
+    # without round-tripping through the publish object. Best-effort —
+    # a cache write failure must not block the user-visible reply.
+    try:
+        persist_research_forum_status(session=session, report=report)
+    except Exception:  # noqa: BLE001 - persistence is non-fatal
+        pass
     if report.follow_up_message:
         await send_chunks(message.channel, report.follow_up_message)
     if report.forum_status_message:
@@ -981,6 +1485,90 @@ async def _run_research_loop_hook(
     if report.error and not report.follow_up_message and not report.forum_status_message:
         await send_chunks(message.channel, f"⚠️ research loop: {report.error}")
     return report
+
+
+def persist_research_forum_status(
+    *,
+    session: Any,
+    report: EngineeringResearchLoopReport,
+) -> None:
+    """Merge the research-loop report's mode/kickoff signals into session.extra.
+
+    Writes the canonical Phase B keys so the diagnostic / status
+    responder can describe the live setup later:
+
+    - ``forum_comment_mode`` — ``"member-bots"`` or ``"gateway"``.
+    - ``research_forum_thread_id`` / ``research_forum_thread_url`` — the
+      forum thread the directive went into (or would go into).
+    - ``research_open_call_posted`` — ``True`` / ``False`` / ``None``
+      depending on whether the gateway posted the
+      ``[research-open:<sid>]`` directive itself. ``None`` means the
+      path didn't reach the kickoff post.
+    - ``research_open_call_error`` — stringified failure reason when
+      ``research_open_call_posted`` is ``False``; cleared on retry
+      success.
+
+    For backward compatibility the legacy ``forum_kickoff_posted`` /
+    ``forum_kickoff_error`` keys are kept in sync — bot-side
+    ``_persist_forum_comment_mode_to_session`` and existing diagnostic
+    tests still consume those names.
+
+    No-op when ``session`` has no ``session_id`` (e.g. lightweight test
+    stubs) so callers don't need to special-case the path.
+    """
+
+    if session is None:
+        return
+    session_id = getattr(session, "session_id", None)
+    if not session_id:
+        return
+
+    extra_updates: dict[str, Any] = {}
+    if report.forum_comment_mode is not None:
+        extra_updates["forum_comment_mode"] = report.forum_comment_mode
+    if report.forum_thread_id is not None:
+        extra_updates["research_forum_thread_id"] = report.forum_thread_id
+    if report.forum_thread_url is not None:
+        extra_updates["research_forum_thread_url"] = report.forum_thread_url
+
+    if report.forum_comment_mode == "member-bots":
+        # Always stamp the open-call signal pair — including ``None`` —
+        # so a retry that succeeded clears the previous failure note.
+        extra_updates["research_open_call_posted"] = report.kickoff_posted
+        extra_updates["research_open_call_error"] = report.kickoff_error
+        extra_updates["forum_kickoff_posted"] = report.kickoff_posted
+        extra_updates["forum_kickoff_error"] = report.kickoff_error
+
+    if not extra_updates:
+        return
+
+    try:
+        from dataclasses import replace
+        from datetime import datetime
+
+        from ..agents.workflow_state import update_session
+    except Exception:  # noqa: BLE001 - degrade silently for partial installs
+        return
+
+    existing_extra = dict(getattr(session, "extra", {}) or {})
+    merged = {**existing_extra, **extra_updates}
+    try:
+        updated = replace(session, extra=merged)
+    except TypeError:
+        # ``replace`` only works on dataclasses — test stubs that use
+        # plain objects fall through to mutating the live extra dict so
+        # at least the in-memory session reflects the change.
+        try:
+            live = getattr(session, "extra", None)
+            if isinstance(live, dict):
+                live.update(extra_updates)
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    try:
+        update_session(updated, now=datetime.now().astimezone())
+    except Exception:  # noqa: BLE001
+        pass
 
 
 async def make_default_research_loop(
@@ -1030,6 +1618,14 @@ async def make_default_research_loop(
     forum_thread_url: Optional[str] = None
     insufficient = False
     error: Optional[str] = None
+    # Tracked through the member-bots branch so the report can describe
+    # whether the gateway actually got the open-call directive in front of
+    # the role bots, plus the failure reason if it didn't. Stays ``None``
+    # in gateway mode and in any code path that never reaches the kickoff
+    # post (forum publish failed, post_to_forum_thread missing, ...).
+    kickoff_posted: Optional[bool] = None
+    kickoff_error: Optional[str] = None
+    posted = False
 
     has_pack = research_pack is not None
 
@@ -1101,9 +1697,41 @@ async def make_default_research_loop(
                     for piece in pieces:
                         await post_to_forum_thread(forum_thread_id, piece)
                 except Exception as exc:  # noqa: BLE001
-                    error = (error + " · " if error else "") + (
-                        f"forum kickoff 게시 실패: {exc}"
+                    kickoff_posted = False
+                    kickoff_error = f"forum kickoff 게시 실패: {exc}"
+                    error = (error + " · " if error else "") + kickoff_error
+                else:
+                    kickoff_posted = True
+                    # Replace the gateway-flavoured "자료 정리를 남겼어요."
+                    # blurb with a member-bots-aware status. Operators were
+                    # otherwise seeing "역할별 댓글 0건"-style wording even
+                    # though each member bot is responsible for the role
+                    # comment in this mode.
+                    forum_status = _format_member_bots_forum_status(
+                        thread_id=forum_thread_id,
+                        thread_url=forum_thread_url,
+                        kickoff_posted=True,
+                        kickoff_error=None,
                     )
+            else:
+                # Couldn't compute the open-call directive (import failed or
+                # research_open_call_directive raised) — record the
+                # member-bots mode signal so diagnostics know the gateway
+                # tried but the directive never made it into the thread.
+                kickoff_posted = False
+                kickoff_error = "research_open_call_directive 미생성"
+                error = (error + " · " if error else "") + kickoff_error
+        elif forum_comment_mode == "member-bots" and posted:
+            # Mode is correct but the caller didn't wire ``post_to_forum_thread``
+            # (e.g. early dev runs with a stub publisher). Surface a
+            # member-bots-aware status anyway so the gateway summary doesn't
+            # imply the gateway is going to post role comments.
+            forum_status = _format_member_bots_forum_status(
+                thread_id=forum_thread_id,
+                thread_url=forum_thread_url,
+                kickoff_posted=None,
+                kickoff_error=None,
+            )
 
     # 2. Deliberation in the working thread — gateway mode only.
     # member-bots mode hands the deliberation to each member bot via the
@@ -1162,7 +1790,51 @@ async def make_default_research_loop(
         forum_thread_url=forum_thread_url,
         insufficient=insufficient,
         error=error,
+        forum_comment_mode=forum_comment_mode,
+        kickoff_posted=kickoff_posted,
+        kickoff_error=kickoff_error,
     )
+
+
+def _format_member_bots_forum_status(
+    *,
+    thread_id: Optional[int],
+    thread_url: Optional[str],
+    kickoff_posted: Optional[bool],
+    kickoff_error: Optional[str],
+) -> str:
+    """Render the member-bots forum status surface.
+
+    Avoids the gateway-mode "역할별 댓글 N건" wording — in member-bots
+    mode the gateway never posts role comments by design, so reporting
+    "0건" looks like a failure to operators. Instead we describe the
+    mode, the open-call directive status, and where to actually find
+    the role comments (the forum thread itself).
+    """
+
+    lines: list[str] = ["✅ 운영-리서치 forum 게시 완료"]
+    if thread_url:
+        lines.append(f"thread: {thread_url}")
+    elif thread_id is not None:
+        lines.append(f"thread id: {thread_id}")
+    lines.append("모드: member-bots (각 멤버 봇이 자기 계정으로 댓글)")
+    if kickoff_posted is True:
+        lines.append("open-call directive: 게시 완료")
+    elif kickoff_posted is False:
+        reason = kickoff_error or "원인 미확인"
+        lines.append(f"open-call directive: 게시 실패 — {reason}")
+    else:
+        # ``post_to_forum_thread`` wasn't wired by the caller, so the
+        # gateway never even tried to post the directive. Operators
+        # need to know that — otherwise they'd assume the gateway is
+        # going to post role comments itself, like in legacy mode.
+        lines.append(
+            "open-call directive: 미게시 (post_to_forum_thread 미연결)"
+        )
+    lines.append(
+        "각 멤버 봇의 후속 댓글은 운영-리서치 thread에서 확인하세요."
+    )
+    return "\n".join(lines)
 
 
 def _coerce_research_loop_report(raw: Any) -> EngineeringResearchLoopReport:

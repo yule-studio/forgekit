@@ -375,5 +375,284 @@ class PreflightWithoutInjectionTests(unittest.TestCase):
         self.assertEqual(called["conversation"], 1)
 
 
+class ThreadBoundContinuationTests(_PreflightRouteHarness):
+    """Phase A: when the user is sitting inside a work thread and
+    types a short continuation phrase like "기존 세션으로 진행", the
+    runtime preflight must join the thread's session without going
+    through conversation_fn / auto_collect."""
+
+    def _thread_message(
+        self,
+        text: str,
+        *,
+        thread_id: int,
+        parent_id: int = 111,
+    ):
+        # Discord threads expose ``parent_id`` (the channel they live
+        # under). The router uses that as the "channel is a thread"
+        # signal and feeds thread_id into recall's anchor lookup.
+        return FakeMessage(
+            content=text,
+            channel=FakeChannel(
+                channel_id=thread_id,
+                name="engineer-feature-abc",
+                parent_id=parent_id,
+            ),
+        )
+
+    def test_force_continue_phrase_joins_thread_session(self) -> None:
+        sessions = [
+            RuntimeFakeSession(
+                session_id="thread-bound",
+                prompt="결제 모듈 멱등성 검토",
+                thread_id=909090,
+                updated_at=_now(-5),
+            ),
+        ]
+        continuation_fn = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(session_id="thread-bound", task_type="feature"),
+                thread_id=909090,
+                message="thread에 이어 붙였습니다.",
+            )
+        )
+        message = self._thread_message("기존 세션으로 진행", thread_id=909090)
+
+        result = self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=continuation_fn,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "thread-bound")
+        self.assertEqual(result.thread_id, 909090)
+        self.conversation_fn.assert_not_awaited()
+        self.intake_fn.assert_not_awaited()
+
+
+class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
+    """Phase A: gateway shows candidates → user replies "1번" /
+    "기존 세션으로 진행" / "이걸로" → preflight resolves the cached
+    candidate without calling conversation_fn again."""
+
+    def setUp(self) -> None:  # noqa: D401
+        super().setUp()
+        # The clarification cache is module-level state. Reset it so
+        # tests don't leak candidates across each other when run in
+        # the discovery order.
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        router._GATEWAY_CLARIFICATION_CONTEXT.clear()
+
+    def _trigger_clarification(self, message, sessions):
+        # First turn: user message classifies as continue/summarize but
+        # recall returns ambiguous → preflight stores candidates and
+        # sends the clarification template.
+        return self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=AsyncMock(),
+        )
+
+    def test_numeric_pick_after_clarification(self) -> None:
+        # Two ambiguous sessions both touching "hermes 학습" so the
+        # initial recall returns candidates without a confident match.
+        sessions = [
+            RuntimeFakeSession(
+                session_id="hermes-a",
+                prompt="hermes 학습 루프 구조 설계",
+                updated_at=_now(-30),
+                extra={"research_pack": {"title": "hermes 학습 루프"}},
+            ),
+            RuntimeFakeSession(
+                session_id="hermes-b",
+                prompt="hermes 학습 루프 구조 검증",
+                updated_at=_now(-60),
+                extra={"research_pack": {"title": "hermes 학습 루프"}},
+            ),
+        ]
+        first = FakeMessage(
+            content="hermes 학습 루프 정리해줘",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        # Author id matches in setUp's FakeMessage default; we set it
+        # explicitly so the cache key is deterministic.
+        first.author = type("A", (), {"id": 4242})()
+        first_result = self._trigger_clarification(first, sessions)
+        self.assertTrue(first_result.handled)
+        # Cache populated.
+        from yule_orchestrator.discord import engineering_channel_router as router
+        cached = router._GATEWAY_CLARIFICATION_CONTEXT.get((111, 4242))
+        self.assertIsNotNone(cached)
+        self.assertEqual(len(cached), 2)
+        # Sanity: gateway sent the clarification template.
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("어떤 작업을 가리키시는지", sent)
+
+        # Second turn: user picks "1번".
+        # Reset send_chunks to isolate second-turn output.
+        self.send_chunks.reset_mock()
+        # conversation_fn is still set to AssertionError — must not run.
+        second_continuation = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(session_id="hermes-a", task_type="research"),
+                thread_id=11,
+                message="hermes-a에 이어 붙였습니다.",
+            )
+        )
+        second = FakeMessage(
+            content="1번",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        second.author = type("A", (), {"id": 4242})()
+        second_result = self._route(
+            message=second,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=second_continuation,
+        )
+        self.assertTrue(second_result.handled)
+        self.assertEqual(second_result.session_id, "hermes-a")
+        # conversation_fn / intake_fn must NOT run on the selection turn.
+        self.conversation_fn.assert_not_awaited()
+        self.intake_fn.assert_not_awaited()
+        # Cache cleared after a successful selection.
+        self.assertNotIn((111, 4242), router._GATEWAY_CLARIFICATION_CONTEXT)
+
+    def test_korean_ordinal_pick(self) -> None:
+        sessions = [
+            RuntimeFakeSession(
+                session_id="hermes-a",
+                prompt="hermes 학습 루프 구조 설계",
+                updated_at=_now(-30),
+                extra={"research_pack": {"title": "hermes 학습 루프"}},
+            ),
+            RuntimeFakeSession(
+                session_id="hermes-b",
+                prompt="hermes 학습 루프 구조 검증",
+                updated_at=_now(-60),
+                extra={"research_pack": {"title": "hermes 학습 루프"}},
+            ),
+        ]
+        first = FakeMessage(
+            content="hermes 학습 루프 정리해줘",
+            channel=FakeChannel(channel_id=222, name="업무-접수"),
+        )
+        first.author = type("A", (), {"id": 7000})()
+        self._trigger_clarification(first, sessions)
+        self.send_chunks.reset_mock()
+
+        second_continuation = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(session_id="hermes-b", task_type="research"),
+                thread_id=12,
+                message="hermes-b에 이어 붙였습니다.",
+            )
+        )
+        second = FakeMessage(
+            content="두 번째 거",
+            channel=FakeChannel(channel_id=222, name="업무-접수"),
+        )
+        second.author = type("A", (), {"id": 7000})()
+        result = self._route(
+            message=second,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=second_continuation,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "hermes-b")
+
+    def test_demonstrative_phrase_picks_single_cached_candidate(self) -> None:
+        """Pre-seed the cache with one candidate and verify "기존 세션
+        으로 진행" / "이걸로" land on it without conversation_fn /
+        auto_collect running."""
+
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        scope_key = (333, 8000)
+        router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = (
+            {
+                "session_id": "solo",
+                "title": "결제 모듈 멱등성",
+                "score": 0.5,
+                "thread_id": 21,
+                "forum_thread_id": None,
+                "task_type": "feature",
+            },
+        )
+
+        continuation = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(session_id="solo", task_type="feature"),
+                thread_id=21,
+                message="solo에 이어 붙였습니다.",
+            )
+        )
+        # Empty session list — preflight falls back to no recall match,
+        # so the only thing that can resolve "기존 세션으로 진행" is the
+        # cached candidate selection path.
+        message = FakeMessage(
+            content="기존 세션으로 진행",
+            channel=FakeChannel(channel_id=333, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 8000})()
+
+        result = self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: [],
+            thread_continuation_fn=continuation,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "solo")
+        self.assertEqual(result.thread_id, 21)
+        self.conversation_fn.assert_not_awaited()
+        self.intake_fn.assert_not_awaited()
+        # Cache cleared after the successful resolution.
+        self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
+
+    def test_demonstrative_phrase_with_multi_candidates_does_not_pick(self) -> None:
+        """``_try_select_candidate`` must NOT silently resolve "이걸로"
+        when the cache has multiple candidates — the user has to be
+        more specific. Exercise the helper directly so the harness's
+        "conversation_fn must not run" guard isn't tripped by the
+        legacy fallthrough that follows in the live router."""
+
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        candidates = (
+            {"session_id": "a", "title": "A", "score": 0.4,
+             "thread_id": None, "forum_thread_id": None, "task_type": "research"},
+            {"session_id": "b", "title": "B", "score": 0.35,
+             "thread_id": None, "forum_thread_id": None, "task_type": "research"},
+        )
+        self.assertIsNone(router._try_select_candidate("이걸로", candidates))
+        self.assertIsNone(router._try_select_candidate("기존 세션으로 진행", candidates))
+        # Numeric pick, on the other hand, IS unambiguous — sanity
+        # check the same helper for the positive path.
+        chosen = router._try_select_candidate("1번", candidates)
+        self.assertIsNotNone(chosen)
+        self.assertEqual(chosen["session_id"], "a")
+
+    def test_existing_session_phrase_without_cache_or_match_clarifies(self) -> None:
+        # No prior clarification, no matching open sessions: "기존
+        # 세션으로 진행" must NOT create a fresh session — it asks for
+        # clarification because the runtime can't tell which existing
+        # work the user means.
+        message = FakeMessage(
+            content="기존 세션으로 진행",
+            channel=FakeChannel(channel_id=444, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 9000})()
+        result = self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: [],
+            thread_continuation_fn=AsyncMock(),
+        )
+        self.assertTrue(result.handled)
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("어떤 작업을 가리키시는지", sent)
+        self.conversation_fn.assert_not_awaited()
+        self.intake_fn.assert_not_awaited()
+
+
 if __name__ == "__main__":
     unittest.main()
