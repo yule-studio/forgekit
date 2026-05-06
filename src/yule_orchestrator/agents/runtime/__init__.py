@@ -49,6 +49,11 @@ from .models import (
     SessionCandidate,
 )
 from .loop import run_runtime_loop
+from .understand import (
+    IntentClassifier,
+    classify_intent_deterministic,
+    make_understand_fn,
+)
 
 __all__ = (
     "ACTION_APPEND_CONTEXT",
@@ -83,5 +88,8 @@ __all__ = (
     "RuntimeResearchPlan",
     "RuntimeResult",
     "SessionCandidate",
+    "IntentClassifier",
+    "classify_intent_deterministic",
+    "make_understand_fn",
     "run_runtime_loop",
 )
