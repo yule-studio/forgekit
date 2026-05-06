@@ -113,24 +113,66 @@ def run_member_bot(profile: MemberBotProfile) -> None:
             # the synthesis comment so the tech-lead bot account types in
             # the forum thread. The gateway-side legacy synthesis path is
             # covered by the typing wrap in bot.py:on_message.
-            research_outcome = handle_research_turn_message(
-                role=profile.role,
-                text=text,
-            )
+            # Stabilisation Phase 5 — typing only fires when the
+            # outcome is non-None. ``handle_research_turn_message``
+            # already returns ``None`` for inactive roles (excluded
+            # from session.extra['active_research_roles']) so this
+            # bot stays silent on those research-open broadcasts.
+            try:
+                research_outcome = handle_research_turn_message(
+                    role=profile.role,
+                    text=text,
+                )
+            except Exception as exc:  # noqa: BLE001
+                research_outcome = None
+                print(
+                    f"warning: member bot '{profile.display_label}' "
+                    f"research handler failed: {exc}",
+                    file=sys.stderr,
+                )
             if research_outcome is not None:
-                async with typing_context(message.channel):
-                    await _post_research_turn(message.channel, research_outcome)
+                try:
+                    async with typing_context(message.channel):
+                        await _post_research_turn(
+                            message.channel, research_outcome
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    # Phase 5 stab — surface the failure instead of
+                    # leaving the user staring at an unfinished typing
+                    # indicator.
+                    try:
+                        await message.channel.send(
+                            f"⚠️ {profile.display_label} 댓글 게시 실패: {exc}"
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
                 return
 
-            team_outcome = handle_team_turn_message(
-                role=profile.role,
-                text=text,
-            )
+            try:
+                team_outcome = handle_team_turn_message(
+                    role=profile.role,
+                    text=text,
+                )
+            except Exception as exc:  # noqa: BLE001
+                team_outcome = None
+                print(
+                    f"warning: member bot '{profile.display_label}' "
+                    f"team handler failed: {exc}",
+                    file=sys.stderr,
+                )
             if team_outcome is None:
                 return
 
-            async with typing_context(message.channel):
-                await _post_team_turn(message.channel, team_outcome)
+            try:
+                async with typing_context(message.channel):
+                    await _post_team_turn(message.channel, team_outcome)
+            except Exception as exc:  # noqa: BLE001
+                try:
+                    await message.channel.send(
+                        f"⚠️ {profile.display_label} take 게시 실패: {exc}"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
 
     bot = MemberBot(command_prefix=commands.when_mentioned, intents=intents)
     print(

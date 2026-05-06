@@ -416,11 +416,20 @@ def deliberation_research_role_sequence(
 ) -> Tuple[str, ...]:
     """Normalise the research-turn role sequence for a session.
 
-    Rules:
+    Resolution order (first non-empty wins for the middle of the chain):
+
+      1. *base* — caller-supplied override.
+      2. ``session.extra['active_research_roles']`` — Phase 1 role
+         selection result. **Stabilisation Phase 5**: when present this
+         takes precedence over ``session.role_sequence`` so member
+         bots whose role isn't active stay silent on research-open
+         calls (no typing, no comment).
+      3. ``session.role_sequence`` — legacy seed.
+      4. :data:`DEFAULT_RESEARCH_ROLE_SEQUENCE`.
+
+    Other rules:
+
     - ``tech-lead`` always opens the chain.
-    - The middle is taken from ``session.role_sequence`` when provided
-      (short role names — ``ai-engineer``/``product-designer``/...);
-      otherwise from :data:`DEFAULT_RESEARCH_ROLE_SEQUENCE`.
     - Unknown roles pass through (so a future ``security-review`` turn
       still lands in the chain even before its dataclass exists).
     - Duplicates are dropped (first-seen wins).
@@ -430,11 +439,27 @@ def deliberation_research_role_sequence(
     """
 
     candidate: list[str] = ["tech-lead"]
-    requested = (
-        list(base)
-        if base is not None
-        else list(getattr(session, "role_sequence", ()) or DEFAULT_RESEARCH_ROLE_SEQUENCE)
-    )
+    if base is not None:
+        requested: Sequence[str] = list(base)
+    else:
+        # Phase 5 stab: prefer active_research_roles over role_sequence
+        # so excluded member bots quietly ignore research-open calls.
+        active: Sequence[str] = ()
+        try:
+            extra = dict(getattr(session, "extra", None) or {})
+            raw_active = extra.get("active_research_roles")
+            if isinstance(raw_active, (list, tuple)):
+                active = [
+                    str(role) for role in raw_active if isinstance(role, str)
+                ]
+        except Exception:  # noqa: BLE001 - best-effort role-list lookup
+            active = ()
+        if active:
+            requested = list(active)
+        else:
+            requested = list(
+                getattr(session, "role_sequence", ()) or DEFAULT_RESEARCH_ROLE_SEQUENCE
+            )
     for role in requested:
         short = (role or "").split("/", 1)[-1]
         short = short.strip()
