@@ -429,6 +429,7 @@ async def route_engineering_message(
             list_sessions_fn=list_sessions_fn,
             send_chunks=send_chunks,
             thread_continuation_fn=thread_continuation_fn,
+            research_loop_fn=research_loop_fn,
             obsidian_writer_fn=obsidian_writer_fn,
             obsidian_env=obsidian_env,
         )
@@ -864,6 +865,64 @@ async def _handle_clarification_selection(
 # ---------------------------------------------------------------------------
 
 
+# Phrases that explicitly say "no code changes — research only". When
+# any of these is in the user's message we treat it as a hard "do not
+# trigger coding authorization" signal even if a proposal phrase
+# appears in the same sentence (e.g. "코드 수정하지 말고 리서치만 정리해줘").
+_NO_CODING_INTENT_PHRASES: tuple[str, ...] = (
+    "코드 수정하지 말",
+    "코드 수정 하지 말",
+    "코드 수정 금지",
+    "수정하지 말고 리서치",
+    "수정 하지 말고 리서치",
+    "수정하지 말고 조사",
+    "리서치만 해",
+    "리서치만 정리",
+    "조사만 해",
+    "조사만 정리",
+    "코드 변경 하지 말",
+    "코드 변경하지 말",
+    "코딩 하지 말고",
+    "코딩하지 말고",
+    "no code change",
+    "research only",
+)
+
+
+def _user_explicitly_blocked_coding(text: str) -> bool:
+    if not text:
+        return False
+    normalised = " ".join(text.lower().split())
+    return any(phrase in normalised for phrase in _NO_CODING_INTENT_PHRASES)
+
+
+# Phrases that signal the continuation prompt is asking for fresh
+# research (forum collection / pack rebuild) rather than just resuming
+# an idle thread. The runtime preflight passes ``research_loop_fn``
+# through to ``_handle_join_or_append`` only when one of these matches
+# *and* the session has no research_pack yet.
+_CONTINUATION_RESEARCH_KEYWORDS: tuple[str, ...] = (
+    "[research]",
+    "[리서치]",
+    "운영-리서치",
+    "운영 리서치",
+    "리서치",
+    "조사",
+    "자료 모아",
+    "자료 모집",
+    "자료 정리",
+    "자료 좀",
+    "research",
+)
+
+
+def _continuation_requests_research(text: str) -> bool:
+    if not text:
+        return False
+    normalised = " ".join(text.lower().split())
+    return any(phrase in normalised for phrase in _CONTINUATION_RESEARCH_KEYWORDS)
+
+
 _CODING_PROPOSAL_REQUEST_PHRASES: tuple[str, ...] = (
     "코딩 권한 제안",
     "수정 권한 제안",
@@ -1142,6 +1201,12 @@ async def _run_coding_authorization_gate(
     Returns ``None`` when the message isn't either kind so the caller
     falls through to the rest of the route.
     """
+
+    # Hard "no code change" override: if the user explicitly said
+    # "코드 수정 하지 말고 리서치만" the coding gate must not act on
+    # this message even if it also contains a proposal/approval phrase.
+    if _user_explicitly_blocked_coding(prompt_text):
+        return None
 
     if is_coding_proposal_request(prompt_text):
         target = _find_latest_open_session(
@@ -1473,6 +1538,7 @@ async def _run_runtime_preflight(
     list_sessions_fn: Callable[..., Sequence[Any]],
     send_chunks: SendChunksFn,
     thread_continuation_fn: Optional[ThreadContinuationFn],
+    research_loop_fn: Optional[ResearchLoopFn] = None,
     obsidian_writer_fn: Optional[Callable[..., Any]] = None,
     obsidian_env: Optional[Any] = None,
 ) -> Optional[EngineeringRouteResult]:
@@ -1571,6 +1637,29 @@ async def _run_runtime_preflight(
             confidence=intent.confidence,
             reason=f"runtime preflight · {intent.intent_id}",
         )
+        # Decide whether to pass research_loop_fn into the join/append
+        # helper. The runtime preflight only re-triggers research
+        # collection when the live MVP bug repeats: the matched session
+        # has no research_pack yet *and* the continuation prompt names
+        # research-shaped intent. Otherwise we keep the legacy
+        # "no auto research loop on join" contract so simple resume /
+        # status pings don't kick off a fresh forum sweep.
+        effective_research_loop_fn: Optional[ResearchLoopFn] = None
+        if (
+            research_loop_fn is not None
+            and _continuation_requests_research(prompt_text)
+        ):
+            matched_session = _load_session_by_id(
+                list_sessions_fn,
+                primary.payload.get("session_id"),
+            )
+            matched_extra: Mapping[str, Any]
+            try:
+                matched_extra = dict(getattr(matched_session, "extra", {}) or {})
+            except Exception:  # noqa: BLE001
+                matched_extra = {}
+            if not matched_extra.get("research_pack"):
+                effective_research_loop_fn = research_loop_fn
         result = await _handle_join_or_append(
             message=message,
             outcome=synthetic_outcome,
@@ -1578,7 +1667,7 @@ async def _run_runtime_preflight(
             intake_prompt=prompt_text,
             send_chunks=send_chunks,
             thread_continuation_fn=thread_continuation_fn,
-            research_loop_fn=None,  # Phase 4 MVP: no auto research loop here
+            research_loop_fn=effective_research_loop_fn,
         )
         if result is not None:
             return result

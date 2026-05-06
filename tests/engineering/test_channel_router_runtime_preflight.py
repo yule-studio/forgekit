@@ -92,6 +92,7 @@ class _PreflightRouteHarness(unittest.TestCase):
         message,
         list_sessions_fn,
         thread_continuation_fn=None,
+        research_loop_fn=None,
     ):
         return _run(
             route_engineering_message(
@@ -103,7 +104,7 @@ class _PreflightRouteHarness(unittest.TestCase):
                 intake_fn=self.intake_fn,
                 thread_kickoff_fn=self.kickoff_fn,
                 send_chunks=self.send_chunks,
-                research_loop_fn=None,
+                research_loop_fn=research_loop_fn,
                 thread_continuation_fn=thread_continuation_fn,
                 list_sessions_fn=list_sessions_fn,
             )
@@ -652,6 +653,173 @@ class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
         self.assertIn("어떤 작업을 가리키시는지", sent)
         self.conversation_fn.assert_not_awaited()
         self.intake_fn.assert_not_awaited()
+
+
+class ContinuationResearchRestartTests(_PreflightRouteHarness):
+    """Live MVP regression: when the user resumes a session whose
+    research_pack was never built (the initial intake confirmation was
+    a command-only phrase like "새 작업으로 진행" so research never ran),
+    a continuation message that asks for research must re-trigger the
+    research_loop_fn against the matched session — otherwise the user
+    keeps typing into a thread where nothing is collecting forum data.
+
+    Tests use thread-bound messages so the recall step finds the
+    matched session by thread anchor (the live bug always sat inside an
+    open work thread). That way the assertion is purely about whether
+    the preflight passes ``research_loop_fn`` through, not about
+    keyword scoring."""
+
+    def _thread_message(
+        self,
+        text: str,
+        *,
+        thread_id: int,
+        parent_id: int = 111,
+    ):
+        return FakeMessage(
+            content=text,
+            channel=FakeChannel(
+                channel_id=thread_id,
+                name="engineer-feature-abc",
+                parent_id=parent_id,
+            ),
+        )
+
+    def test_research_restart_when_pack_missing_and_keyword_present(self) -> None:
+        # Live bug shape: session was created from a "새 작업으로 진행"
+        # confirmation, never grew a research_pack, and the user's
+        # continuation message asks for fresh research.
+        sessions = [
+            RuntimeFakeSession(
+                session_id="abc123def456",
+                prompt="새 작업으로 진행",
+                thread_id=3003,
+                updated_at=_now(-5),
+                extra={},
+            ),
+        ]
+        continuation_fn = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(
+                    session_id="abc123def456", task_type="research"
+                ),
+                thread_id=3003,
+                message="thread에 이어 붙였습니다.",
+            )
+        )
+
+        loop_calls: list[dict] = []
+
+        async def loop_fn(**kwargs):
+            loop_calls.append(kwargs)
+            return EngineeringResearchLoopReport(
+                follow_up_message="research loop ran"
+            )
+
+        message = self._thread_message(
+            "여기 thread에서 이어 — [Research] 하네스 엔지니어링 자동화 검토, "
+            "운영-리서치에 자료 좀 더 모아줘",
+            thread_id=3003,
+        )
+        result = self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=continuation_fn,
+            research_loop_fn=loop_fn,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "abc123def456")
+        # research_loop_fn fired exactly once because the matched
+        # session had no research_pack and the prompt carried a
+        # research keyword.
+        self.assertEqual(len(loop_calls), 1)
+
+    def test_research_restart_skipped_when_pack_already_present(self) -> None:
+        # research_pack already exists — re-running collection would
+        # double the work. The preflight must NOT pass research_loop_fn
+        # through to the join helper.
+        sessions = [
+            RuntimeFakeSession(
+                session_id="hermes-with-pack",
+                prompt="헤르메스 학습 루프 구조 정리",
+                thread_id=8001,
+                updated_at=_now(-5),
+                extra={"research_pack": {"title": "헤르메스 학습 루프"}},
+            ),
+        ]
+        continuation_fn = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(
+                    session_id="hermes-with-pack", task_type="research"
+                ),
+                thread_id=8001,
+                message="thread에 이어 붙였습니다.",
+            )
+        )
+        loop_called = {"count": 0}
+
+        async def loop_fn(**_kwargs):
+            loop_called["count"] += 1
+            return EngineeringResearchLoopReport()
+
+        message = self._thread_message(
+            "여기 thread에서 이어 — [Research] 추가 자료 좀 더 모아줘",
+            thread_id=8001,
+        )
+        result = self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=continuation_fn,
+            research_loop_fn=loop_fn,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "hermes-with-pack")
+        # research_loop_fn must NOT have been called — pack is already
+        # there, the user's "자료 좀 모아줘" applies to a thread that
+        # already has a published collection.
+        self.assertEqual(loop_called["count"], 0)
+
+    def test_research_restart_skipped_without_research_keyword(self) -> None:
+        # Pack is missing but the prompt has no research-shaped wording
+        # — preserve the legacy "no auto research loop on join"
+        # behaviour so plain resume / status pings don't kick off forum
+        # sweeps.
+        sessions = [
+            RuntimeFakeSession(
+                session_id="bare-resume",
+                prompt="결제 모듈 멱등성 검증 흐름",
+                thread_id=8002,
+                updated_at=_now(-5),
+                extra={},
+            ),
+        ]
+        continuation_fn = AsyncMock(
+            return_value=EngineeringThreadContinuation(
+                session=LegacyFakeSession(
+                    session_id="bare-resume", task_type="feature"
+                ),
+                thread_id=8002,
+                message="thread 이어 붙였습니다.",
+            )
+        )
+        loop_called = {"count": 0}
+
+        async def loop_fn(**_kwargs):
+            loop_called["count"] += 1
+            return EngineeringResearchLoopReport()
+
+        message = self._thread_message(
+            "기존 세션으로 진행",
+            thread_id=8002,
+        )
+        result = self._route(
+            message=message,
+            list_sessions_fn=lambda **_kw: sessions,
+            thread_continuation_fn=continuation_fn,
+            research_loop_fn=loop_fn,
+        )
+        self.assertTrue(result.handled)
+        self.assertEqual(loop_called["count"], 0)
 
 
 if __name__ == "__main__":

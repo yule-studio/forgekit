@@ -313,5 +313,121 @@ class NoBackpressureOnUnrelatedFlowsTests(unittest.TestCase):
         self.assertEqual(called["conversation"], 1)
 
 
+class NoCodeChangeOverrideTests(_CodingGateHarness):
+    """Live MVP regression: when the user explicitly says
+    "코드 수정하지 말고 리서치만" the coding gate must NOT act on the
+    message even if it carries an approval phrase like "수정 승인" in
+    the same sentence. The runtime preflight / conversation_fn handles
+    it instead — that's where research collection and status response
+    live."""
+
+    def _seed_pending_proposal(self) -> _RouteFakeSession:
+        proposal_payload = {
+            "session_id": "sess-research-only",
+            "user_request": "결제 모듈 멱등성 검증 흐름 백엔드에 추가해줘",
+            "executor_role": "backend-engineer",
+            "review_roles": ["tech-lead"],
+            "participant_roles": ["backend-engineer"],
+            "write_scope": ["src/<service>/api/**"],
+            "forbidden_scope": ["frontend 컴포넌트 임의 변경"],
+            "reason": "결제/멱등성 키워드 매칭",
+            "safety_rules": ["승인 전 production write 금지"],
+            "approval_required": True,
+            "metadata": {},
+        }
+        return _RouteFakeSession(
+            session_id="sess-research-only",
+            prompt="결제 모듈 멱등성 검증 흐름 백엔드에 추가해줘",
+            channel_id=111,
+            updated_at=_now(-5),
+            extra={"coding_proposal": proposal_payload},
+        )
+
+    def test_no_code_change_phrase_skips_coding_gate(self) -> None:
+        # Pending proposal exists; user replies asking research only.
+        target = self._seed_pending_proposal()
+        message = FakeMessage(
+            content="코드 수정하지 말고 리서치만 정리해줘",
+            channel=_channel(),
+        )
+
+        # The coding gate must return None — but the rest of the route
+        # (conversation_fn) WILL run, so we replace the AssertionError
+        # mocks with one that's allowed to be called once.
+        from yule_orchestrator.discord.engineering_channel_router import (
+            EngineeringConversationOutcome,
+        )
+
+        called = {"conversation": 0}
+
+        def conversation_fn(**_):
+            called["conversation"] += 1
+            return EngineeringConversationOutcome(content="ack")
+
+        result = _run(
+            route_engineering_message(
+                message=message,
+                bot_user=object(),
+                route_context=self.context,
+                extract_prompt=_extract_prompt,
+                conversation_fn=conversation_fn,
+                intake_fn=AsyncMock(),
+                thread_kickoff_fn=AsyncMock(),
+                send_chunks=self.send_chunks,
+                research_loop_fn=None,
+                thread_continuation_fn=None,
+                list_sessions_fn=lambda **_kw: [target],
+            )
+        )
+        self.assertTrue(result.handled)
+        # The coding_proposal stays untouched — no coding_job created.
+        self.assertIsNone(target.extra.get("coding_job"))
+        self.assertIn("coding_proposal", target.extra)
+        # conversation_fn was called because the gate stepped aside.
+        self.assertEqual(called["conversation"], 1)
+
+    def test_no_code_change_phrase_skips_proposal_creation(self) -> None:
+        # Even when the user includes "코딩 권한 제안" alongside the
+        # research-only directive, the gate must not auto-build a fresh
+        # proposal — the user explicitly asked NOT to touch code.
+        target = _RouteFakeSession(
+            session_id="sess-no-proposal",
+            prompt="결제 모듈 멱등성 검증 흐름",
+            channel_id=111,
+            updated_at=_now(-5),
+        )
+        message = FakeMessage(
+            content="코딩 권한 제안 — 다만 코드 수정하지 말고 리서치만 먼저 정리해줘",
+            channel=_channel(),
+        )
+
+        from yule_orchestrator.discord.engineering_channel_router import (
+            EngineeringConversationOutcome,
+        )
+
+        def conversation_fn(**_):
+            return EngineeringConversationOutcome(content="ack")
+
+        result = _run(
+            route_engineering_message(
+                message=message,
+                bot_user=object(),
+                route_context=self.context,
+                extract_prompt=_extract_prompt,
+                conversation_fn=conversation_fn,
+                intake_fn=AsyncMock(),
+                thread_kickoff_fn=AsyncMock(),
+                send_chunks=self.send_chunks,
+                research_loop_fn=None,
+                thread_continuation_fn=None,
+                list_sessions_fn=lambda **_kw: [target],
+            )
+        )
+        self.assertTrue(result.handled)
+        # No proposal was built because the gate skipped.
+        self.assertNotIn("coding_proposal", target.extra)
+        self.assertNotIn("coding_job", target.extra)
+
+
 if __name__ == "__main__":
     unittest.main()
