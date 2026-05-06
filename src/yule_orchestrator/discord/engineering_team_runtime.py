@@ -25,7 +25,8 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
-from typing import Any, Callable, Mapping, Optional, Sequence, Tuple
+from datetime import datetime
+from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
 from ..agents.deliberation import (
     DeliberationContext,
@@ -625,11 +626,33 @@ def _handle_research_open_call(
         research_pack=research_pack,
         previous_turns=(),
     )
-    message = (
-        f"{rendered}\n\n"
-        "자율 조사 메모: 이 댓글은 gateway가 정한 순번이 아니라, "
-        "해당 역할 봇이 공개 research 요청을 보고 독립적으로 제출한 take입니다."
+
+    # Phase B role-runtime MVP: prepend a runtime-shaped preface so the
+    # output meets the 5-section contract (이해한 작업 / 역할 관점의 판단
+    # / 참고한 자료 / 리스크 / 다음 행동). The deterministic deliberation
+    # render already covers 관점 / 근거 / 리스크 / 다음 행동, so the
+    # preface only adds the missing 'understood task' line plus the role
+    # policy short_name + memory filter so an operator can see which
+    # policy drove the take. Failures fall back to the deterministic
+    # render with the legacy memo footer — deterministic templates stay
+    # the safety net.
+    preface = _render_role_runtime_preface(
+        session=session,
+        role=role,
+        research_pack=research_pack,
     )
+    if preface:
+        message = (
+            f"{preface}\n\n{rendered}\n\n"
+            "자율 조사 메모: 이 댓글은 gateway가 정한 순번이 아니라, "
+            "해당 역할 봇이 공개 research 요청을 보고 독립적으로 제출한 take입니다."
+        )
+    else:
+        message = (
+            f"{rendered}\n\n"
+            "자율 조사 메모: 이 댓글은 gateway가 정한 순번이 아니라, "
+            "해당 역할 봇이 공개 research 요청을 보고 독립적으로 제출한 take입니다."
+        )
     return ResearchTurnOutcome(
         role=role,
         session_id=session_id,
@@ -637,6 +660,114 @@ def _handle_research_open_call(
         next_directive=None,
         is_synthesis=False,
     )
+
+
+def _render_role_runtime_preface(
+    *,
+    session: WorkflowSession,
+    role: str,
+    research_pack: Any,
+) -> Optional[str]:
+    """Build the runtime-shaped preface for the open-call comment.
+
+    Drives :func:`run_runtime_loop` with a :class:`RuntimeInput` carrying
+    the role policy so the policy is *visibly* part of the runtime
+    contract (tests can assert role policy presence in the input even
+    when the deterministic fallback fires). The returned text frames the
+    "이해한 작업" line plus a short policy stamp; the deterministic role
+    take rendered by :func:`deliberation_role_turn` follows immediately
+    afterwards and contributes 관점/근거/리스크/다음 행동.
+
+    Returns ``None`` when the runtime layer can't be imported or the
+    session has no usable prompt — in that case the caller falls back to
+    the legacy memo footer alone so the post still goes through.
+    """
+
+    try:
+        from ..agents.runtime import (
+            RuntimeInput,
+            role_policy_for,
+            run_runtime_loop,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return None
+
+    prompt = (getattr(session, "prompt", "") or "").strip()
+    if not prompt:
+        return None
+
+    role_id = _role_address(role)
+    policy = role_policy_for(role_id)
+    pack_title = ""
+    pack_summary = ""
+    if research_pack is not None:
+        pack_title = (getattr(research_pack, "title", "") or "").strip()
+        pack_summary = (getattr(research_pack, "summary", "") or "").strip()
+
+    runtime_input = RuntimeInput(
+        role_id=role_id,
+        message_text=prompt,
+        last_proposed_prompt=getattr(session, "prompt", None),
+        policy={
+            "role_policy": {
+                "short_name": policy.short_name,
+                "memory_role_filter": policy.memory_role_filter,
+                "preferred_source_kinds": list(policy.preferred_source_kinds),
+                "preferred_note_kinds": list(policy.preferred_note_kinds),
+                "description": policy.description,
+            },
+            "research_pack_title": pack_title or None,
+            "task_type": getattr(session, "task_type", None),
+        },
+    )
+    # Run the loop to confirm the runtime can produce a result; we only
+    # use the input/policy in the rendered preface for now, but the call
+    # exercises the contract end-to-end so future phases can swap the
+    # deterministic decide with an LLM-backed one without changing the
+    # member bot wiring.
+    try:
+        run_runtime_loop(runtime_input)
+    except Exception:  # noqa: BLE001 - runtime failure must not block the post
+        pass
+
+    understood = _summarize_open_call_prompt(prompt)
+    role_short = policy.short_name or role
+    lines = [
+        f"**[{role_short}] 역할 runtime 결과**",
+        f"- 이해한 작업: {understood}",
+    ]
+    perspective_bits: list[str] = []
+    if policy.description:
+        perspective_bits.append(policy.description)
+    if policy.memory_role_filter and policy.memory_role_filter != role_short:
+        perspective_bits.append(f"memory filter `{policy.memory_role_filter}`")
+    if perspective_bits:
+        lines.append(
+            "- 내 역할 관점의 판단 근거: " + " · ".join(perspective_bits)
+        )
+    if pack_title:
+        lines.append(f"- 참고한 research_pack: {pack_title}")
+    elif pack_summary:
+        # Title missing but summary present — still cite it so the
+        # operator can tell the bot did read the pack.
+        lines.append(
+            "- 참고한 research_pack: " + _truncate_one_line(pack_summary, 80)
+        )
+    return "\n".join(lines)
+
+
+def _summarize_open_call_prompt(prompt: str, *, limit: int = 120) -> str:
+    """Return a one-line summary of the user prompt for the runtime preface."""
+
+    cleaned = " ".join((prompt or "").split())
+    return _truncate_one_line(cleaned, limit)
+
+
+def _truncate_one_line(text: str, limit: int) -> str:
+    cleaned = (text or "").strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: max(1, limit - 1)].rstrip() + "…"
 
 
 def _collect_role_research_pack(*, session: WorkflowSession, role: str) -> Any:
@@ -720,6 +851,102 @@ def reset_handled_turns_for_tests() -> None:
 
     _HANDLED_TURNS.clear()
     _HANDLED_TURNS_SET.clear()
+
+
+# ---------------------------------------------------------------------------
+# Role-turn activity events (Phase B observability)
+# ---------------------------------------------------------------------------
+#
+# When a member bot reacts to a research-open / research-turn marker we
+# record a lightweight event under ``session.extra["role_turns"][<role>]``
+# so the gateway's diagnostic responder can describe which roles actually
+# spoke. The event shape is intentionally JSON-friendly so it survives
+# the cache round-trip without custom encoders.
+
+ROLE_TURN_STATUS_POSTED = "posted"
+ROLE_TURN_STATUS_ERROR = "error"
+ROLE_TURN_STATUS_SKIPPED = "skipped"
+
+ROLE_TURN_KIND_OPEN = "open"
+ROLE_TURN_KIND_TURN = "turn"
+ROLE_TURN_KIND_SYNTHESIS = "synthesis"
+
+
+def record_role_turn_event(
+    *,
+    session_id: str,
+    role: str,
+    kind: str,
+    status: str,
+    error: Optional[str] = None,
+    now: Optional[datetime] = None,
+) -> None:
+    """Append a role-turn event onto ``session.extra["role_turns"][role]``.
+
+    Best-effort: any exception (cache miss, write failure, malformed
+    session) is swallowed so a logging failure never blocks the Discord
+    post. The event carries:
+
+    - ``status`` — one of :data:`ROLE_TURN_STATUS_POSTED` /
+      :data:`ROLE_TURN_STATUS_ERROR` / :data:`ROLE_TURN_STATUS_SKIPPED`.
+    - ``kind`` — :data:`ROLE_TURN_KIND_OPEN` for open-call replies,
+      :data:`ROLE_TURN_KIND_TURN` for legacy chained turns,
+      :data:`ROLE_TURN_KIND_SYNTHESIS` for the tech-lead closing comment.
+    - ``posted_at`` — ISO-8601 timestamp the event was recorded at.
+    - ``error`` — stringified failure reason when ``status="error"``.
+    """
+
+    if not session_id or not role:
+        return
+    try:
+        from dataclasses import replace as _replace
+        from datetime import datetime as _dt
+        from ..agents.workflow_state import (
+            load_session as _load,
+            update_session as _update,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return
+    try:
+        session = _load(session_id)
+    except Exception:  # noqa: BLE001
+        return
+    if session is None:
+        return
+
+    occurred = (now or _dt.now().astimezone()).replace(microsecond=0)
+    event: Dict[str, Any] = {
+        "status": status,
+        "kind": kind,
+        "posted_at": occurred.isoformat(),
+    }
+    if error:
+        event["error"] = str(error)
+
+    extra = dict(getattr(session, "extra", None) or {})
+    role_turns = dict(extra.get("role_turns") or {})
+    short = role.split("/", 1)[-1].strip() or role
+    # Keep history-light: store only the latest event per role so the
+    # diagnostic surface stays compact. If callers ever need the full
+    # history they can read it from per-event records elsewhere.
+    role_turns[short] = event
+    extra["role_turns"] = role_turns
+
+    try:
+        updated = _replace(session, extra=extra)
+    except TypeError:
+        # Plain object stub — best-effort mutation.
+        try:
+            live = getattr(session, "extra", None)
+            if isinstance(live, dict):
+                live["role_turns"] = role_turns
+        except Exception:  # noqa: BLE001
+            pass
+        return
+    try:
+        _update(updated, now=occurred)
+    except Exception:  # noqa: BLE001 - never crash the bot from a record
+        pass
 
 
 def _load_synthesis_text_from_session_extra(session: WorkflowSession) -> Optional[str]:

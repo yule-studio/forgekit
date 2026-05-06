@@ -737,5 +737,488 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertIsNone(outcome)
 
 
+# ---------------------------------------------------------------------------
+# Phase B — member-bots summary + open-call status persistence + role policy
+# ---------------------------------------------------------------------------
+
+
+class MemberBotsSummaryAndPersistenceTests(unittest.TestCase):
+    """Phase B regression: member-bots mode must (1) produce a summary
+    that does NOT mention "역할별 댓글 N건" gateway-mode wording, and
+    (2) persist the kickoff status onto session.extra so the diagnostic
+    responder can describe the live setup."""
+
+    def _session_factory(self):
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+        )
+
+        return WorkflowSession(
+            session_id="sess-mb",
+            prompt="hero 정리",
+            task_type="landing-page",
+            state=WorkflowState.APPROVED,
+            created_at=datetime(2026, 4, 30),
+            updated_at=datetime(2026, 4, 30),
+            role_sequence=("tech-lead", "ai-engineer"),
+        )
+
+    def _publisher(self, *, posted: bool, thread_id=7777, thread_url=None):
+        async def forum_publisher(**_):
+            class _Outcome:
+                pass
+
+            outcome = _Outcome()
+            outcome.posted = posted
+            outcome.thread_id = thread_id
+            outcome.thread_url = thread_url
+            outcome.error = None
+            return outcome
+
+        return forum_publisher
+
+    def test_summary_drops_role_comment_count_in_member_bots_mode(self) -> None:
+        """The default research loop's summary must not include
+        ``역할별 댓글 N건`` wording in member-bots mode — that line is
+        gateway-mode only and confuses operators when each member bot
+        is responsible for the role comment."""
+
+        from yule_orchestrator.discord.engineering_channel_router import (
+            make_default_research_loop,
+        )
+
+        forum_posts: list[tuple[int, str]] = []
+
+        async def post_to_forum_thread(thread_id, content):
+            forum_posts.append((thread_id, content))
+
+        report = _run(
+            make_default_research_loop(
+                session=self._session_factory(),
+                message_text="prompt",
+                attachments=(),
+                channel=None,
+                collection_outcome=_StubCollectionOutcome(),
+                research_pack="<<pack>>",
+                role_for_research="engineering-agent/tech-lead",
+                thread_id=12345,
+                forum_publisher=self._publisher(posted=True),
+                post_to_forum_thread=post_to_forum_thread,
+                forum_comment_mode="member-bots",
+            )
+        )
+
+        msg = report.forum_status_message or ""
+        self.assertIn("운영-리서치 forum 게시 완료", msg)
+        self.assertIn("모드: member-bots", msg)
+        self.assertIn("open-call directive: 게시 완료", msg)
+        self.assertIn("후속 댓글은 운영-리서치 thread", msg)
+        # Gateway-mode-only wording must not leak into member-bots mode.
+        self.assertNotIn("역할별 댓글 0건", msg)
+        self.assertNotIn("역할별 댓글", msg)
+        # Mode metadata reaches the report fields too.
+        self.assertEqual(report.forum_comment_mode, "member-bots")
+        self.assertTrue(report.kickoff_posted)
+        self.assertIsNone(report.kickoff_error)
+
+    def test_kickoff_failure_in_member_bots_mode_surfaces_reason(self) -> None:
+        from yule_orchestrator.discord.engineering_channel_router import (
+            make_default_research_loop,
+        )
+
+        async def post_to_forum_thread(thread_id, content):
+            raise RuntimeError("rate limit 503")
+
+        report = _run(
+            make_default_research_loop(
+                session=self._session_factory(),
+                message_text="prompt",
+                attachments=(),
+                channel=None,
+                collection_outcome=_StubCollectionOutcome(),
+                research_pack="<<pack>>",
+                role_for_research="engineering-agent/tech-lead",
+                thread_id=12345,
+                forum_publisher=self._publisher(posted=True),
+                post_to_forum_thread=post_to_forum_thread,
+                forum_comment_mode="member-bots",
+            )
+        )
+
+        self.assertEqual(report.forum_comment_mode, "member-bots")
+        self.assertFalse(report.kickoff_posted)
+        self.assertIn("rate limit 503", report.kickoff_error or "")
+        # Error path must not regress the "역할별 댓글 N건" guard.
+        self.assertNotIn(
+            "역할별 댓글", report.forum_status_message or ""
+        )
+
+    def test_persist_research_forum_status_writes_canonical_keys(self) -> None:
+        """``persist_research_forum_status`` writes the Phase B keys
+        (research_open_call_*, forum_comment_mode, research_forum_thread_id)
+        plus legacy aliases for backward compat."""
+
+        try:
+            from tests._helpers import isolate_cache_for_test
+        except ImportError:  # pragma: no cover - bootstrap path
+            from _helpers import isolate_cache_for_test  # type: ignore
+
+        isolate_cache_for_test(self)
+
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+            load_session,
+            save_session,
+        )
+        from yule_orchestrator.discord.engineering_channel_router import (
+            persist_research_forum_status,
+            EngineeringResearchLoopReport,
+        )
+
+        now = datetime(2026, 4, 30)
+        session = WorkflowSession(
+            session_id="sess-persist",
+            prompt="x",
+            task_type="research",
+            state=WorkflowState.IN_PROGRESS,
+            created_at=now,
+            updated_at=now,
+        )
+        save_session(session)
+
+        report = EngineeringResearchLoopReport(
+            forum_status_message="ok",
+            forum_thread_id=4242,
+            forum_thread_url="https://discord.test/4242",
+            forum_comment_mode="member-bots",
+            kickoff_posted=True,
+            kickoff_error=None,
+        )
+        persist_research_forum_status(session=session, report=report)
+
+        reloaded = load_session("sess-persist")
+        self.assertIsNotNone(reloaded)
+        extra = dict(reloaded.extra)
+        self.assertEqual(extra.get("forum_comment_mode"), "member-bots")
+        self.assertEqual(extra.get("research_forum_thread_id"), 4242)
+        self.assertEqual(
+            extra.get("research_forum_thread_url"), "https://discord.test/4242"
+        )
+        self.assertTrue(extra.get("research_open_call_posted"))
+        self.assertIsNone(extra.get("research_open_call_error"))
+        # Legacy aliases stay in sync for back-compat with existing
+        # diagnostic tests.
+        self.assertTrue(extra.get("forum_kickoff_posted"))
+        self.assertIsNone(extra.get("forum_kickoff_error"))
+
+    def test_persist_research_forum_status_records_kickoff_error(self) -> None:
+        try:
+            from tests._helpers import isolate_cache_for_test
+        except ImportError:  # pragma: no cover - bootstrap path
+            from _helpers import isolate_cache_for_test  # type: ignore
+
+        isolate_cache_for_test(self)
+
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+            load_session,
+            save_session,
+        )
+        from yule_orchestrator.discord.engineering_channel_router import (
+            persist_research_forum_status,
+            EngineeringResearchLoopReport,
+        )
+
+        now = datetime(2026, 4, 30)
+        session = WorkflowSession(
+            session_id="sess-fail",
+            prompt="x",
+            task_type="research",
+            state=WorkflowState.IN_PROGRESS,
+            created_at=now,
+            updated_at=now,
+        )
+        save_session(session)
+
+        report = EngineeringResearchLoopReport(
+            forum_thread_id=99,
+            forum_comment_mode="member-bots",
+            kickoff_posted=False,
+            kickoff_error="forum kickoff 게시 실패: rate limit",
+        )
+        persist_research_forum_status(session=session, report=report)
+
+        reloaded = load_session("sess-fail")
+        extra = dict(reloaded.extra)
+        self.assertFalse(extra.get("research_open_call_posted"))
+        self.assertIn("rate limit", extra.get("research_open_call_error") or "")
+        self.assertEqual(extra.get("forum_comment_mode"), "member-bots")
+
+
+class RoleRuntimePrefaceTests(unittest.TestCase):
+    """Phase B role-runtime MVP: the open-call handler must produce a
+    take whose body covers all 5 sections (이해한 작업 / 역할 관점의
+    판단 / 참고 자료 / 리스크 / 다음 행동) and threads the role policy
+    through the runtime input.
+
+    The deterministic deliberation render already covers 관점 / 근거 /
+    리스크 / 다음 행동, so the preface only needs to add 이해한 작업 +
+    role policy stamping.
+    """
+
+    def setUp(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            reset_handled_turns_for_tests,
+        )
+
+        reset_handled_turns_for_tests()
+        self.addCleanup(reset_handled_turns_for_tests)
+
+    def _session(self):
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+        )
+
+        return WorkflowSession(
+            session_id="sess-rt",
+            prompt=(
+                "운영-리서치 게시 흐름에서 멤버 봇이 진짜 자기 역할로 "
+                "응답했는지 확인할 수 있는 진단 흐름을 설계해줘"
+            ),
+            task_type="landing-page",
+            state=WorkflowState.APPROVED,
+            created_at=datetime(2026, 4, 30),
+            updated_at=datetime(2026, 4, 30),
+            # Include the engineering roles the runtime tests exercise so
+            # the open-call handler accepts them as participants.
+            role_sequence=(
+                "tech-lead",
+                "ai-engineer",
+                "backend-engineer",
+                "qa-engineer",
+            ),
+        )
+
+    def test_open_call_take_includes_runtime_preface_and_role_policy(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            handle_research_turn_message,
+        )
+
+        outcome = handle_research_turn_message(
+            role="ai-engineer",
+            text="[research-open:sess-rt]",
+            session_loader=lambda _sid: self._session(),
+        )
+
+        self.assertIsNotNone(outcome)
+        msg = outcome.message
+        # 5-section contract — 이해한 작업 / 판단 근거 / 참고 자료 (or
+        # research_pack) / 리스크 / 다음 행동. The deterministic role
+        # take rendered by deliberation_role_turn already gives 근거 /
+        # 리스크 / 다음 행동; the runtime preface contributes 이해한
+        # 작업 + role-policy-driven 판단 근거 line.
+        self.assertIn("역할 runtime 결과", msg)
+        self.assertIn("이해한 작업:", msg)
+        self.assertIn("내 역할 관점의 판단 근거", msg)
+        self.assertIn("리스크", msg)
+        self.assertIn("다음 행동", msg)
+        # Role policy short_name is stamped through the preface so a
+        # future runtime can swap to an LLM-backed take without losing
+        # the policy provenance.
+        self.assertIn("ai-engineer", msg)
+        # Existing open-call memo footer must still be present so the
+        # forum thread still distinguishes autonomous takes from
+        # gateway-driven turns.
+        self.assertIn("자율 조사 메모", msg)
+
+    def test_role_runtime_input_carries_role_policy(self) -> None:
+        """The runtime input fed into ``run_runtime_loop`` must carry the
+        role policy. Patches the loop entry to capture the input."""
+
+        from unittest.mock import patch
+
+        captured: dict = {}
+
+        def _capture(input_, **_kwargs):
+            captured["input"] = input_
+
+            class _NoopResult:
+                error = None
+
+            return _NoopResult()
+
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            handle_research_turn_message,
+        )
+
+        with patch(
+            "yule_orchestrator.agents.runtime.run_runtime_loop",
+            side_effect=_capture,
+        ):
+            outcome = handle_research_turn_message(
+                role="backend-engineer",
+                text="[research-open:sess-rt]",
+                session_loader=lambda _sid: self._session(),
+            )
+
+        self.assertIsNotNone(outcome)
+        runtime_input = captured.get("input")
+        self.assertIsNotNone(runtime_input)
+        self.assertEqual(runtime_input.role_id, "engineering-agent/backend-engineer")
+        # Policy carries the canonical short_name + memory filter so the
+        # take preface can stamp them deterministically.
+        policy = (runtime_input.policy or {}).get("role_policy") or {}
+        self.assertEqual(policy.get("short_name"), "backend-engineer")
+        self.assertEqual(policy.get("memory_role_filter"), "backend-engineer")
+        self.assertTrue(policy.get("description"))
+
+    def test_runtime_failure_falls_back_to_deterministic_render(self) -> None:
+        """Runtime errors must not block the post — the deterministic
+        role-turn render still serves as the fallback body."""
+
+        from unittest.mock import patch
+
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            handle_research_turn_message,
+        )
+
+        with patch(
+            "yule_orchestrator.agents.runtime.run_runtime_loop",
+            side_effect=RuntimeError("runtime down"),
+        ):
+            outcome = handle_research_turn_message(
+                role="ai-engineer",
+                text="[research-open:sess-rt]",
+                session_loader=lambda _sid: self._session(),
+            )
+
+        self.assertIsNotNone(outcome)
+        # Deterministic role take's 4-section body must still be there.
+        self.assertIn("**[ai-engineer]**", outcome.message)
+        self.assertIn("리스크", outcome.message)
+        self.assertIn("자율 조사 메모", outcome.message)
+
+
+class RecordRoleTurnEventTests(unittest.TestCase):
+    """``record_role_turn_event`` must persist a role-keyed event on
+    session.extra and never raise from caller-facing code paths."""
+
+    def setUp(self) -> None:
+        try:
+            from tests._helpers import isolate_cache_for_test
+        except ImportError:  # pragma: no cover
+            from _helpers import isolate_cache_for_test  # type: ignore
+
+        isolate_cache_for_test(self)
+
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+            save_session,
+        )
+
+        now = datetime(2026, 4, 30)
+        self._WorkflowSession = WorkflowSession
+        self._WorkflowState = WorkflowState
+        self.session = WorkflowSession(
+            session_id="sess-evt",
+            prompt="hero 정리",
+            task_type="research",
+            state=WorkflowState.APPROVED,
+            created_at=now,
+            updated_at=now,
+        )
+        save_session(self.session)
+
+    def _reload(self):
+        from yule_orchestrator.agents.workflow_state import load_session
+
+        return load_session("sess-evt")
+
+    def test_posted_event_lands_in_role_turns(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            ROLE_TURN_KIND_OPEN,
+            ROLE_TURN_STATUS_POSTED,
+            record_role_turn_event,
+        )
+
+        record_role_turn_event(
+            session_id="sess-evt",
+            role="ai-engineer",
+            kind=ROLE_TURN_KIND_OPEN,
+            status=ROLE_TURN_STATUS_POSTED,
+        )
+        reloaded = self._reload()
+        role_turns = dict((reloaded.extra or {}).get("role_turns") or {})
+        self.assertIn("ai-engineer", role_turns)
+        event = role_turns["ai-engineer"]
+        self.assertEqual(event["status"], "posted")
+        self.assertEqual(event["kind"], "open")
+        self.assertIn("posted_at", event)
+        self.assertNotIn("error", event)
+
+    def test_error_event_records_reason(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            ROLE_TURN_KIND_TURN,
+            ROLE_TURN_STATUS_ERROR,
+            record_role_turn_event,
+        )
+
+        record_role_turn_event(
+            session_id="sess-evt",
+            role="qa-engineer",
+            kind=ROLE_TURN_KIND_TURN,
+            status=ROLE_TURN_STATUS_ERROR,
+            error="Discord 5xx",
+        )
+        reloaded = self._reload()
+        role_turns = dict((reloaded.extra or {}).get("role_turns") or {})
+        self.assertEqual(role_turns["qa-engineer"]["status"], "error")
+        self.assertEqual(role_turns["qa-engineer"]["error"], "Discord 5xx")
+
+    def test_record_failure_is_silent(self) -> None:
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            record_role_turn_event,
+        )
+
+        # No save_session for this id → load returns None → recorder
+        # silently no-ops (no raise).
+        record_role_turn_event(
+            session_id="ghost",
+            role="ai-engineer",
+            kind="open",
+            status="posted",
+        )
+
+    def test_repeated_event_overwrites_latest(self) -> None:
+        """We keep history-light: latest event per role wins so the
+        diagnostic surface stays compact."""
+
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            record_role_turn_event,
+        )
+
+        record_role_turn_event(
+            session_id="sess-evt",
+            role="ai-engineer",
+            kind="open",
+            status="error",
+            error="first",
+        )
+        record_role_turn_event(
+            session_id="sess-evt",
+            role="ai-engineer",
+            kind="open",
+            status="posted",
+        )
+        role_turns = dict((self._reload().extra or {}).get("role_turns") or {})
+        self.assertEqual(role_turns["ai-engineer"]["status"], "posted")
+        self.assertNotIn("error", role_turns["ai-engineer"])
+
+
 if __name__ == "__main__":
     unittest.main()

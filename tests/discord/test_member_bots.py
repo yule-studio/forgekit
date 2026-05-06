@@ -405,5 +405,127 @@ class ReferencesBlockTestCase(unittest.TestCase):
         self.assertEqual(block.count("item-"), 3)
 
 
+# ---------------------------------------------------------------------------
+# Phase B — _post_research_turn records role activity events on session.extra
+# ---------------------------------------------------------------------------
+
+
+class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
+    """When the member bot posts a research-turn outcome, the post path
+    must record a role-turn event so the gateway diagnostic responder
+    can describe which roles actually spoke."""
+
+    def setUp(self) -> None:
+        try:
+            from tests._helpers import isolate_cache_for_test
+        except ImportError:  # pragma: no cover - bootstrap path
+            from _helpers import isolate_cache_for_test  # type: ignore
+
+        isolate_cache_for_test(self)
+
+        from datetime import datetime
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+            save_session,
+        )
+
+        now = datetime(2026, 4, 30)
+        self._session = WorkflowSession(
+            session_id="sess-mb-evt",
+            prompt="hero 정리",
+            task_type="landing-page",
+            state=WorkflowState.APPROVED,
+            created_at=now,
+            updated_at=now,
+        )
+        save_session(self._session)
+
+    def _reload(self):
+        from yule_orchestrator.agents.workflow_state import load_session
+
+        return load_session("sess-mb-evt")
+
+    def _make_outcome(self, *, is_synthesis: bool = False, next_directive=None):
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            ResearchTurnOutcome,
+        )
+
+        return ResearchTurnOutcome(
+            role="ai-engineer",
+            session_id="sess-mb-evt",
+            message="**[ai-engineer]** ...take...",
+            next_directive=next_directive,
+            is_synthesis=is_synthesis,
+        )
+
+    def _fake_channel(self, *, raise_on_send: bool = False):
+        sent: list[str] = []
+
+        class _Channel:
+            async def send(self_inner, content):
+                if raise_on_send:
+                    raise RuntimeError("discord 5xx")
+                sent.append(content)
+
+        return _Channel(), sent
+
+    def test_open_call_post_records_posted_event(self) -> None:
+        import asyncio
+
+        from yule_orchestrator.discord.member_bot import _post_research_turn
+
+        channel, sent = self._fake_channel()
+        outcome = self._make_outcome()  # next_directive=None → kind=open
+        asyncio.run(_post_research_turn(channel, outcome))
+        self.assertTrue(sent)
+
+        role_turns = dict((self._reload().extra or {}).get("role_turns") or {})
+        self.assertIn("ai-engineer", role_turns)
+        event = role_turns["ai-engineer"]
+        self.assertEqual(event["status"], "posted")
+        self.assertEqual(event["kind"], "open")
+        self.assertIn("posted_at", event)
+
+    def test_synthesis_post_records_synthesis_kind(self) -> None:
+        import asyncio
+
+        from yule_orchestrator.discord.member_bot import _post_research_turn
+
+        channel, sent = self._fake_channel()
+        outcome = self._make_outcome(is_synthesis=True)
+        asyncio.run(_post_research_turn(channel, outcome))
+
+        role_turns = dict((self._reload().extra or {}).get("role_turns") or {})
+        self.assertEqual(role_turns["ai-engineer"]["kind"], "synthesis")
+
+    def test_chained_turn_post_records_turn_kind(self) -> None:
+        import asyncio
+
+        from yule_orchestrator.discord.member_bot import _post_research_turn
+
+        channel, sent = self._fake_channel()
+        outcome = self._make_outcome(next_directive="[research-turn:sess-mb-evt qa-engineer]")
+        asyncio.run(_post_research_turn(channel, outcome))
+
+        role_turns = dict((self._reload().extra or {}).get("role_turns") or {})
+        self.assertEqual(role_turns["ai-engineer"]["kind"], "turn")
+
+    def test_send_failure_records_error_and_re_raises(self) -> None:
+        import asyncio
+
+        from yule_orchestrator.discord.member_bot import _post_research_turn
+
+        channel, _ = self._fake_channel(raise_on_send=True)
+        outcome = self._make_outcome()
+        with self.assertRaises(RuntimeError):
+            asyncio.run(_post_research_turn(channel, outcome))
+
+        role_turns = dict((self._reload().extra or {}).get("role_turns") or {})
+        event = role_turns.get("ai-engineer") or {}
+        self.assertEqual(event.get("status"), "error")
+        self.assertIn("discord 5xx", event.get("error") or "")
+
+
 if __name__ == "__main__":
     unittest.main()
