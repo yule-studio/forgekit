@@ -74,6 +74,17 @@ ALL_PREFIXES = THREAD_TITLE_PREFIXES + COMMENT_PREFIXES
 DISCORD_THREAD_TITLE_LIMIT = 100
 TOPIC_BUDGET = 60  # leaves room for the prefix + safety margin
 
+# Discord forum starter message content cap. The API hard-rejects bodies
+# > 4000 chars with ``error code 50035 — Must be 4000 or fewer in length``.
+# We post starters at the lower :data:`FORUM_STARTER_CONTENT_LIMIT` so a
+# single unicode-width surprise (e.g. emoji widening, paragraph the
+# formatter glued in) doesn't push us over.
+DISCORD_MESSAGE_CONTENT_LIMIT = 4000
+FORUM_STARTER_CONTENT_LIMIT = 3900
+FORUM_STARTER_OVERFLOW_NOTICE = (
+    "_본문이 길어 일부를 생략했습니다. 상세 자료는 후속 댓글 또는 Obsidian export를 확인하세요._"
+)
+
 
 def derive_research_topic(pack: "ResearchPack") -> str:
     """Pick a short, semantic topic string for the forum thread title.
@@ -208,6 +219,53 @@ def normalize_thread_title(
     if len(full) <= max_chars:
         return full
     return _safe_truncate(full, max_chars=max_chars)
+
+
+def truncate_for_starter_message(
+    body: str,
+    *,
+    limit: int = FORUM_STARTER_CONTENT_LIMIT,
+    notice: str = FORUM_STARTER_OVERFLOW_NOTICE,
+) -> str:
+    """Trim *body* so it fits Discord's forum starter message limit.
+
+    The starter content cap is 4000 chars; we target a slightly lower
+    ``limit`` (default :data:`FORUM_STARTER_CONTENT_LIMIT`) so unicode
+    surprises don't push the API over. When the body fits as-is we
+    return it unchanged so short threads stay readable.
+
+    Truncation prefers paragraph then line boundaries, falling back to
+    a hard slice. The trailing ``notice`` is always appended when we cut
+    so operators see why the thread looks short and where to find the
+    full record (Obsidian export, follow-up comments).
+
+    The Obsidian/ResearchPack/persistence layers receive the *original*
+    body — only the starter content shown in Discord is shortened.
+    """
+
+    if not body:
+        return body
+    if len(body) <= limit:
+        return body
+
+    notice_block = ("\n\n" + notice) if notice else ""
+    budget = limit - len(notice_block)
+    if budget <= 0:
+        # Pathological tiny limit — fall back to a hard slice of the
+        # notice itself so the caller still gets a string under ``limit``.
+        return notice[:limit] if notice else body[:limit]
+
+    head = body[:budget]
+    # Prefer the last paragraph break inside the budget so we don't
+    # split sections like ``**요약**\n...`` mid-paragraph.
+    pivot = head.rfind("\n\n")
+    if pivot >= int(budget * 0.5):
+        head = head[:pivot]
+    else:
+        line_pivot = head.rfind("\n")
+        if line_pivot >= int(budget * 0.5):
+            head = head[:line_pivot]
+    return head.rstrip() + notice_block
 
 
 def _safe_truncate(text: str, *, max_chars: int) -> str:
@@ -531,7 +589,13 @@ class ForumPostOutcome:
     thread_url: Optional[str] = None
     error: Optional[str] = None
     title: Optional[str] = None
+    # Original full body — preserved for Obsidian export, fallback
+    # rendering, and persistence so no information is lost.
     body: Optional[str] = None
+    # Body that was actually sent to Discord as the starter message
+    # (capped at FORUM_STARTER_CONTENT_LIMIT). Equals ``body`` when the
+    # body fit, otherwise a truncated version with the overflow notice.
+    starter_body: Optional[str] = None
     fallback_markdown: Optional[str] = None
 
 
@@ -580,6 +644,7 @@ async def create_research_post(
         collection_role=collection_role,
         collection_next_steps=collection_next_steps,
     )
+    starter_body = truncate_for_starter_message(body)
 
     if not forum_context.configured:
         reason = "forum channel not configured"
@@ -588,6 +653,7 @@ async def create_research_post(
             error=reason,
             title=title,
             body=body,
+            starter_body=starter_body,
             fallback_markdown=format_thread_markdown_fallback(
                 pack,
                 title=title,
@@ -602,7 +668,7 @@ async def create_research_post(
                 channel_id=forum_context.channel_id,
                 channel_name=forum_context.channel_name,
                 name=title,
-                content=body,
+                content=starter_body,
             )
         )
     except Exception as exc:  # noqa: BLE001 - surface to caller, do not crash
@@ -611,6 +677,7 @@ async def create_research_post(
             error=str(exc),
             title=title,
             body=body,
+            starter_body=starter_body,
             fallback_markdown=format_thread_markdown_fallback(
                 pack,
                 title=title,
@@ -627,6 +694,7 @@ async def create_research_post(
         thread_url=thread_url,
         title=title,
         body=body,
+        starter_body=starter_body,
     )
 
 

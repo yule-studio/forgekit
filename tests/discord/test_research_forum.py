@@ -19,6 +19,9 @@ from yule_orchestrator.agents.research_pack import (
 )
 from yule_orchestrator.discord.research_forum import (
     ALL_PREFIXES,
+    DISCORD_MESSAGE_CONTENT_LIMIT,
+    FORUM_STARTER_CONTENT_LIMIT,
+    FORUM_STARTER_OVERFLOW_NOTICE,
     PREFIX_DECISION,
     PREFIX_OBSIDIAN,
     PREFIX_REFERENCE,
@@ -34,6 +37,7 @@ from yule_orchestrator.discord.research_forum import (
     format_thread_markdown_fallback,
     normalize_thread_title,
     post_agent_comment,
+    truncate_for_starter_message,
 )
 
 
@@ -741,6 +745,166 @@ class BudgetBlockInForumBodyTests(unittest.TestCase):
         )
         self.assertIn("provider calls: 5", body)
         self.assertNotIn("provider calls: 5/0", body)
+
+
+class StarterMessageTruncationTests(unittest.TestCase):
+    """The forum starter message has a hard 4000-char Discord limit.
+
+    Long original-request text + many sources used to push the rendered
+    body above 4000 chars, which Discord rejects with
+    ``50035 — Must be 4000 or fewer in length`` and the whole thread
+    creation fails. The supervisor must guarantee the starter content
+    stays under the safety cap, while preserving the original body for
+    Obsidian export and persistence.
+    """
+
+    def _async_run(self, coro):
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+
+    def _huge_pack(self) -> ResearchPack:
+        from yule_orchestrator.agents.research_pack import ResearchRequest
+
+        long_prompt = ("운영-리서치 forum 게시 안정화 검토. " * 200).strip()
+        big_summary = (
+            "사용자가 올린 자료가 매우 많아서 본문이 4000자를 초과하는 상황을 "
+            "재현한다. 이 케이스에서도 thread 생성이 성공해야 한다. "
+        ) * 30
+        many_sources = tuple(
+            ResearchSource(
+                source_url=(
+                    f"https://example.test/research-source-{i}/"
+                    "very/long/path/segment-which-pads-the-line"
+                ),
+                author_role=f"engineering-agent/role-{i}",
+                message_id=i,
+            )
+            for i in range(120)
+        )
+        return ResearchPack(
+            title="긴 운영-리서치 검토",
+            summary=big_summary,
+            sources=many_sources,
+            tags=("research", "ops", "long"),
+            request=ResearchRequest(
+                request_id="r-long",
+                topic=long_prompt,
+                role="engineering-agent/tech-lead",
+            ),
+        )
+
+    def test_truncate_helper_returns_short_text_unchanged(self) -> None:
+        body = "짧은 본문입니다. 자르지 않아야 한다."
+        self.assertEqual(truncate_for_starter_message(body), body)
+
+    def test_truncate_helper_caps_long_text_at_limit(self) -> None:
+        body = "라\n" * 5000  # ~10000 chars across many lines
+        out = truncate_for_starter_message(body)
+        self.assertLessEqual(len(out), FORUM_STARTER_CONTENT_LIMIT)
+        self.assertIn("일부를 생략", out)
+
+    def test_truncate_helper_includes_overflow_notice(self) -> None:
+        body = "ABC " * 2000
+        out = truncate_for_starter_message(body)
+        self.assertTrue(out.endswith(FORUM_STARTER_OVERFLOW_NOTICE.strip()))
+
+    def test_create_post_sends_starter_under_4000(self) -> None:
+        pack = self._huge_pack()
+        body = format_research_post_body(pack, posted_by="bot:test")
+        self.assertGreater(
+            len(body),
+            DISCORD_MESSAGE_CONTENT_LIMIT,
+            "fixture must produce a body that triggers the regression",
+        )
+
+        captured: dict = {}
+
+        async def thread_fn(**kwargs):
+            captured.update(kwargs)
+            return {"id": 1, "url": "https://discord.test/1"}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+                posted_by="bot:test",
+            )
+        )
+        self.assertTrue(outcome.posted)
+        sent = captured["content"]
+        self.assertLessEqual(len(sent), DISCORD_MESSAGE_CONTENT_LIMIT)
+        self.assertLessEqual(len(sent), FORUM_STARTER_CONTENT_LIMIT)
+        self.assertIn("일부를 생략", sent)
+
+    def test_outcome_preserves_full_body_and_starter_separately(self) -> None:
+        pack = self._huge_pack()
+
+        async def thread_fn(**_):
+            return {"id": 1, "url": "https://discord.test/1"}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+            )
+        )
+        self.assertGreater(len(outcome.body or ""), DISCORD_MESSAGE_CONTENT_LIMIT)
+        self.assertLessEqual(
+            len(outcome.starter_body or ""), FORUM_STARTER_CONTENT_LIMIT
+        )
+        self.assertNotEqual(outcome.body, outcome.starter_body)
+
+    def test_short_body_starter_equals_body(self) -> None:
+        pack = ResearchPack(title="짧은", summary="아주 간단한 요약입니다.")
+
+        async def thread_fn(**_):
+            return {"id": 1, "url": "https://discord.test/1"}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+            )
+        )
+        self.assertEqual(outcome.body, outcome.starter_body)
+        self.assertNotIn("일부를 생략", outcome.starter_body or "")
+
+    def test_failure_path_still_sets_starter_body(self) -> None:
+        pack = self._huge_pack()
+
+        async def thread_fn(**_):
+            raise RuntimeError("400 Bad Request 50035")
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+            )
+        )
+        self.assertFalse(outcome.posted)
+        self.assertIsNotNone(outcome.body)
+        self.assertIsNotNone(outcome.starter_body)
+        self.assertLessEqual(
+            len(outcome.starter_body or ""), FORUM_STARTER_CONTENT_LIMIT
+        )
+
+    def test_status_message_does_not_paste_full_oversized_fallback(self) -> None:
+        # _research_loop_report_from_publish runs the same truncation
+        # helper on fallback markdown so the status message embedded in
+        # a regular Discord channel never inlines a 4000+ char blob.
+        oversized = "라\n" * 4000
+        capped = truncate_for_starter_message(
+            oversized, limit=FORUM_STARTER_CONTENT_LIMIT
+        )
+        self.assertLessEqual(len(capped), FORUM_STARTER_CONTENT_LIMIT)
+        self.assertIn("일부를 생략", capped)
 
 
 if __name__ == "__main__":

@@ -42,7 +42,11 @@ from .engineering_channel_router import (
     should_continue_existing_thread,
     should_start_new_thread,
 )
-from .research_forum import ResearchForumContext
+from .research_forum import (
+    FORUM_STARTER_CONTENT_LIMIT,
+    ResearchForumContext,
+    truncate_for_starter_message,
+)
 from ..agents.research_loop import (
     publish_research_loop_to_forum,
     run_research_loop,
@@ -2012,7 +2016,16 @@ def _research_loop_report_from_publish(
         )
 
     if not thread.posted:
-        fallback_text = thread.fallback_markdown or thread.error or "forum 게시 실패"
+        # The fallback markdown can run thousands of chars. The status
+        # message gets sent to a regular Discord channel (2000-char hard
+        # cap, split into chunks), so cap the embedded fallback at the
+        # forum starter limit and append the truncation notice. Operators
+        # can recover the full record from the Obsidian export.
+        raw_fallback = thread.fallback_markdown or thread.error or "forum 게시 실패"
+        fallback_text = truncate_for_starter_message(
+            raw_fallback,
+            limit=FORUM_STARTER_CONTENT_LIMIT,
+        )
         return EngineeringResearchLoopReport(
             forum_status_message=f"⚠️ 운영-리서치 forum 게시 실패 — fallback markdown:\n{fallback_text}",
             error=thread.error,
