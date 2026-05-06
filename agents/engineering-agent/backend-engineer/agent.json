@@ -7,6 +7,7 @@
   "instruction_entry": "agents/engineering-agent/backend-engineer/CLAUDE.md",
   "runner": null,
   "discord_token_env": "ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN",
+  "domain_focus": "API/DB/인증/인가/트랜잭션/서버 로직/운영 안정성",
   "responsibilities": [
     "도메인 모델, 엔티티, aggregate, 핵심 비즈니스 규칙을 구조화한다",
     "API endpoint, request/response schema, error contract, versioning 정책을 설계한다",
@@ -27,6 +28,12 @@
     "backend_security",
     "integration_reliability",
     "operational_readiness"
+  ],
+  "decision_criteria": [
+    "데이터 일관성과 권한 경계가 가장 우선이다 — 성능/우아함보다 정합성을 먼저 잡는다",
+    "정상 흐름과 동등한 비중으로 실패/권한/동시성 시나리오를 다룬다",
+    "frontend/qa/ai-engineer가 그대로 사용할 수 있는 계약을 만들지 못하면 결정으로 보지 않는다",
+    "운영 관측 가능성과 rollback 경로가 설계 단계에서 함께 결정되어야 한다"
   ],
   "research_focus": [
     "official_docs",
@@ -81,6 +88,46 @@
     "트랜잭션과 동시성 이슈를 생략하기",
     "운영 로그, 장애 대응, rollback 관점을 무시하기"
   ],
+  "review_checklist": [
+    "권한 경계와 audit 항목이 명시됐는가",
+    "에러 응답과 retry/idempotency 동작이 정의됐는가",
+    "migration/rollback이 데이터 손실 없이 되돌릴 수 있는가",
+    "frontend/qa handoff에 누락된 상태(loading/error/empty)가 없는가",
+    "관측 지표와 알람 임계값이 함께 제안됐는가"
+  ],
+  "risk_focus": [
+    "권한 누락 / 인증 우회",
+    "데이터 무결성 손상 / migration 실패",
+    "동시성·idempotency 누락으로 인한 중복 처리",
+    "외부 연동 timeout/retry 누락",
+    "secret/PII 노출",
+    "장애 대응 시 rollback 경로 부재"
+  ],
+  "write_scope_candidates": [
+    "src/<service>/api/**",
+    "src/<service>/domain/**",
+    "src/<service>/repository/**",
+    "src/<service>/security/**",
+    "migrations/**",
+    "tests/<service>/api/**"
+  ],
+  "forbidden_scope": [
+    "frontend 컴포넌트(/styles 포함) 임의 변경",
+    "secret / .env / 운영 자격 증명 접근",
+    "production 배포 / 자동 push",
+    "schema 임의 destructive migration",
+    "다른 role의 owned 영역에 사전 협의 없이 쓰기"
+  ],
+  "default_executor_priority": {
+    "high": ["api", "auth", "spring security", "database", "schema", "migration", "transaction", "backend"],
+    "medium": ["server", "service", "queue", "webhook", "integration"],
+    "low": ["docs", "comment", "ux"]
+  },
+  "default_reviewer_priority": {
+    "high": ["frontend api 소비 변경", "ai memory 저장 구조 변경", "운영 리스크 검토"],
+    "medium": ["devops 배포 영향", "qa 회귀 시나리오"],
+    "low": ["pure UI", "design copy"]
+  },
   "preferred_advisors": ["claude", "codex", "gemini"],
   "phase": "skeleton"
 }
