@@ -505,6 +505,61 @@ Discord slash command는 `yule discord bot` 또는 `yule discord up` 실행 시 
 
    `.env.local`의 `OBSIDIAN_VAULT_PATH`(예: `/Users/<MY_USER>/local-dev/yule-agent-vault/obsidian-vault`)를 사용한다. dry-run 출력에 예상 markdown 경로와 Forum starter에서 잘려나간 본문/출처/synthesis가 포함되어 있어야 한다.
 
+### Coding Agent Authorization MVP
+
+Tech Lead가 사용자의 업무 요청을 받아 *누가* 코드 수정 권한을 가져야 하는지 결정하고, 사용자가 명시적으로 승인한 뒤에만 executor role에게 안전한 prompt가 전달되도록 만든 흐름입니다. 실제 파일 수정 / 자동 merge / 자동 push / 자동 deploy는 이 MVP 범위가 아니며, executor prompt 생성까지만 진행합니다.
+
+**Discord 흐름**
+
+1. 업무 접수 후 같은 thread에서 `코딩 권한 제안` (또는 `수정 권한 제안` / `구현 권한 제안`)이라고 답하면 Tech Lead가 분석한 권한 미리보기가 표시됩니다.
+2. 미리보기에는 executor role / reviewer / participants / write scope / forbidden scope / safety rules / 추천 사유가 포함됩니다.
+3. 동의하면 `수정 승인` / `이대로 구현 진행` / `구현 시작` 중 하나로 답합니다.
+4. 승인이 도착하면 `coding_job=ready` 상태로 `session.extra["coding_job"]`에 저장되고 executor가 실행할 prompt가 함께 만들어집니다.
+
+**Executor role 추천 룰 (deterministic)**
+
+| 작업 키워드 예시 | 추천 executor |
+|---|---|
+| Spring Security / 인증 / API / DB / schema / transaction | `backend-engineer` |
+| React / UI / CSS / 컴포넌트 / 화면 / 접근성 | `frontend-engineer` |
+| RAG / LLM / prompt / memory / agent runtime / evaluation | `ai-engineer` |
+| Docker / CI / GitHub Actions / 배포 / supervisor / monitoring | `devops-engineer` |
+| 회귀 / acceptance / smoke test / fixture | `qa-engineer` |
+| UX copy / 운영 UX / 디자인 토큰 / 사용자 흐름 문서 | `product-designer` |
+| 도메인 키워드 매칭 실패 / 모호 / 빈 요청 | `tech-lead` (clarification fallback) |
+
+`agents/engineering-agent/<role>/agent.json` 의 `default_executor_priority.high|medium|low` 키워드 뱅크가 점수 합산(high=+3, medium=+1.5, low=-1)으로 단일 executor를 결정합니다. 동점일 때는 `backend → ai → devops → frontend → qa → product-designer` 순서로 deterministic 결정.
+
+**상태 진단**
+
+상태 질문 응답과 `yule supervisor run --once` 출력에 다음 라인이 추가됩니다.
+
+```
+- coding_job: pending-approval (executor=`frontend-engineer`) — 사용자 `수정 승인` 대기
+```
+
+또는 승인 후:
+
+```
+- coding_job: ready (executor=`backend-engineer`, write_scope=src/<service>/api/**, src/<service>/auth/** 외)
+```
+
+**Discord에서 시험할 문구 예시**
+
+- `코딩 권한 제안` — 현재 세션을 대상으로 권한 미리보기 생성
+- `이 작업 수정 권한 제안 좀` — 동일
+- `수정 승인` — 대기 중인 권한 제안을 ready job으로 전환
+- `이대로 구현 진행` — 동일
+- `구현 시작` — 동일
+
+**MVP 범위 밖**
+
+- 실제 파일 수정 실행 / 자동 merge / 자동 push / 자동 deploy
+- 다중 role 동시 write
+- secret 접근 / git reset 류 destructive 명령
+- GitHub PR 자동 생성 / merge 자동화
+- 완전 자율 장기 실행
+
 ### Obsidian 로컬 동기화
 
 ResearchPack을 개인 Obsidian vault에 Markdown 파일로 저장하려면 `OBSIDIAN_VAULT_PATH`에 vault 절대경로를 설정합니다. **실제 절대경로는 git에 커밋되는 `.env.example`이 아니라 로컬 전용 `.env.local`에 둡니다** — `.gitignore`가 `.env*`는 제외하고 `.env.example`만 화이트리스트로 추적하기 때문입니다.
