@@ -667,6 +667,12 @@ class ForumPostOutcome:
     # creation success is not undone by chunk failures — the chunk
     # error string is just recorded here for diagnostics.
     continuation_errors: Tuple[str, ...] = field(default_factory=tuple)
+    # Whether a "⚠️ 상세 댓글 일부 실패" notice was successfully posted
+    # to the thread when continuation_errors is non-empty. ``False``
+    # means either no errors occurred, the notice itself failed to
+    # post, or post_message_fn was not provided. The original errors
+    # are preserved on ``continuation_errors`` either way.
+    continuation_notice_posted: bool = False
     fallback_markdown: Optional[str] = None
 
 
@@ -764,12 +770,20 @@ async def create_research_post(
     thread_url = _extract_thread_url(result)
 
     continuation_errors: Tuple[str, ...] = ()
+    notice_posted = False
     if reply_chunks and post_message_fn is not None and thread_id is not None:
         continuation_errors = await _post_continuation_chunks(
             post_message_fn=post_message_fn,
             thread_id=thread_id,
             chunks=reply_chunks,
         )
+        if continuation_errors:
+            notice_posted = await _post_continuation_failure_notice(
+                post_message_fn=post_message_fn,
+                thread_id=thread_id,
+                total_chunks=len(reply_chunks),
+                failed_chunks=len(continuation_errors),
+            )
 
     return ForumPostOutcome(
         posted=True,
@@ -780,6 +794,7 @@ async def create_research_post(
         starter_body=starter_body,
         continuation_chunks=reply_chunks,
         continuation_errors=continuation_errors,
+        continuation_notice_posted=notice_posted,
     )
 
 
@@ -806,6 +821,34 @@ async def _post_continuation_chunks(
         except Exception as exc:  # noqa: BLE001 - record per-chunk
             errors.append(f"chunk {index}/{len(chunks)}: {exc}")
     return tuple(errors)
+
+
+async def _post_continuation_failure_notice(
+    *,
+    post_message_fn: "PostMessageFn",
+    thread_id: int,
+    total_chunks: int,
+    failed_chunks: int,
+) -> bool:
+    """Post a short "댓글 일부 실패" notice into the same forum thread.
+
+    Returns True when the notice posted cleanly, False when the notice
+    itself raised. The thread starter is already in Discord, so a notice
+    failure must never crash :func:`create_research_post` — we just leave
+    the operator-visible record on ``ForumPostOutcome.continuation_errors``.
+    """
+
+    notice = (
+        f"⚠️ 상세 자료 댓글 {total_chunks}건 중 {failed_chunks}건 게시에 "
+        "실패했습니다. 원본 자료는 session/Obsidian export에 보존되어 있어요."
+    )
+    try:
+        await _maybe_await(
+            post_message_fn(thread_id=thread_id, content=notice)
+        )
+    except Exception:  # noqa: BLE001 - notice itself failing must not propagate
+        return False
+    return True
 
 
 async def post_agent_comment(

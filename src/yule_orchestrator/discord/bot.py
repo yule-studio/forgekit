@@ -166,6 +166,14 @@ def run_discord_bot(repo_root: Path) -> None:
                 # conversation classification, intake, kickoff, and the
                 # research loop. Without this the user has no signal that
                 # the gateway is alive during the multi-second flow.
+                #
+                # tech-lead synthesis coverage: when synthesis runs through
+                # the gateway-side legacy path inside research_loop_fn
+                # (publish_research_loop_to_forum -> _post_decision_comment),
+                # the typing indicator stays under this same context so the
+                # gateway bot keeps showing 입력 중... until the synthesis
+                # comment lands. The dedicated tech-lead bot path is
+                # covered separately by member_bot.py's typing wrap.
                 async with typing_context(message.channel):
                     engineering_result = await route_engineering_message(
                         message=message,

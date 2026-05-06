@@ -144,6 +144,38 @@ class MemberBotTypingIntegrationTests(unittest.TestCase):
         self.assertTrue(channel.cm.entered)
         self.assertTrue(channel.cm.exited)
 
+    def test_tech_lead_synthesis_post_runs_inside_typing(self) -> None:
+        """The tech-lead synthesis comment (RESEARCH_SYNTHESIS_ROLE)
+        flows through the same member_bot.on_message → typing_context →
+        _post_research_turn path as every other role. We verify the
+        wrap holds for the tech-lead-flavoured payload too so the bot
+        account shows 입력 중... while synthesis is delivered."""
+
+        from yule_orchestrator.discord.typing_indicator import typing_context
+
+        channel = _FakeChannelWithTyping()
+        events: list[str] = []
+
+        async def fake_send(content: str) -> None:
+            events.append(f"send:{content[:30]}")
+        channel.send = fake_send  # type: ignore[attr-defined]
+
+        synthesis_body = (
+            "[Decision] 합의안 — Forum starter 캡 + thread 분할 게시로 "
+            "4000자 한도 안정화"
+        )
+
+        async def runner() -> None:
+            async with typing_context(channel):
+                events.append("typing-active")
+                await channel.send(synthesis_body)
+
+        _run(runner())
+        self.assertTrue(channel.cm.entered)
+        self.assertTrue(channel.cm.exited)
+        self.assertEqual(events[0], "typing-active")
+        self.assertTrue(events[1].startswith("send:"))
+
 
 if __name__ == "__main__":
     unittest.main()

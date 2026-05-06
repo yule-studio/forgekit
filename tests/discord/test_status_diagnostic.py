@@ -71,6 +71,52 @@ class StatusDiagnosticIntentDetectionTests(unittest.TestCase):
                 intent = detect_engineering_intent(text)
                 self.assertEqual(intent.intent_id, STATUS_DIAGNOSTIC, text)
 
+    def test_detects_expanded_phrases_added_in_polish(self) -> None:
+        # New phrasings the user asked us to cover; each must NOT be
+        # promoted to a new intake or read as a confirm phrase.
+        cases = (
+            "어떻게 됐어?",
+            "어떻게 되고 있어?",
+            "진행상황 좀",
+            "어디까지 갔어?",
+            "뭐가 막혔어",
+            "왜 안 열렸어",
+            "운영-리서치 왜 안 열려",
+            "상태 체크 좀",
+            "다시 한번 확인해줘",
+            "옵시디언 왜 안 들어갔어",
+            "리서치 왜 실패했어",
+            "what happened with the research?",
+            "status check please",
+            "where are we",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                intent = detect_engineering_intent(text)
+                self.assertEqual(intent.intent_id, STATUS_DIAGNOSTIC, text)
+
+    def test_force_new_work_phrase_is_not_status_diagnostic(self) -> None:
+        # "새 작업으로 진행" is the explicit override into a fresh
+        # session — must remain a confirmation, not a status query.
+        from yule_orchestrator.discord.engineering_conversation import (
+            CONFIRM_INTAKE,
+        )
+
+        intent = detect_engineering_intent("새 작업으로 진행")
+        self.assertEqual(intent.intent_id, CONFIRM_INTAKE)
+
+    def test_typical_intake_request_remains_intake(self) -> None:
+        # Typical fresh ask should still flow to the intake-candidate
+        # branch — not get hijacked by a generic phrase like "어떻게".
+        from yule_orchestrator.discord.engineering_conversation import (
+            TASK_INTAKE_CANDIDATE,
+        )
+
+        intent = detect_engineering_intent(
+            "Stripe pricing page 자료 찾아서 hero 카피 정리해줘"
+        )
+        self.assertEqual(intent.intent_id, TASK_INTAKE_CANDIDATE)
+
     def test_does_not_treat_real_work_request_as_status_query(self) -> None:
         # Diagnostic detection must not over-fire; "왜 hero copy를 강조해야
         # 하는지 자료 정리해줘" is a research request, not a status check.

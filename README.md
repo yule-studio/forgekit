@@ -459,6 +459,52 @@ Discord slash command는 `yule discord bot` 또는 `yule discord up` 실행 시 
 - `/engineer_review_reply`는 적용/제안/남은 이슈를 같은 review cycle에 회신합니다.
 - Discord slash command의 `complete`는 inline `references_used`를 받지 않으므로, reference 인용까지 닫으려면 CLI `yule engineer complete --references-used <json>`을 사용합니다.
 
+### Discord 운영 smoke test
+
+브랜치를 실제 Discord에 띄우기 전에 다음 5단계를 순서대로 확인합니다. 모두 dry-run/관찰 작업이고 secret을 읽지 않습니다.
+
+1. **봇 인벤토리 확인** — 9개 봇이 모두 active로 잡히는지.
+
+   ```bash
+   yule discord up --dry-run
+   ```
+
+   기대 출력: `summary: 9 active / 0 skipped` (planning-bot 1 + engineering gateway 1 + 멤버 7).
+
+2. **typing indicator 확인** — 사용자가 봇이 살아 있는지 본다.
+
+   - `#업무-접수` 채널에서 새 요청 메시지를 보내면 `yule-eng-gateway`가 `입력 중...`으로 표시되어야 한다 (gateway가 conversation/intake/kickoff/research_loop 전체를 처리하는 동안 유지).
+   - 작업 thread/forum에서 멤버 봇이 자기 차례를 처리할 때 해당 봇 계정(`yule-eng-backend`, `yule-eng-tech-lead` 등)이 `입력 중...`으로 표시되어야 한다.
+   - 일반 conversation 채널은 기존대로 typing이 보이고 동작은 변하지 않아야 한다.
+
+3. **diagnostic intent 확인** — 새 작업 접수 대신 상태 설명으로 응답하는지.
+
+   다음 질문들을 `#업무-접수`에 보냈을 때 새 session이 만들어지지 않고 현재 열린 session 상태가 답변으로 와야 한다.
+
+   - "운영 리서치는 안 열어?"
+   - "어떻게 됐어?"
+   - "왜 실패했어?"
+   - "진행상황 좀"
+   - "Obsidian 왜 안 들어갔어?"
+
+   확인 포인트: 답변에 session id가 포함되고, "1차 자료를 모아볼게요" 같은 intake 템플릿이 다시 나오면 안 된다. 열린 session이 없으면 안전한 안내 문구("열린 engineering-agent 세션이 보이지 않아요...")가 와야 한다.
+
+4. **Forum long body 확인** — starter는 짧게, 상세 자료는 thread 댓글로 분할.
+
+   매우 긴 리서치 요청(원문 + 다수 자료)을 보내도 운영-리서치 forum 게시가 50035("Must be 4000 or fewer in length")로 실패하지 않아야 한다. 확인 포인트:
+
+   - starter 메시지에 `_본문이 길어 상세 자료는 아래 댓글로 이어집니다. 원본은 Obsidian export에 보존됩니다._` 안내가 들어 있는지.
+   - 같은 thread 안에 후속 댓글이 1900자 이하 chunk로 이어 게시되는지.
+   - 일부 chunk 게시가 실패하면 `⚠️ 상세 자료 댓글 N건 중 K건 게시에 실패했습니다…` 안내 댓글이 한 건 추가되는지.
+
+5. **Obsidian sync 확인** — 원본은 vault에 보존되는지.
+
+   ```bash
+   yule obsidian sync --session <session_id> --dry-run
+   ```
+
+   `.env.local`의 `OBSIDIAN_VAULT_PATH`(예: `/Users/<MY_USER>/local-dev/yule-agent-vault/obsidian-vault`)를 사용한다. dry-run 출력에 예상 markdown 경로와 Forum starter에서 잘려나간 본문/출처/synthesis가 포함되어 있어야 한다.
+
 ### Obsidian 로컬 동기화
 
 ResearchPack을 개인 Obsidian vault에 Markdown 파일로 저장하려면 `OBSIDIAN_VAULT_PATH`에 vault 절대경로를 설정합니다. **실제 절대경로는 git에 커밋되는 `.env.example`이 아니라 로컬 전용 `.env.local`에 둡니다** — `.gitignore`가 `.env*`는 제외하고 `.env.example`만 화이트리스트로 추적하기 때문입니다.

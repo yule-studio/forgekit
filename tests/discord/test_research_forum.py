@@ -1061,6 +1061,108 @@ class ForumStarterPlusRepliesSplitTests(unittest.TestCase):
         self.assertGreater(len(outcome.continuation_errors), 0)
         self.assertIn("rate limit", outcome.continuation_errors[0])
 
+    def test_continuation_failure_notice_posts_when_chunks_fail(self) -> None:
+        """When at least one chunk fails to post, a short ⚠️ notice
+        comment must be added to the same forum thread so the operator
+        sees the partial loss in-channel — not just in logs."""
+
+        pack = self._huge_pack()
+
+        async def thread_fn(**_):
+            return {"id": 11, "url": "https://discord.test/11"}
+
+        sent: list[dict] = []
+        call_count = {"n": 0}
+
+        async def flaky_post_fn(**kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 2:
+                raise RuntimeError("rate limit")
+            sent.append(dict(kwargs))
+            return {"id": call_count["n"]}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+                post_message_fn=flaky_post_fn,
+            )
+        )
+        self.assertTrue(outcome.posted)
+        self.assertGreater(len(outcome.continuation_errors), 0)
+        self.assertTrue(outcome.continuation_notice_posted)
+        # The notice itself was sent to the same thread
+        notice_calls = [
+            call for call in sent
+            if "⚠️" in call.get("content", "") and "댓글" in call.get("content", "")
+        ]
+        self.assertEqual(len(notice_calls), 1)
+        notice = notice_calls[0]
+        self.assertEqual(notice["thread_id"], 11)
+        # Notice itself must stay short — well under Discord's 2000-char
+        # message limit and even under the reply chunk cap so it doesn't
+        # itself trigger the size guard.
+        self.assertLessEqual(
+            len(notice["content"]), DISCORD_MESSAGE_REPLY_LIMIT
+        )
+
+    def test_continuation_failure_notice_swallow_notice_failure(self) -> None:
+        """Notice posting is best-effort. If even the notice fails, the
+        publish function must not raise — it just records
+        notice_posted=False and keeps continuation_errors intact."""
+
+        pack = self._huge_pack()
+
+        async def thread_fn(**_):
+            return {"id": 13, "url": "https://discord.test/13"}
+
+        async def always_fail(**_):
+            raise RuntimeError("post endpoint down")
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+                post_message_fn=always_fail,
+            )
+        )
+        self.assertTrue(outcome.posted)
+        # Every chunk failed → many continuation_errors recorded
+        self.assertEqual(
+            len(outcome.continuation_errors),
+            len(outcome.continuation_chunks),
+        )
+        self.assertFalse(outcome.continuation_notice_posted)
+
+    def test_continuation_no_notice_when_all_chunks_succeed(self) -> None:
+        pack = self._huge_pack()
+
+        async def thread_fn(**_):
+            return {"id": 14, "url": "https://discord.test/14"}
+
+        sent: list[dict] = []
+
+        async def post_fn(**kwargs):
+            sent.append(dict(kwargs))
+            return {"id": len(sent)}
+
+        outcome = self._async_run(
+            create_research_post(
+                pack,
+                forum_context=ResearchForumContext(channel_id=42),
+                create_thread_fn=thread_fn,
+                post_message_fn=post_fn,
+            )
+        )
+        self.assertTrue(outcome.posted)
+        self.assertEqual(outcome.continuation_errors, ())
+        self.assertFalse(outcome.continuation_notice_posted)
+        self.assertNotIn(
+            "⚠️", "\n".join(call["content"] for call in sent)
+        )
+
     def test_create_post_skips_continuation_when_no_post_fn(self) -> None:
         # Backwards compatibility: callers who don't pass post_message_fn
         # still get a working starter and the chunks recorded for later

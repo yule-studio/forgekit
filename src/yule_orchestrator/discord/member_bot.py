@@ -101,6 +101,12 @@ def run_member_bot(profile: MemberBotProfile) -> None:
             # Compose + post happens inside a typing context so the
             # member bot's account shows ``입력 중...`` while its take is
             # being assembled.
+            #
+            # tech-lead role: when ``profile.role == 'tech-lead'`` and the
+            # marker is ``RESEARCH_SYNTHESIS_ROLE``, this same wrap covers
+            # the synthesis comment so the tech-lead bot account types in
+            # the forum thread. The gateway-side legacy synthesis path is
+            # covered by the typing wrap in bot.py:on_message.
             research_outcome = handle_research_turn_message(
                 role=profile.role,
                 text=text,
