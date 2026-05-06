@@ -147,6 +147,34 @@ def build_engineering_conversation_response(
     intent = detect_engineering_intent(message_text)
     mention_user_id = author_user_id if mention_user else None
 
+    # Bot-echo guard — when the user pastes one of the gateway's own
+    # template lines back into the channel, the live MVP loop fires:
+    # gateway treats the paste as a fresh research request, runs
+    # auto_collect, asks for confirmation, repeats. Catch it before
+    # any branch (status / confirm / split / intake) can act on the
+    # echoed text. Status questions are exempt because the diagnostic
+    # responder reads existing state, not the message body.
+    try:
+        from ..agents.routing import is_bot_echo_phrase as _is_bot_echo
+    except Exception:  # noqa: BLE001 - never fail conversation on import wiring
+        _is_bot_echo = None
+    if (
+        _is_bot_echo is not None
+        and intent.intent_id != STATUS_DIAGNOSTIC
+        and _is_bot_echo(message_text)
+    ):
+        body = (
+            "방금 받은 메시지가 gateway가 보낸 안내문 문구와 똑같아서 "
+            "새 작업으로 등록하지 않았어요.\n"
+            "진행할 업무 원문을 다시 알려주세요."
+        )
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=NEEDS_CLARIFICATION,
+            needs_clarification=True,
+            mention_user_id=mention_user_id,
+        )
+
     if intent.intent_id == STATUS_DIAGNOSTIC:
         # User is asking what's going on with the existing work, not
         # filing a new task. Read the latest open session via the
@@ -385,6 +413,21 @@ def _maybe_run_auto_collect(
     if not auto_collect:
         return None
     if not (message_text or "").strip():
+        return None
+    # Bot-echo / command-only guard — the gateway's own template lines
+    # ("좋습니다. 이대로 작업을 등록할게요…" / "자료가 부족합니다…")
+    # and bare confirm phrases ("새 작업으로 진행" / "이대로 진행")
+    # must never be queried as fresh research material. Without this
+    # guard the live MVP loop fires: user pastes the bot's own line
+    # back, gateway auto-collects 11 sources, gateway then asks for
+    # confirmation, user replies with another command-only phrase,
+    # repeat. See ``routing.is_non_actionable_prompt`` for the
+    # canonical predicate.
+    try:
+        from ..agents.routing import is_non_actionable_prompt as _is_blocked
+    except Exception:  # noqa: BLE001 - never block conversation on import wiring
+        _is_blocked = None
+    if _is_blocked is not None and _is_blocked(message_text):
         return None
     try:
         from ..agents.research_collector import (

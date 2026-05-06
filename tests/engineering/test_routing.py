@@ -219,5 +219,113 @@ class CandidateSummaryShapeTests(unittest.TestCase):
         self.assertIn("Stripe", first.title)
 
 
+class CommandOnlyPromptScoringTests(unittest.TestCase):
+    """Live MVP regression: when the user replies "이대로 진행" and a
+    prior bug left zombie sessions whose ``prompt`` is itself the
+    confirm phrase, the token scorer used to return them at score 1.0
+    because the overlap was {이대로, 진행} ∩ {이대로, 진행} = 2/2.
+    Sessions with command-only prompts must now be filtered out of the
+    prompt-field overlap unless they expose a real description via
+    ``extra.canonical_prompt_override``."""
+
+    def test_zombie_command_only_session_gets_zero_score(self) -> None:
+        zombie = _session(session_id="zombie-1", prompt="이대로 진행")
+        # A real session in the same set so we can confirm scoring
+        # isn't simply broken everywhere.
+        real = _session(
+            session_id="real-1",
+            prompt="Stripe pricing 페이지 hero copy 정리",
+        )
+        decision = decide_routing(
+            prompt="이대로 진행",
+            open_sessions=(zombie, real),
+        )
+        # The router must not return the zombie at score 1.0 — that
+        # was the live bug. Either nothing matches (CREATE) or the
+        # real session matches via task_type / summary.
+        if decision.candidate_summaries:
+            for cand in decision.candidate_summaries:
+                if cand.session_id == "zombie-1":
+                    self.assertLess(cand.score, 0.5, cand)
+        # And we never JOIN the zombie.
+        self.assertNotEqual(decision.matched_session_id, "zombie-1")
+
+    def test_canonical_prompt_override_is_used_for_scoring(self) -> None:
+        # Session has a command-only prompt but exposes the real task
+        # description via extra.canonical_prompt_override — the
+        # scorer must use the override so the user can re-discover
+        # the session via natural keywords.
+        recovered = _session(
+            session_id="recovered-1",
+            prompt="이대로 진행",
+            extra={
+                "canonical_prompt_override": (
+                    "Stripe pricing 페이지 hero copy 정리"
+                ),
+            },
+        )
+        decision = decide_routing(
+            prompt="Stripe pricing hero copy 다시 보자",
+            open_sessions=(recovered,),
+        )
+        self.assertEqual(decision.action, ACTION_JOIN)
+        self.assertEqual(decision.matched_session_id, "recovered-1")
+
+
+class ThreadIdAnchorTests(unittest.TestCase):
+    """Confirm-routing fix: when ``thread_id`` is passed and a session
+    matches, that session wins over token scoring. Guarantees that a
+    confirm phrase typed inside a work thread always lands on that
+    thread's session — even when the prompt body is a generic confirm
+    string that the scorer would otherwise miss-match against zombie
+    sessions."""
+
+    def test_thread_id_match_wins_over_token_score(self) -> None:
+        thread_session = _session(
+            session_id="thread-bound",
+            prompt="결제 모듈 멱등성",
+            thread_id=909,
+        )
+        unrelated = _session(
+            session_id="unrelated",
+            prompt="브랜드 메인 페이지 디자인",
+        )
+        decision = decide_routing(
+            prompt="이대로 진행",
+            open_sessions=(thread_session, unrelated),
+            thread_id=909,
+        )
+        self.assertEqual(decision.action, ACTION_JOIN)
+        self.assertEqual(decision.matched_session_id, "thread-bound")
+        self.assertEqual(decision.confidence, "high")
+        self.assertIn("thread anchor", decision.reason)
+
+    def test_thread_id_without_match_falls_through_to_scoring(self) -> None:
+        # No session has thread_id=909 → fall through to token
+        # scoring (and ACTION_CREATE because nothing overlaps).
+        a = _session(session_id="a", prompt="브랜드 메인 페이지")
+        decision = decide_routing(
+            prompt="결제 모듈 추가",
+            open_sessions=(a,),
+            thread_id=909,
+        )
+        self.assertEqual(decision.action, ACTION_CREATE)
+
+    def test_explicit_new_work_overrides_thread_anchor(self) -> None:
+        # User in a work thread, but explicitly typed "새 작업으로
+        # 진행" → must still create a fresh session (force-new wins).
+        thread_session = _session(
+            session_id="thread-bound",
+            prompt="결제 모듈 멱등성",
+            thread_id=909,
+        )
+        decision = decide_routing(
+            prompt="새 작업으로 진행 — 별개 작업입니다",
+            open_sessions=(thread_session,),
+            thread_id=909,
+        )
+        self.assertEqual(decision.action, ACTION_CREATE)
+
+
 if __name__ == "__main__":
     unittest.main()

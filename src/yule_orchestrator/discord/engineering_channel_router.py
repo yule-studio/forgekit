@@ -43,6 +43,9 @@ from ..agents.routing import (
     ACTION_JOIN,
     EngineeringRoutingDecision,
     decide_routing,
+    is_bot_echo_phrase,
+    is_command_only_prompt,
+    is_non_actionable_prompt,
     list_open_sessions,
 )
 from ..agents.runtime import (
@@ -485,8 +488,48 @@ async def route_engineering_message(
     # to ``prompt_text`` when the conversation layer has no separate task
     # text (direct-confirm / single-message confirmation).
     routing_prompt = intake_prompt or prompt_text
+    routing_thread_id = _thread_id_for_runtime(message)
+
+    # Confirm-routing + bot-echo guard. ``routing_prompt`` is what
+    # we'll feed into ``decide_routing`` AND, on the CREATE branch,
+    # what we'll persist as ``session.prompt`` via ``intake_fn``. So
+    # if it's a bare confirm phrase ("이대로 진행" / "새 작업으로
+    # 진행") or a verbatim bot-echo paste-back ("좋습니다. 이대로
+    # 작업을 등록할게요…"), we must refuse to act on it:
+    #   • token scorer would 1.0-match zombie sessions whose prompt
+    #     is the same confirm phrase
+    #   • CREATE would silently spawn another zombie row whose
+    #     session.prompt is "새 작업으로 진행" (the live bot-echo
+    #     loop reported in the MVP test)
+    # When the user is sitting in an open work thread we don't bail
+    # — the thread anchor inside ``decide_routing`` will still pick
+    # that session up and route to JOIN.
+    if is_non_actionable_prompt(routing_prompt) and routing_thread_id is None:
+        if is_bot_echo_phrase(routing_prompt):
+            clarification = (
+                "방금 받은 메시지가 gateway가 보낸 안내문 문구와 똑같아서 "
+                "새 작업으로 등록하지 않았어요.\n"
+                "진행할 업무 원문을 다시 알려주세요. 짧은 확인 문구는 "
+                "작업 본문으로 사용할 수 없어요."
+            )
+        else:
+            clarification = (
+                "진행할 업무 원문을 다시 알려주세요. \"이대로 진행\" / "
+                "\"새 작업으로 진행\" 같은 확인 문구는 작업 본문으로 "
+                "사용할 수 없어요.\n"
+                "기존 작업을 이어가려면 `기존 세션 <id>`로 답해 주세요."
+            )
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
+        )
+
     try:
-        routing_decision = decide_routing(prompt=routing_prompt)
+        routing_decision = decide_routing(
+            prompt=routing_prompt,
+            thread_id=routing_thread_id,
+        )
     except Exception as exc:  # noqa: BLE001 - routing must not crash the bot
         routing_decision = EngineeringRoutingDecision(
             action=ACTION_CREATE,
@@ -568,6 +611,25 @@ async def route_engineering_message(
             handled=True,
             conversation_message=outcome.content or None,
             error="existing engineering thread not found",
+            routing_decision=routing_decision,
+        )
+
+    # Defensive intake guard — even if the upstream routing guard
+    # didn't trip (e.g. thread_id was set but no anchor matched and
+    # token scoring returned CREATE), we must NOT persist a zombie
+    # session whose prompt is "새 작업으로 진행" / "이대로 진행" /
+    # a bot-echo paste-back. The CREATE branch is the last writer of
+    # session.prompt, so this is the final firewall.
+    if is_non_actionable_prompt(intake_prompt):
+        clarification = (
+            "진행할 업무 원문을 다시 알려주세요. \"이대로 진행\" / "
+            "\"새 작업으로 진행\" 같은 확인 문구나 gateway 안내문은 "
+            "작업 본문으로 사용할 수 없어요."
+        )
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
             routing_decision=routing_decision,
         )
 

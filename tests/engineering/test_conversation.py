@@ -738,5 +738,69 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertEqual(response.intent_id, TASK_INTAKE_CANDIDATE)
 
 
+class BotEchoAndCommandOnlyGuardTests(unittest.TestCase):
+    """Live MVP regression: when the user pastes one of the gateway's
+    template lines back into the channel ("좋습니다. 이대로 작업을
+    등록할게요…" / "자료가 부족합니다…"), or types a bare confirm
+    phrase ("새 작업으로 진행"), the conversation builder must not
+    treat it as a fresh research request. Without this guard the
+    auto-collect loop reported in the live test fires: paste echo →
+    11 sources collected → confirmation prompt → confirm phrase →
+    routing matches zombie sessions → repeat.
+    """
+
+    def _build(self, text: str, **kwargs):
+        return build_engineering_conversation_response(text, **kwargs)
+
+    def test_bot_intake_echo_returns_clarification_not_intake(self) -> None:
+        echo = (
+            "좋습니다. 이대로 작업을 등록할게요.\n"
+            "intake가 만들어지면 세션 ID와 승인 안내를 이어서 드릴게요."
+        )
+
+        # Trip a collector invocation if the guard fails — the test
+        # would observe a TASK_INTAKE_CANDIDATE response with a real
+        # research pack instead of NEEDS_CLARIFICATION.
+        class _RecordingCollector:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def __call__(self, *_args, **_kwargs):
+                self.calls += 1
+                raise AssertionError("auto_collect must NOT run on bot-echo")
+
+        recording = _RecordingCollector()
+        response = self._build(echo, collector=recording, auto_collect=True)
+        self.assertEqual(response.intent_id, NEEDS_CLARIFICATION)
+        self.assertTrue(response.needs_clarification)
+        self.assertIn("gateway가 보낸 안내문", response.content)
+        self.assertEqual(recording.calls, 0)
+
+    def test_research_sufficiency_echo_returns_clarification(self) -> None:
+        echo = (
+            "자료가 부족합니다. 참고할 링크나 이미지를 올려주실까요?"
+        )
+        response = self._build(echo, auto_collect=True)
+        self.assertEqual(response.intent_id, NEEDS_CLARIFICATION)
+        self.assertIn("gateway가 보낸 안내문", response.content)
+
+    def test_bare_command_only_phrase_does_not_trigger_collector(self) -> None:
+        # "새 작업으로 진행" is a CONFIRM_INTAKE intent — it should
+        # NOT enter the default TASK_INTAKE_CANDIDATE branch and so
+        # _maybe_run_auto_collect must never run. This is the
+        # second-line defence against the auto-collect loop.
+        class _Boom:
+            def __call__(self, *_args, **_kwargs):
+                raise AssertionError("collector must not run for confirm phrase")
+
+        response = self._build(
+            "새 작업으로 진행",
+            collector=_Boom(),
+            last_proposed_prompt=None,
+            auto_collect=True,
+        )
+        self.assertEqual(response.intent_id, CONFIRM_INTAKE)
+
+
 if __name__ == "__main__":
     unittest.main()
