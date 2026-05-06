@@ -49,6 +49,8 @@ OBSIDIAN_PENDING_APPROVAL = "obsidian_pending_approval"
 OBSIDIAN_WRITE_FAILED = "obsidian_write_failed"
 RESEARCH_LOOP_ERROR = "research_loop_error"
 SESSION_CLOSED = "session_closed"
+CODING_PROPOSAL_PENDING = "coding_proposal_pending"
+CODING_JOB_READY = "coding_job_ready"
 
 
 # Severity ordering — used by callers that want to surface the "worst"
@@ -99,6 +101,10 @@ class SessionStatusReport:
     obsidian_write_error: Optional[str]
     research_loop_error: Optional[str]
     last_progress_note: Optional[str]
+    coding_proposal_present: bool = False
+    coding_job_status: Optional[str] = None
+    coding_executor_role: Optional[str] = None
+    coding_write_scope: Tuple[str, ...] = ()
     signals: Tuple[SessionStatusSignal, ...] = field(default_factory=tuple)
 
     def has_signal(self, code: str) -> bool:
@@ -203,6 +209,29 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
     progress_notes = tuple(getattr(session, "progress_notes", ()) or ())
     last_progress_note = str(progress_notes[-1]) if progress_notes else None
 
+    coding_proposal_payload = extra.get("coding_proposal")
+    coding_job_payload = extra.get("coding_job")
+    coding_proposal_present = isinstance(coding_proposal_payload, Mapping) and bool(
+        coding_proposal_payload
+    )
+    coding_job_status: Optional[str] = None
+    coding_executor_role: Optional[str] = None
+    coding_write_scope: Tuple[str, ...] = ()
+    if isinstance(coding_job_payload, Mapping) and coding_job_payload:
+        coding_job_status = _coerce_str(coding_job_payload.get("status"))
+        coding_executor_role = _coerce_str(coding_job_payload.get("executor_role"))
+        raw_scope = coding_job_payload.get("write_scope") or ()
+        if isinstance(raw_scope, (list, tuple)):
+            coding_write_scope = tuple(str(item) for item in raw_scope if item)
+    elif coding_proposal_present and isinstance(coding_proposal_payload, Mapping):
+        coding_job_status = "pending-approval"
+        coding_executor_role = _coerce_str(
+            coding_proposal_payload.get("executor_role")
+        )
+        raw_scope = coding_proposal_payload.get("write_scope") or ()
+        if isinstance(raw_scope, (list, tuple)):
+            coding_write_scope = tuple(str(item) for item in raw_scope if item)
+
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value)
 
@@ -222,6 +251,9 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
         obsidian_proposal_present=obsidian_proposal_present,
         obsidian_write_error=obsidian_write_error,
         research_loop_error=research_loop_error,
+        coding_proposal_present=coding_proposal_present,
+        coding_job_status=coding_job_status,
+        coding_executor_role=coding_executor_role,
     )
 
     return SessionStatusReport(
@@ -245,6 +277,10 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
         obsidian_write_error=obsidian_write_error,
         research_loop_error=research_loop_error,
         last_progress_note=last_progress_note,
+        coding_proposal_present=coding_proposal_present,
+        coding_job_status=coding_job_status,
+        coding_executor_role=coding_executor_role,
+        coding_write_scope=coding_write_scope,
         signals=signals,
     )
 
@@ -266,6 +302,9 @@ def _detect_signals(
     obsidian_proposal_present: bool,
     obsidian_write_error: Optional[str],
     research_loop_error: Optional[str],
+    coding_proposal_present: bool = False,
+    coding_job_status: Optional[str] = None,
+    coding_executor_role: Optional[str] = None,
 ) -> Tuple[SessionStatusSignal, ...]:
     """Walk the session shape and emit signals in pipeline order."""
 
@@ -419,6 +458,39 @@ def _detect_signals(
             )
         )
 
+    # 7b) Coding authorization 단계 — proposal pending이면 사용자 승인 대기.
+    if coding_proposal_present and coding_job_status in {None, "pending-approval"}:
+        signals.append(
+            SessionStatusSignal(
+                code=CODING_PROPOSAL_PENDING,
+                severity="blocked",
+                title="코딩 권한 제안 승인 대기",
+                detail=(
+                    f"executor 후보: `{coding_executor_role or 'unknown'}` — "
+                    "사용자 승인 phrase가 도착해야 coding job이 ready로 전환됩니다."
+                ),
+                propose=(
+                    "Discord에서 `수정 승인` / `이대로 구현 진행` / `구현 시작` 중 하나로 답하거나, "
+                    "권한이 잘못 잡혔으면 `코딩 권한 제안`으로 다시 요청하세요."
+                ),
+            )
+        )
+    elif coding_job_status == "ready":
+        signals.append(
+            SessionStatusSignal(
+                code=CODING_JOB_READY,
+                severity="info",
+                title="코딩 권한 승인 완료",
+                detail=(
+                    f"executor: `{coding_executor_role or 'unknown'}` — "
+                    "executor에게 안전한 prompt가 만들어진 상태입니다."
+                ),
+                propose=(
+                    "executor가 계획을 보여주고 사용자 추가 승인을 받은 뒤에만 실제 코드 변경을 진행하세요."
+                ),
+            )
+        )
+
     # 8) research-loop hook 자체가 에러를 보고한 경우
     if research_loop_error:
         signals.append(
@@ -458,6 +530,16 @@ def render_diagnostic_summary(report: SessionStatusReport) -> str:
     lines.append(f"- 세션: `{report.session_id}`")
     lines.append(f"- 상태: {report.state or 'unknown'}")
     lines.append(f"- 종류: {report.task_type or 'unknown'}")
+    if report.coding_job_status:
+        executor = report.coding_executor_role or "unknown"
+        lines.append(
+            f"- coding_job: {report.coding_job_status} (executor=`{executor}`)"
+        )
+        if report.coding_write_scope:
+            scope_preview = ", ".join(report.coding_write_scope[:3])
+            if len(report.coding_write_scope) > 3:
+                scope_preview += " 외"
+            lines.append(f"  · write_scope: {scope_preview}")
 
     actionable = tuple(s for s in report.signals if s.severity != "info")
     if actionable:

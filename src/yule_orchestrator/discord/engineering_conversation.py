@@ -898,6 +898,37 @@ def _format_general_help() -> str:
     )
 
 
+def _format_coding_status_line(
+    proposal_payload: Any,
+    job_payload: Any,
+) -> Optional[str]:
+    """Render a single ``- coding_job: ...`` line for the diagnostic.
+
+    Coding job (approved) wins over a still-pending proposal. Empty
+    extras yield ``None`` so the caller skips the line entirely.
+    """
+
+    if isinstance(job_payload, Mapping) and job_payload:
+        status = job_payload.get("status") or "ready"
+        executor = job_payload.get("executor_role") or "unknown"
+        scope = job_payload.get("write_scope") or ()
+        if isinstance(scope, (list, tuple)) and scope:
+            preview = ", ".join(str(s) for s in tuple(scope)[:2])
+            if len(scope) > 2:
+                preview += " 외"
+            return (
+                f"- coding_job: {status} (executor=`{executor}`, write_scope={preview})"
+            )
+        return f"- coding_job: {status} (executor=`{executor}`)"
+    if isinstance(proposal_payload, Mapping) and proposal_payload:
+        executor = proposal_payload.get("executor_role") or "unknown"
+        return (
+            f"- coding_job: pending-approval (executor=`{executor}`) — "
+            "사용자 `수정 승인` 대기"
+        )
+    return None
+
+
 def format_status_diagnostic_response(
     session: Optional[Any],
     *,
@@ -943,6 +974,8 @@ def format_status_diagnostic_response(
     forum_comment_mode = extra.get("forum_comment_mode")
     forum_kickoff_posted = extra.get("forum_kickoff_posted")
     forum_kickoff_error = extra.get("forum_kickoff_error")
+    coding_proposal_payload = extra.get("coding_proposal")
+    coding_job_payload = extra.get("coding_job")
 
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value) or "unknown"
@@ -957,6 +990,12 @@ def format_status_diagnostic_response(
         f"- 종류: {task_type}",
         f"- research_pack: {'있음' if research_pack else '없음'}",
     ]
+
+    coding_status_line = _format_coding_status_line(
+        coding_proposal_payload, coding_job_payload
+    )
+    if coding_status_line:
+        lines.append(coding_status_line)
 
     if forum_thread_id or forum_thread_url:
         thread_label = forum_thread_url or f"thread `{forum_thread_id}`"
@@ -2014,6 +2053,7 @@ __all__ = [
     "classify_url",
     "collect_research_candidates_from_message",
     "format_insufficient_research_prompt",
+    "format_status_diagnostic_response",
     "suggest_role_research_assignments",
     # source_type constants
     "SOURCE_TYPE_USER_MESSAGE",
