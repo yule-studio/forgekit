@@ -15,8 +15,17 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional, Sequence, Union
+from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
+from ..agents.coding_authorization import (
+    CodingAuthorizationProposal,
+    format_authorization_message,
+    recommend_authorization,
+)
+from ..agents.coding_job import (
+    STATUS_READY,
+    build_coding_job_from_proposal,
+)
 from ..agents.obsidian_approval import (
     ObsidianApprovalError,
     build_save_proposal,
@@ -375,6 +384,22 @@ async def route_engineering_message(
     prompt_text = (prompt_text or "").strip()
     if not prompt_text:
         return EngineeringRouteResult(handled=False)
+
+    # Coding authorization gate — handles the two new MVP intents:
+    #   ① "코딩 권한 제안" / "수정 권한 제안" → build proposal preview,
+    #   ② "수정 승인" / "이대로 구현 진행" / "구현 시작" → flip pending
+    #      proposal to a ready CodingJob.
+    # Runs before the runtime preflight so a bare approval phrase never
+    # gets re-classified as a new task.
+    if list_sessions_fn is not None:
+        coding = await _run_coding_authorization_gate(
+            message=message,
+            prompt_text=prompt_text,
+            list_sessions_fn=list_sessions_fn,
+            send_chunks=send_chunks,
+        )
+        if coding is not None:
+            return coding
 
     # Obsidian approval gate — runs before runtime preflight so an
     # explicit "저장 승인" / "이대로 저장" never falls through to the
@@ -832,6 +857,389 @@ async def _handle_clarification_selection(
         thread_continuation_fn=thread_continuation_fn,
         research_loop_fn=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Coding authorization gate
+# ---------------------------------------------------------------------------
+
+
+_CODING_PROPOSAL_REQUEST_PHRASES: tuple[str, ...] = (
+    "코딩 권한 제안",
+    "수정 권한 제안",
+    "구현 권한 제안",
+    "코딩 권한 정리",
+    "수정 권한 정리",
+    "코딩 권한 받자",
+    "코딩 권한 잡자",
+    "이 작업 코딩 권한",
+    "이 작업 수정 권한",
+    "이 작업 구현 권한",
+    "코딩 권한 만들",
+)
+
+
+_CODING_APPROVAL_PHRASES: tuple[str, ...] = (
+    "수정 승인",
+    "코딩 진행 승인",
+    "코딩 승인",
+    "구현 진행 승인",
+    "구현 승인",
+    "이대로 구현 진행",
+    "이대로 코딩 진행",
+    "구현 시작",
+    "코딩 시작",
+    "권한 승인",
+)
+
+
+def is_coding_proposal_request(text: str) -> bool:
+    """True when *text* asks Tech Lead to draft a coding authorization."""
+
+    if not text:
+        return False
+    normalised = " ".join(text.lower().split())
+    return any(phrase in normalised for phrase in _CODING_PROPOSAL_REQUEST_PHRASES)
+
+
+def is_coding_approval_phrase(text: str) -> bool:
+    """True when *text* approves a previously-shown coding proposal."""
+
+    if not text:
+        return False
+    normalised = " ".join(text.lower().split())
+    return any(phrase in normalised for phrase in _CODING_APPROVAL_PHRASES)
+
+
+def _find_session_with_pending_coding_proposal(
+    *,
+    message: Any,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+) -> Optional[Any]:
+    """Pick the session whose ``extra['coding_proposal']`` should pair
+    with this approval phrase. Mirrors ``_find_session_with_pending_proposal``
+    but reads the coding key instead of the obsidian key."""
+
+    try:
+        try:
+            sessions = list_sessions_fn(limit=50)
+        except TypeError:
+            sessions = list_sessions_fn()
+    except Exception:  # noqa: BLE001
+        return None
+    if not sessions:
+        return None
+
+    channel = getattr(message, "channel", None)
+    channel_id = getattr(channel, "id", None)
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is None and getattr(channel, "parent", None) is None:
+        thread_id = None
+        scoped_channel_id = channel_id
+    else:
+        thread_id = channel_id
+        scoped_channel_id = parent_id
+    user_id = getattr(getattr(message, "author", None), "id", None)
+
+    candidates = [
+        s
+        for s in sessions
+        if isinstance(getattr(s, "extra", None), Mapping)
+        and dict(getattr(s, "extra")).get("coding_proposal")
+    ]
+    if not candidates:
+        return None
+
+    if thread_id is not None:
+        for session in candidates:
+            if getattr(session, "thread_id", None) == thread_id:
+                return session
+
+    if scoped_channel_id is not None:
+        same_scope = [
+            s
+            for s in candidates
+            if getattr(s, "channel_id", None) == scoped_channel_id
+            and (user_id is None or getattr(s, "user_id", None) == user_id)
+        ]
+        if same_scope:
+            return _most_recent_session(same_scope)
+
+    return _most_recent_session(candidates)
+
+
+def _find_latest_open_session(
+    *,
+    message: Any,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+) -> Optional[Any]:
+    """Pick the session a coding proposal should target when the user
+    didn't reference one explicitly. Same channel/thread > same channel
+    > most recently updated open session."""
+
+    try:
+        try:
+            sessions = list_sessions_fn(limit=50)
+        except TypeError:
+            sessions = list_sessions_fn()
+    except Exception:  # noqa: BLE001
+        return None
+    if not sessions:
+        return None
+
+    open_sessions = [s for s in sessions if not _is_terminal(s)]
+    if not open_sessions:
+        return None
+
+    channel = getattr(message, "channel", None)
+    channel_id = getattr(channel, "id", None)
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is None and getattr(channel, "parent", None) is None:
+        thread_id = None
+        scoped_channel_id = channel_id
+    else:
+        thread_id = channel_id
+        scoped_channel_id = parent_id
+
+    if thread_id is not None:
+        for session in open_sessions:
+            if getattr(session, "thread_id", None) == thread_id:
+                return session
+
+    if scoped_channel_id is not None:
+        same_scope = [
+            s
+            for s in open_sessions
+            if getattr(s, "channel_id", None) == scoped_channel_id
+        ]
+        if same_scope:
+            return _most_recent_session(same_scope)
+
+    return _most_recent_session(open_sessions)
+
+
+def _is_terminal(session: Any) -> bool:
+    state = getattr(session, "state", None)
+    state_value = getattr(state, "value", state)
+    return str(state_value).lower() in {"completed", "rejected"}
+
+
+def _persist_coding_proposal(
+    session: Any,
+    proposal: CodingAuthorizationProposal,
+) -> Any:
+    """Stash a fresh proposal under ``session.extra['coding_proposal']``."""
+
+    return _persist_extra_keys(
+        session,
+        {
+            "coding_proposal": _proposal_to_dict(proposal),
+            "coding_job": None,  # supersedes any prior pending job copy
+        },
+    )
+
+
+def _persist_coding_job(session: Any, job_payload: Mapping[str, object]) -> Any:
+    """Replace any pending proposal with the approved coding job payload."""
+
+    return _persist_extra_keys(
+        session,
+        {
+            "coding_job": dict(job_payload),
+            "coding_proposal": None,  # consumed
+        },
+    )
+
+
+def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
+    """Merge *updates* into ``session.extra`` and persist via ``update_session``.
+
+    Always mutates the live ``extra`` dict when one is present, so test
+    fixtures using mutable dataclass stubs observe the new keys without
+    having to capture the returned session. Production WorkflowSession
+    is frozen — for that path we rely on ``dataclasses.replace`` +
+    ``update_session`` to land the change in SQLite.
+    """
+
+    try:
+        from dataclasses import replace as _dc_replace
+        from datetime import datetime as _dt
+
+        from ..agents.workflow_state import update_session
+    except Exception:  # noqa: BLE001
+        return session
+
+    # Try in-place mutation first so test stubs (plain dataclasses with
+    # a regular dict ``extra``) observe the change directly. Production
+    # WorkflowSession holds an immutable mapping; this no-ops there.
+    live = getattr(session, "extra", None)
+    if isinstance(live, dict):
+        for key, value in updates.items():
+            live[key] = value
+
+    existing = dict(getattr(session, "extra", {}) or {})
+    merged = {**existing, **dict(updates)}
+    try:
+        updated = _dc_replace(session, extra=merged)
+    except TypeError:
+        # Non-dataclass stub — in-place mutation above already covered it.
+        return session
+    try:
+        update_session(updated, now=_dt.now().astimezone())
+    except Exception:  # noqa: BLE001
+        pass
+    return updated
+
+
+def _proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, object]:
+    return {
+        "session_id": proposal.session_id,
+        "user_request": proposal.user_request,
+        "executor_role": proposal.executor_role,
+        "review_roles": list(proposal.review_roles),
+        "participant_roles": list(proposal.participant_roles),
+        "write_scope": list(proposal.write_scope),
+        "forbidden_scope": list(proposal.forbidden_scope),
+        "reason": proposal.reason,
+        "safety_rules": list(proposal.safety_rules),
+        "approval_required": bool(proposal.approval_required),
+        "metadata": dict(proposal.metadata),
+    }
+
+
+def _proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProposal:
+    return CodingAuthorizationProposal(
+        session_id=payload.get("session_id"),
+        user_request=str(payload.get("user_request") or ""),
+        executor_role=str(payload.get("executor_role") or "tech-lead"),
+        review_roles=tuple(payload.get("review_roles") or ()),
+        participant_roles=tuple(payload.get("participant_roles") or ()),
+        write_scope=tuple(payload.get("write_scope") or ()),
+        forbidden_scope=tuple(payload.get("forbidden_scope") or ()),
+        reason=str(payload.get("reason") or ""),
+        safety_rules=tuple(payload.get("safety_rules") or ()),
+        approval_required=bool(payload.get("approval_required", True)),
+        metadata=dict(payload.get("metadata") or {}),
+    )
+
+
+async def _run_coding_authorization_gate(
+    *,
+    message: Any,
+    prompt_text: str,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+    send_chunks: SendChunksFn,
+) -> Optional[EngineeringRouteResult]:
+    """Two-branch gate.
+
+    1. ``is_coding_proposal_request`` — build a fresh proposal and
+       stash it under ``session.extra['coding_proposal']``, then post
+       the preview. The user follows up with an approval phrase.
+    2. ``is_coding_approval_phrase`` — flip the latest stashed
+       proposal into a ``CodingJob`` (status=ready) and persist under
+       ``session.extra['coding_job']``.
+
+    Returns ``None`` when the message isn't either kind so the caller
+    falls through to the rest of the route.
+    """
+
+    if is_coding_proposal_request(prompt_text):
+        target = _find_latest_open_session(
+            message=message,
+            list_sessions_fn=list_sessions_fn,
+        )
+        if target is None:
+            await send_chunks(
+                message.channel,
+                (
+                    "현재 채널에 매칭되는 열린 engineering-agent 세션이 보이지 않아요.\n"
+                    "먼저 작업을 접수해서 세션을 만들고 다시 `코딩 권한 제안`이라고 답해 주세요."
+                ),
+            )
+            return EngineeringRouteResult(handled=True)
+
+        proposal = recommend_authorization(
+            user_request=getattr(target, "prompt", "") or "",
+            session_id=getattr(target, "session_id", None),
+        )
+        _persist_coding_proposal(target, proposal)
+        await send_chunks(message.channel, format_authorization_message(proposal))
+        return EngineeringRouteResult(
+            handled=True,
+            session_id=getattr(target, "session_id", None),
+            thread_id=getattr(target, "thread_id", None),
+        )
+
+    if is_coding_approval_phrase(prompt_text):
+        owner = _find_session_with_pending_coding_proposal(
+            message=message,
+            list_sessions_fn=list_sessions_fn,
+        )
+        if owner is None:
+            await send_chunks(
+                message.channel,
+                (
+                    "지금은 대기 중인 코딩 권한 제안이 없어요.\n"
+                    "먼저 `코딩 권한 제안` 이라고 답해서 Tech Lead 추천을 받아 주세요."
+                ),
+            )
+            return EngineeringRouteResult(handled=True)
+
+        extra = dict(getattr(owner, "extra", {}) or {})
+        payload = extra.get("coding_proposal")
+        if not isinstance(payload, Mapping):
+            await send_chunks(
+                message.channel,
+                "대기 중인 코딩 권한 제안 payload를 읽지 못했어요. 다시 `코딩 권한 제안`을 시도해 주세요.",
+            )
+            return EngineeringRouteResult(handled=True)
+
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
+
+        approved_at = _dt.now(_tz.utc)
+        proposal = _proposal_from_dict(payload)
+        try:
+            job = build_coding_job_from_proposal(
+                proposal,
+                status=STATUS_READY,
+                approved_at=approved_at,
+            )
+        except Exception as exc:  # noqa: BLE001
+            await send_chunks(
+                message.channel,
+                f"⚠️ 코딩 권한 승인 중 오류가 발생했어요: {exc}",
+            )
+            return EngineeringRouteResult(handled=True, error=str(exc))
+
+        _persist_coding_job(owner, job.to_dict())
+
+        thread_label = (
+            f"thread `{job.session_id}`"
+            if job.session_id
+            else "(session id 미기록)"
+        )
+        await send_chunks(
+            message.channel,
+            "\n".join(
+                [
+                    "**[engineering-agent] 코딩 권한 승인 완료**",
+                    "",
+                    f"executor: `{job.executor_role}`",
+                    f"세션: {thread_label}",
+                    f"승인 시각: {approved_at.isoformat()}",
+                    "",
+                    "이제 executor에게 안전한 prompt가 전달될 준비가 됐어요. 실제 코드 변경은 executor가 계획을 보여 드린 뒤에만 진행합니다.",
+                ]
+            ),
+        )
+        return EngineeringRouteResult(
+            handled=True,
+            session_id=getattr(owner, "session_id", None),
+            thread_id=getattr(owner, "thread_id", None),
+        )
+
+    return None
 
 
 async def _run_obsidian_approval_gate(
