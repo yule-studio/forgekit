@@ -830,6 +830,12 @@ async def route_engineering_message(
         if kickoff is not None:
             thread_id = kickoff.thread_id
             kickoff_message = kickoff.message
+            # Phase 1 stabilisation: stamp the new work-thread id back
+            # on session.thread_id so status / Obsidian / continuation
+            # lookups by thread anchor resolve cleanly. Without this
+            # the session row stayed thread-less in SQLite even after
+            # a successful kickoff.
+            session = _persist_thread_id(session, thread_id)
 
     research_loop_report: Optional[EngineeringResearchLoopReport] = None
     if research_loop_fn is not None and session is not None:
@@ -1215,6 +1221,10 @@ async def _drive_clarification_create_new_work(
     if kickoff is not None:
         kickoff_message = getattr(kickoff, "message", None)
         thread_id = getattr(kickoff, "thread_id", None)
+        # Phase 1 stabilisation: stamp the new work-thread id back on
+        # session.thread_id so subsequent status / Obsidian lookups
+        # resolve via the thread anchor.
+        session = _persist_thread_id(session, thread_id)
         if kickoff_message:
             await send_chunks(message.channel, kickoff_message)
 
@@ -1716,6 +1726,14 @@ def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
     having to capture the returned session. Production WorkflowSession
     is frozen — for that path we rely on ``dataclasses.replace`` +
     ``update_session`` to land the change in SQLite.
+
+    Stabilisation Phase 1: persistence failures used to be silently
+    swallowed, which made live debugging impossible. We now stamp a
+    ``persistence_error`` entry on the session's live extra dict (when
+    available) so the status diagnostic + supervisor can surface
+    "왜 저장이 안 됐어?" without having to grep logs. The user-visible
+    reply chain is still kept intact (no exception leaks past this
+    helper).
     """
 
     try:
@@ -1723,7 +1741,13 @@ def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
         from datetime import datetime as _dt
 
         from ..agents.workflow_state import update_session
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        _record_persistence_failure(
+            session,
+            step="import update_session",
+            reason=str(exc),
+            updates=updates,
+        )
         return session
 
     # Try in-place mutation first so test stubs (plain dataclasses with
@@ -1743,8 +1767,110 @@ def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
         return session
     try:
         update_session(updated, now=_dt.now().astimezone())
+    except Exception as exc:  # noqa: BLE001
+        _record_persistence_failure(
+            updated,
+            step="update_session",
+            reason=str(exc),
+            updates=updates,
+        )
+    return updated
+
+
+def _record_persistence_failure(
+    session: Any,
+    *,
+    step: str,
+    reason: str,
+    updates: Mapping[str, object],
+) -> None:
+    """Stamp a persistence failure note on the live ``session.extra``.
+
+    Best-effort — the session.extra mutation is wrapped so even
+    pathological stubs never raise out of this helper. The note keeps
+    the offending step + reason + the keys that were being written so
+    the diagnostic responder can show the operator exactly which
+    update silently failed during the live MVP loop.
+    """
+
+    if session is None:
+        return
+    try:
+        live = getattr(session, "extra", None)
+        if isinstance(live, dict):
+            live["persistence_error"] = {
+                "step": step,
+                "reason": reason,
+                "keys": sorted(str(k) for k in (updates or {}).keys()),
+            }
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _persist_thread_id(
+    session: Any,
+    thread_id: Optional[int],
+) -> Any:
+    """Write the Discord work-thread id back to ``session.thread_id``.
+
+    Phase 1 stabilisation: ``thread_kickoff_fn`` returns the new
+    thread's id, but the kickoff path used to drop it on the floor —
+    only the ``EngineeringRouteResult.thread_id`` field carried it,
+    which left ``session.thread_id`` ``None`` in SQLite. Status /
+    Obsidian / continuation requests that walk by thread anchor then
+    failed to find the session.
+
+    Best-effort: import or persistence failure is captured via
+    :func:`_record_persistence_failure` so the status diagnostic can
+    show *why* the link was lost.
+    """
+
+    if session is None or thread_id is None:
+        return session
+    try:
+        existing_thread_id = getattr(session, "thread_id", None)
+    except Exception:  # noqa: BLE001
+        existing_thread_id = None
+    if existing_thread_id == thread_id:
+        return session
+
+    try:
+        from dataclasses import replace as _dc_replace
+        from datetime import datetime as _dt
+
+        from ..agents.workflow_state import update_session
+    except Exception as exc:  # noqa: BLE001
+        _record_persistence_failure(
+            session,
+            step="import update_session (thread_id)",
+            reason=str(exc),
+            updates={"thread_id": thread_id},
+        )
+        return session
+
+    # In-place fast path for plain test stubs.
+    try:
+        if hasattr(session, "thread_id") and not isinstance(session, type):
+            try:
+                session.thread_id = thread_id  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 - frozen dataclass
+                pass
     except Exception:  # noqa: BLE001
         pass
+
+    try:
+        updated = _dc_replace(session, thread_id=thread_id)
+    except TypeError:
+        return session
+    try:
+        update_session(updated, now=_dt.now().astimezone())
+    except Exception as exc:  # noqa: BLE001
+        _record_persistence_failure(
+            updated,
+            step="update_session (thread_id)",
+            reason=str(exc),
+            updates={"thread_id": thread_id},
+        )
     return updated
 
 
@@ -2709,8 +2835,17 @@ def persist_research_forum_status(
         return
     try:
         update_session(updated, now=datetime.now().astimezone())
-    except Exception:  # noqa: BLE001
-        pass
+    except Exception as exc:  # noqa: BLE001
+        # Phase 1 stabilisation: don't swallow the SQLite write error
+        # — stamp the reason on the live extra so the status
+        # diagnostic can show it. Without this the live MVP loop saw
+        # research_forum_thread_id missing with no recorded reason.
+        _record_persistence_failure(
+            updated,
+            step="update_session (forum status)",
+            reason=str(exc),
+            updates=extra_updates,
+        )
 
 
 async def make_default_research_loop(
