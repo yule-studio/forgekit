@@ -420,6 +420,65 @@ async def route_engineering_message(
         if approval is not None:
             return approval
 
+    # Explicit-session-id JOIN — the user typed `기존 세션 <id>` so we
+    # already know which session they want; bypass preflight and
+    # conversation_fn so the runtime classifier doesn't intercept
+    # ("이어가" continue verbs would otherwise route into recall).
+    # The append payload prefers a cached canonical_prompt over the
+    # routing-command reply itself so the JOIN never appends "기존
+    # 세션 <id> 이어가" as the resumed task body.
+    if thread_continuation_fn is not None:
+        explicit_session_id = _explicit_session_request(prompt_text)
+        if explicit_session_id:
+            try:
+                from ..agents.workflow_state import load_session as _load_session
+                target_session = _load_session(explicit_session_id)
+            except Exception:  # noqa: BLE001 - lookup failures fall through to legacy flow
+                target_session = None
+            if target_session is not None:
+                explicit_canonical = _recall_clarification_canonical_prompt(message)
+                join_intake = (explicit_canonical or prompt_text or "").strip()
+                if join_intake:
+                    target_extra = dict(getattr(target_session, "extra", None) or {})
+                    forum_thread_id = (
+                        target_extra.get("research_forum_thread_id")
+                        or target_extra.get("forum_thread_id")
+                    )
+                    try:
+                        forum_id_int = (
+                            int(forum_thread_id)
+                            if forum_thread_id is not None
+                            else None
+                        )
+                    except (TypeError, ValueError):
+                        forum_id_int = None
+                    synthetic_outcome = EngineeringConversationOutcome(
+                        content="",
+                        intake_prompt=join_intake,
+                    )
+                    synthetic_decision = EngineeringRoutingDecision(
+                        action=ACTION_JOIN,
+                        matched_session_id=getattr(target_session, "session_id", None),
+                        matched_thread_id=getattr(target_session, "thread_id", None),
+                        matched_forum_thread_id=forum_id_int,
+                        confidence="high",
+                        reason=(
+                            f"explicit '기존 세션 {explicit_session_id}' override"
+                        ),
+                    )
+                    explicit_result = await _handle_join_or_append(
+                        message=message,
+                        outcome=synthetic_outcome,
+                        decision=synthetic_decision,
+                        intake_prompt=join_intake,
+                        send_chunks=send_chunks,
+                        thread_continuation_fn=thread_continuation_fn,
+                        research_loop_fn=None,
+                    )
+                    if explicit_result is not None:
+                        _clear_clarification_context(message)
+                        return explicit_result
+
     # Runtime preflight — opt-in via ``list_sessions_fn``. The production
     # gateway in bot.py wires this to ``workflow_state.list_sessions`` so
     # auto_collect-first traffic for "어제 작업 이어서 요약해줘" and
