@@ -1669,25 +1669,15 @@ async def _run_coding_authorization_gate(
     return None
 
 
-_EXPLICIT_SESSION_ID_RE = __import__("re").compile(
-    r"(?:세션|session)\s*(?:id\s*[:=]?\s*)?[`'\"]?([0-9a-fA-F]{12})[`'\"]?",
-    flags=__import__("re").IGNORECASE,
+# MVP closure refactor — explicit session id regex moved to
+# :mod:`agents.session_resolver` so router / bot / obsidian gate
+# share one canonical implementation. The router-private alias is
+# kept for backward compat with internal callers (and the runtime
+# preflight ``_explicit_session_id`` substring check).
+from ..agents.session_resolver import (
+    _EXPLICIT_SESSION_ID_RE as _EXPLICIT_SESSION_ID_RE,
+    extract_explicit_session_id as _extract_session_id_from_router_text,
 )
-
-
-def _extract_session_id_from_router_text(text: str) -> Optional[str]:
-    """Phase 4 stab — pull a 12-hex session id out of a router-side
-    prompt ("세션 abc123def456 기준으로 …"). Mirrors the bot.py
-    helper so callers that don't bridge through bot.py (e.g. Obsidian
-    approval gate) can still resolve explicit ids.
-    """
-
-    if not text:
-        return None
-    match = _EXPLICIT_SESSION_ID_RE.search(text)
-    if match is None:
-        return None
-    return match.group(1).lower()
 
 
 def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
