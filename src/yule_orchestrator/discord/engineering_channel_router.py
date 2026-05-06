@@ -1640,6 +1640,13 @@ def _work_report_to_dict(report: Any) -> dict:
         "under_covered_roles": list(
             getattr(report, "under_covered_roles", ()) or ()
         ),
+        # Phase 3 status gate fields.
+        "status": getattr(report, "status", "interim"),
+        "missing_roles": list(getattr(report, "missing_roles", ()) or ()),
+        "has_research_pack": bool(
+            getattr(report, "has_research_pack", False)
+        ),
+        "has_synthesis": bool(getattr(report, "has_synthesis", False)),
     }
 
 

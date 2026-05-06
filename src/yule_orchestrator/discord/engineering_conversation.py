@@ -1188,9 +1188,18 @@ def format_status_diagnostic_response(
         )
         ref_count = work_report_payload.get("reference_count") or 0
         stop_reason = work_report_payload.get("research_stop_reason")
-        meta_bits = [f"자료 {ref_count}건", code_flag]
+        # Phase 3 stabilisation — status is the load-bearing field that
+        # tells the operator whether the report is a draft (interim),
+        # blocked (insufficient), ready, or final.
+        status = str(work_report_payload.get("status") or "?")
+        missing_roles = work_report_payload.get("missing_roles") or []
+        meta_bits = [f"status={status}", f"자료 {ref_count}건", code_flag]
         if stop_reason:
             meta_bits.append(f"stop: {stop_reason}")
+        if isinstance(missing_roles, list) and missing_roles:
+            meta_bits.append(
+                "미완료 role: " + ", ".join(str(r) for r in missing_roles)
+            )
         lines.append(
             f"- 업무 보고서: 작성됨 — \"{title}\" · "
             + " · ".join(meta_bits)

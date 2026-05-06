@@ -99,6 +99,13 @@ class BuildWorkReportTests(unittest.TestCase):
 
     def test_coding_proposal_flips_requires_code_change(self) -> None:
         extra = self._research_extra()
+        # Phase 3: coding approval CTA only fires when lifecycle is at
+        # least READY (research_pack + active role coverage +
+        # synthesis). Seed played_roles so the report graduates from
+        # interim → ready and the CTA actually shows up.
+        extra["played_roles"] = list(extra["active_research_roles"])
+        extra["research_source_count"] = 7
+        extra["research_status"] = "ready"
         extra["coding_proposal"] = {
             "executor_role": "backend-engineer",
             "write_scope": ["src/api/**"],
@@ -110,6 +117,7 @@ class BuildWorkReportTests(unittest.TestCase):
         )
         self.assertTrue(report.requires_code_change)
         self.assertEqual(report.recommended_executor_role, "backend-engineer")
+        self.assertEqual(report.status, "ready")
         self.assertIn("수정 승인", report.approval_request or "")
 
     def test_coding_job_overrides_proposal(self) -> None:
@@ -197,6 +205,11 @@ class FormatWorkReportMarkdownTests(unittest.TestCase):
         self.assertNotIn("코드 수정 필요", body)
 
     def test_renders_coding_approval_cta(self) -> None:
+        # Phase 3: coding approval CTA only fires for ``ready`` status.
+        # Older test ran without specifying status — that path now
+        # renders a "코드 수정 후보" placeholder instead of the
+        # "코드 수정 필요" CTA so the user doesn't approve coding on
+        # a half-baked lifecycle.
         report = WorkReport(
             session_id="abc",
             title="결제 멱등성",
@@ -207,6 +220,9 @@ class FormatWorkReportMarkdownTests(unittest.TestCase):
             requires_code_change=True,
             recommended_executor_role="backend-engineer",
             approval_request="진행하려면 `수정 승인`",
+            status="ready",
+            has_research_pack=True,
+            has_synthesis=True,
         )
         body = format_work_report_markdown(report)
         self.assertIn("**코드 수정 필요**", body)
@@ -229,6 +245,170 @@ class FormatWorkReportMarkdownTests(unittest.TestCase):
         body = format_work_report_markdown(report)
         self.assertIn("부족 role: qa-engineer", body)
         self.assertIn("budget 소진", body)
+
+
+class WorkReportStatusGateTests(unittest.TestCase):
+    """Stabilisation Phase 3 — final/ready/interim/insufficient status
+    is computed from research_pack + active role coverage +
+    synthesis. Pin the live-bug regressions:
+
+      • research_pack 없음 → final 보고서 생성 금지
+      • source_count=0 → insufficient
+      • active_roles 5개 중 played_roles 1개 → interim + missing 4개
+      • active + sources + synthesis → ready
+    """
+
+    def test_no_research_pack_yields_insufficient(self) -> None:
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "active_research_roles": ["tech-lead", "ai-engineer"],
+                "played_roles": ["ai-engineer"],
+            },
+        )
+        self.assertEqual(report.status, "insufficient")
+        self.assertFalse(report.has_research_pack)
+        self.assertIn("자료 부족", report.approval_request or "")
+
+    def test_explicit_research_status_insufficient_overrides(self) -> None:
+        # Even with research_pack present, an explicit
+        # ``research_status: insufficient`` (set by Phase 2 persist
+        # when sources=0) wins.
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "research_pack": {"sources": [{"url": "https://a"}]},
+                "research_source_count": 0,
+                "research_status": "insufficient",
+            },
+        )
+        self.assertEqual(report.status, "insufficient")
+
+    def test_zero_sources_yields_insufficient(self) -> None:
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "research_pack": {"sources": []},
+                "research_source_count": 0,
+            },
+        )
+        self.assertEqual(report.status, "insufficient")
+        self.assertEqual(report.reference_count, 0)
+        self.assertFalse(report.has_research_pack)
+
+    def test_partial_role_coverage_yields_interim(self) -> None:
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "active_research_roles": [
+                    "tech-lead",
+                    "ai-engineer",
+                    "backend-engineer",
+                    "qa-engineer",
+                    "devops-engineer",
+                ],
+                "played_roles": ["ai-engineer"],
+                "research_source_count": 5,
+                "research_pack": {
+                    "sources": [{"url": f"https://a/{i}"} for i in range(5)],
+                },
+                "research_synthesis": {"consensus": "ok"},
+            },
+        )
+        self.assertEqual(report.status, "interim")
+        self.assertEqual(
+            set(report.missing_roles),
+            {"tech-lead", "backend-engineer", "qa-engineer", "devops-engineer"},
+        )
+        self.assertIn("토의 미완료", report.approval_request or "")
+
+    def test_full_coverage_with_synthesis_yields_ready(self) -> None:
+        active = ["tech-lead", "ai-engineer", "qa-engineer"]
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "active_research_roles": active,
+                "played_roles": active,
+                "research_source_count": 7,
+                "research_pack": {
+                    "sources": [{"url": f"https://a/{i}"} for i in range(7)],
+                },
+                "research_synthesis": {"consensus": "RAG 도입"},
+            },
+        )
+        self.assertEqual(report.status, "ready")
+        self.assertEqual(report.missing_roles, ())
+        self.assertTrue(report.has_research_pack)
+        self.assertTrue(report.has_synthesis)
+
+    def test_synthesis_missing_keeps_interim_even_with_full_roles(self) -> None:
+        active = ["tech-lead", "ai-engineer"]
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "active_research_roles": active,
+                "played_roles": active,
+                "research_source_count": 5,
+                "research_pack": {
+                    "sources": [{"url": f"https://a/{i}"} for i in range(5)],
+                },
+                # research_synthesis intentionally absent
+            },
+        )
+        self.assertEqual(report.status, "interim")
+        self.assertFalse(report.has_synthesis)
+        self.assertIn("synthesis", report.approval_request or "")
+
+
+class WorkReportMarkdownStatusBannerTests(unittest.TestCase):
+    def test_status_banner_in_header(self) -> None:
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={"research_pack": None},
+        )
+        body = format_work_report_markdown(report)
+        self.assertIn("insufficient — 자료 부족", body)
+
+    def test_missing_roles_section_renders_when_interim(self) -> None:
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="harness",
+            extra={
+                "active_research_roles": ["tech-lead", "ai-engineer", "qa-engineer"],
+                "played_roles": ["tech-lead"],
+                "research_source_count": 3,
+                "research_pack": {
+                    "sources": [{"url": "https://a"}, {"url": "https://b"}, {"url": "https://c"}],
+                },
+                "research_synthesis": {"consensus": "ok"},
+            },
+        )
+        body = format_work_report_markdown(report)
+        self.assertIn("미완료 역할 토의", body)
+        self.assertIn("`ai-engineer`", body)
+        self.assertIn("`qa-engineer`", body)
+
+    def test_coding_cta_suppressed_when_not_ready(self) -> None:
+        report = build_work_report(
+            session_id="x",
+            canonical_prompt="결제",
+            extra={
+                "research_pack": None,
+                "coding_proposal": {"executor_role": "backend-engineer"},
+            },
+        )
+        body = format_work_report_markdown(report)
+        # No "코드 수정 필요" CTA on insufficient path; the executor
+        # candidate shows up under "코드 수정 후보" instead.
+        self.assertNotIn("**코드 수정 필요**", body)
+        self.assertIn("코드 수정 후보", body)
 
 
 if __name__ == "__main__":
