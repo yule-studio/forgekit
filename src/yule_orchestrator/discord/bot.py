@@ -53,7 +53,11 @@ from .research_forum import (
     chunk_for_discord_message,
     truncate_for_starter_message,
 )
-from .typing_indicator import typing_context
+from .typing_indicator import (
+    typing_context,
+    typing_keepalive,
+    wrap_send_chunks_with_typing,
+)
 from ..agents.research.loop import (
     publish_research_loop_to_forum,
     run_research_loop,
@@ -166,39 +170,37 @@ def run_discord_bot(repo_root: Path) -> None:
 
             engineering_context = EngineeringRouteContext.from_env()
             if engineering_context.configured:
-                send_chunks = _make_engineering_send_chunks(discord)
-                # Wrap the entire engineering route in a typing context so
-                # the gateway bot account shows ``입력 중...`` while it runs
-                # conversation classification, intake, kickoff, and the
-                # research loop. Without this the user has no signal that
-                # the gateway is alive during the multi-second flow.
-                #
-                # tech-lead synthesis coverage: when synthesis runs through
-                # the gateway-side legacy path inside research_loop_fn
-                # (publish_research_loop_to_forum -> _post_decision_comment),
-                # the typing indicator stays under this same context so the
-                # gateway bot keeps showing 입력 중... until the synthesis
-                # comment lands. The dedicated tech-lead bot path is
-                # covered separately by member_bot.py's typing wrap.
-                async with typing_context(message.channel):
-                    engineering_result = await route_engineering_message(
-                        message=message,
-                        bot_user=self.user,
-                        route_context=engineering_context,
-                        extract_prompt=_extract_conversation_prompt,
-                        conversation_fn=_default_engineering_conversation_fn,
-                        intake_fn=_default_engineering_intake_fn,
-                        thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
-                        send_chunks=send_chunks,
-                        research_loop_fn=_make_default_engineering_research_loop_fn(discord),
-                        thread_continuation_fn=_make_default_thread_continuation_fn(discord),
-                        # Phase 4 — runtime preflight uses the live
-                        # workflow session store so "어제 작업 이어서
-                        # 요약해줘" et al. never reach
-                        # auto_collect=True. Disabled flag-style by
-                        # tests that inject their own routing seam.
-                        list_sessions_fn=workflow_list_sessions,
-                    )
+                # Phase 1 fix: don't open a typing context around the
+                # whole route. Doing so showed "입력 중..." even when the
+                # router ultimately returned ``handled=False`` (non-
+                # engineering channel, ignored phrase, member-bot scope
+                # mismatch) — the indicator stopped being a real
+                # response signal. Instead, wrap ``send_chunks`` so the
+                # typing indicator fires only during the actual chunk
+                # send. That keeps the "bot is composing" cue visible
+                # whenever the gateway commits a response, and silent
+                # the rest of the time.
+                send_chunks = wrap_send_chunks_with_typing(
+                    _make_engineering_send_chunks(discord)
+                )
+                engineering_result = await route_engineering_message(
+                    message=message,
+                    bot_user=self.user,
+                    route_context=engineering_context,
+                    extract_prompt=_extract_conversation_prompt,
+                    conversation_fn=_default_engineering_conversation_fn,
+                    intake_fn=_default_engineering_intake_fn,
+                    thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
+                    send_chunks=send_chunks,
+                    research_loop_fn=_make_default_engineering_research_loop_fn(discord),
+                    thread_continuation_fn=_make_default_thread_continuation_fn(discord),
+                    # Phase 4 — runtime preflight uses the live
+                    # workflow session store so "어제 작업 이어서
+                    # 요약해줘" et al. never reach
+                    # auto_collect=True. Disabled flag-style by
+                    # tests that inject their own routing seam.
+                    list_sessions_fn=workflow_list_sessions,
+                )
                 if engineering_result.handled:
                     return
 

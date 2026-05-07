@@ -2507,19 +2507,32 @@ async def _run_research_loop_hook(
     """
 
     attachments = extract_message_attachments(message)
+    # Phase 1 fix: research loops can run for tens of seconds (autonomous
+    # collection + forum publish + member-bot fan-out). Discord's typing
+    # indicator auto-expires after ~10s, so without the keepalive the
+    # user saw long silent gaps. Wrap the work in ``typing_keepalive``
+    # so "입력 중..." stays visible from the moment we start collecting
+    # until the loop returns a follow-up message (or an error).
+    from .typing_indicator import typing_keepalive
+
     try:
-        raw = await _maybe_await(
-            research_loop_fn(
-                session=session,
-                message_text=prompt_text,
-                attachments=attachments,
-                channel=message.channel,
-                collection_outcome=collection_outcome,
-                research_pack=research_pack,
-                role_for_research=role_for_research,
-                thread_id=thread_id,
+        async with typing_keepalive(
+            message.channel,
+            label="research_loop",
+            session_id=getattr(session, "session_id", None),
+        ):
+            raw = await _maybe_await(
+                research_loop_fn(
+                    session=session,
+                    message_text=prompt_text,
+                    attachments=attachments,
+                    channel=message.channel,
+                    collection_outcome=collection_outcome,
+                    research_pack=research_pack,
+                    role_for_research=role_for_research,
+                    thread_id=thread_id,
+                )
             )
-        )
     except Exception as exc:  # noqa: BLE001 - non-fatal; report and return
         report = EngineeringResearchLoopReport(error=str(exc))
         await send_chunks(
