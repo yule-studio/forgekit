@@ -393,5 +393,126 @@
       "에러/빈 상태 문구가 UX에 영향",
       "권한 제한이 UX에서 설명되어야 함"
     ]
+  },
+  "default_response_template": [
+    "Backend 판단",
+    "도메인 모델",
+    "API 계약",
+    "데이터 모델",
+    "인증/인가",
+    "트랜잭션/동시성",
+    "실패 케이스",
+    "운영 관점",
+    "Handoff",
+    "구현 전 확인 질문"
+  ],
+  "review_checklist_by_category": {
+    "api": [
+      "endpoint/method가 명시됐는가",
+      "request/response가 명시적 DTO인가",
+      "auth_required / permission_required가 정의됐는가",
+      "error_responses 5종(권한/validation/not_found/duplicate/server)이 분리됐는가",
+      "idempotency 동작이 명시됐는가",
+      "기존 API 변경 시 backward compatibility가 적혔는가"
+    ],
+    "auth": [
+      "authentication과 authorization을 구분했는가",
+      "object-level permission이 검토됐는가",
+      "권한 실패 시 정보 노출이 최소화되는가",
+      "audit logging이 결정됐는가"
+    ],
+    "data": [
+      "primary key와 외부 노출 식별자가 구분됐는가",
+      "unique constraint / index / nullable 정책이 명시됐는가",
+      "migration이 forward + rollback plan을 함께 갖는가",
+      "destructive migration이면 별도 승인 표시가 있는가",
+      "데이터 보존 정책이 정해졌는가"
+    ],
+    "transaction": [
+      "트랜잭션 owner / boundary가 명시됐는가",
+      "동시 업데이트 시 lock 또는 idempotency 전략이 있는가",
+      "외부 API와 DB 쓰기를 같은 트랜잭션에 묶지 않는가",
+      "비가역 동작이라면 compensation 또는 승인 절차가 있는가"
+    ],
+    "failure": [
+      "validation/auth/permission/not_found/duplicate/conflict/external/timeout/server 9종 case가 정의됐는가",
+      "frontend/QA가 구분 가능한 error code/message가 있는가",
+      "retry 가능 여부가 명시됐는가",
+      "rollback / recovery 케이스가 test_handoff에 포함됐는가"
+    ],
+    "operation": [
+      "structured_logs / correlation_id / metrics / alerts가 정의됐는가",
+      "PII/secret이 로그/응답에 새지 않도록 마스킹됐는가",
+      "관측 신호 owner와 1차 대응 절차가 함께 적혔는가",
+      "장애 trace point가 식별됐는가"
+    ],
+    "handoff": [
+      "frontend가 사용할 응답 예시 + loading/error 상태 안내가 있는가",
+      "ai-engineer가 사용할 메모리/RAG 저장 구조 안내가 있는가",
+      "qa-engineer가 검증할 정상/실패/권한/동시성 시나리오가 있는가",
+      "devops-engineer가 알아야 할 배포 영향 / secret 변경이 있는가"
+    ]
+  },
+  "required_context_catalog": {
+    "project_context": [
+      "대상 서비스/모듈/도메인 이름",
+      "이 변경이 속한 작업 phase / scope",
+      "기존 합의된 결정 / 이전 phase 결과",
+      "사용자 승인 필요한 항목"
+    ],
+    "runtime_context": [
+      "언어 / 프레임워크 / 런타임 버전",
+      "ORM / DB 종류 / 캐시 / 메시지 큐",
+      "deploy 환경 (local / staging / prod)",
+      "feature flag / config provider"
+    ],
+    "api_context": [
+      "현재 endpoint 목록과 인증 방식",
+      "요청/응답 DTO 패턴",
+      "에러 포맷과 HTTP status 정책",
+      "version 정책 (URL / header / 미사용)"
+    ],
+    "domain_context": [
+      "핵심 객체와 aggregate 경계",
+      "비즈니스 규칙 / invariant",
+      "상태 전이 / 이벤트 / domain event 사용 여부",
+      "도메인 외부와의 경계"
+    ],
+    "data_context": [
+      "주요 테이블 / 컬렉션과 관계",
+      "PK / unique / index 정책",
+      "데이터 양과 성장 속도",
+      "데이터 보존 / 백업 정책"
+    ],
+    "auth_context": [
+      "인증 주체 (사용자 / 서비스 / 봇)",
+      "권한 모델 (role / scope / object-level)",
+      "secret / token 관리 방식",
+      "audit log 정책"
+    ],
+    "integration_context": [
+      "외부 API와 SLA",
+      "queue / scheduler / webhook 사용 여부",
+      "timeout / retry / idempotency 정책",
+      "compensation / DLQ 전략"
+    ],
+    "security_context": [
+      "PII / 민감 데이터 분류",
+      "input validation 패턴",
+      "출력 데이터 노출 정책",
+      "rate limit / abuse 사례"
+    ],
+    "operation_context": [
+      "기존 logging 구조 / 키 컨벤션",
+      "metric / alert / dashboard",
+      "rollback 절차 / 무중단 정책",
+      "장애 대응 owner"
+    ],
+    "test_context": [
+      "기존 테스트 묶음 / 자동화 비중",
+      "회귀 핵심 시나리오",
+      "외부 의존 mock 정책",
+      "성능/동시성 테스트 환경"
+    ]
   }
 }
