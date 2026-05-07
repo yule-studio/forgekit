@@ -16,11 +16,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding_authorization import (
+from yule_orchestrator.agents.coding.authorization import (
     recommend_authorization,
     reset_role_profile_cache,
 )
-from yule_orchestrator.agents.coding_job import (
+from yule_orchestrator.agents.coding.job import (
     STATUS_PENDING_APPROVAL,
     STATUS_READY,
     build_coding_job_from_proposal,

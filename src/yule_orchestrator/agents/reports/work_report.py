@@ -383,12 +383,12 @@ def build_work_report(
 
 def _resolve_pack_state(extra: Mapping[str, Any]) -> tuple[bool, int]:
     """Return (has_research_pack, source_count) — thin shim over
-    :mod:`agents.lifecycle.status` so :mod:`agents.work_report` and
+    :mod:`agents.lifecycle.status` so :mod:`agents.reports.work_report` and
     the Discord / Obsidian readers share one canonical computation.
     Kept as a private wrapper because the older signature is part of
     this module's intra-call contract."""
 
-    from .lifecycle.status import compute_research_source_count
+    from ..lifecycle.status import compute_research_source_count
 
     count = compute_research_source_count(_StubExtra(extra))
     return (count > 0, count)
@@ -406,7 +406,7 @@ class _StubExtra:
 
 
 def _resolve_has_synthesis(extra: Mapping[str, Any]) -> bool:
-    from .lifecycle.status import has_synthesis as _has_synthesis
+    from ..lifecycle.status import has_synthesis as _has_synthesis
 
     return _has_synthesis(_StubExtra(extra))
 
@@ -416,7 +416,7 @@ def _resolve_missing_roles(extra: Mapping[str, Any]) -> Tuple[str, ...]:
     :mod:`agents.lifecycle.status` helper.
     """
 
-    from .lifecycle.status import (
+    from ..lifecycle.status import (
         compute_role_coverage,
         _resolve_played_roles,
     )

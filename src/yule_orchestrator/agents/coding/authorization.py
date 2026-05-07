@@ -36,7 +36,7 @@ from typing import Mapping, Optional, Sequence, Tuple
 # ---------------------------------------------------------------------------
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 DEPARTMENT_DIR = REPO_ROOT / "agents" / "engineering-agent"
 
 

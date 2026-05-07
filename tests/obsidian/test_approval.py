@@ -1,6 +1,6 @@
 """Phase D — Discord-driven Obsidian save approval flow.
 
-Pins the contract between :mod:`yule_orchestrator.agents.obsidian_approval`
+Pins the contract between :mod:`yule_orchestrator.agents.obsidian.approval`
 and the engineering channel router:
 
 - "Obsidian에 정리해줘" never creates a new session — the runtime
@@ -40,7 +40,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.agents.obsidian_approval import (
+from yule_orchestrator.agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     execute_pending_proposal,
@@ -49,8 +49,8 @@ from yule_orchestrator.agents.obsidian_approval import (
     is_obsidian_save_request,
     store_pending_proposal,
 )
-from yule_orchestrator.agents.obsidian_export import ExportPath, ObsidianNote
-from yule_orchestrator.agents.obsidian_writer import (
+from yule_orchestrator.agents.obsidian.export import ExportPath, ObsidianNote
+from yule_orchestrator.agents.obsidian.writer import (
     ENV_VAULT_PATH,
     ObsidianWriteError,
     ObsidianWriteResult,

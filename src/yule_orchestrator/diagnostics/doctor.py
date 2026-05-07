@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from ..agents.obsidian_writer import ENV_VAULT_PATH
+from ..agents.obsidian.writer import ENV_VAULT_PATH
 from ..core.context_loader import ContextError, load_agent_context
 from ..core.tls import apply_ca_bundle_fallback, resolve_ca_bundle
 

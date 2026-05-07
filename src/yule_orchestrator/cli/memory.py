@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-from ..agents.obsidian_writer import ENV_VAULT_PATH, resolve_vault_root
+from ..agents.obsidian.writer import ENV_VAULT_PATH, resolve_vault_root
 from ..agents.workflow_state import list_sessions
 from ..memory import (
     open_memory_index,

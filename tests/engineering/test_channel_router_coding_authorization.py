@@ -30,7 +30,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.agents.coding_authorization import reset_role_profile_cache
+from yule_orchestrator.agents.coding.authorization import reset_role_profile_cache
 from yule_orchestrator.discord.engineering_channel_router import (
     EngineeringRouteContext,
     is_coding_approval_phrase,

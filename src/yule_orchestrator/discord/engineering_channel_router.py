@@ -17,16 +17,16 @@ import os
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
-from ..agents.coding_authorization import (
+from ..agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
     recommend_authorization,
 )
-from ..agents.coding_job import (
+from ..agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
-from ..agents.obsidian_approval import (
+from ..agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     execute_pending_proposal,
@@ -1285,7 +1285,7 @@ def _persist_role_selection(
 
 
 def _work_report_to_dict(report: Any) -> dict:
-    """Serialise a :class:`agents.work_report.WorkReport` into a plain
+    """Serialise a :class:`agents.reports.work_report.WorkReport` into a plain
     JSON-friendly dict so the workflow store can persist it under
     ``session.extra['work_report']``."""
 
@@ -1351,7 +1351,7 @@ async def _emit_work_report_preview(
     if session is None:
         return
     try:
-        from ..agents.work_report import (
+        from ..agents.reports.work_report import (
             build_work_report,
             format_work_report_markdown,
         )

@@ -22,7 +22,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Mapping, Optional, Sequence, Tuple
 
-from .coding_authorization import CodingAuthorizationProposal, load_role_profile
+from .authorization import CodingAuthorizationProposal, load_role_profile
 
 
 # Coding job lifecycle states. Phase 1 only uses

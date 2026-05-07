@@ -37,8 +37,8 @@ from yule_orchestrator.discord.engineering_channel_router import (
     _extract_session_id_from_router_text,
     route_engineering_message,
 )
-from yule_orchestrator.agents.obsidian_writer import ENV_VAULT_PATH
-from yule_orchestrator.agents.obsidian_approval import (
+from yule_orchestrator.agents.obsidian.writer import ENV_VAULT_PATH
+from yule_orchestrator.agents.obsidian.approval import (
     build_save_proposal,
     store_pending_proposal,
 )
@@ -217,7 +217,7 @@ class ExplicitSessionIdObsidianResolveTests(unittest.TestCase):
                 self.calls = []
 
             def __call__(self, *args, **kwargs):
-                from yule_orchestrator.agents.obsidian_writer import ObsidianWriteResult
+                from yule_orchestrator.agents.obsidian.writer import ObsidianWriteResult
 
                 self.calls.append({"args": args, "kwargs": kwargs})
                 return ObsidianWriteResult(
@@ -227,7 +227,7 @@ class ExplicitSessionIdObsidianResolveTests(unittest.TestCase):
                 )
 
             def kwargs_path(self, kwargs):
-                from yule_orchestrator.agents.obsidian_writer import resolve_vault_root
+                from yule_orchestrator.agents.obsidian.writer import resolve_vault_root
 
                 vault = resolve_vault_root()
                 relative = kwargs.get("relative_path") or "x.md"

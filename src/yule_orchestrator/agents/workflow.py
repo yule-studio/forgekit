@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence
 
-from .dispatcher import Dispatcher, DispatchPlan, DispatchRequest, TaskType
+from .messaging.dispatcher import Dispatcher, DispatchPlan, DispatchRequest, TaskType
 from .review_loop import (
     ReviewFeedback,
     ReviewRouting,

@@ -40,18 +40,18 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
-from .deliberation import TechLeadSynthesis, synthesis_from_dict
+from ..deliberation import TechLeadSynthesis, synthesis_from_dict
 from .knowledge_writer import render_knowledge_note
-from .obsidian_export import ObsidianNote, render_research_note
-from .obsidian_writer import (
+from .export import ObsidianNote, render_research_note
+from .writer import (
     ENV_VAULT_PATH,
     ObsidianWriteError,
     ObsidianWriteResult,
     resolve_vault_root,
     write_note,
 )
-from .research.pack import ResearchPack, pack_from_dict
-from .workflow_state import WorkflowSession, update_session
+from ..research.pack import ResearchPack, pack_from_dict
+from ..workflow_state import WorkflowSession, update_session
 
 
 # ---------------------------------------------------------------------------

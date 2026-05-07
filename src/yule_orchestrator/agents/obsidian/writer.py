@@ -1,6 +1,6 @@
 """Thin file-writer layer for Obsidian notes.
 
-Sits on top of :mod:`yule_orchestrator.agents.obsidian_export` and writes
+Sits on top of :mod:`yule_orchestrator.agents.obsidian.export` and writes
 the rendered :class:`ObsidianNote` content to a real Obsidian vault on
 disk. The exporter still owns the contract (frontmatter, body, vault path
 shape); this module only handles IO.
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from .obsidian_export import ObsidianNote
+from .export import ObsidianNote
 
 
 ENV_VAULT_PATH = "OBSIDIAN_VAULT_PATH"

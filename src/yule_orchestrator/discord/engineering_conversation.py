@@ -32,7 +32,7 @@ from datetime import datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
-from ..agents.dispatcher import TaskType
+from ..agents.messaging.dispatcher import TaskType
 from ..agents.research.pack import (
     ResearchAttachment,
     ResearchPack,

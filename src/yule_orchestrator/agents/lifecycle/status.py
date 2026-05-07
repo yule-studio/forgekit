@@ -4,7 +4,7 @@ Stabilisation Phase 6 surfaced the same readiness booleans (research
 pack present, source count, role coverage, synthesis present) being
 re-derived in three places:
 
-  - :mod:`agents.work_report` (``build_work_report``'s status gate)
+  - :mod:`agents.reports.work_report` (``build_work_report``'s status gate)
   - :mod:`discord.engineering_channel_router._can_save_to_obsidian`
   - :mod:`discord.engineering_conversation.format_status_diagnostic_response`
 
@@ -49,8 +49,8 @@ RESEARCH_STATUS_INSUFFICIENT: str = "insufficient"
 RESEARCH_STATUS_READY: str = "ready"
 
 
-# Work-report state names. Mirrors ``agents.work_report`` constants
-# but kept here as the canonical authority — :mod:`agents.work_report`
+# Work-report state names. Mirrors ``agents.reports.work_report`` constants
+# but kept here as the canonical authority — :mod:`agents.reports.work_report`
 # imports these so the two stay in lockstep.
 REPORT_STATUS_INTERIM: str = "interim"
 REPORT_STATUS_INSUFFICIENT: str = "insufficient"
@@ -238,8 +238,8 @@ def has_synthesis(session: Any) -> bool:
 def compute_report_status(session: Any) -> Tuple[str, Tuple[str, ...]]:
     """Return ``(report_status, missing_roles)`` for *session*.
 
-    Same gate as :func:`agents.work_report.build_work_report`. Pulled
-    here so :mod:`agents.work_report` can import the canonical
+    Same gate as :func:`agents.reports.work_report.build_work_report`. Pulled
+    here so :mod:`agents.reports.work_report` can import the canonical
     implementation and the Discord / Obsidian layers don't have to
     re-derive it.
     """

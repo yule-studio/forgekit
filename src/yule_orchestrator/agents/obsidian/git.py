@@ -1,6 +1,6 @@
 """Optional vault git auto-commit layer for Obsidian sync.
 
-Sits next to :mod:`yule_orchestrator.agents.obsidian_writer`. The writer
+Sits next to :mod:`yule_orchestrator.agents.obsidian.writer`. The writer
 puts a Markdown file into the vault; this module — only when the caller
 opts in via ``--git-commit`` — stages that one file and commits it to
 the vault's git repository.

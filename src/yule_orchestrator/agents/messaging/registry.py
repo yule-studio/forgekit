@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence
 
-from ..core.context_loader import ContextError, load_agent_context
-from .runners.base import AgentRunner, RunnerHooks
-from .runners.claude_code import ClaudeCodeRunner
-from .runners.codex import CodexRunner
-from .runners.gemini import GeminiRunner
-from .runners.github_copilot import GitHubCopilotRunner
-from .runners.ollama import OllamaRunner
+from ...core.context_loader import ContextError, load_agent_context
+from ..runners.base import AgentRunner, RunnerHooks
+from ..runners.claude_code import ClaudeCodeRunner
+from ..runners.codex import CodexRunner
+from ..runners.gemini import GeminiRunner
+from ..runners.github_copilot import GitHubCopilotRunner
+from ..runners.ollama import OllamaRunner
 
 
 class RegistryError(RuntimeError):

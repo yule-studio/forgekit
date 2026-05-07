@@ -17,7 +17,7 @@ Selection sources (highest priority first):
 2. ``tech_lead_rule`` — keyword-based scoring against per-role
    research keyword banks (see ``_RULE_KEYWORDS``). Backed by tie-
    break order from
-   :data:`yule_orchestrator.agents.coding_authorization._DEFAULT_PARTICIPANT_PRIORITY`.
+   :data:`yule_orchestrator.agents.coding.authorization._DEFAULT_PARTICIPANT_PRIORITY`.
 3. ``fallback`` — when neither path produced a usable set, fall
    back to ``tech-lead + ai-engineer + backend-engineer + qa-engineer``
    (the historical "always-on research quartet") so the gateway
@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
-from ..coding_authorization import (
+from ..coding.authorization import (
     _DEFAULT_PARTICIPANT_PRIORITY,
     _EXECUTOR_CANDIDATE_ROLES,
 )

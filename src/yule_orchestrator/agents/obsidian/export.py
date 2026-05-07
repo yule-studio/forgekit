@@ -23,9 +23,9 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Iterable, Mapping, Optional, Sequence
 
-from .deliberation import TechLeadSynthesis
-from .research.pack import ResearchAttachment, ResearchPack
-from .workflow_state import WorkflowSession
+from ..deliberation import TechLeadSynthesis
+from ..research.pack import ResearchAttachment, ResearchPack
+from ..workflow_state import WorkflowSession
 
 
 CONTRACT_VERSION = "research-forum-export/v0"
@@ -941,7 +941,7 @@ def render_work_report_note(
     env: Optional[Mapping[str, str]] = None,
     exported_at: Optional[datetime] = None,
 ) -> ObsidianNote:
-    """Render a :class:`agents.work_report.WorkReport` (or its dict
+    """Render a :class:`agents.reports.work_report.WorkReport` (or its dict
     snapshot persisted in ``session.extra['work_report']``) as an
     Obsidian note under ``10-projects/<project>/reports/``.
 

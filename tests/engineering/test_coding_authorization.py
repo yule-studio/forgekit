@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding_authorization import (
+from yule_orchestrator.agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
     recommend_authorization,

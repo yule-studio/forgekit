@@ -36,14 +36,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
-from .deliberation import (
+from ..deliberation import (
     RoleTake,
     TechLeadOpening,
     TechLeadSynthesis,
     render_role_take,
 )
-from .research.pack import ResearchAttachment, ResearchPack, ResearchSource
-from .workflow_state import WorkflowSession
+from ..research.pack import ResearchAttachment, ResearchPack, ResearchSource
+from ..workflow_state import WorkflowSession
 
 
 KNOWLEDGE_KIND = "knowledge"
@@ -636,7 +636,7 @@ def recommend_knowledge_path(
     ``Agents/Engineering/Knowledge`` tree.
     """
 
-    from .obsidian_export import (
+    from .export import (
         FILENAME_BASENAME_LIMIT,
         FILENAME_SLUG_LIMIT,
         INBOX_UNSORTED,
@@ -808,7 +808,7 @@ def _resolve_project(
 ) -> Optional[str]:
     """Walk the project resolution chain, mirroring render_research_note."""
 
-    from .obsidian_export import (
+    from .export import (
         LAYOUT_LEGACY_AGENT,
         resolve_default_project,
         resolve_layout,
@@ -837,7 +837,7 @@ def render_knowledge_markdown(note: KnowledgeNote) -> str:
     by mutating the input dataclass before calling, not here.
     """
 
-    from .obsidian_export import _format_frontmatter
+    from .export import _format_frontmatter
 
     head = _format_frontmatter(dict(note.frontmatter))
     body = [f"# {note.title}"]
@@ -869,7 +869,7 @@ def render_knowledge_note(
     sites.
     """
 
-    from .obsidian_export import ExportPath, ObsidianNote
+    from .export import ExportPath, ObsidianNote
 
     note = build_knowledge_note(
         pack=pack,
