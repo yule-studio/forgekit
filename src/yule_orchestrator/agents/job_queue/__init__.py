@@ -19,6 +19,14 @@ The queue lives in the same SQLite file as :mod:`storage.local_cache`
 file lock + one WAL.
 """
 
+from .heartbeat import (
+    DEFAULT_HEARTBEAT_DEADLINE_SECONDS,
+    DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
+    HeartbeatRecord,
+    HeartbeatStore,
+    SupervisorSweepReport,
+    run_supervisor_sweep,
+)
 from .state_machine import (
     JobState,
     STATE_TRANSITIONS,
@@ -35,13 +43,19 @@ from .store import (
 
 
 __all__ = (
+    "DEFAULT_HEARTBEAT_DEADLINE_SECONDS",
+    "DEFAULT_HEARTBEAT_INTERVAL_SECONDS",
+    "HeartbeatRecord",
+    "HeartbeatStore",
     "Job",
     "JobQueue",
     "JobQueueError",
     "JobState",
     "QueueDatabaseError",
     "STATE_TRANSITIONS",
+    "SupervisorSweepReport",
     "TERMINAL_STATES",
     "is_terminal",
+    "run_supervisor_sweep",
     "validate_transition",
 )
