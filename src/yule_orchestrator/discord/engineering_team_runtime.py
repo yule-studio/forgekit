@@ -783,6 +783,20 @@ def _render_role_runtime_preface(
             "- 참고한 research_pack: " + _truncate_one_line(pack_summary, 80)
         )
 
+    # Phase 5 — fold RoleProfile.output_sections into the preface so the
+    # role bot's deterministic / LLM take both have the canonical
+    # template in front of them. Truncated to 6 sections to keep the
+    # preface compact when a role lists more.
+    try:
+        from ..agents.role_profiles import output_template_for_role
+    except Exception:  # noqa: BLE001 - registry optional in partial installs
+        output_sections: tuple = ()
+    else:
+        output_sections = output_template_for_role(role)
+    if output_sections:
+        section_summary = " · ".join(output_sections[:6])
+        lines.append(f"- 출력 섹션 템플릿: {section_summary}")
+
     # Phase 4 — surface the role-scoped collection outcome captured by
     # ``_collect_role_research_pack`` so the user sees concrete evidence
     # ("조사 결과: N건") instead of just the role take. Prefer the live

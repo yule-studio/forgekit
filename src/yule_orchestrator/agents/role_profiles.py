@@ -196,6 +196,47 @@ def reset_registry_cache_for_tests() -> None:
     _REGISTRY_CACHE = None
 
 
+# ---------------------------------------------------------------------------
+# Output / forbidden helpers — consumed by deliberation prefaces and
+# work_report templates so each role's comment / row uses the canonical
+# section list defined on its profile.
+# ---------------------------------------------------------------------------
+
+
+def output_template_for_role(role_id: str) -> Tuple[str, ...]:
+    """Return the canonical output section list for *role_id*.
+
+    Returns ``()`` when the role isn't registered so the caller can
+    fall back to the legacy unbounded format. The role-runtime preface
+    feeds this list into the bot's prompt as "이번 take는 다음 섹션
+    구조로 정리해 주세요".
+    """
+
+    profile = get_role_profile(role_id)
+    if profile is None:
+        return ()
+    return tuple(profile.output_sections)
+
+
+def forbidden_actions_for_role(role_id: str) -> Tuple[str, ...]:
+    """Return the role's hard-veto list. Used by the aggregator so
+    forbidden patterns come from a single source of truth."""
+
+    profile = get_role_profile(role_id)
+    if profile is None:
+        return ()
+    return tuple(profile.forbidden_actions)
+
+
+def required_context_for_role(role_id: str) -> Tuple[str, ...]:
+    """Return the role's required-context checklist."""
+
+    profile = get_role_profile(role_id)
+    if profile is None:
+        return ()
+    return tuple(profile.required_context)
+
+
 __all__ = (
     "PARTICIPATION_REQUIRED",
     "PARTICIPATION_PRIMARY",
@@ -207,7 +248,10 @@ __all__ = (
     "RoleContract",
     "RoleProfile",
     "all_role_profiles",
+    "forbidden_actions_for_role",
     "get_role_profile",
+    "output_template_for_role",
+    "required_context_for_role",
     "reset_registry_cache_for_tests",
     "role_contract_from_profile",
 )
