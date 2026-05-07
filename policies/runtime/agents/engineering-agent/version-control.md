@@ -28,3 +28,9 @@ This policy defines how Engineering Agent should handle branches, commits, pull 
 
 - Treat large rename or move operations as separate commits when practical.
   (가능하면 대규모 리네임이나 이동 작업은 별도 커밋으로 분리한다)
+
+## Commit message authoring rules
+
+- 커밋 메시지를 제안하거나 작성할 때 최근 커밋 형식(`git log`)을 따라 추론하지 않는다. 직전 커밋이 규칙을 위반했을 수 있으므로 이전 메시지의 모양은 형식의 권위가 아니다.
+- `policies/reference/COMMIT_CONVENTION.md` 를 우선 기준으로 사용한다. 형식·섹션 순서·필수 항목·예외는 항상 그 문서로부터 해석한다.
+- 레포 루트의 `.gitmessage.txt` 가 있으면 Git commit template 으로 사용할 수 있다. 다만 규칙 해석은 `COMMIT_CONVENTION.md` 를 따르고, `.gitmessage.txt` 의 빈 줄·주석은 형식의 권위가 아니다.
