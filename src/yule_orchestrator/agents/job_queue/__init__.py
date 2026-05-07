@@ -19,6 +19,23 @@ The queue lives in the same SQLite file as :mod:`storage.local_cache`
 file lock + one WAL.
 """
 
+from .approval_worker import (
+    APPROVAL_KIND_ENGINEERING_WRITE,
+    APPROVAL_KIND_OBSIDIAN_WRITE,
+    APPROVAL_KIND_RESEARCH_PROMOTION,
+    ApprovalChannelResolver,
+    ApprovalJobOutcome,
+    ApprovalPostFn,
+    ApprovalRequest,
+    ApprovalWorker,
+    JOB_TYPE_APPROVAL_POST,
+    SERVICE_ID_APPROVAL_WORKER,
+    SKIPPED_APPROVAL_CHANNEL_UNSET,
+    SKIPPED_CLAIMED_BY_OTHER_WORKER,
+    SKIPPED_DUPLICATE,
+    env_approval_channel_resolver,
+    render_approval_request,
+)
 from .heartbeat import (
     DEFAULT_HEARTBEAT_DEADLINE_SECONDS,
     DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
@@ -61,10 +78,19 @@ from .store import (
 
 
 __all__ = (
+    "APPROVAL_KIND_ENGINEERING_WRITE",
+    "APPROVAL_KIND_OBSIDIAN_WRITE",
+    "APPROVAL_KIND_RESEARCH_PROMOTION",
+    "ApprovalChannelResolver",
+    "ApprovalJobOutcome",
+    "ApprovalPostFn",
+    "ApprovalRequest",
+    "ApprovalWorker",
     "DEFAULT_HEARTBEAT_DEADLINE_SECONDS",
     "DEFAULT_HEARTBEAT_INTERVAL_SECONDS",
     "HeartbeatRecord",
     "HeartbeatStore",
+    "JOB_TYPE_APPROVAL_POST",
     "JOB_TYPE_RESEARCH_COLLECT",
     "JOB_TYPE_ROLE_TAKE",
     "Job",
@@ -81,12 +107,18 @@ __all__ = (
     "RoleTakeRunner",
     "RoleTakeWorker",
     "RunnerCallable",
+    "SERVICE_ID_APPROVAL_WORKER",
     "SERVICE_ID_RESEARCH_WORKER",
     "SERVICE_ID_ROLE_WORKER_PREFIX",
+    "SKIPPED_APPROVAL_CHANNEL_UNSET",
+    "SKIPPED_CLAIMED_BY_OTHER_WORKER",
+    "SKIPPED_DUPLICATE",
     "STATE_TRANSITIONS",
     "SupervisorSweepReport",
     "TERMINAL_STATES",
+    "env_approval_channel_resolver",
     "is_terminal",
+    "render_approval_request",
     "run_supervisor_sweep",
     "service_id_for_role",
     "validate_transition",
