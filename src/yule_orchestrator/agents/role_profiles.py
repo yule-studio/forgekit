@@ -29,8 +29,10 @@ the workflow cache.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
-from typing import Mapping, Optional, Tuple
+from pathlib import Path
+from typing import Any, Mapping, Optional, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -194,6 +196,7 @@ def reset_registry_cache_for_tests() -> None:
 
     global _REGISTRY_CACHE
     _REGISTRY_CACHE = None
+    _AGENT_JSON_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +240,148 @@ def required_context_for_role(role_id: str) -> Tuple[str, ...]:
     return tuple(profile.required_context)
 
 
+# ---------------------------------------------------------------------------
+# Disk-backed role contract reader (agent.json) — Phase 6 connection point.
+#
+# The Python ``RoleProfile`` registry above is the selector / aggregator
+# surface. The richer contract fields (default_response_template /
+# stop_conditions / standards / catalogs) live on the on-disk
+# ``agent.json`` per role so operators can edit them without a code
+# deploy. This loader exposes those fields read-only so deliberation
+# fallbacks and runtime preface builders can reference them without
+# duplicating the JSON shape.
+#
+# Behaviour notes:
+# - Returns empty / None on missing file / missing field — callers fall
+#   back to legacy behaviour rather than raise.
+# - Caches per-role payloads in process to avoid re-reading on every
+#   role take. ``reset_registry_cache_for_tests()`` also clears the
+#   contract cache so tests can monkey-patch a temp profile.
+# ---------------------------------------------------------------------------
+
+
+_AGENT_JSON_CACHE: dict[str, dict] = {}
+
+
+def _agents_dir() -> Path:
+    # role_profiles.py lives at src/yule_orchestrator/agents/, so the repo
+    # root is three parents up. Resolved once per call (cheap) so tests
+    # that move CWD don't break path lookup.
+    return Path(__file__).resolve().parents[3] / "agents" / "engineering-agent"
+
+
+def _load_agent_json(role_id: str) -> Optional[Mapping[str, Any]]:
+    """Read ``agents/engineering-agent/<role>/agent.json`` lazily.
+
+    Returns ``None`` when the file is missing or unreadable so callers
+    can fall back to legacy defaults instead of crashing. JSON parse
+    errors are also swallowed — a malformed profile must not wedge the
+    runtime; supervisor surfaces it through other channels.
+    """
+
+    if not role_id:
+        return None
+    short = role_id.split("/", 1)[-1].strip()
+    cached = _AGENT_JSON_CACHE.get(short)
+    if cached is not None:
+        return cached
+    path = _agents_dir() / short / "agent.json"
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if isinstance(payload, dict):
+        _AGENT_JSON_CACHE[short] = payload
+        return payload
+    return None
+
+
+def default_response_template_for(role_id: str) -> Tuple[str, ...]:
+    """Return the role's contract-v1 ``default_response_template``.
+
+    Falls back to :func:`output_template_for_role` when the JSON file
+    has no ``default_response_template`` yet — keeps roles still on the
+    legacy registry-only contract working unchanged.
+    """
+
+    payload = _load_agent_json(role_id) or {}
+    template = payload.get("default_response_template")
+    if isinstance(template, list) and template:
+        return tuple(str(item) for item in template if str(item).strip())
+    # Legacy fallback so roles without a contract-v1 template still get
+    # a sensible section list from the in-process registry.
+    return output_template_for_role(role_id)
+
+
+def stop_conditions_for(role_id: str) -> Tuple[str, ...]:
+    """Return the role's contract-v1 ``stop_conditions``.
+
+    Empty tuple on miss — caller uses the legacy ``forbidden_actions``
+    surface (already exposed via :func:`forbidden_actions_for_role`).
+    """
+
+    payload = _load_agent_json(role_id) or {}
+    stops = payload.get("stop_conditions")
+    if isinstance(stops, list) and stops:
+        return tuple(str(item) for item in stops if str(item).strip())
+    return ()
+
+
+def review_checklist_for_role(
+    role_id: str, *, category: Optional[str] = None
+) -> Tuple[str, ...]:
+    """Return the role's review_checklist_by_category (optionally per-category).
+
+    When *category* is None, returns a flat tuple of every checklist
+    item across all categories so a generic review preface can show the
+    full list. When provided, returns only that category's items.
+    """
+
+    payload = _load_agent_json(role_id) or {}
+    checklist = payload.get("review_checklist_by_category")
+    if not isinstance(checklist, dict):
+        return ()
+    if category is not None:
+        items = checklist.get(category)
+        if isinstance(items, list):
+            return tuple(str(item) for item in items if str(item).strip())
+        return ()
+    flat: list[str] = []
+    for items in checklist.values():
+        if isinstance(items, list):
+            flat.extend(str(item) for item in items if str(item).strip())
+    return tuple(flat)
+
+
+def required_context_catalog_for_role(role_id: str) -> Mapping[str, Tuple[str, ...]]:
+    """Return the role's required_context_catalog grouped by category.
+
+    Empty mapping on miss — callers fall back to the flat
+    :func:`required_context_for_role` list.
+    """
+
+    payload = _load_agent_json(role_id) or {}
+    catalog = payload.get("required_context_catalog")
+    if not isinstance(catalog, dict):
+        return {}
+    grouped: dict[str, Tuple[str, ...]] = {}
+    for cat, items in catalog.items():
+        if not isinstance(items, list):
+            continue
+        cleaned = tuple(str(item) for item in items if str(item).strip())
+        if cleaned:
+            grouped[str(cat)] = cleaned
+    return grouped
+
+
+def reset_contract_cache_for_tests() -> None:
+    """Drop the on-disk contract cache so a test can use a temp profile."""
+
+    _AGENT_JSON_CACHE.clear()
+
+
 __all__ = (
     "PARTICIPATION_REQUIRED",
     "PARTICIPATION_PRIMARY",
@@ -248,10 +393,15 @@ __all__ = (
     "RoleContract",
     "RoleProfile",
     "all_role_profiles",
+    "default_response_template_for",
     "forbidden_actions_for_role",
     "get_role_profile",
     "output_template_for_role",
+    "required_context_catalog_for_role",
     "required_context_for_role",
+    "reset_contract_cache_for_tests",
     "reset_registry_cache_for_tests",
+    "review_checklist_for_role",
     "role_contract_from_profile",
+    "stop_conditions_for",
 )
