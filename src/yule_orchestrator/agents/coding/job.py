@@ -106,7 +106,18 @@ def build_coding_job_from_proposal(
     user-approved job; the default starts in ``pending_approval`` so
     the gateway can store the proposal first and only flip it to
     ``ready`` once the user types an approval phrase.
+
+    Refuses to build a job when ``proposal.lifecycle_mode`` signals
+    research-only — those proposals never select an executor, so an
+    approval phrase against them must be preceded by a fresh
+    implementation-mode proposal.
     """
+
+    if getattr(proposal, "lifecycle_mode", "implementation") == "research_only":
+        raise ValueError(
+            "research-only proposal에는 executor가 없습니다. "
+            "구현이 필요하면 '수정 권한 제안'을 다시 요청해 주세요."
+        )
 
     profile = role_profile
     if profile is None:

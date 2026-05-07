@@ -15,10 +15,12 @@ from __future__ import annotations
 
 __all__ = (
     "NO_CODING_INTENT_PHRASES",
+    "RESEARCH_ONLY_PHRASES",
     "CONTINUATION_RESEARCH_KEYWORDS",
     "CODING_PROPOSAL_REQUEST_PHRASES",
     "CODING_APPROVAL_PHRASES",
     "user_explicitly_blocked_coding",
+    "is_research_only_prompt",
     "continuation_requests_research",
     "is_coding_proposal_request",
     "is_coding_approval_phrase",
@@ -46,6 +48,32 @@ NO_CODING_INTENT_PHRASES: tuple[str, ...] = (
     "코딩하지 말고",
     "no code change",
     "research only",
+)
+
+
+# Softer "research only" signals — broader than NO_CODING_INTENT_PHRASES.
+# These phrases mean the user wants information gathered, not code
+# written. Hits here flip the authorization proposal into research-only
+# mode (no executor display, lifecycle_mode=research_only) but do *not*
+# hard-block the coding gate the way NO_CODING_INTENT_PHRASES does — so
+# the user can still escalate to implementation later by saying "수정
+# 권한 제안" / "구현 진행" without having to rephrase their original ask.
+RESEARCH_ONLY_PHRASES: tuple[str, ...] = NO_CODING_INTENT_PHRASES + (
+    "코드 수정 없이",
+    "코드 수정없이",
+    "코드 수정은 없",
+    "수정 없이 자료",
+    "자료 수집이 목표",
+    "자료수집이 목표",
+    "자료 수집만",
+    "자료수집만",
+    "조사해줘",
+    "조사 해줘",
+    "리서치해줘",
+    "리서치 해줘",
+    "정리까지만",
+    "정리 까지만",
+    "research-only",
 )
 
 
@@ -107,6 +135,22 @@ def user_explicitly_blocked_coding(text: str) -> bool:
         return False
     normalised = _normalise(text)
     return any(phrase in normalised for phrase in NO_CODING_INTENT_PHRASES)
+
+
+def is_research_only_prompt(text: str) -> bool:
+    """True when *text* signals research-only intent.
+
+    Broader than :func:`user_explicitly_blocked_coding`: any message
+    saying "자료 수집이 목표" / "조사해줘" / "정리까지만" should hide the
+    coding executor pick from the user even though it doesn't strictly
+    forbid coding. The user still has to opt in to implementation
+    explicitly via "수정 권한 제안" / "구현 진행".
+    """
+
+    if not text:
+        return False
+    normalised = _normalise(text)
+    return any(phrase in normalised for phrase in RESEARCH_ONLY_PHRASES)
 
 
 def continuation_requests_research(text: str) -> bool:

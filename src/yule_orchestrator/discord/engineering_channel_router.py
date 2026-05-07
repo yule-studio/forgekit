@@ -805,6 +805,7 @@ async def route_engineering_message(
     # downstream research_loop / work_report / status diagnostic all
     # see the same set without re-running the rule bank.
     session = _persist_role_selection(session, intake_prompt)
+    session = _persist_lifecycle_mode(session, intake_prompt)
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -964,6 +965,7 @@ async def _drive_clarification_create_new_work(
     # spawned session before kickoff / research_loop / work_report
     # consume it.
     session = _persist_role_selection(session, canonical_prompt)
+    session = _persist_lifecycle_mode(session, canonical_prompt)
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -1284,6 +1286,54 @@ def _persist_role_selection(
     return _persist_extra_keys(session, selection_updates)
 
 
+def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
+    """Mark *session* as research-only when the prompt signals that.
+
+    Live regression: the gateway used to advertise an executor role
+    ("실행 후보 backend-engineer") even on a request like "오늘은 코드
+    수정 없이 자료 수집이 목표야". Phase 2 fixes that by stashing the
+    lifecycle mode at intake so every downstream consumer (work_report
+    builder, status diagnostic, member-bot research path) reads the
+    same answer.
+
+    The session.extra layout matches the spec's bullet 5:
+        lifecycle_mode: "research_only" | "implementation"
+        executor_role:  null when research-only
+        research_leads: list[str]   roles leading the investigation
+
+    Best-effort — any import or persistence failure leaves the session
+    untouched so a partial agent layout cannot block intake.
+    """
+
+    if session is None:
+        return session
+    try:
+        from ..agents.coding.authorization import (
+            LIFECYCLE_MODE_IMPLEMENTATION,
+            LIFECYCLE_MODE_RESEARCH_ONLY,
+            recommend_authorization,
+        )
+    except Exception:  # noqa: BLE001
+        return session
+
+    try:
+        proposal = recommend_authorization(user_request=canonical_prompt or "")
+    except Exception:  # noqa: BLE001
+        return session
+
+    if proposal.lifecycle_mode == LIFECYCLE_MODE_RESEARCH_ONLY:
+        updates = {
+            "lifecycle_mode": LIFECYCLE_MODE_RESEARCH_ONLY,
+            "executor_role": None,
+            "research_leads": list(proposal.research_leads),
+        }
+    else:
+        updates = {
+            "lifecycle_mode": LIFECYCLE_MODE_IMPLEMENTATION,
+        }
+    return _persist_extra_keys(session, updates)
+
+
 def _work_report_to_dict(report: Any) -> dict:
     """Serialise a :class:`agents.reports.work_report.WorkReport` into a plain
     JSON-friendly dict so the workflow store can persist it under
@@ -1525,14 +1575,22 @@ def _proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, obj
         "safety_rules": list(proposal.safety_rules),
         "approval_required": bool(proposal.approval_required),
         "metadata": dict(proposal.metadata),
+        "lifecycle_mode": proposal.lifecycle_mode,
+        "research_leads": list(proposal.research_leads),
     }
 
 
 def _proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProposal:
+    lifecycle_mode = str(payload.get("lifecycle_mode") or "implementation")
+    raw_executor = payload.get("executor_role")
+    if lifecycle_mode == "research_only":
+        executor_role = str(raw_executor or "")
+    else:
+        executor_role = str(raw_executor or "tech-lead")
     return CodingAuthorizationProposal(
         session_id=payload.get("session_id"),
         user_request=str(payload.get("user_request") or ""),
-        executor_role=str(payload.get("executor_role") or "tech-lead"),
+        executor_role=executor_role,
         review_roles=tuple(payload.get("review_roles") or ()),
         participant_roles=tuple(payload.get("participant_roles") or ()),
         write_scope=tuple(payload.get("write_scope") or ()),
@@ -1541,6 +1599,8 @@ def _proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationPro
         safety_rules=tuple(payload.get("safety_rules") or ()),
         approval_required=bool(payload.get("approval_required", True)),
         metadata=dict(payload.get("metadata") or {}),
+        lifecycle_mode=lifecycle_mode,
+        research_leads=tuple(payload.get("research_leads") or ()),
     )
 
 

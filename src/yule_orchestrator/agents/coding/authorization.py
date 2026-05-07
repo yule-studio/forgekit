@@ -109,6 +109,10 @@ def load_role_profile(role: str, *, department_dir: Optional[Path] = None) -> Ma
 # ---------------------------------------------------------------------------
 
 
+LIFECYCLE_MODE_IMPLEMENTATION = "implementation"
+LIFECYCLE_MODE_RESEARCH_ONLY = "research_only"
+
+
 @dataclass(frozen=True)
 class CodingAuthorizationProposal:
     """Tech-lead's authorization proposal for a coding job.
@@ -116,6 +120,12 @@ class CodingAuthorizationProposal:
     The Discord gateway renders this for the user; on approval the
     fields land on a :class:`CodingJob` (next commit) that an executor
     role can run with.
+
+    ``lifecycle_mode`` distinguishes implementation work (default —
+    pick an executor, request approval) from research-only requests
+    where no code will be written. Research-only proposals leave
+    ``executor_role`` empty and surface ``research_leads`` instead so
+    the gateway shows "조사 중심 역할" rather than "실행 후보".
     """
 
     session_id: Optional[str]
@@ -129,6 +139,8 @@ class CodingAuthorizationProposal:
     safety_rules: Tuple[str, ...]
     approval_required: bool = True
     metadata: Mapping[str, object] = field(default_factory=dict)
+    lifecycle_mode: str = LIFECYCLE_MODE_IMPLEMENTATION
+    research_leads: Tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +156,158 @@ _DEFAULT_SAFETY_RULES: Tuple[str, ...] = (
     "write_scope 밖의 파일을 수정하지 않는다",
     "변경 전후 관련 단위/통합 테스트를 실행하고 결과를 보고한다",
 )
+
+
+_RESEARCH_ONLY_SAFETY_RULES: Tuple[str, ...] = (
+    "조사 단계에서는 코드/문서/설정 어떤 파일도 수정하지 않는다",
+    "secret / .env / 운영 자격 증명에 접근하지 않는다",
+    "조사 결과는 research_pack에 기록하고 출처(URL 또는 레퍼런스)를 함께 남긴다",
+    "구현이 필요해지면 사용자가 '수정 권한 제안' 또는 '구현 진행'을 요청할 때까지 기다린다",
+)
+
+
+# Phrases that flip a request from implementation into research-only.
+# Mirrors RESEARCH_ONLY_PHRASES on the discord side but lives here so
+# the recommender stays usable from CLI / tests without importing the
+# discord layer.
+_RESEARCH_ONLY_PHRASES: Tuple[str, ...] = (
+    "코드 수정 없이",
+    "코드 수정없이",
+    "코드 수정은 없",
+    "코드 수정하지 말",
+    "코드 수정 하지 말",
+    "코드 수정 금지",
+    "수정 없이 자료",
+    "수정하지 말고 리서치",
+    "수정 하지 말고 리서치",
+    "수정하지 말고 조사",
+    "자료 수집이 목표",
+    "자료수집이 목표",
+    "자료 수집만",
+    "자료수집만",
+    "리서치만 해",
+    "리서치만 정리",
+    "조사만 해",
+    "조사만 정리",
+    "조사해줘",
+    "조사 해줘",
+    "리서치해줘",
+    "리서치 해줘",
+    "정리까지만",
+    "정리 까지만",
+    "코딩 하지 말고",
+    "코딩하지 말고",
+    "no code change",
+    "research only",
+    "research-only",
+)
+
+
+def _is_research_only_text(normalised_request: str) -> bool:
+    if not normalised_request:
+        return False
+    flat = " ".join(normalised_request.split())
+    return any(phrase in flat for phrase in _RESEARCH_ONLY_PHRASES)
+
+
+def _research_leads_from_scored(
+    scored: Sequence[Tuple[float, int, str]],
+    *,
+    user_request: str,
+    limit: int = 3,
+) -> Tuple[str, ...]:
+    """Pick the top scoring roles as research_leads.
+
+    The executor scoring uses each role's ``default_executor_priority``
+    bucket which is *coding*-flavoured (Spring Security, Docker, RAG)
+    and doesn't reliably cover infrastructure research keywords like
+    "k8s" or "ingress". For research-only intent we therefore consult
+    the role-selection rule bank as well — that one knows the live
+    Kubernetes / RAG / dashboard regression set from Phase 3 — and
+    union the two views together so devops + backend lead a k8s
+    research request even when no executor keyword fired.
+    """
+
+    leads: list[str] = []
+    for score, _, role in scored:
+        if score > 0 and role not in leads:
+            leads.append(role)
+
+    try:
+        # Lazy import to avoid the role_selection ↔ coding.authorization
+        # module-load cycle (role_selection already pulls
+        # _DEFAULT_PARTICIPANT_PRIORITY from this module).
+        from ..lifecycle.role_selection import recommend_active_roles
+    except Exception:  # noqa: BLE001 - degrade silently if unavailable
+        recommend_active_roles = None  # type: ignore[assignment]
+
+    if recommend_active_roles is not None:
+        try:
+            selection = recommend_active_roles(user_prompt=user_request)
+        except Exception:  # noqa: BLE001
+            selection = None
+        if selection is not None:
+            for role in selection.selected_roles:
+                # tech-lead always opens the chain elsewhere, so don't
+                # double-count it as a research_lead. Keep the user's
+                # active research roles even when the executor scorer
+                # didn't surface them.
+                if role == "tech-lead":
+                    continue
+                if role not in leads:
+                    leads.append(role)
+
+    if not leads:
+        return ("backend-engineer",)
+    return tuple(leads[:limit])
+
+
+def _research_only_proposal(
+    *,
+    user_request: str,
+    session_id: Optional[str],
+    research_leads: Tuple[str, ...],
+    scored: Sequence[Tuple[float, int, str]],
+) -> CodingAuthorizationProposal:
+    """Authorization proposal for a research-only request.
+
+    No executor is selected, write_scope is empty, approval is *not*
+    required (the user explicitly said no code change yet). The Discord
+    gateway renders ``research_leads`` instead of ``executor_role``.
+    """
+
+    leads_for_reason = ", ".join(research_leads) if research_leads else "tech-lead"
+    reason = (
+        f"research-only 요청: 조사 중심 역할 {leads_for_reason} 가 자료를 수집한다. "
+        "구현이 필요하면 사용자가 별도로 '수정 권한 제안'을 요청해야 한다."
+    )
+    return CodingAuthorizationProposal(
+        session_id=session_id,
+        user_request=user_request,
+        executor_role="",
+        review_roles=("tech-lead",),
+        participant_roles=("tech-lead",) + tuple(
+            role for role in research_leads if role != "tech-lead"
+        ),
+        write_scope=(),
+        forbidden_scope=(
+            "코드/문서/설정 파일 수정",
+            "secret / .env 접근",
+            "사용자 승인 없는 destructive command",
+        ),
+        reason=reason,
+        safety_rules=_RESEARCH_ONLY_SAFETY_RULES,
+        approval_required=False,
+        metadata={
+            "lifecycle_mode": LIFECYCLE_MODE_RESEARCH_ONLY,
+            "research_leads": list(research_leads),
+            "scored_roles": tuple(
+                {"role": role, "score": score} for score, _, role in scored
+            ),
+        },
+        lifecycle_mode=LIFECYCLE_MODE_RESEARCH_ONLY,
+        research_leads=research_leads,
+    )
 
 
 def recommend_authorization(
@@ -217,6 +381,18 @@ def recommend_authorization(
     # Sort by score desc, tie-break asc.
     scored.sort(key=lambda item: (-item[0], item[1]))
     top_score, _, top_role = scored[0]
+
+    # Research-only intent short-circuits executor selection. We still
+    # keep the scored ranking so Tech Lead can highlight which roles
+    # should lead the investigation.
+    if _is_research_only_text(normalised):
+        leads = _research_leads_from_scored(scored, user_request=request_text)
+        return _research_only_proposal(
+            user_request=request_text,
+            session_id=session_id,
+            research_leads=leads,
+            scored=scored,
+        )
 
     if top_score <= 0:
         # No keyword matched — likely an under-specified request. Still
@@ -440,7 +616,13 @@ def format_authorization_message(proposal: CodingAuthorizationProposal) -> str:
 
     Kept separate from the recommender so callers can tailor the
     presentation per surface (Discord vs. CLI vs. unit-test snapshot).
+    Research-only proposals get a different header + body — no
+    executor pick, no write scope, and a softer follow-up phrase that
+    asks the user to opt in to implementation explicitly.
     """
+
+    if proposal.lifecycle_mode == LIFECYCLE_MODE_RESEARCH_ONLY:
+        return _format_research_only_message(proposal)
 
     lines = [
         "**[engineering-agent] 코딩 권한 제안**",
@@ -479,8 +661,42 @@ def format_authorization_message(proposal: CodingAuthorizationProposal) -> str:
     return "\n".join(lines)
 
 
+def _format_research_only_message(proposal: CodingAuthorizationProposal) -> str:
+    leads = proposal.research_leads or ("tech-lead",)
+    leads_text = ", ".join(f"`{r}`" for r in leads)
+    lines = [
+        "**[engineering-agent] 조사 단계 — 코드 수정은 하지 않습니다**",
+        "",
+        f"요청: {proposal.user_request}",
+        f"조사 중심 역할: {leads_text}",
+    ]
+    if proposal.review_roles:
+        lines.append(
+            "검토 역할: " + ", ".join(f"`{r}`" for r in proposal.review_roles)
+        )
+    if proposal.forbidden_scope:
+        lines.append("")
+        lines.append("**조사 단계 금지 사항**")
+        for scope in proposal.forbidden_scope:
+            lines.append(f"- {scope}")
+    lines.append("")
+    lines.append(f"이유: {proposal.reason}")
+    if proposal.safety_rules:
+        lines.append("")
+        lines.append("**safety rules**")
+        for rule in proposal.safety_rules:
+            lines.append(f"- {rule}")
+    lines.append("")
+    lines.append(
+        "조사 결과를 보고 실제 구현이 필요해지면 `수정 권한 제안` 또는 `구현 진행`이라고 답해 주세요."
+    )
+    return "\n".join(lines)
+
+
 __all__ = (
     "CodingAuthorizationProposal",
+    "LIFECYCLE_MODE_IMPLEMENTATION",
+    "LIFECYCLE_MODE_RESEARCH_ONLY",
     "format_authorization_message",
     "load_role_profile",
     "recommend_authorization",
