@@ -27,6 +27,13 @@ from .heartbeat import (
     SupervisorSweepReport,
     run_supervisor_sweep,
 )
+from .research_worker import (
+    JOB_TYPE_RESEARCH_COLLECT,
+    SERVICE_ID_RESEARCH_WORKER,
+    ResearchJobOutcome,
+    ResearchWorker,
+    RunnerCallable,
+)
 from .state_machine import (
     JobState,
     STATE_TRANSITIONS,
@@ -47,11 +54,16 @@ __all__ = (
     "DEFAULT_HEARTBEAT_INTERVAL_SECONDS",
     "HeartbeatRecord",
     "HeartbeatStore",
+    "JOB_TYPE_RESEARCH_COLLECT",
     "Job",
     "JobQueue",
     "JobQueueError",
     "JobState",
     "QueueDatabaseError",
+    "ResearchJobOutcome",
+    "ResearchWorker",
+    "RunnerCallable",
+    "SERVICE_ID_RESEARCH_WORKER",
     "STATE_TRANSITIONS",
     "SupervisorSweepReport",
     "TERMINAL_STATES",

@@ -2496,14 +2496,26 @@ async def _run_research_loop_hook(
 ) -> EngineeringResearchLoopReport:
     """Call *research_loop_fn* with the message context and surface its result.
 
-    The hook receives the autonomous collector's outputs
-    (``collection_outcome``/``research_pack``) plus the working thread
-    id so the production wiring can post the collection summary to the
-    research forum and start a deliberation chain in the same thread —
-    without the router needing to know the publisher/deliberation APIs.
+    A-M3 wiring: the actual ``research_loop_fn`` invocation now happens
+    inside :class:`ResearchWorker`, so each gateway call lands as a
+    ``research_collect`` job in the SQLite job queue and goes through
+    the ``queued → assigned → in_progress → saved`` state machine.
+    Concretely:
 
-    Errors are caught and reported via a ``⚠️`` chat line so a research
-    loop failure does not undo the intake + kickoff that already landed.
+      * Duplicate intakes for the same session are dropped at the
+        ``enqueue`` step — the user sees "이미 진행 중" instead of a
+        second collect kicking off.
+      * Worker crashes mid-run leave the row in ``in_progress`` with
+        a lease; the M2 supervisor sweep moves it back to
+        ``failed_retryable`` so a future pick can retry.
+      * The Discord-visible artifacts (``follow_up_message``,
+        ``forum_status_message``, ``session.extra`` updates) are
+        unchanged — only state-machine framing is added around the
+        same call.
+
+    Errors are still caught and reported via a ``⚠️`` chat line so a
+    research loop failure does not undo the intake + kickoff that
+    already landed.
     """
 
     attachments = extract_message_attachments(message)
@@ -2514,24 +2526,44 @@ async def _run_research_loop_hook(
     # so "입력 중..." stays visible from the moment we start collecting
     # until the loop returns a follow-up message (or an error).
     from .typing_indicator import typing_keepalive
+    from ..agents.job_queue import (
+        HeartbeatStore,
+        JobQueue,
+        ResearchWorker,
+    )
+
+    session_id = getattr(session, "session_id", "") or ""
+    queue = JobQueue()
+    worker = ResearchWorker(queue=queue, heartbeats=HeartbeatStore())
+
+    async def _runner(_job: Any) -> Any:
+        return await _maybe_await(
+            research_loop_fn(
+                session=session,
+                message_text=prompt_text,
+                attachments=attachments,
+                channel=message.channel,
+                collection_outcome=collection_outcome,
+                research_pack=research_pack,
+                role_for_research=role_for_research,
+                thread_id=thread_id,
+            )
+        )
 
     try:
         async with typing_keepalive(
             message.channel,
             label="research_loop",
-            session_id=getattr(session, "session_id", None),
+            session_id=session_id or None,
         ):
-            raw = await _maybe_await(
-                research_loop_fn(
-                    session=session,
-                    message_text=prompt_text,
-                    attachments=attachments,
-                    channel=message.channel,
-                    collection_outcome=collection_outcome,
-                    research_pack=research_pack,
-                    role_for_research=role_for_research,
-                    thread_id=thread_id,
-                )
+            outcome = await worker.run_one(
+                session_id=session_id,
+                runner=_runner,
+                payload={
+                    "thread_id": thread_id,
+                    "role_for_research": role_for_research,
+                    "prompt_excerpt": (prompt_text or "")[:160],
+                },
             )
     except Exception as exc:  # noqa: BLE001 - non-fatal; report and return
         report = EngineeringResearchLoopReport(error=str(exc))
@@ -2541,7 +2573,24 @@ async def _run_research_loop_hook(
         )
         return report
 
-    report = _coerce_research_loop_report(raw)
+    if outcome.skipped_reason == "duplicate_in_flight":
+        # Idempotency notice — keeps the user informed without
+        # double-running the collector. We deliberately don't post
+        # the typical "운영-리서치 forum thread 게시:" status here
+        # because the original in-flight job will publish it.
+        await send_chunks(
+            message.channel,
+            "⏳ 이 세션은 이미 운영-리서치 수집이 진행 중이에요. "
+            "끝나는 대로 thread에 결과가 올라옵니다.",
+        )
+        return EngineeringResearchLoopReport()
+    if outcome.skipped_reason == "claimed_by_other_worker":
+        # Race only relevant once M6 introduces a standalone worker.
+        # In M3 in-process this branch is theoretical; surfacing a
+        # message keeps the contract explicit.
+        return EngineeringResearchLoopReport()
+
+    report = _coerce_research_loop_report(outcome.runner_result)
     # Persist forum publication / open-call signals onto session.extra
     # so the diagnostic responder can describe the live setup later
     # without round-tripping through the publish object. Best-effort —
