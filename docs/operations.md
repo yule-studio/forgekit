@@ -1,6 +1,26 @@
 # Operations — Always-on engineering runtime
 
-이 문서는 engineering-agent 를 상시 서비스로 운영하기 위한 가이드다. `yule discord up` 은 개발 / 로컬 부트스트랩 도구이며, 실제 서버 운영은 systemd / launchd 같은 외부 supervisor 기준으로 설계한다.
+이 문서는 engineering-agent 를 상시 서비스로 운영하기 위한 가이드다. M6.0 부터는 `yule runtime up --profile engineering` 한 명령으로 worker 전체를 단일 부모 process 아래 띄울 수 있고, production 배포는 동일 entrypoint (`yule run-service <id>`) 를 systemd unit 으로 호출한다. 기존 `yule discord up` 은 dev legacy launcher 로 유지된다 (deprecate 안 함).
+
+## 0. 빠른 시작 (M6.0)
+
+dev / 단일 호스트:
+
+```bash
+yule runtime up --dry-run               # 띄울 service 목록 확인 (실제 spawn 없음)
+yule runtime up                         # 전체 engineering runtime 부팅
+yule run-service eng-research-worker    # 단일 worker (CLI 또는 systemd 가 호출)
+```
+
+production (systemd):
+
+```bash
+sudo systemctl start yule.target
+sudo systemctl status yule-run-service@eng-research-worker.service
+journalctl -u yule-run-service@eng-supervisor-watch.service -f
+```
+
+자세한 systemd unit / 설치 절차는 [`deploy/systemd/README.md`](../deploy/systemd/README.md).
 
 ## 1. 핵심 원칙
 

@@ -476,6 +476,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the launch inventory without contacting Discord.",
     )
 
+    runtime_parser = subparsers.add_parser(
+        "runtime",
+        help="Always-on engineering runtime (queue workers + supervisor).",
+    )
+    runtime_subparsers = runtime_parser.add_subparsers(
+        dest="runtime_command", required=True
+    )
+    runtime_up_parser = runtime_subparsers.add_parser(
+        "up",
+        help="Spawn every implemented worker for a profile under one parent process.",
+    )
+    runtime_up_parser.add_argument(
+        "--profile",
+        default="engineering",
+        help="Service profile to launch. Defaults to engineering.",
+    )
+    runtime_up_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the planned services + commands without spawning.",
+    )
+    runtime_up_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Alias for --dry-run.",
+    )
+    runtime_up_parser.add_argument(
+        "--log-level", default="INFO", help="Python logging level."
+    )
+
+    run_service_parser = subparsers.add_parser(
+        "run-service",
+        help="Run a single long-running worker (called by systemd or runtime up).",
+    )
+    run_service_parser.add_argument(
+        "service_id",
+        help="Service id from the inventory (eng-research-worker, eng-role-tech-lead, ...).",
+    )
+    run_service_parser.add_argument("--log-level", default="INFO")
+    run_service_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Override SQLite cache path (defaults to YULE_CACHE_DB_PATH).",
+    )
+
     engineer_parser = subparsers.add_parser(
         "engineer",
         help="Drive the engineering-agent Discord workflow (intake/approve/progress/complete).",
@@ -864,6 +909,36 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 agent_ids=parse_agent_ids(args.agents),
                 dry_run=args.dry_run,
             )
+        if args.command == "runtime" and args.runtime_command == "up":
+            from ..runtime.subprocess_supervisor import (
+                build_dry_run_plan,
+                render_dry_run_plan,
+                run_runtime_up,
+            )
+            import asyncio as _asyncio
+            import logging as _logging
+
+            _logging.basicConfig(
+                level=args.log_level,
+                format="[%(name)s] %(levelname)s %(message)s",
+            )
+            if args.dry_run or args.list:
+                plan = build_dry_run_plan(profile=args.profile)
+                print(render_dry_run_plan(plan))
+                return 0
+            try:
+                return _asyncio.run(run_runtime_up(profile=args.profile))
+            except KeyboardInterrupt:
+                return 0
+
+        if args.command == "run-service":
+            from ..runtime.run_service import run_service_main
+
+            db = Path(args.db_path) if args.db_path else None
+            return run_service_main(
+                args.service_id, db_path=db, log_level=args.log_level
+            )
+
         if args.command == "engineer":
             return _dispatch_engineer_command(repo_root, args)
         if args.command == "supervisor" and args.supervisor_command == "run":
