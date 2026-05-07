@@ -147,58 +147,38 @@ class RoleSelection:
 # ---------------------------------------------------------------------------
 
 
-# Substring → canonical role id. Order matters — longer/more specific
-# matchers come first so "ai-engineer" doesn't get swallowed by a
-# bare "ai" pattern further down. The list is ASCII + Korean
-# variations the team has actually used in operator chat.
-_USER_EXPLICIT_PATTERNS: Tuple[Tuple[str, str], ...] = (
-    ("tech-lead", "tech-lead"),
-    ("tech lead", "tech-lead"),
-    ("테크리드", "tech-lead"),
-    ("테크 리드", "tech-lead"),
-    ("ai-engineer", "ai-engineer"),
-    ("ai engineer", "ai-engineer"),
-    ("ai 엔지니어", "ai-engineer"),
-    ("ai엔지니어", "ai-engineer"),
-    ("ai 관점", "ai-engineer"),
-    ("backend-engineer", "backend-engineer"),
-    ("backend engineer", "backend-engineer"),
-    ("백엔드 엔지니어", "backend-engineer"),
-    ("백엔드엔지니어", "backend-engineer"),
-    ("백엔드", "backend-engineer"),
-    ("frontend-engineer", "frontend-engineer"),
-    ("frontend engineer", "frontend-engineer"),
-    ("프론트엔드 엔지니어", "frontend-engineer"),
-    ("프론트엔드", "frontend-engineer"),
-    ("qa-engineer", "qa-engineer"),
-    ("qa engineer", "qa-engineer"),
-    ("qa 엔지니어", "qa-engineer"),
-    ("devops-engineer", "devops-engineer"),
-    ("devops engineer", "devops-engineer"),
-    ("데브옵스 엔지니어", "devops-engineer"),
-    ("데브옵스", "devops-engineer"),
-    ("product-designer", "product-designer"),
-    ("product designer", "product-designer"),
-    ("프로덕트 디자이너", "product-designer"),
-    ("ux 디자이너", "product-designer"),
-    ("ui 디자이너", "product-designer"),
-)
+def _build_explicit_pattern_index() -> Tuple[Tuple[str, str], ...]:
+    """Project ``RoleProfile.explicit_patterns`` into the substring-match
+    index the selector uses. Sorted longer-first so ``"ai-engineer"``
+    beats ``"ai"`` when both would match — same contract the legacy
+    inline literal had, just sourced from the role registry now.
+    """
+
+    pairs: list[Tuple[str, str]] = []
+    for role_id, profile in all_role_profiles().items():
+        for pattern in profile.explicit_patterns:
+            cleaned = (pattern or "").strip().lower()
+            if cleaned:
+                pairs.append((cleaned, role_id))
+    # Sort longer first so a more specific pattern claims the match
+    # before a shorter substring (e.g. "ai-engineer" > "ai").
+    pairs.sort(key=lambda pair: -len(pair[0]))
+    return tuple(pairs)
 
 
 def _detect_explicit_roles(prompt: str) -> Tuple[str, ...]:
     """Return roles named directly in *prompt* (deduplicated, in the
     order the patterns first hit). Empty tuple when the prompt
-    doesn't name any role explicitly."""
+    doesn't name any role explicitly. Reads explicit_patterns off the
+    role profile registry so adding a new alias is a one-profile edit.
+    """
 
     if not prompt:
         return ()
     lowered = prompt.lower()
     found: list[str] = []
     seen: set[str] = set()
-    for pattern, role in _USER_EXPLICIT_PATTERNS:
-        # Match against lowered text; the patterns themselves are
-        # already lowercase. Korean substrings are unaffected by
-        # `.lower()` so the same call covers both alphabets.
+    for pattern, role in _build_explicit_pattern_index():
         if pattern in lowered:
             if role not in seen:
                 seen.add(role)
@@ -206,139 +186,56 @@ def _detect_explicit_roles(prompt: str) -> Tuple[str, ...]:
     return tuple(found)
 
 
-# Per-role keyword banks for the tech-lead rule-based fallback. These
-# are research-shaped concerns (what the role would actually want to
-# *investigate*) rather than executor-shaped scope, so they can
-# legitimately differ from agent.json's executor_priority bank.
-# Hits are additive; tie-break uses _DEFAULT_PARTICIPANT_PRIORITY.
-_RULE_KEYWORDS: Mapping[str, Tuple[str, ...]] = {
-    "ai-engineer": (
-        "ai",
-        "ml",
-        "llm",
-        "rag",
-        "agent",
-        "memory",
-        "embedding",
-        "vector",
-        "prompt",
-        "프롬프트",
-        "에이전트",
-        "추론",
-        "학습",
-        "강화학습",
-        "하네스",
-        "harness",
-    ),
-    "backend-engineer": (
-        "api",
-        "rest",
-        "grpc",
-        "endpoint",
-        "database",
-        "schema",
-        "auth",
-        "spring",
-        "django",
-        "fastapi",
-        "백엔드",
-        "인증",
-        "권한",
-        "결제",
-        "멱등",
-        "트랜잭션",
-        # Infrastructure-shape keywords — backend joins k8s / container /
-        # service-mesh / orchestration discussions because runtime
-        # contracts (health checks, DB connection pools, auth gateways,
-        # service-to-service calls) are backend's responsibility even
-        # when devops drives the cluster setup.
-        "k8s",
-        "kubernetes",
-        "쿠버네티스",
-        "cluster",
-        "클러스터",
-        "container",
-        "컨테이너",
-        "orchestration",
-        "오케스트레이션",
-        "helm",
-        "ingress",
-        "service mesh",
-        "service-mesh",
-    ),
-    "frontend-engineer": (
-        "ui",
-        "react",
-        "vue",
-        "css",
-        "page",
-        "component",
-        "프론트엔드",
-        "화면",
-        "컴포넌트",
-        "접근성",
-        "accessibility",
-        "랜딩",
-        "hero",
-    ),
-    "product-designer": (
-        "design",
-        "wireframe",
-        "copy",
-        "carousel",
-        "디자인",
-        "카피",
-        "인터페이스",
-        "사용자 흐름",
-        "ux",
-        "랜딩",
-    ),
-    "qa-engineer": (
-        "test",
-        "regression",
-        "qa",
-        "acceptance",
-        "회귀",
-        "테스트",
-        "품질",
-        "검증",
-        "재현",
-    ),
-    "devops-engineer": (
-        "deploy",
-        "deployment",
-        "ci",
-        "cd",
-        "docker",
-        "k8s",
-        "kubernetes",
-        "쿠버네티스",
-        "cluster",
-        "클러스터",
-        "container",
-        "컨테이너",
-        "orchestration",
-        "오케스트레이션",
-        "helm",
-        "ingress",
-        "service mesh",
-        "service-mesh",
-        "monitoring",
-        "supervisor",
-        "supervisord",
-        "운영",
-        "배포",
-        "모니터링",
-        "로그",
-        "observability",
-        "env",
-    ),
-}
+def _rule_keywords(role: str) -> Tuple[str, ...]:
+    """Read activation_keywords off the role profile registry.
+
+    Source of truth shifted to ``RoleProfile.activation_keywords`` —
+    extending a domain (k8s, RAG, design system) is now a one-profile
+    edit instead of editing the selector keyword bank in two places.
+    Returns ``()`` for unknown roles so the caller's score loop is
+    safe.
+    """
+
+    profiles = all_role_profiles()
+    profile = profiles.get(role)
+    if profile is None:
+        return ()
+    return tuple(kw.lower() for kw in profile.activation_keywords if kw)
 
 
 def _rule_score(role: str, prompt_lower: str) -> int:
-    keywords = _RULE_KEYWORDS.get(role, ())
-    return sum(1 for kw in keywords if kw in prompt_lower)
+    return sum(1 for kw in _rule_keywords(role) if kw in prompt_lower)
+
+
+def _matched_keywords(role: str, prompt_lower: str) -> Tuple[str, ...]:
+    """Return the keywords that fired for *role*. Used by the selector
+    to populate ``RoleSelection.matched_keywords_by_role`` so status
+    surfaces can show *which* signals carried the role (not just the
+    raw count).
+    """
+
+    return tuple(kw for kw in _rule_keywords(role) if kw in prompt_lower)
+
+
+def _participation_for_score(score: int, *, top_score: int) -> str:
+    """Map a numeric keyword-bank score to a participation level.
+
+    Buckets:
+    - score 0  → excluded (handled by caller, not here)
+    - score == top_score and top_score >= 2 → primary
+    - score >= 2 (but below top) → primary if it's the lone hit-list
+      otherwise reviewer
+    - score == 1 → reviewer
+    - score < 0 (defensive) → optional
+    """
+
+    if score <= 0:
+        return PARTICIPATION_EXCLUDED
+    if score >= top_score and top_score >= 2:
+        return PARTICIPATION_PRIMARY
+    if score >= 2:
+        return PARTICIPATION_REVIEWER
+    return PARTICIPATION_REVIEWER
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +277,18 @@ def recommend_active_roles(
                 reasons[role] = "tech-lead always included (also user-named)"
             else:
                 reasons[role] = "user explicit mention"
+        # Participation: tech-lead is required, user-named non-tech-lead
+        # roles are primary (the user explicitly asked for their take).
+        participation: dict[str, str] = {
+            role: PARTICIPATION_EXCLUDED for role in ALL_ENGINEERING_ROLES
+        }
+        participation[ROLE_TECH_LEAD] = PARTICIPATION_REQUIRED
+        primary: list[str] = []
+        for role in explicit:
+            if role == ROLE_TECH_LEAD:
+                continue
+            participation[role] = PARTICIPATION_PRIMARY
+            primary.append(role)
         return RoleSelection(
             selected_roles=selected,
             excluded_roles=excluded,
@@ -387,15 +296,26 @@ def recommend_active_roles(
             optional_roles=(),
             reason_by_role=reasons,
             selection_source=SOURCE_USER_EXPLICIT,
+            participation_by_role=participation,
+            primary_roles=tuple(primary),
+            reviewer_roles=(),
+            optional_roles_v2=(),
+            matched_keywords_by_role={},
+            fallback_policy=None,
         )
 
-    # 2. tech-lead rule
+    # 2. tech-lead rule — score every member role against
+    # ``RoleProfile.activation_keywords``. Track the matched keyword
+    # list per role so the status surface can show signals, not just
+    # counts.
     if text:
         prompt_lower = text.lower()
         scored: list[tuple[int, str]] = []
+        matched_kw: dict[str, Tuple[str, ...]] = {}
         hint_set = {r for r in hint_role_sequence if r in _EXECUTOR_CANDIDATE_ROLES}
         for role in _EXECUTOR_CANDIDATE_ROLES:
             score = _rule_score(role, prompt_lower)
+            kws = _matched_keywords(role, prompt_lower)
             # Soft hint bump — a role that has no keyword hit but is
             # carried over from a continuation session still gets a
             # +1 so it appears in the selection. This lets a research
@@ -404,9 +324,11 @@ def recommend_active_roles(
                 score += 1
             if score > 0:
                 scored.append((score, role))
+                matched_kw[role] = kws
         if scored:
             priority_map = {r: i for i, r in enumerate(_DEFAULT_PARTICIPANT_PRIORITY)}
             scored.sort(key=lambda t: (-t[0], priority_map.get(t[1], 99)))
+            top_score = scored[0][0]
             ordered = [ROLE_TECH_LEAD] + [r for _, r in scored]
             seen: set[str] = set()
             uniq: list[str] = []
@@ -416,9 +338,23 @@ def recommend_active_roles(
                     uniq.append(r)
             selected = tuple(uniq)
             excluded = tuple(r for r in ALL_ENGINEERING_ROLES if r not in selected)
+            participation = {
+                role: PARTICIPATION_EXCLUDED for role in ALL_ENGINEERING_ROLES
+            }
+            participation[ROLE_TECH_LEAD] = PARTICIPATION_REQUIRED
             reasons = {ROLE_TECH_LEAD: "tech-lead always included"}
+            primary = []
+            reviewer: list[str] = []
             for score, role in scored:
-                reasons[role] = f"rule bank score {score}"
+                level = _participation_for_score(score, top_score=top_score)
+                participation[role] = level
+                hits = matched_kw.get(role, ())
+                hit_text = ", ".join(hits[:6]) if hits else "(no direct hit)"
+                reasons[role] = f"rule bank score {score} · {level} · {hit_text}"
+                if level == PARTICIPATION_PRIMARY:
+                    primary.append(role)
+                elif level == PARTICIPATION_REVIEWER:
+                    reviewer.append(role)
             return RoleSelection(
                 selected_roles=selected,
                 excluded_roles=excluded,
@@ -426,17 +362,70 @@ def recommend_active_roles(
                 optional_roles=(),
                 reason_by_role=reasons,
                 selection_source=SOURCE_TECH_LEAD_RULE,
+                participation_by_role=participation,
+                primary_roles=tuple(primary),
+                reviewer_roles=tuple(reviewer),
+                optional_roles_v2=(),
+                matched_keywords_by_role=matched_kw,
+                fallback_policy=None,
             )
 
-    # 3. fallback
+    # 3. fallback — Phase 4 narrows this further; for now keep the
+    # legacy quartet as the safety-net default and tag it explicitly
+    # so the supervisor can read the policy id.
+    return _build_fallback_selection(text)
+
+
+def _build_fallback_selection(text: str) -> RoleSelection:
+    """Return the fallback :class:`RoleSelection` for *text*.
+
+    Phase 4 will expand this with vague_engineering / vague_ai_research
+    / vague_product / vague_infra branches; today it returns the legacy
+    "always-on quartet" for any non-empty prompt and a tech-lead-only
+    selection when the prompt is empty. The :attr:`fallback_policy`
+    field is populated in both branches so the supervisor / docs can
+    explain *which* fallback fired.
+    """
+
+    if not text:
+        selected = (ROLE_TECH_LEAD,)
+        excluded = tuple(r for r in ALL_ENGINEERING_ROLES if r not in selected)
+        participation = {
+            role: PARTICIPATION_EXCLUDED for role in ALL_ENGINEERING_ROLES
+        }
+        participation[ROLE_TECH_LEAD] = PARTICIPATION_REQUIRED
+        return RoleSelection(
+            selected_roles=selected,
+            excluded_roles=excluded,
+            required_roles=(ROLE_TECH_LEAD,),
+            optional_roles=(),
+            reason_by_role={ROLE_TECH_LEAD: "fallback (empty prompt)"},
+            selection_source=SOURCE_FALLBACK,
+            participation_by_role=participation,
+            primary_roles=(),
+            reviewer_roles=(),
+            optional_roles_v2=(),
+            matched_keywords_by_role={},
+            fallback_policy=FALLBACK_EMPTY_PROMPT,
+        )
+
+    # Non-empty but no keyword hit — keep the historical "always-on
+    # quartet" until Phase 4 narrows the bucket. The fallback_policy
+    # tag explains which branch fired so docs / status can describe it.
     selected = _FALLBACK_SELECTED
     excluded = tuple(r for r in ALL_ENGINEERING_ROLES if r not in selected)
-    fallback_reason = (
-        "fallback (empty prompt)"
-        if not text
-        else "fallback (no keyword match in rule bank)"
-    )
+    fallback_reason = "fallback (no keyword match in rule bank)"
     reasons = {role: fallback_reason for role in selected}
+    participation = {
+        role: PARTICIPATION_EXCLUDED for role in ALL_ENGINEERING_ROLES
+    }
+    participation[ROLE_TECH_LEAD] = PARTICIPATION_REQUIRED
+    reviewer: list[str] = []
+    for role in selected:
+        if role == ROLE_TECH_LEAD:
+            continue
+        participation[role] = PARTICIPATION_REVIEWER
+        reviewer.append(role)
     return RoleSelection(
         selected_roles=selected,
         excluded_roles=excluded,
@@ -444,6 +433,12 @@ def recommend_active_roles(
         optional_roles=(),
         reason_by_role=reasons,
         selection_source=SOURCE_FALLBACK,
+        participation_by_role=participation,
+        primary_roles=(),
+        reviewer_roles=tuple(reviewer),
+        optional_roles_v2=(),
+        matched_keywords_by_role={},
+        fallback_policy=FALLBACK_LEGACY_QUARTET,
     )
 
 

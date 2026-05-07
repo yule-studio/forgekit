@@ -147,20 +147,25 @@ class TechLeadRuleSelectionTests(unittest.TestCase):
 
 
 class FallbackSelectionTests(unittest.TestCase):
-    def test_empty_prompt_returns_default_quartet(self) -> None:
+    def test_empty_prompt_returns_tech_lead_only(self) -> None:
+        # Phase 4: empty prompt narrows to tech-lead only. The
+        # historical "always-on quartet" behaved like a default
+        # everywhere even when the user hadn't said anything yet — that
+        # spawned generic research sessions with no signal. Now the
+        # gateway gets a clear "tech-lead asks for clarification" team.
         selection = recommend_active_roles(user_prompt="")
         self.assertEqual(selection.selection_source, SOURCE_FALLBACK)
         self.assertEqual(
             set(selection.selected_roles),
-            {ROLE_TECH_LEAD, "ai-engineer", "backend-engineer", "qa-engineer"},
+            {ROLE_TECH_LEAD},
         )
         for role in selection.selected_roles:
             self.assertIn("fallback", selection.reason_by_role[role])
 
-    def test_unrelated_prompt_returns_default_quartet(self) -> None:
-        # No keyword hits → tech-lead should still pick the historical
-        # always-on quartet so the gateway never produces a 0-role
-        # research session.
+    def test_unrelated_prompt_returns_legacy_quartet(self) -> None:
+        # Non-empty prompt with no keyword hit → keep the legacy
+        # quartet (until Phase 4 narrows by domain hint). tech-lead is
+        # always required.
         selection = recommend_active_roles(user_prompt="안녕하세요")
         self.assertEqual(selection.selection_source, SOURCE_FALLBACK)
         self.assertIn(ROLE_TECH_LEAD, selection.selected_roles)

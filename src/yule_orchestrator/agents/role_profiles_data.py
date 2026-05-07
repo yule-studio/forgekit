@@ -267,6 +267,25 @@ _BACKEND_ENGINEER = RoleProfile(
         "queue",
         "redis",
         "결제",
+        # Runtime-contract keywords — backend joins infra discussions
+        # because health checks, connection pools, auth gateways, and
+        # service-to-service calls are backend's domain even when
+        # devops drives the cluster setup. Surfaces backend as reviewer
+        # for k8s / container / orchestration requests, not as a noise
+        # contributor.
+        "k8s",
+        "kubernetes",
+        "쿠버네티스",
+        "cluster",
+        "클러스터",
+        "container",
+        "컨테이너",
+        "orchestration",
+        "오케스트레이션",
+        "helm",
+        "ingress",
+        "service mesh",
+        "service-mesh",
     ),
     explicit_patterns=(
         "backend-engineer",
