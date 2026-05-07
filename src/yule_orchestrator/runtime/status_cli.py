@@ -46,6 +46,7 @@ def run_runtime_status_command(
     post_fn: Optional[Callable[[str], Any]] = None,
     state_store: Any = None,
     fallback_lister: Optional[Callable[..., Sequence[Any]]] = None,
+    circuit_persistence: Any = None,
 ) -> int:
     """Build the snapshot and print it. Always read-only.
 
@@ -65,12 +66,20 @@ def run_runtime_status_command(
 
     queue = JobQueue(db_path=db_path)
     heartbeats = HeartbeatStore(db_path=db_path)
+    # A-M7-final: auto-load persisted circuit snapshots so the
+    # plain-text / JSON render also surfaces circuit-open services
+    # (the supervisor's in-memory ledger isn't reachable from this
+    # process, but the persistence mirror is).
+    circuits = _load_circuit_snapshots_safe(
+        persistence=circuit_persistence, db_path=db_path
+    )
     try:
         report = build_runtime_status(
             profile=profile,
             queue=queue,
             heartbeats=heartbeats,
             failed_limit=max(0, int(failed_limit)),
+            circuit_snapshots=circuits,
         )
     except ValueError as exc:
         sys.stderr.write(f"yule runtime status: {exc}\n")
@@ -86,6 +95,7 @@ def run_runtime_status_command(
 
     return _dispatch_status_post(
         report=report,
+        circuits=circuits,
         force_post=force_post,
         post_fn=post_fn,
         state_store=state_store,
@@ -93,9 +103,41 @@ def run_runtime_status_command(
     )
 
 
+def _load_circuit_snapshots_safe(
+    *,
+    persistence: Any,
+    db_path: Optional[Path],
+):
+    """Best-effort circuit-snapshot loader.
+
+    Returns ``None`` (caller treats as "no circuits known") when
+    the persistence layer is unavailable / unreadable. The status
+    CLI must never crash because of an opportunistic surface.
+    """
+
+    try:
+        from .circuit_breaker import (
+            CircuitBreakerPersistence,
+            load_persisted_circuit_snapshots,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return None
+    store = persistence
+    if store is None:
+        try:
+            store = CircuitBreakerPersistence(db_path=db_path)
+        except Exception:  # noqa: BLE001 - persistence unreachable
+            return None
+    try:
+        return load_persisted_circuit_snapshots(persistence=store)
+    except Exception:  # noqa: BLE001 - persistence read failure
+        return None
+
+
 def _dispatch_status_post(
     *,
     report: Any,
+    circuits: Any,
     force_post: bool,
     post_fn: Optional[Callable[[str], Any]],
     state_store: Any,
@@ -105,6 +147,8 @@ def _dispatch_status_post(
 
     Lazy-imports the poster module so a CLI invocation that
     doesn't use ``--post-discord`` doesn't pay the import cost.
+    Circuits are passed in (already loaded by the caller) so the
+    text/JSON render and the markdown post share one snapshot.
     """
 
     from .status_poster import (
@@ -118,7 +162,7 @@ def _dispatch_status_post(
     outcome = asyncio.new_event_loop().run_until_complete(
         post_runtime_status_summary(
             report=report,
-            circuits={},  # supervisor parent owns circuit state — out of scope here
+            circuits=circuits,
             fallbacks=fallbacks,
             state_store=state_store,
             post_fn=post_fn,

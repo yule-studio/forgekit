@@ -545,6 +545,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Bypass the dedup-key check for the next post.",
     )
 
+    runtime_circuit_parser = runtime_subparsers.add_parser(
+        "circuit",
+        help="Inspect / reset persisted circuit-breaker state.",
+    )
+    runtime_circuit_subparsers = runtime_circuit_parser.add_subparsers(
+        dest="runtime_circuit_command", required=True
+    )
+    runtime_circuit_reset_parser = runtime_circuit_subparsers.add_parser(
+        "reset",
+        help=(
+            "Clear the open-circuit state for one service so the next "
+            "supervisor restart can spawn it again."
+        ),
+    )
+    runtime_circuit_reset_parser.add_argument(
+        "service_id",
+        help="Service id from the inventory (e.g. eng-role-backend-engineer).",
+    )
+    runtime_circuit_reset_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Override SQLite cache path (defaults to YULE_CACHE_DB_PATH).",
+    )
+    runtime_circuit_reset_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a stable JSON payload instead of human-readable text.",
+    )
+
     run_service_parser = subparsers.add_parser(
         "run-service",
         help="Run a single long-running worker (called by systemd or runtime up).",
@@ -958,6 +987,18 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 failed_limit=args.failed_limit,
                 post_discord=args.post_discord,
                 force_post=args.force_post,
+            )
+        if (
+            args.command == "runtime"
+            and args.runtime_command == "circuit"
+            and args.runtime_circuit_command == "reset"
+        ):
+            from ..runtime.circuit_cli import run_circuit_reset_command
+
+            return run_circuit_reset_command(
+                service_id=args.service_id,
+                db_path=Path(args.db_path) if args.db_path else None,
+                emit_json=args.json,
             )
         if args.command == "runtime" and args.runtime_command == "up":
             from ..runtime.subprocess_supervisor import (

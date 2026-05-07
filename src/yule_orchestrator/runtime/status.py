@@ -44,6 +44,11 @@ HEALTH_ALIVE: str = "alive"
 HEALTH_STALE: str = "stale"
 HEALTH_UNKNOWN: str = "unknown"
 HEALTH_RESERVED: str = "reserved"
+# A-M7-final: circuit-open trumps the heartbeat-based labels because
+# the supervisor parent has explicitly stopped restarting the service.
+# A live ``alive`` heartbeat could otherwise mask the fact that the
+# breaker is keeping the worker offline.
+HEALTH_CIRCUIT_OPEN: str = "circuit_open"
 
 
 # Map ServiceKind → expected job_type. ``None`` means "not a queue
@@ -137,6 +142,7 @@ def build_runtime_status(
     deadline_seconds: float = DEFAULT_HEARTBEAT_DEADLINE_SECONDS,
     failed_limit: int = 10,
     now: Optional[float] = None,
+    circuit_snapshots: Optional[Mapping[str, Any]] = None,
 ) -> RuntimeStatusReport:
     """Snapshot the runtime into a :class:`RuntimeStatusReport`.
 
@@ -152,16 +158,34 @@ def build_runtime_status(
         record.service_id: record for record in heartbeats.list_all()
     }
 
+    circuit_map = dict(circuit_snapshots) if circuit_snapshots else {}
     services: list[ServiceStatus] = []
     for spec in specs:
-        services.append(
-            _build_service_status(
-                spec=spec,
-                heartbeat=heartbeat_index.get(spec.service_id),
-                deadline_seconds=deadline_seconds,
-                now_ts=now_ts,
-            )
+        svc = _build_service_status(
+            spec=spec,
+            heartbeat=heartbeat_index.get(spec.service_id),
+            deadline_seconds=deadline_seconds,
+            now_ts=now_ts,
         )
+        # A-M7-final: persisted circuit-open trumps heartbeat health.
+        # Operator must see "supervisor stopped this on purpose"
+        # rather than a green "alive" line.
+        snap = circuit_map.get(spec.service_id)
+        if snap is not None and getattr(snap, "is_open", False):
+            svc = ServiceStatus(
+                service_id=svc.service_id,
+                kind=svc.kind,
+                role=svc.role,
+                description=svc.description,
+                implemented=svc.implemented,
+                health=HEALTH_CIRCUIT_OPEN,
+                heartbeat_age_seconds=svc.heartbeat_age_seconds,
+                heartbeat_last_beat=svc.heartbeat_last_beat,
+                pid=svc.pid,
+                metadata=dict(svc.metadata),
+                job_type=svc.job_type,
+            )
+        services.append(svc)
 
     job_types = _build_job_type_summaries(queue=queue, now_ts=now_ts)
     failed_recent = _build_failed_recent(
@@ -334,6 +358,13 @@ def _build_warnings(
     """
 
     warnings: list[str] = []
+    circuit_open = [s for s in services if s.health == HEALTH_CIRCUIT_OPEN]
+    if circuit_open:
+        warnings.append(
+            "circuit open (supervisor stopped restarting): "
+            + ", ".join(s.service_id for s in circuit_open)
+            + " — run `yule runtime circuit reset <service_id>` to clear"
+        )
     stale = [s for s in services if s.health == HEALTH_STALE]
     if stale:
         warnings.append(
@@ -468,7 +499,9 @@ def render_runtime_status_json(report: RuntimeStatusReport) -> str:
 
 
 def _format_service_line(svc: ServiceStatus) -> str:
-    health = svc.health.upper().ljust(7)
+    # circuit_open is one char wider than the other labels; widen the
+    # column so columns stay aligned without truncating.
+    health = svc.health.upper().ljust(13)
     role_part = f" role={svc.role}" if svc.role else ""
     pid_part = f" pid={svc.pid}" if svc.pid is not None else ""
     age_part = (

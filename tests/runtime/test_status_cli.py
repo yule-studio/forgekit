@@ -152,6 +152,69 @@ class RuntimeStatusCliTests(_CliFixture):
         self.assertEqual(after.updated_at, before.updated_at)
 
 
+class CircuitOpenSurfaceTests(_CliFixture):
+    """A-M7-final: persisted circuit-open status surfaces in CLI."""
+
+    def test_status_text_render_marks_circuit_open_service(self) -> None:
+        # Land an open circuit row directly in the persistence DB
+        # (the same SQLite the CLI auto-loads via YULE_CACHE_DB_PATH).
+        from yule_orchestrator.runtime.circuit_breaker import (
+            CircuitBreakerPersistence,
+        )
+
+        persistence = CircuitBreakerPersistence(db_path=self._db)
+        persistence.mark_open(
+            service_id="eng-research-worker",
+            opened_at=12345.0,
+            last_reason="exit_code=1",
+        )
+
+        buf_out = io.StringIO()
+        with redirect_stdout(buf_out):
+            rc = cli_main(
+                [
+                    "--repo-root", str(self._tmp.name),
+                    "runtime", "status",
+                    "--profile", "engineering",
+                ]
+            )
+        self.assertEqual(rc, 0)
+        text = buf_out.getvalue()
+        # Service line shows CIRCUIT_OPEN, warnings call out the reset hint.
+        self.assertIn("CIRCUIT_OPEN", text)
+        self.assertIn("eng-research-worker", text)
+        self.assertIn("yule runtime circuit reset", text)
+
+    def test_status_json_carries_circuit_open_health(self) -> None:
+        from yule_orchestrator.runtime.circuit_breaker import (
+            CircuitBreakerPersistence,
+        )
+
+        persistence = CircuitBreakerPersistence(db_path=self._db)
+        persistence.mark_open(
+            service_id="eng-research-worker",
+            opened_at=12345.0,
+            last_reason="exit_code=1",
+        )
+
+        buf_out = io.StringIO()
+        with redirect_stdout(buf_out):
+            rc = cli_main(
+                [
+                    "--repo-root", str(self._tmp.name),
+                    "runtime", "status",
+                    "--profile", "engineering",
+                    "--json",
+                ]
+            )
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf_out.getvalue())
+        healths = {
+            row["service_id"]: row["health"] for row in payload["services"]
+        }
+        self.assertEqual(healths["eng-research-worker"], "circuit_open")
+
+
 class RuntimePostDiscordTests(_CliFixture):
     """A-M7.1 ``--post-discord`` flag — drive the CLI end-to-end with
     an injected stub poster so the test never hits Discord.

@@ -109,10 +109,15 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
     heartbeats = HeartbeatStore(db_path=db_path)
 
     if spec.kind == ServiceKind.SUPERVISOR:
+        post_fn, post_interval = _build_supervisor_status_post(
+            queue=queue, heartbeats=heartbeats
+        )
         await run_supervisor_watch_loop(
             heartbeat_store=heartbeats,
             job_queue=queue,
             shutdown_event=shutdown_event,
+            status_post_fn=post_fn,
+            status_post_interval_seconds=post_interval,
         )
         return EXIT_OK
 
@@ -290,6 +295,86 @@ def _pick_filters_for(spec: ServiceSpec):
 
 # M6.1b-1 landed the production post_fn (build_production_post_fn).
 # The remaining placeholder is the gateway service wiring (M6.1b-2).
+
+
+# ---------------------------------------------------------------------------
+# A-M7-final: status posting wired into the supervisor watch loop.
+# ---------------------------------------------------------------------------
+
+
+_STATUS_POST_ENABLED_ENV: str = "ENGINEERING_STATUS_POST_ENABLED"
+_STATUS_POST_INTERVAL_ENV: str = "ENGINEERING_STATUS_POST_INTERVAL_SECONDS"
+_DEFAULT_STATUS_POST_INTERVAL_SECONDS: float = 3600.0  # 1h
+
+
+def _build_supervisor_status_post(
+    *,
+    queue,
+    heartbeats,
+):
+    """Return ``(post_fn, interval)`` pair.
+
+    Production wiring: when
+    ``ENGINEERING_STATUS_POST_ENABLED`` is truthy we build a
+    closure that snapshots the current runtime state and POSTs
+    the markdown summary to ``#봇-상태`` via the M7.1 helpers.
+    Disabled by default so an operator must opt in.
+
+    Returns ``(None, None)`` when posting is off — the supervisor
+    loop treats that as "no posting tick" and behaves exactly like
+    the M6.0 path.
+    """
+
+    import os as _os
+
+    raw_enabled = (_os.environ.get(_STATUS_POST_ENABLED_ENV) or "").strip().lower()
+    if raw_enabled not in {"1", "true", "yes", "on"}:
+        return None, None
+
+    raw_interval = (_os.environ.get(_STATUS_POST_INTERVAL_ENV) or "").strip()
+    interval: float
+    if raw_interval:
+        try:
+            interval = max(60.0, float(raw_interval))
+        except ValueError:
+            interval = _DEFAULT_STATUS_POST_INTERVAL_SECONDS
+    else:
+        interval = _DEFAULT_STATUS_POST_INTERVAL_SECONDS
+
+    async def _post_once() -> None:
+        # Lazy imports keep the supervisor branch importable when
+        # status posting is off (no Discord deps loaded).
+        from .circuit_breaker import load_persisted_circuit_snapshots
+        from .status import build_runtime_status
+        from .status_poster import (
+            collect_recent_fallback_audits,
+            post_runtime_status_summary,
+        )
+
+        circuits = load_persisted_circuit_snapshots()
+        report = build_runtime_status(
+            queue=queue,
+            heartbeats=heartbeats,
+            circuit_snapshots=circuits,
+        )
+        fallbacks = collect_recent_fallback_audits()
+        outcome = await post_runtime_status_summary(
+            report=report,
+            circuits=circuits,
+            fallbacks=fallbacks,
+        )
+        if outcome.error:
+            logger.warning(
+                "supervisor status post failed: %s", outcome.error
+            )
+        elif outcome.did_post:
+            logger.info(
+                "supervisor status post: posted (reason=%s, message_id=%s)",
+                outcome.decision_reason,
+                outcome.posted_message_id,
+            )
+
+    return _post_once, interval
 
 
 # ---------------------------------------------------------------------------

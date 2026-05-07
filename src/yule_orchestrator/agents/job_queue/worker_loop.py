@@ -196,14 +196,32 @@ async def run_supervisor_watch_loop(
     sleep_fn: Optional[Callable[[float], Awaitable[None]]] = None,
     max_iterations: Optional[int] = None,
     on_sweep: Optional[Callable[[Any], None]] = None,
+    status_post_fn: Optional[Callable[[], Awaitable[Any]]] = None,
+    status_post_interval_seconds: Optional[float] = None,
+    time_fn: Optional[Callable[[], float]] = None,
 ) -> int:
     """Long-running supervisor watchdog. Calls
     :func:`run_supervisor_sweep` every *sweep_interval_seconds* and
     surfaces the stale-services / reaped-jobs counts via *on_sweep*
     (defaults to a stdlib logger info line).
 
-    *sweep_fn* lets tests inject a no-op sweep. Production wires it
-    to :func:`agents.job_queue.heartbeat.run_supervisor_sweep`.
+    A-M7-final added optional status posting:
+
+      * *status_post_fn* — coroutine that builds + posts the
+        ``#봇-상태`` markdown summary. Production wires it to a
+        closure around ``runtime.status_poster.post_runtime_status_summary``;
+        tests inject a stub.
+      * *status_post_interval_seconds* — minimum spacing between
+        post attempts (each attempt is dedup-checked, so identical
+        states naturally don't repost). When ``None`` the post
+        path is dormant — supervisor still ticks but never posts.
+      * *time_fn* — clock for the post-interval gate. Tests pass
+        a monotonic counter so they can fast-forward without real
+        wall time.
+
+    Posting failures are caught + logged; they NEVER crash the
+    supervisor. The dedup state lives inside *status_post_fn* (the
+    poster's own state store) so this loop only owns the cadence.
     """
 
     if sweep_fn is None:
@@ -212,7 +230,14 @@ async def run_supervisor_watch_loop(
         sweep_fn = _default_sweep
 
     sleep_fn = sleep_fn or asyncio.sleep
+    clock = time_fn or time.time
     iterations = 0
+    last_post_at: Optional[float] = None
+    post_enabled = (
+        status_post_fn is not None
+        and status_post_interval_seconds is not None
+        and status_post_interval_seconds > 0
+    )
 
     def _shutdown_requested() -> bool:
         return shutdown_event is not None and shutdown_event.is_set()
@@ -248,6 +273,27 @@ async def run_supervisor_watch_loop(
                     stale_count,
                     reaped,
                 )
+
+        # ----- A-M7-final: status posting tick -----------------------
+        if post_enabled:
+            now_clock = float(clock())
+            interval = float(status_post_interval_seconds or 0.0)
+            if (
+                last_post_at is None
+                or (now_clock - last_post_at) >= interval
+            ):
+                try:
+                    await status_post_fn()  # type: ignore[misc]
+                except Exception:  # noqa: BLE001 - never crash supervisor
+                    logger.warning(
+                        "supervisor status post raised", exc_info=True
+                    )
+                # Always advance the gate, success or not — a
+                # transient outage shouldn't make the loop hammer
+                # Discord on every sweep tick. The poster itself
+                # has dedup so a "missed" interval is recovered on
+                # the next state change anyway.
+                last_post_at = now_clock
 
         await sleep_fn(sweep_interval_seconds)
 

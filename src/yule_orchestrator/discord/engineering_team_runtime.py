@@ -568,22 +568,24 @@ def handle_research_turn_message(
         # the work + dedup catches duplicates; the queue body still
         # falls back to a persisted synthesis text when present so
         # rebuilds stay consistent across the team.
+        #
+        # A-M7-final: delegate to the standalone helper so the
+        # legacy in-process gateway path picks up the same
+        # degrade / fallback automation as ``yule run-service
+        # eng-role-tech-lead``. The helper handles the
+        # role-take-result scan, the deterministic-fallback synth,
+        # and the audit persistence; we just hand it the captured
+        # session + pack_loader.
         def _synthesis_runner() -> Optional[ResearchTurnOutcome]:
-            research_pack = _maybe_load_pack(pack_loader, session)
-            synthesis_text = _load_synthesis_text_from_session_extra(session)
-            if not synthesis_text:
-                accumulated = _replay_role_takes(
-                    session, sequence, research_pack
-                )
-                _, synthesis_text = synthesize_thread(
-                    session, accumulated, research_pack=research_pack
-                )
-            return ResearchTurnOutcome(
+            from ..agents.job_queue.standalone_runners import (
+                _default_build_synthesis_outcome,
+            )
+
+            return _default_build_synthesis_outcome(
                 role=role,
                 session_id=session_id,
-                message=synthesis_text,
-                next_directive=None,
-                is_synthesis=True,
+                session=session,
+                pack_loader=pack_loader,
             )
 
         outcome = _run_role_take_via_queue(
