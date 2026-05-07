@@ -37,6 +37,7 @@ from typing import (
     Tuple,
 )
 
+from .circuit_breaker import CircuitBreakerRegistry
 from .services import ServiceKind, ServiceSpec, list_services
 
 
@@ -146,6 +147,7 @@ async def run_runtime_up(
     extra_env: Optional[dict] = None,
     base_cmd: Sequence[str] = ("yule", "run-service"),
     shutdown_event: Optional[asyncio.Event] = None,
+    circuit_registry: Optional[CircuitBreakerRegistry] = None,
 ) -> int:
     """Spawn every implemented service in *profile* and supervise.
 
@@ -186,6 +188,7 @@ async def run_runtime_up(
                 spawn_fn=spawn_fn,
                 sleep_fn=sleep_fn,
                 backoff_schedule=tuple(backoff_schedule),
+                circuit_registry=circuit_registry,
             ),
             name=f"supervise:{mp.spec.service_id}",
         )
@@ -220,10 +223,29 @@ async def _supervise_one(
     spawn_fn: SpawnFn,
     sleep_fn: SleepFn,
     backoff_schedule: Tuple[float, ...],
+    circuit_registry: Optional[CircuitBreakerRegistry] = None,
 ) -> None:
-    """Spawn → wait → backoff → spawn loop for a single service."""
+    """Spawn → wait → backoff → spawn loop for a single service.
+
+    A-M7: when *circuit_registry* is provided, the loop checks
+    ``is_open(service_id)`` before each spawn. Open circuit →
+    log + leave the loop, mirroring the EXIT_PREVENT_RESTART
+    handling. Operator clears the breaker by restarting the
+    supervisor parent.
+    """
 
     while not shutdown_event.is_set():
+        if (
+            circuit_registry is not None
+            and circuit_registry.is_open(managed.spec.service_id)
+        ):
+            logger.error(
+                "runtime up: %s circuit-open, restart suppressed",
+                managed.spec.service_id,
+            )
+            managed.stopped_intentionally = True
+            return
+
         try:
             managed.process = await spawn_fn(managed.cmd, managed.env)
         except Exception:  # noqa: BLE001 - log + back off
@@ -232,6 +254,10 @@ async def _supervise_one(
             )
             await sleep_fn(_backoff_for(managed.restart_count, backoff_schedule))
             managed.restart_count += 1
+            if circuit_registry is not None:
+                circuit_registry.record_restart(
+                    managed.spec.service_id, reason="spawn_failed"
+                )
             continue
 
         logger.info("runtime up: started %s", managed.spec.service_id)
@@ -318,6 +344,15 @@ async def _supervise_one(
 
         backoff = _backoff_for(managed.restart_count, backoff_schedule)
         managed.restart_count += 1
+        if circuit_registry is not None:
+            circuit_registry.record_restart(
+                managed.spec.service_id,
+                reason=(
+                    f"exit_code={managed.last_exit_code}"
+                    if managed.last_exit_code is not None
+                    else "exited"
+                ),
+            )
         await sleep_fn(backoff)
 
 

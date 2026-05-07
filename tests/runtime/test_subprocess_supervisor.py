@@ -230,6 +230,77 @@ class SpawnAndSuperviseTests(unittest.TestCase):
         # we know the restart actually applied the backoff schedule.
         self.assertIn(0.5, backoff_sleeps)
 
+    def test_circuit_open_suppresses_further_restarts(self) -> None:
+        # A-M7: every spawn crashes with exit_code=1. With a tight
+        # circuit policy (1 restart in 60s) the breaker opens after
+        # the first crash → the supervisor must stop respawning.
+        from yule_orchestrator.runtime.circuit_breaker import (
+            CircuitBreakerPolicy,
+            CircuitBreakerRegistry,
+        )
+
+        spawn_count = {"n": 0}
+
+        async def spawn_fn(cmd, env):
+            spawn_count["n"] += 1
+            evt = asyncio.Event()
+            return _FakeProcess(
+                exit_code_sequence=[1], terminate_event=evt
+            )
+
+        async def fast_sleep(_secs):
+            return None
+
+        async def driver():
+            shutdown = asyncio.Event()
+
+            async def trigger_shutdown():
+                # Yield long enough for the supervisor to run, hit
+                # the breaker, and exit on its own. Then set shutdown
+                # so run_runtime_up's outer await resolves.
+                for _ in range(60):
+                    await asyncio.sleep(0)
+                shutdown.set()
+
+            t = asyncio.create_task(trigger_shutdown())
+            from yule_orchestrator.runtime import services as svc_mod
+
+            original = svc_mod.PROFILES
+            svc_mod.PROFILES = {  # type: ignore[assignment]
+                "engineering": (svc_mod.ENGINEERING_PROFILE[1],),  # research only
+            }
+            registry = CircuitBreakerRegistry(
+                policy=CircuitBreakerPolicy(
+                    window_seconds=60.0, max_restarts=1
+                )
+            )
+            try:
+                rc = await run_runtime_up(
+                    profile="engineering",
+                    spawn_fn=spawn_fn,
+                    sleep_fn=fast_sleep,
+                    backoff_schedule=(0.0,),
+                    shutdown_event=shutdown,
+                    shutdown_timeout=0.0,
+                    circuit_registry=registry,
+                )
+            finally:
+                svc_mod.PROFILES = original  # type: ignore[assignment]
+            await t
+            return rc, registry
+
+        rc, registry = _run(driver())
+        self.assertEqual(rc, 0)
+        # max_restarts=1 → tripping requires 2 events. Spawns =
+        # initial + 1 retry = 2; on the next loop iteration the
+        # breaker is open and the supervisor leaves.
+        self.assertEqual(spawn_count["n"], 2)
+        snap = registry.snapshot()
+        self.assertTrue(
+            snap["eng-research-worker"].is_open,
+            f"breaker should have tripped, snap={snap}",
+        )
+
     def test_exit_code_78_prevents_restart(self) -> None:
         spawn_count = {"n": 0}
 
