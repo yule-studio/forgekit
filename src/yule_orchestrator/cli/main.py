@@ -460,7 +460,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     discord_up_parser = discord_subparsers.add_parser(
         "up",
-        help="Launch planning-bot + engineering-agent gateway/members in one shot.",
+        help=(
+            "(dev launcher) Spawn planning-bot + engineering gateway + member bots "
+            "in one process tree. Production: use `yule runtime up` or systemd "
+            "`yule run-service`."
+        ),
+        description=(
+            "Development / single-host launcher. Spawns each implemented bot as "
+            "its own multiprocessing.Process under one parent. Useful for local "
+            "smoke tests of the full Discord surface; not the production path. "
+            "For always-on operation use `yule runtime up --profile engineering` "
+            "(single-host) or systemd template units calling `yule run-service "
+            "<service-id>` (production). See docs/operations.md."
+        ),
     )
     discord_up_parser.add_argument(
         "--agents",
@@ -478,14 +490,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     runtime_parser = subparsers.add_parser(
         "runtime",
-        help="Always-on engineering runtime (queue workers + supervisor).",
+        help=(
+            "Always-on engineering runtime — production path. "
+            "Subcommands: up / status / circuit / run-service (sibling)."
+        ),
+        description=(
+            "The standalone runtime is the supported production path. "
+            "`runtime up` spawns every implemented worker under one parent "
+            "(single-host); systemd template units run the same workers via "
+            "the sibling `yule run-service <service-id>` command. "
+            "`runtime status` is a read-only diagnostic, `runtime circuit "
+            "reset <id>` clears a tripped breaker. See docs/operations.md."
+        ),
     )
     runtime_subparsers = runtime_parser.add_subparsers(
         dest="runtime_command", required=True
     )
     runtime_up_parser = runtime_subparsers.add_parser(
         "up",
-        help="Spawn every implemented worker for a profile under one parent process.",
+        help=(
+            "Spawn every implemented worker for a profile under one parent "
+            "process (single-host production / dev). Use `--dry-run` to list."
+        ),
     )
     runtime_up_parser.add_argument(
         "--profile",

@@ -38,17 +38,36 @@ yule doctor
 
 ## 핵심 명령
 
+운영 (always-on engineering runtime):
+
+```bash
+yule runtime up --dry-run                    # 띄울 service 목록 확인 (실제 spawn 없음)
+yule runtime up --profile engineering        # 단일 호스트 전체 부팅
+yule run-service eng-research-worker         # 단일 worker (CLI / systemd)
+yule runtime status                          # heartbeat / queue / circuit / failed_terminal 요약
+yule runtime status --post-discord           # #봇-상태 markdown 게시 (dedup 기반)
+yule runtime circuit reset eng-role-qa-engineer   # 운영자 circuit 해제
+```
+
+자료/일정/작업 흐름:
+
 ```bash
 yule daily warmup --json          # 오늘 plan 스냅샷 생성
 yule planning snapshot --json     # planning 데이터 갱신
 yule engineer intake --prompt "…" # CLI 로 engineering 작업 접수
-yule discord bot                  # planning 봇 단독 실행 (dev)
-yule discord up --dry-run         # dev 환경 일괄 기동 인벤토리 확인
 yule memory search "query"        # 로컬 지식 검색
 yule obsidian sync --session <id> # Obsidian vault 적재
 ```
 
-상시 운영(production)은 systemd 기반 서비스 단위로 분리하는 것을 권장한다 — [docs/operations.md](docs/operations.md). `yule discord up` 은 개발/로컬 부트스트랩 도구다.
+개발 / 로컬 (dev launcher):
+
+```bash
+yule discord bot                  # planning 봇 단독 실행 (dev)
+yule discord up --dry-run         # 9-봇 인벤토리 확인 (dev)
+yule discord up                   # 9 봇 multiprocessing 일괄 기동 (dev)
+```
+
+production 권장 경로 = `yule runtime up` 또는 systemd 기반 `yule run-service` — [docs/operations.md](docs/operations.md). `yule discord up` 은 dev / 로컬 단독 호스트 부트스트랩이며, 제거 / deprecation 되지 않는다.
 
 ## 아키텍처 한눈에 보기
 

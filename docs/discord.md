@@ -20,10 +20,10 @@
 
 - **`#일정-관리`** (= `DISCORD_CONVERSATION_CHANNEL_*`) — planning 자유 대화.
 - **`#업무-접수`** (= `DISCORD_ENGINEERING_INTAKE_CHANNEL_*`) — engineering 자유 대화 + 작업 접수. 런타임 활성 키.
-- **`#승인-대기`** (= `DISCORD_ENGINEERING_APPROVAL_CHANNEL_*`) — write 승인 UX. 현재 예약 슬롯.
-- **`#봇-상태`** (= `DISCORD_ENGINEERING_STATUS_CHANNEL_*`) — 상태 / 오류 / heartbeat. 현재 예약 슬롯.
-- **`#실험실`** (= `DISCORD_ENGINEERING_LAB_CHANNEL_*`) — 워크플로 / 프롬프트 테스트.
-- **`#운영-리서치`** Forum (= `DISCORD_AGENT_RESEARCH_FORUM_CHANNEL_*`) — 부서 공통 research / deliberation inbox. 자료 수집 → 역할별 검토 → tech-lead 종합 → Obsidian 후보 선정.
+- **`#승인-대기`** (= `DISCORD_ENGINEERING_APPROVAL_CHANNEL_*`) — write 승인 UX. M5a-2 + M6.1b 이후 런타임 활성: ApprovalWorker 가 카드를 게시하고 `#승인-대기` 답신을 `handle_approval_reply` 가 ObsidianWriteRequest 로 변환한다. NAME→ID fallback (`DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME` + `DISCORD_GUILD_ID`) 지원.
+- **`#봇-상태`** (= `DISCORD_ENGINEERING_STATUS_CHANNEL_*`) — runtime status / circuit / fallback 알림. M7-final 이후 런타임 활성: `eng-supervisor-watch` 가 `ENGINEERING_STATUS_POST_ENABLED=true` 로 켜지면 주기적으로 markdown 요약을 게시하고, `yule runtime status --post-discord` 로 즉시 게시도 가능. NAME fallback 동일.
+- **`#실험실`** (= `DISCORD_ENGINEERING_LAB_CHANNEL_*`) — 워크플로 / 프롬프트 테스트. 현재 예약 슬롯.
+- **`#운영-리서치`** Forum (= `DISCORD_AGENT_RESEARCH_FORUM_CHANNEL_*`) — 부서 공통 research / deliberation inbox. 런타임 활성: 자료 수집 → 역할별 검토 → tech-lead 종합 → Obsidian 후보 선정.
 
 각 채널의 게시 규약 / 댓글 양식 / Obsidian export contract 는 `policies/runtime/agents/engineering-agent/research-forum.md` 와 `policies/runtime/agents/engineering-agent/discord-workflow.md` 참고.
 
