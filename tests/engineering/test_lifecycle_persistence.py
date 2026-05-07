@@ -14,7 +14,7 @@ except ModuleNotFoundError:
 
 from tests._helpers import isolate_cache_for_test as _isolate_cache_for_test
 
-from yule_orchestrator.agents.lifecycle_persistence import (
+from yule_orchestrator.agents.lifecycle.persistence import (
     PersistenceResult,
     merge_session_extra,
     persist_research_forum_link,

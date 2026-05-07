@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.session_status import (
+from yule_orchestrator.agents.lifecycle.session_status import (
     CODING_JOB_READY,
     CODING_PROPOSAL_PENDING,
     diagnose_session,
@@ -101,7 +101,7 @@ class CodingProposalSignalsTests(unittest.TestCase):
 
 class DiagnosticRendererTests(unittest.TestCase):
     def test_render_summary_lists_coding_job_when_ready(self) -> None:
-        from yule_orchestrator.agents.session_status import render_diagnostic_summary
+        from yule_orchestrator.agents.lifecycle.session_status import render_diagnostic_summary
 
         session = _StatusFakeSession(
             session_id="s4",
@@ -120,7 +120,7 @@ class DiagnosticRendererTests(unittest.TestCase):
         self.assertIn("write_scope", text)
 
     def test_render_summary_marks_pending_proposal(self) -> None:
-        from yule_orchestrator.agents.session_status import render_diagnostic_summary
+        from yule_orchestrator.agents.lifecycle.session_status import render_diagnostic_summary
 
         session = _StatusFakeSession(
             session_id="s5",

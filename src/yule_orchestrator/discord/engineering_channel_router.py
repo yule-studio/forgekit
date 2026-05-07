@@ -1245,7 +1245,7 @@ def _persist_role_selection(
     if session is None:
         return session
     try:
-        from ..agents.role_selection import (
+        from ..agents.lifecycle.role_selection import (
             apply_role_selection_to_extra,
             recommend_active_roles,
         )
@@ -1498,7 +1498,7 @@ def _persist_thread_id(
     """Write the Discord work-thread id back to ``session.thread_id``.
 
     MVP closure refactor: delegates to
-    :func:`agents.lifecycle_persistence.persist_thread_link` so the
+    :func:`agents.lifecycle.persistence.persist_thread_link` so the
     router and any other caller (member-bot, supervisor cleanup)
     follow the same persistence contract — including the structured
     ``persistence_error`` stamp on failure. Behaviour is identical to
@@ -1506,7 +1506,7 @@ def _persist_thread_id(
     sequence is consolidated upstream.
     """
 
-    from ..agents.lifecycle_persistence import persist_thread_link
+    from ..agents.lifecycle.persistence import persist_thread_link
 
     result = persist_thread_link(session, thread_id)
     return result.session
@@ -1670,11 +1670,11 @@ async def _run_coding_authorization_gate(
 
 
 # MVP closure refactor — explicit session id regex moved to
-# :mod:`agents.session_resolver` so router / bot / obsidian gate
+# :mod:`agents.lifecycle.resolver` so router / bot / obsidian gate
 # share one canonical implementation. The router-private alias is
 # kept for backward compat with internal callers (and the runtime
 # preflight ``_explicit_session_id`` substring check).
-from ..agents.session_resolver import (
+from ..agents.lifecycle.resolver import (
     _EXPLICIT_SESSION_ID_RE as _EXPLICIT_SESSION_ID_RE,
     extract_explicit_session_id as _extract_session_id_from_router_text,
 )
@@ -1693,11 +1693,11 @@ def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
     "missing canonical readiness" reason rather than a hard pass.
     """
 
-    # Refactor: delegate to the canonical :mod:`agents.lifecycle_status`
+    # Refactor: delegate to the canonical :mod:`agents.lifecycle.status`
     # helper so the router, work_report builder, and Discord status
     # diagnostic all share one set of "can we save?" rules. The block
     # reasons stay identical to keep operator-visible messages stable.
-    from ..agents.lifecycle_status import can_write_obsidian_record
+    from ..agents.lifecycle.status import can_write_obsidian_record
 
     return can_write_obsidian_record(session)
 
@@ -2527,7 +2527,7 @@ def persist_research_forum_status(
     # Behaviour is identical; the helper covers the dataclass replace,
     # in-place test-stub fallback, structured persistence_error stamp,
     # and stale-error cleanup that this function used to inline.
-    from ..agents.lifecycle_persistence import persist_research_forum_link
+    from ..agents.lifecycle.persistence import persist_research_forum_link
 
     open_call_posted = report.kickoff_posted if report.forum_comment_mode == "member-bots" else None
     open_call_error = report.kickoff_error if report.forum_comment_mode == "member-bots" else None

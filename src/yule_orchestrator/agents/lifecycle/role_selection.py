@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
-from .coding_authorization import (
+from ..coding_authorization import (
     _DEFAULT_PARTICIPANT_PRIORITY,
     _EXECUTOR_CANDIDATE_ROLES,
 )

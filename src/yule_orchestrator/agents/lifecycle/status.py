@@ -14,7 +14,7 @@ This module consolidates the pure read-only computations onto
 ``session.extra`` so callers pull from one canonical implementation.
 
 All functions are deterministic and side-effect free. They never
-write to the session — that's :mod:`agents.lifecycle_persistence`'s
+write to the session — that's :mod:`agents.lifecycle.persistence`'s
 responsibility.
 """
 

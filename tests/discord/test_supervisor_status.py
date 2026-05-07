@@ -145,7 +145,7 @@ class SupervisorRunOnceTests(unittest.TestCase):
 
 class RenderSessionBlockTests(unittest.TestCase):
     def test_block_includes_pipeline_state_marks(self) -> None:
-        from yule_orchestrator.agents.session_status import diagnose_session
+        from yule_orchestrator.agents.lifecycle.session_status import diagnose_session
 
         session = _session(
             extra={

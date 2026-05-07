@@ -107,7 +107,7 @@ def _try_load_session_by_id(
     loader = session_loader
     if loader is None:
         try:
-            from .workflow_state import load_session as _load_session
+            from ..workflow_state import load_session as _load_session
 
             loader = _load_session
         except Exception:  # noqa: BLE001

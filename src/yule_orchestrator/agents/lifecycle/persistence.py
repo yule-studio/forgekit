@@ -168,7 +168,7 @@ def merge_session_extra(
     try:
         from dataclasses import replace as _dc_replace
 
-        from .workflow_state import update_session
+        from ..workflow_state import update_session
     except Exception as exc:  # noqa: BLE001
         _record_persistence_error(
             session,
@@ -250,7 +250,7 @@ def persist_thread_link(
     try:
         from dataclasses import replace as _dc_replace
 
-        from .workflow_state import update_session
+        from ..workflow_state import update_session
     except Exception as exc:  # noqa: BLE001
         _record_persistence_error(
             session,

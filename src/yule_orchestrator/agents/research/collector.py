@@ -1723,7 +1723,7 @@ def auto_collect_or_request_more_input(
     pass ``None`` and let the env-driven factory decide.
 
     *active_roles* — role-selection result from
-    :func:`agents.role_selection.recommend_active_roles`. When passed,
+    :func:`agents.lifecycle.role_selection.recommend_active_roles`. When passed,
     the budget policy and per-role sufficiency targets are filtered to
     that set so the loop only chases coverage for the roles the
     tech-lead actually picked. Empty / unset preserves the legacy

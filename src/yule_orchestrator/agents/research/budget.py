@@ -204,7 +204,7 @@ def decide_budget(
     ceiling.
 
     *active_roles* is the role-selection result from
-    :func:`agents.role_selection.recommend_active_roles` (or read off
+    :func:`agents.lifecycle.role_selection.recommend_active_roles` (or read off
     ``session.extra['active_research_roles']`` for a continuation).
     When provided, the policy's ``role_targets`` is filtered down to
     that set so the sufficiency loop and forum publisher stop chasing

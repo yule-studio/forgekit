@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle_status import (
+from yule_orchestrator.agents.lifecycle.status import (
     REPORT_STATUS_INSUFFICIENT,
     REPORT_STATUS_INTERIM,
     REPORT_STATUS_READY,

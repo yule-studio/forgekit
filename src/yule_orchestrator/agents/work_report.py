@@ -383,19 +383,19 @@ def build_work_report(
 
 def _resolve_pack_state(extra: Mapping[str, Any]) -> tuple[bool, int]:
     """Return (has_research_pack, source_count) — thin shim over
-    :mod:`agents.lifecycle_status` so :mod:`agents.work_report` and
+    :mod:`agents.lifecycle.status` so :mod:`agents.work_report` and
     the Discord / Obsidian readers share one canonical computation.
     Kept as a private wrapper because the older signature is part of
     this module's intra-call contract."""
 
-    from .lifecycle_status import compute_research_source_count
+    from .lifecycle.status import compute_research_source_count
 
     count = compute_research_source_count(_StubExtra(extra))
     return (count > 0, count)
 
 
 class _StubExtra:
-    """Adapter so :mod:`agents.lifecycle_status` (which expects a
+    """Adapter so :mod:`agents.lifecycle.status` (which expects a
     session-like object with ``.extra``) can read a bare extras dict
     without callers having to fabricate sessions."""
 
@@ -406,17 +406,17 @@ class _StubExtra:
 
 
 def _resolve_has_synthesis(extra: Mapping[str, Any]) -> bool:
-    from .lifecycle_status import has_synthesis as _has_synthesis
+    from .lifecycle.status import has_synthesis as _has_synthesis
 
     return _has_synthesis(_StubExtra(extra))
 
 
 def _resolve_missing_roles(extra: Mapping[str, Any]) -> Tuple[str, ...]:
     """Active_roles − played_roles, computed via the canonical
-    :mod:`agents.lifecycle_status` helper.
+    :mod:`agents.lifecycle.status` helper.
     """
 
-    from .lifecycle_status import (
+    from .lifecycle.status import (
         compute_role_coverage,
         _resolve_played_roles,
     )

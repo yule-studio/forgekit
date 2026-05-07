@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from typing import Any, Callable, Iterable, Optional, Sequence, TextIO
 
-from ..agents.session_status import (
+from ..agents.lifecycle.session_status import (
     SessionStatusReport,
     diagnose_session,
 )

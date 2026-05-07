@@ -39,7 +39,7 @@ from ..agents.research.pack import (
     ResearchSource,
     extract_urls,
 )
-from ..agents.session_status import (
+from ..agents.lifecycle.session_status import (
     diagnose_session,
     render_member_bot_summary,
 )
