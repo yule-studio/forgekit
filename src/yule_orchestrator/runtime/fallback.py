@@ -469,6 +469,175 @@ def _default_role_address(role: str) -> str:
     return f"engineering-agent/{cleaned}"
 
 
+# ---------------------------------------------------------------------------
+# Queue scanner — read role_take rows and classify per role.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RoleTakeStatusReport:
+    """Per-role outcome derived from the role_take queue rows.
+
+    The scanner walks every ``role_take`` row for one session and
+    buckets the **roles** (not the rows) into one of four states:
+
+      * ``completed_roles`` — at least one row in :class:`JobState.SAVED`
+        (any kind) exists for the role; the role spoke.
+      * ``failed_roles`` — only rows in ``FAILED_TERMINAL`` exist (no
+        SAVED, no pending retry); the role's attempts are exhausted.
+      * ``pending_roles`` — at least one row in ``FAILED_RETRYABLE``
+        and no SAVED / no terminal exists; a retry is still in flight,
+        the system has not yet decided this role's fate.
+      * ``missing_roles`` — no row at all for the role; producer never
+        enqueued, or the row was reaped before this scan ran.
+
+    Why classification is at role granularity, not row: the synthesis
+    runner asks "did role X contribute a take?" — the lifecycle of any
+    one row is a queue concern, not a deliberation concern.
+    """
+
+    expected_roles: Tuple[str, ...]
+    completed_roles: Tuple[str, ...]
+    failed_roles: Tuple[str, ...]
+    pending_roles: Tuple[str, ...]
+    missing_roles: Tuple[str, ...]
+
+    @property
+    def terminal_decision_safe(self) -> bool:
+        """True iff no role is still retrying.
+
+        The all-role fallback path requires this so a transient
+        provider hiccup (one role temporarily in ``FAILED_RETRYABLE``)
+        doesn't get promoted to a deterministic-template synthesis
+        before the retry has had a chance to run.
+        """
+
+        return not self.pending_roles
+
+    @property
+    def all_terminally_failed(self) -> bool:
+        """Every expected role is exhausted-failed (kicks fallback).
+
+        Strictly checks ``failed_roles == expected_roles``: missing
+        and pending are NOT promoted to fallback. Missing means no
+        row was even produced — that's a setup problem, not a
+        consensus problem.
+        """
+
+        return (
+            bool(self.expected_roles)
+            and not self.completed_roles
+            and not self.pending_roles
+            and not self.missing_roles
+            and len(self.failed_roles) == len(self.expected_roles)
+        )
+
+    @property
+    def degrade_required(self) -> bool:
+        """True when there's a terminal failure to disclose.
+
+        Not the same as :attr:`all_terminally_failed` — this is the
+        partial-failure case where some roles spoke and some did
+        not. Used by the synthesis runner to decide whether to
+        prepend the degrade banner.
+        """
+
+        return self.terminal_decision_safe and bool(self.failed_roles)
+
+    def to_degrade_notice(self) -> "DegradeNotice":
+        """Project into the :class:`DegradeNotice` shape used by
+        the existing renderer + audit-record builder.
+        """
+
+        return DegradeNotice(
+            expected_roles=self.expected_roles,
+            completed_roles=self.completed_roles,
+            failed_roles=self.failed_roles,
+            missing_roles=self.missing_roles,
+        )
+
+
+def scan_role_take_results(
+    *,
+    queue: Any,
+    session_id: str,
+    expected_roles: Sequence[str],
+    job_type: str = "role_take",
+    synthesis_kind: str = "synthesis",
+) -> RoleTakeStatusReport:
+    """Scan the queue's role_take rows for a session and classify.
+
+    *queue* is a :class:`JobQueue` (typed loosely so this module
+    doesn't import the queue implementation; only the
+    ``list_for_session`` shape is required).
+
+    Synthesis rows (``payload['kind'] == 'synthesis'``) are
+    skipped — they describe the tech-lead's own row, which is
+    what the caller is *trying to produce*. Counting them would
+    be self-referential.
+    """
+
+    # Lazy imports — keep fallback.py free of queue-layer
+    # dependencies for callers that only need the renderer / audit
+    # helpers.
+    from ..agents.job_queue.state_machine import JobState
+
+    if not session_id or not expected_roles:
+        return RoleTakeStatusReport(
+            expected_roles=tuple(expected_roles),
+            completed_roles=(),
+            failed_roles=(),
+            pending_roles=(),
+            missing_roles=tuple(expected_roles),
+        )
+
+    rows = queue.list_for_session(session_id)
+    # Bucket per role: which states have we seen at all?
+    seen: dict[str, set[str]] = {}
+    for row in rows:
+        if getattr(row, "job_type", None) != job_type:
+            continue
+        payload = getattr(row, "payload", None) or {}
+        if payload.get("kind") == synthesis_kind:
+            continue
+        role = getattr(row, "role", None)
+        if not role:
+            continue
+        bucket = seen.setdefault(role, set())
+        bucket.add(getattr(row.state, "value", str(row.state)))
+
+    completed: list[str] = []
+    failed: list[str] = []
+    pending: list[str] = []
+    missing: list[str] = []
+    for role in expected_roles:
+        states = seen.get(role)
+        if states is None:
+            missing.append(role)
+            continue
+        if JobState.SAVED.value in states:
+            completed.append(role)
+        elif JobState.FAILED_RETRYABLE.value in states:
+            # Pending wins over terminal — if a retryable row is
+            # still around, the system hasn't decided.
+            pending.append(role)
+        elif JobState.FAILED_TERMINAL.value in states:
+            failed.append(role)
+        else:
+            # Row exists but is in an in-flight state we don't
+            # treat as decided yet (assigned / in_progress / ...).
+            # Same handling as FAILED_RETRYABLE: defer.
+            pending.append(role)
+
+    return RoleTakeStatusReport(
+        expected_roles=tuple(expected_roles),
+        completed_roles=tuple(completed),
+        failed_roles=tuple(failed),
+        pending_roles=tuple(pending),
+        missing_roles=tuple(missing),
+    )
+
+
 __all__ = (
     "DegradeNotice",
     "FALLBACK_AUTHORITY_DEGRADED_SYNTHESIS",
@@ -479,9 +648,11 @@ __all__ = (
     "ROLE_RESULT_FAILED",
     "ROLE_RESULT_MISSING",
     "ROLE_RESULT_OK",
+    "RoleTakeStatusReport",
     "build_deterministic_fallback_synthesis",
     "build_fallback_audit_record",
     "persist_fallback_audit",
     "render_degraded_synthesis_text",
+    "scan_role_take_results",
     "summarise_role_results",
 )

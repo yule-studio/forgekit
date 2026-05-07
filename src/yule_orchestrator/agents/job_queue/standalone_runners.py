@@ -163,6 +163,8 @@ def build_role_take_runner(
     turn_call_fn: Optional[Callable[..., Any]] = None,
     synthesis_call_fn: Optional[Callable[..., Any]] = None,
     persist_outcome_fn: Optional[Callable[..., Any]] = None,
+    synthesis_queue_factory: Optional[Callable[[], Any]] = None,
+    synthesis_audit_persist_fn: Optional[Callable[..., bool]] = None,
 ) -> Callable[[Any], Any]:
     """Return a sync runner for :meth:`RoleTakeWorker.process_job`.
 
@@ -228,12 +230,19 @@ def build_role_take_runner(
             )
         elif kind == "synthesis":
             synth_fn = synthesis_call_fn or _default_build_synthesis_outcome
-            outcome = synth_fn(
-                role=role,
-                session_id=session_id,
-                session=session,
-                pack_loader=pack_loader_fn,
-            )
+            synth_kwargs: dict = {
+                "role": role,
+                "session_id": session_id,
+                "session": session,
+                "pack_loader": pack_loader_fn,
+            }
+            # Forward the M7.2 fallback wiring only to the default
+            # implementation — custom synthesis_call_fn injected by
+            # tests / future profiles keeps the simple 4-arg shape.
+            if synthesis_call_fn is None:
+                synth_kwargs["queue_factory"] = synthesis_queue_factory
+                synth_kwargs["audit_persist_fn"] = synthesis_audit_persist_fn
+            outcome = synth_fn(**synth_kwargs)
         else:
             raise RuntimeError(
                 f"role_take kind={kind!r} not supported by standalone worker"
@@ -338,12 +347,45 @@ def _default_build_synthesis_outcome(
     session_id: str,
     session: Any,
     pack_loader,
+    queue_factory: Optional[Callable[[], Any]] = None,
+    audit_persist_fn: Optional[Callable[..., bool]] = None,
 ):
-    """Mirror the gateway's ``_synthesis_runner`` body.
+    """Mirror the gateway's ``_synthesis_runner`` body, with M7.2
+    degrade / fallback automation layered on top.
 
-    Persisted synthesis text wins when present so a worker restart
-    mid-chain doesn't re-run synthesis (which is the expensive
-    path); the rebuild only fires on cold sessions.
+    Pipeline (each branch returns a :class:`ResearchTurnOutcome`):
+
+      1. **Scan** the role_take queue for the session and classify
+         each expected role into completed / failed / pending /
+         missing via :func:`runtime.fallback.scan_role_take_results`.
+
+      2. **All-role fallback** — every expected role hit
+         ``FAILED_TERMINAL`` (no pending retry, no completed take).
+         Build a deterministic template synthesis, persist a
+         fallback audit, and return the outcome. The synthesis
+         dataclass carries ``approval_required=True`` so the M5b
+         obsidian writer guard refuses to auto-save the content.
+
+      3. **Degraded** — at least one role failed terminally but
+         others completed (and no retry is pending). Run normal
+         synthesis, prepend the degrade banner naming the failed
+         + missing roles, persist a degrade audit record.
+
+      4. **Pending retry** — at least one role is in
+         ``FAILED_RETRYABLE``. We do NOT trigger fallback; the
+         retry has not run yet. Synthesis proceeds without a
+         banner so the operator sees the partial state without us
+         prematurely committing to a fallback.
+
+      5. **Default** — no failures. Cached synthesis text wins;
+         otherwise replay role takes and synthesize fresh.
+
+    *queue_factory* / *audit_persist_fn* default to production
+    wiring; tests inject stubs to drive the pipeline without a
+    live SQLite or workflow_state cache. Failures inside the
+    fallback pipeline (queue read raised, audit write raised)
+    fall back silently to the legacy synthesis path so an
+    observability bug never prevents a synthesis from going out.
     """
 
     from ...discord.engineering_team_runtime import (
@@ -356,13 +398,77 @@ def _default_build_synthesis_outcome(
     )
 
     research_pack = _maybe_load_pack(pack_loader, session)
+    expected_roles = deliberation_research_role_sequence(session)
+
+    scan = _safe_scan_role_take_results(
+        queue_factory=queue_factory,
+        session_id=session_id,
+        expected_roles=expected_roles,
+    )
+
+    # --- All-role fallback ------------------------------------------------
+    if scan is not None and scan.all_terminally_failed:
+        from ...runtime.fallback import (
+            FALLBACK_AUTHORITY_DETERMINISTIC_TEMPLATE,
+            build_deterministic_fallback_synthesis,
+            build_fallback_audit_record,
+        )
+
+        try:
+            _synth, rendered = build_deterministic_fallback_synthesis(
+                session=session,
+                expected_roles=expected_roles,
+                research_pack=research_pack,
+            )
+        except Exception:  # noqa: BLE001 — fallback must not crash synthesis
+            logger.warning(
+                "synthesis runner: deterministic fallback raised, "
+                "falling back to legacy synthesis path",
+                exc_info=True,
+            )
+        else:
+            record = build_fallback_audit_record(
+                session_id=session_id,
+                notice=scan.to_degrade_notice(),
+                authority=FALLBACK_AUTHORITY_DETERMINISTIC_TEMPLATE,
+            )
+            _safe_persist_fallback_audit(audit_persist_fn, record)
+            return ResearchTurnOutcome(
+                role=role,
+                session_id=session_id,
+                message=rendered,
+                next_directive=None,
+                is_synthesis=True,
+            )
+
+    # --- Default + degraded synthesis path -------------------------------
     synthesis_text = _load_synthesis_text_from_session_extra(session)
     if not synthesis_text:
-        sequence = deliberation_research_role_sequence(session)
-        accumulated = _replay_role_takes(session, sequence, research_pack)
+        accumulated = _replay_role_takes(
+            session, expected_roles, research_pack
+        )
         _synth, synthesis_text = synthesize_thread(
             session, accumulated, research_pack=research_pack
         )
+
+    if scan is not None and scan.degrade_required:
+        from ...runtime.fallback import (
+            FALLBACK_AUTHORITY_DEGRADED_SYNTHESIS,
+            build_fallback_audit_record,
+            render_degraded_synthesis_text,
+        )
+
+        notice = scan.to_degrade_notice()
+        synthesis_text = render_degraded_synthesis_text(
+            base_text=synthesis_text, notice=notice
+        )
+        record = build_fallback_audit_record(
+            session_id=session_id,
+            notice=notice,
+            authority=FALLBACK_AUTHORITY_DEGRADED_SYNTHESIS,
+        )
+        _safe_persist_fallback_audit(audit_persist_fn, record)
+
     return ResearchTurnOutcome(
         role=role,
         session_id=session_id,
@@ -370,6 +476,64 @@ def _default_build_synthesis_outcome(
         next_directive=None,
         is_synthesis=True,
     )
+
+
+def _safe_scan_role_take_results(
+    *,
+    queue_factory: Optional[Callable[[], Any]],
+    session_id: str,
+    expected_roles: Any,
+):
+    """Best-effort scanner invocation.
+
+    Production wiring: lazy-construct a :class:`JobQueue` against
+    the default db path. Tests pass an explicit *queue_factory*
+    that returns a temp-DB-backed queue. Scanner / queue exceptions
+    return ``None`` so the caller falls through to the legacy
+    synthesis path — degrade automation never blocks synthesis.
+    """
+
+    from ...runtime.fallback import scan_role_take_results
+
+    try:
+        if queue_factory is None:
+            from .store import JobQueue
+
+            queue = JobQueue()
+        else:
+            queue = queue_factory()
+        return scan_role_take_results(
+            queue=queue,
+            session_id=session_id,
+            expected_roles=expected_roles,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "synthesis runner: role-take scan raised; degrade "
+            "automation skipped for this turn",
+            exc_info=True,
+        )
+        return None
+
+
+def _safe_persist_fallback_audit(
+    audit_persist_fn: Optional[Callable[..., bool]],
+    record: Any,
+) -> None:
+    """Best-effort persistence call. Always returns None; the caller
+    treats audit as observability, not load-bearing data.
+    """
+
+    from ...runtime.fallback import persist_fallback_audit
+
+    persist = audit_persist_fn or persist_fallback_audit
+    try:
+        persist(record)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "synthesis runner: fallback audit persist raised",
+            exc_info=True,
+        )
 
 
 def _default_persist_role_take(*, session: Any, outcome: Any, kind: str) -> None:
