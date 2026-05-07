@@ -19,6 +19,14 @@ The queue lives in the same SQLite file as :mod:`storage.local_cache`
 file lock + one WAL.
 """
 
+from .approval_reply import (
+    ApprovalIntent,
+    ApprovalReplyOutcome,
+    approval_to_obsidian_write_request,
+    find_replyable_approval,
+    handle_approval_reply,
+    parse_approval_intent,
+)
 from .approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     APPROVAL_KIND_OBSIDIAN_WRITE,
@@ -103,8 +111,10 @@ __all__ = (
     "APPROVAL_KIND_OBSIDIAN_WRITE",
     "APPROVAL_KIND_RESEARCH_PROMOTION",
     "ApprovalChannelResolver",
+    "ApprovalIntent",
     "ApprovalJobOutcome",
     "ApprovalPostFn",
+    "ApprovalReplyOutcome",
     "ApprovalRequest",
     "ApprovalWorker",
     "DEFAULT_HEARTBEAT_DEADLINE_SECONDS",
