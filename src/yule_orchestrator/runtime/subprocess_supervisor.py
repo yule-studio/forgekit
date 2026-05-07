@@ -85,12 +85,55 @@ SleepFn = Callable[[float], Awaitable[None]]
 
 
 async def _default_spawn(cmd: Sequence[str], env: dict) -> Any:
+    # Capture child stdout/stderr through pipes so we can prefix
+    # each line with the service id. Without this every child
+    # writes raw lines into the same terminal stream and a busy
+    # runtime makes operator log triage hard.
     return await asyncio.create_subprocess_exec(
         *cmd,
         env=env,
-        stdout=None,  # inherit — child stdout streams straight through
-        stderr=None,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
+
+
+async def _forward_with_prefix(
+    *,
+    stream: Any,
+    sink: Any,
+    prefix: str,
+) -> None:
+    """Read *stream* line-by-line, write each line to *sink*
+    prefixed with ``[<prefix>] ``.
+
+    Tolerant of:
+      - non-utf8 bytes (decoded with errors=replace)
+      - partial trailing line (forwarded with trailing newline)
+      - sink errors (broken stdout pipe — log + drop the rest;
+        we don't want a logging bug to kill the supervisor)
+    """
+
+    if stream is None:
+        return
+    try:
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace")
+            if not text.endswith("\n"):
+                text = text + "\n"
+            try:
+                sink.write(f"[{prefix}] {text}")
+                sink.flush()
+            except Exception:  # noqa: BLE001 - sink may be closed
+                return
+    except (asyncio.CancelledError, GeneratorExit):
+        raise
+    except Exception:  # noqa: BLE001 - never crash the supervisor
+        logger.warning(
+            "stdout forward raised for %s", prefix, exc_info=True
+        )
 
 
 async def run_runtime_up(
@@ -192,11 +235,54 @@ async def _supervise_one(
             continue
 
         logger.info("runtime up: started %s", managed.spec.service_id)
+
+        # Each spawn gets its own pair of forwarder tasks so child
+        # stdout/stderr lines land in the parent stream prefixed by
+        # the service id. Cancelled on wait() return so a restart
+        # cleanly replaces them.
+        prefix = managed.spec.service_id
+        forwarders: list[asyncio.Task] = []
+        if getattr(managed.process, "stdout", None) is not None:
+            forwarders.append(
+                asyncio.create_task(
+                    _forward_with_prefix(
+                        stream=managed.process.stdout,
+                        sink=sys.stdout,
+                        prefix=prefix,
+                    ),
+                    name=f"stdout:{prefix}",
+                )
+            )
+        if getattr(managed.process, "stderr", None) is not None:
+            forwarders.append(
+                asyncio.create_task(
+                    _forward_with_prefix(
+                        stream=managed.process.stderr,
+                        sink=sys.stderr,
+                        prefix=prefix,
+                    ),
+                    name=f"stderr:{prefix}",
+                )
+            )
+
         try:
             exit_code = await managed.process.wait()
         except asyncio.CancelledError:
-            # Drain path will terminate / kill the child; just return.
+            # Drain path will terminate / kill the child; cancel
+            # forwarders before propagating.
+            for task in forwarders:
+                if not task.done():
+                    task.cancel()
             raise
+        finally:
+            for task in forwarders:
+                if not task.done():
+                    task.cancel()
+            for task in forwarders:
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                    pass
         managed.last_exit_code = int(exit_code) if exit_code is not None else None
 
         if shutdown_event.is_set():

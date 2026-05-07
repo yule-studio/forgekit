@@ -39,6 +39,10 @@ from ..agents.job_queue import (
 from ..agents.job_queue.approval_worker import (
     ApprovalRequest,
 )
+from ..agents.job_queue.standalone_runners import (
+    build_research_runner,
+    build_role_take_runner,
+)
 from ..agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
     run_worker_loop,
@@ -143,15 +147,16 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
 
     if spec.kind == ServiceKind.RESEARCH_WORKER:
         worker = ResearchWorker(queue=queue, heartbeats=heartbeats)
+        # M6.1a wiring: the standalone runner reloads the session,
+        # runs the collector with the role+prompt the producer
+        # stamped on the job's payload, and persists the resulting
+        # research_pack onto session.extra. Forum publish + user
+        # follow_up message stay on the in-process gateway path
+        # (handled by M3's run_one) until M6.2 splits that off.
+        research_runner = build_research_runner()
 
         async def _process(job):
-            # ResearchWorker runner is the gateway-side hook that
-            # actually drives the research loop. M6.0 doesn't yet
-            # ship a standalone runner because moving the gateway's
-            # research_loop_fn here is M6.1 work — for now we mark
-            # the job failed_retryable with a clear reason so the
-            # supervisor sees it and an operator can fix the wiring.
-            await worker.process_job(job, runner=_no_runner_yet)
+            await worker.process_job(job, runner=research_runner)
 
         return _process
 
@@ -163,13 +168,10 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
         worker = RoleTakeWorker(
             queue=queue, heartbeats=heartbeats, role_filter=spec.role
         )
+        role_runner = build_role_take_runner()
 
         async def _process(job):
-            # Same M6.1 boundary as research worker — the actual
-            # role-take render lives in engineering_team_runtime
-            # right now and will move into the worker process in
-            # the next milestone.
-            worker.process_job(job, runner=_no_role_runner_yet)
+            worker.process_job(job, runner=role_runner)
 
         return _process
 
@@ -218,30 +220,18 @@ def _pick_filters_for(spec: ServiceSpec):
 
 
 # ---------------------------------------------------------------------------
-# M6.1 boundary placeholders — these raise when invoked so a row
-# without an injected runner / post_fn lands in failed_retryable
-# instead of silently saving with no work done.
+# M6.1b boundary placeholder — approval post_fn production wrapper
+# (Discord client / REST POST) lands in the next milestone. Until
+# then a standalone approval worker fails approval_post jobs to
+# ``failed_retryable`` with a clear error so the supervisor sees the
+# gap and an operator can fix the wiring.
 # ---------------------------------------------------------------------------
-
-
-async def _no_runner_yet(_job):
-    raise RuntimeError(
-        "research_collect runner not wired into eng-research-worker yet "
-        "(M6.1 will move research_loop_fn off the gateway)"
-    )
-
-
-def _no_role_runner_yet(_job):
-    raise RuntimeError(
-        "role_take runner not wired into eng-role-* yet "
-        "(M6.1 will move handle_research_turn_message body into the worker)"
-    )
 
 
 async def _no_post_fn_yet(_request: ApprovalRequest, _rendered: str):
     raise RuntimeError(
         "approval_worker post_fn not wired yet "
-        "(M5a-2 connects #승인-대기 posting to the worker)"
+        "(M6.1b will connect a Discord REST POST to #승인-대기)"
     )
 
 
