@@ -506,6 +506,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--log-level", default="INFO", help="Python logging level."
     )
 
+    runtime_status_parser = runtime_subparsers.add_parser(
+        "status",
+        help="Read-only runtime status — heartbeat ages + queue summary.",
+    )
+    runtime_status_parser.add_argument(
+        "--profile",
+        default="engineering",
+        help="Service profile to summarise. Defaults to engineering.",
+    )
+    runtime_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a stable JSON payload instead of the text render.",
+    )
+    runtime_status_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Override SQLite cache path (defaults to YULE_CACHE_DB_PATH).",
+    )
+    runtime_status_parser.add_argument(
+        "--failed-limit",
+        type=int,
+        default=10,
+        help="How many recent failed_retryable / failed_terminal rows to list.",
+    )
+
     run_service_parser = subparsers.add_parser(
         "run-service",
         help="Run a single long-running worker (called by systemd or runtime up).",
@@ -908,6 +934,15 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 repo_root,
                 agent_ids=parse_agent_ids(args.agents),
                 dry_run=args.dry_run,
+            )
+        if args.command == "runtime" and args.runtime_command == "status":
+            from ..runtime.status_cli import run_runtime_status_command
+
+            return run_runtime_status_command(
+                profile=args.profile,
+                emit_json=args.json,
+                db_path=Path(args.db_path) if args.db_path else None,
+                failed_limit=args.failed_limit,
             )
         if args.command == "runtime" and args.runtime_command == "up":
             from ..runtime.subprocess_supervisor import (

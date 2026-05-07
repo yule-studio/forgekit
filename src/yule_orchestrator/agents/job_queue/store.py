@@ -500,6 +500,90 @@ class JobQueue:
             return tuple(_row_to_job(row) for row in rows)
 
     # ------------------------------------------------------------------
+    # Read-only aggregates (used by ``yule runtime status``)
+    # ------------------------------------------------------------------
+
+    def count_by_type_and_state(self) -> Mapping[Tuple[str, str], int]:
+        """Return ``{(job_type, state): count}`` across the whole queue.
+
+        Read-only aggregate consumed by the runtime status renderer.
+        Returned mapping is keyed on plain strings (not the
+        :class:`JobState` enum) so callers can serialise it to JSON
+        without an extra coercion step.
+        """
+
+        with _connect(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT job_type, state, COUNT(*) AS n
+                FROM job_queue
+                GROUP BY job_type, state
+                """
+            ).fetchall()
+            return {
+                (str(row["job_type"]), str(row["state"])): int(row["n"])
+                for row in rows
+            }
+
+    def oldest_queued_at_per_type(self) -> Mapping[str, float]:
+        """Return ``{job_type: min(available_at)}`` for queued rows.
+
+        Used by the status renderer to surface "queue starvation" —
+        a row sitting in QUEUED for far longer than the worker
+        cadence is the operator's earliest signal that a worker
+        process didn't actually start.
+        """
+
+        with _connect(self._db_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT job_type, MIN(available_at) AS oldest
+                FROM job_queue
+                WHERE state = ?
+                GROUP BY job_type
+                """,
+                (JobState.QUEUED.value,),
+            ).fetchall()
+            return {
+                str(row["job_type"]): float(row["oldest"])
+                for row in rows
+                if row["oldest"] is not None
+            }
+
+    def recent_failed(
+        self,
+        *,
+        limit: int = 10,
+        states: Sequence[JobState] = (
+            JobState.FAILED_RETRYABLE,
+            JobState.FAILED_TERMINAL,
+        ),
+    ) -> Tuple[Job, ...]:
+        """Return the *limit* most recently updated failed rows.
+
+        Spans both retryable and terminal failures by default — the
+        operator wants to see both on one screen. Callers that want
+        a narrower view (e.g. only ``FAILED_TERMINAL``) pass an
+        explicit *states* tuple.
+        """
+
+        if not states:
+            return ()
+        if limit <= 0:
+            return ()
+        placeholders = ",".join("?" for _ in states)
+        sql = (
+            "SELECT * FROM job_queue "
+            f"WHERE state IN ({placeholders}) "
+            "ORDER BY updated_at DESC LIMIT ?"
+        )
+        params: list[Any] = [s.value for s in states]
+        params.append(int(limit))
+        with _connect(self._db_path) as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return tuple(_row_to_job(row) for row in rows)
+
+    # ------------------------------------------------------------------
     # Maintenance
     # ------------------------------------------------------------------
 
