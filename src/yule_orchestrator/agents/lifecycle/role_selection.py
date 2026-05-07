@@ -376,15 +376,109 @@ def recommend_active_roles(
     return _build_fallback_selection(text)
 
 
+# Phase 4 narrow fallback hint vocabularies. These fire ONLY when no
+# profile activation_keyword scored — they're a coarse domain pivot
+# for vague prompts ("개발 관련해서 봐줘") that don't contain any
+# specific signal a profile already covers. Words listed here are
+# intentionally NOT in profile activation_keywords (otherwise the
+# rule branch would have caught them first).
+_VAGUE_INFRA_HINTS: Tuple[str, ...] = (
+    "서버",
+    "server",
+    "프로덕션",
+    "production",
+    "실서비스",
+    "운영체제",
+    "production env",
+    "스테이징",
+)
+_VAGUE_AI_RESEARCH_HINTS: Tuple[str, ...] = (
+    "기계학습",
+    "ml 모델",
+    "지식 베이스",
+    "데이터셋",
+    "dataset",
+)
+_VAGUE_PRODUCT_HINTS: Tuple[str, ...] = (
+    "사용자 경험",
+    "사용성 검토",
+    "온보딩 흐름",
+    "퍼소나",
+    "유저 흐름",
+)
+_VAGUE_ENGINEERING_HINTS: Tuple[str, ...] = (
+    "개발",
+    "코드",
+    "code",
+    "feature",
+    "기능",
+    "리팩",
+    "리팩터",
+    "버그",
+    "결함",
+)
+
+
+# Mapping fallback_policy → (selected_roles, primary, reviewer). Used
+# by ``_build_fallback_selection`` so the policy and the role list
+# stay co-located. tech-lead is always REQUIRED implicitly.
+_FALLBACK_POLICY_TEAMS: Mapping[str, Tuple[Tuple[str, ...], Tuple[str, ...], Tuple[str, ...]]] = {
+    # policy → (selected (excluding tech-lead), primary roles, reviewer roles)
+    FALLBACK_VAGUE_INFRA: (
+        ("devops-engineer", "backend-engineer"),
+        ("devops-engineer",),
+        ("backend-engineer",),
+    ),
+    FALLBACK_VAGUE_AI_RESEARCH: (
+        ("ai-engineer", "backend-engineer"),
+        ("ai-engineer",),
+        ("backend-engineer",),
+    ),
+    FALLBACK_VAGUE_PRODUCT: (
+        ("product-designer", "frontend-engineer"),
+        ("product-designer",),
+        ("frontend-engineer",),
+    ),
+    FALLBACK_VAGUE_ENGINEERING: (
+        ("backend-engineer", "qa-engineer"),
+        ("backend-engineer",),
+        ("qa-engineer",),
+    ),
+}
+
+
+def _classify_vague_fallback(prompt_lower: str) -> Optional[str]:
+    """Map a no-match prompt to a narrow fallback policy id, or ``None``.
+
+    Order matters: more specific buckets win when hint vocabularies
+    overlap. Today they don't share any tokens by design — keeping the
+    order documents intent ("infra hint takes precedence over generic
+    engineering hint" if we ever extend the vocab).
+    """
+
+    if any(h in prompt_lower for h in _VAGUE_INFRA_HINTS):
+        return FALLBACK_VAGUE_INFRA
+    if any(h in prompt_lower for h in _VAGUE_AI_RESEARCH_HINTS):
+        return FALLBACK_VAGUE_AI_RESEARCH
+    if any(h in prompt_lower for h in _VAGUE_PRODUCT_HINTS):
+        return FALLBACK_VAGUE_PRODUCT
+    if any(h in prompt_lower for h in _VAGUE_ENGINEERING_HINTS):
+        return FALLBACK_VAGUE_ENGINEERING
+    return None
+
+
 def _build_fallback_selection(text: str) -> RoleSelection:
     """Return the fallback :class:`RoleSelection` for *text*.
 
-    Phase 4 will expand this with vague_engineering / vague_ai_research
-    / vague_product / vague_infra branches; today it returns the legacy
-    "always-on quartet" for any non-empty prompt and a tech-lead-only
-    selection when the prompt is empty. The :attr:`fallback_policy`
-    field is populated in both branches so the supervisor / docs can
-    explain *which* fallback fired.
+    Layered policy (first match wins):
+
+    1. Empty prompt → ``empty_prompt`` policy, tech-lead only.
+    2. Vague hint → ``vague_infra`` / ``vague_ai_research`` /
+       ``vague_product`` / ``vague_engineering`` — picks a focused
+       2-role pair per :data:`_FALLBACK_POLICY_TEAMS` so unrelated
+       roles don't auto-join a domain-shaped vague prompt.
+    3. Otherwise → ``legacy_quartet`` (tech-lead + ai + backend + qa)
+       so the gateway never produces a zero-participant session.
     """
 
     if not text:
@@ -409,9 +503,45 @@ def _build_fallback_selection(text: str) -> RoleSelection:
             fallback_policy=FALLBACK_EMPTY_PROMPT,
         )
 
-    # Non-empty but no keyword hit — keep the historical "always-on
-    # quartet" until Phase 4 narrows the bucket. The fallback_policy
-    # tag explains which branch fired so docs / status can describe it.
+    prompt_lower = text.lower()
+    vague_policy = _classify_vague_fallback(prompt_lower)
+    if vague_policy is not None:
+        team, primary_team, reviewer_team = _FALLBACK_POLICY_TEAMS[vague_policy]
+        selected = (ROLE_TECH_LEAD,) + team
+        excluded = tuple(r for r in ALL_ENGINEERING_ROLES if r not in selected)
+        participation = {
+            role: PARTICIPATION_EXCLUDED for role in ALL_ENGINEERING_ROLES
+        }
+        participation[ROLE_TECH_LEAD] = PARTICIPATION_REQUIRED
+        for role in primary_team:
+            participation[role] = PARTICIPATION_PRIMARY
+        for role in reviewer_team:
+            if participation.get(role) != PARTICIPATION_PRIMARY:
+                participation[role] = PARTICIPATION_REVIEWER
+        reasons = {ROLE_TECH_LEAD: f"fallback ({vague_policy}) — tech-lead always required"}
+        for role in primary_team:
+            reasons[role] = f"fallback ({vague_policy}) — vague-domain primary"
+        for role in reviewer_team:
+            if role not in primary_team:
+                reasons[role] = f"fallback ({vague_policy}) — vague-domain reviewer"
+        return RoleSelection(
+            selected_roles=selected,
+            excluded_roles=excluded,
+            required_roles=(ROLE_TECH_LEAD,),
+            optional_roles=(),
+            reason_by_role=reasons,
+            selection_source=SOURCE_FALLBACK,
+            participation_by_role=participation,
+            primary_roles=tuple(primary_team),
+            reviewer_roles=tuple(r for r in reviewer_team if r not in primary_team),
+            optional_roles_v2=(),
+            matched_keywords_by_role={},
+            fallback_policy=vague_policy,
+        )
+
+    # Non-empty + no domain hint → keep the legacy quartet as the
+    # conservative safety net so the gateway never returns zero
+    # participants when the user just said "안녕하세요".
     selected = _FALLBACK_SELECTED
     excluded = tuple(r for r in ALL_ENGINEERING_ROLES if r not in selected)
     fallback_reason = "fallback (no keyword match in rule bank)"
@@ -420,7 +550,7 @@ def _build_fallback_selection(text: str) -> RoleSelection:
         role: PARTICIPATION_EXCLUDED for role in ALL_ENGINEERING_ROLES
     }
     participation[ROLE_TECH_LEAD] = PARTICIPATION_REQUIRED
-    reviewer: list[str] = []
+    reviewer = []
     for role in selected:
         if role == ROLE_TECH_LEAD:
             continue
