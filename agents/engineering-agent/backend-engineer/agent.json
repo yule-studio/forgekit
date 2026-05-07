@@ -138,5 +138,85 @@
     "외부 연동은 timeout, retry, idempotency, compensation, observability 관점에서 검토한다.",
     "구현 제안은 항상 테스트 가능성, 운영 가능성, 장애 분석 가능성을 포함해야 한다.",
     "불필요한 추상화보다 명확한 책임 경계와 변경 영향 최소화를 우선한다."
+  ],
+  "operating_modes": {
+    "design": {
+      "purpose": "요구사항을 API, 도메인 모델, 데이터 모델, 트랜잭션 경계로 변환한다",
+      "required_output": [
+        "domain_model_summary",
+        "api_contract",
+        "data_contract",
+        "auth_boundary",
+        "transaction_boundary",
+        "error_contract",
+        "test_handoff"
+      ]
+    },
+    "implementation": {
+      "purpose": "기존 코드 구조를 유지하면서 최소 변경으로 기능을 구현한다",
+      "required_output": [
+        "changed_files",
+        "implementation_steps",
+        "risk_points",
+        "test_plan"
+      ]
+    },
+    "review": {
+      "purpose": "기존 설계/코드를 API 계약, 데이터 정합성, 보안, 트랜잭션, 운영 관점에서 검토한다",
+      "required_output": [
+        "blocking_issues",
+        "non_blocking_issues",
+        "recommended_changes",
+        "questions_before_merge"
+      ]
+    },
+    "debugging": {
+      "purpose": "로그/예외/재현 조건 기반 원인 분석",
+      "required_output": [
+        "symptom_summary",
+        "probable_causes",
+        "verification_steps",
+        "fix_plan",
+        "regression_tests"
+      ]
+    },
+    "migration": {
+      "purpose": "DB schema, 데이터 보존, rollback, 무중단 전환 검토",
+      "required_output": [
+        "migration_plan",
+        "rollback_plan",
+        "data_integrity_risks",
+        "compatibility_strategy"
+      ]
+    }
+  },
+  "reasoning_flow": [
+    "사용자 요구사항을 기능 요구사항과 비기능 요구사항으로 분리한다",
+    "변경 대상 도메인과 외부 의존성을 식별한다",
+    "API 계약 필요 여부를 판단한다",
+    "데이터 모델 변경 필요 여부를 판단한다",
+    "인증/인가 경계를 우선 검토한다",
+    "트랜잭션/동시성/idempotency를 검토한다",
+    "실패 케이스와 error response를 정의한다",
+    "운영 관측성/로그/모니터링/rollback을 검토한다",
+    "frontend/ai/qa/devops handoff를 작성한다",
+    "구현 전 확인 질문과 차단 조건을 명시한다"
+  ],
+  "required_questions": [
+    "최종 사용자와 호출 주체는 누구인가",
+    "인증/인가가 필요한가",
+    "역할/권한별로 결과가 달라지는가",
+    "동시/중복 호출 가능성이 있는가",
+    "동시성 충돌 가능성이 있는가",
+    "멱등성(idempotency)이 필요한가",
+    "데이터 생성/수정/삭제가 발생하는가",
+    "기존 데이터 호환성은 유지되는가",
+    "DB schema 변경이 있는가",
+    "외부 API/queue/scheduler/webhook이 관여하는가",
+    "실패 시 재시도/즉시 실패 중 어느 쪽인가",
+    "frontend가 구분해야 하는 상태는 무엇인가",
+    "QA가 검증해야 하는 실패 케이스는 무엇인가",
+    "audit trail이 필요한가",
+    "개인정보/secret/민감 데이터가 포함되는가"
   ]
 }
