@@ -218,5 +218,139 @@
     "QA가 검증해야 하는 실패 케이스는 무엇인가",
     "audit trail이 필요한가",
     "개인정보/secret/민감 데이터가 포함되는가"
-  ]
+  ],
+  "api_contract_standard": {
+    "required_fields": [
+      "endpoint",
+      "method",
+      "auth_required",
+      "permission_required",
+      "path_params",
+      "query_params",
+      "request_body",
+      "response_body",
+      "error_responses",
+      "idempotency_behavior",
+      "rate_limit_or_throttle",
+      "versioning_impact"
+    ],
+    "rules": [
+      "API 계약은 frontend가 mock 없이 이해할 수 있을 만큼 구체적으로 작성한다",
+      "request/response는 Entity가 아니라 명시적 DTO 기준으로 정의한다",
+      "error response는 HTTP status, error code, message, recovery action을 포함한다",
+      "권한 실패, validation 실패, 리소스 없음, 중복 요청, 서버 실패를 구분한다",
+      "기존 API 변경 시 backward compatibility를 명시한다"
+    ]
+  },
+  "data_contract_standard": {
+    "required_fields": [
+      "table_or_collection",
+      "primary_key_policy",
+      "public_identifier_policy",
+      "relationships",
+      "unique_constraints",
+      "indexes",
+      "nullable_fields",
+      "default_values",
+      "migration_required",
+      "rollback_strategy",
+      "data_retention_policy"
+    ],
+    "rules": [
+      "데이터 정합성은 app code와 DB 제약조건 중 어디서 보장할지 명시한다",
+      "외부 노출 식별자와 내부 PK를 구분한다",
+      "migration은 forward/rollback plan을 함께 제안한다",
+      "destructive migration은 기본 금지하고 별도 승인을 표시한다",
+      "index는 조회 패턴과 함께 제안한다"
+    ]
+  },
+  "error_contract_standard": {
+    "required_error_cases": [
+      "validation_error",
+      "authentication_required",
+      "permission_denied",
+      "resource_not_found",
+      "duplicate_request",
+      "conflict_state",
+      "external_dependency_failure",
+      "timeout",
+      "internal_server_error"
+    ],
+    "rules": [
+      "frontend/QA가 구분 가능한 code를 둔다",
+      "사용자 message와 내부 log message를 구분한다",
+      "retry 가능/불가능을 구분한다",
+      "권한 에러는 정보 노출을 최소화한다"
+    ]
+  },
+  "security_review_standard": {
+    "must_check": [
+      "authentication_required",
+      "authorization_boundary",
+      "object_level_permission",
+      "input_validation",
+      "output_data_exposure",
+      "secret_handling",
+      "pii_handling",
+      "audit_logging",
+      "rate_limit",
+      "abuse_case"
+    ],
+    "rules": [
+      "권한 검증 없이 새 endpoint를 노출하지 않는다",
+      "secret/PII가 응답이나 로그에 새지 않는지 검토한다",
+      "object-level 권한(소유자/조직 단위)을 체크한다"
+    ]
+  },
+  "transaction_review_standard": {
+    "must_check": [
+      "transaction_owner",
+      "transaction_boundary",
+      "isolation_risk",
+      "concurrent_update_risk",
+      "idempotency_key_required",
+      "retry_policy",
+      "compensation_required",
+      "eventual_consistency_allowed"
+    ],
+    "rules": [
+      "트랜잭션 경계 없이 외부 API와 DB 쓰기를 섞지 않는다",
+      "동시 업데이트 가능성이 있으면 lock 또는 idempotency 전략을 정한다",
+      "compensation 가능 여부를 검토하고 비가역 동작은 명시한다"
+    ]
+  },
+  "observability_standard": {
+    "must_define": [
+      "structured_logs",
+      "correlation_id",
+      "audit_logs",
+      "metrics",
+      "alerts",
+      "dashboard_signals",
+      "failure_trace_points"
+    ],
+    "rules": [
+      "관측 신호 없는 새 흐름은 ship으로 보지 않는다",
+      "사용자 영향이 있는 알림에는 owner와 1차 대응 절차를 함께 둔다",
+      "로그에 PII/secret이 포함되지 않도록 마스킹한다"
+    ]
+  },
+  "test_handoff_standard": {
+    "must_include": [
+      "happy_path",
+      "validation_failure",
+      "authentication_failure",
+      "authorization_failure",
+      "not_found",
+      "conflict",
+      "duplicate_request",
+      "concurrent_request",
+      "external_dependency_failure",
+      "rollback_or_recovery_case"
+    ],
+    "rules": [
+      "정상 케이스만으로 ship 동의하지 않는다",
+      "권한별 분기/동시 요청/외부 의존 실패는 누락하지 않는다"
+    ]
+  }
 }
