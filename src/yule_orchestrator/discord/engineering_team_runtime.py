@@ -563,63 +563,92 @@ def handle_research_turn_message(
 
     sequence = deliberation_research_role_sequence(session)
     if effective_role == RESEARCH_SYNTHESIS_ROLE:
-        # tech-lead synthesis comment closes the chain. If a synthesis
-        # was already persisted (gateway forum hook), prefer the rendered
-        # text we kept in session.extra so the team sees one consistent
-        # wording across rebuilds. Otherwise re-run synthesize_thread.
-        research_pack = _maybe_load_pack(pack_loader, session)
-        synthesis_text = _load_synthesis_text_from_session_extra(session)
-        if not synthesis_text:
-            accumulated = _replay_role_takes(session, sequence, research_pack)
-            _, synthesis_text = synthesize_thread(
-                session, accumulated, research_pack=research_pack
+        # tech-lead synthesis comment closes the chain. We route the
+        # actual render through the M4 queue so the supervisor sees
+        # the work + dedup catches duplicates; the queue body still
+        # falls back to a persisted synthesis text when present so
+        # rebuilds stay consistent across the team.
+        def _synthesis_runner() -> Optional[ResearchTurnOutcome]:
+            research_pack = _maybe_load_pack(pack_loader, session)
+            synthesis_text = _load_synthesis_text_from_session_extra(session)
+            if not synthesis_text:
+                accumulated = _replay_role_takes(
+                    session, sequence, research_pack
+                )
+                _, synthesis_text = synthesize_thread(
+                    session, accumulated, research_pack=research_pack
+                )
+            return ResearchTurnOutcome(
+                role=role,
+                session_id=session_id,
+                message=synthesis_text,
+                next_directive=None,
+                is_synthesis=True,
             )
-        _mark_recently_handled(
-            role=role, session_id=session_id, kind=str(effective_role)
-        )
-        return ResearchTurnOutcome(
-            role=role,
+
+        outcome = _run_role_take_via_queue(
             session_id=session_id,
-            message=synthesis_text,
-            next_directive=None,
-            is_synthesis=True,
+            role=role,
+            kind=ROLE_TURN_KIND_SYNTHESIS,
+            runner_body=_synthesis_runner,
+            payload={"effective_role": str(effective_role)},
         )
+        if outcome is not None:
+            _mark_recently_handled(
+                role=role, session_id=session_id, kind=str(effective_role)
+            )
+        return outcome
 
     if effective_role not in sequence:
         return None
 
-    research_pack = _maybe_load_pack(pack_loader, session)
-    take, rendered = deliberation_role_turn(
-        session,
-        _role_address(effective_role),
-        research_pack=research_pack,
-        previous_turns=_replay_role_takes_until(
-            session, sequence, effective_role, research_pack
-        ),
-    )
-    _mark_recently_handled(
-        role=role, session_id=session_id, kind=str(effective_role)
-    )
-
-    next_role = _next_research_role(sequence, effective_role)
-    next_directive: Optional[str]
-    if next_role is None:
-        next_directive = research_dispatch_directive(
-            session_id, RESEARCH_SYNTHESIS_ROLE
+    def _turn_runner() -> Optional[ResearchTurnOutcome]:
+        # M4 NOTE: full dependency edge between research_collect and
+        # role_take is deferred to M5/M6 (the gateway needs to surface
+        # the in-flight research_collect job_id to member bots first).
+        # ``research_pack=None`` is therefore tolerated here — the
+        # legacy deliberation_role_turn happily renders deterministic
+        # takes even without a pack, so silencing turns purely on
+        # pack absence would regress sessions that pre-date M3.
+        research_pack = _maybe_load_pack(pack_loader, session)
+        take, rendered = deliberation_role_turn(
+            session,
+            _role_address(effective_role),
+            research_pack=research_pack,
+            previous_turns=_replay_role_takes_until(
+                session, sequence, effective_role, research_pack
+            ),
         )
-    else:
-        next_directive = research_dispatch_directive(session_id, next_role)
+        next_role = _next_research_role(sequence, effective_role)
+        if next_role is None:
+            next_directive = research_dispatch_directive(
+                session_id, RESEARCH_SYNTHESIS_ROLE
+            )
+        else:
+            next_directive = research_dispatch_directive(session_id, next_role)
+        message = rendered
+        if next_directive:
+            message = f"{rendered}\n\n{next_directive}"
+        return ResearchTurnOutcome(
+            role=role,
+            session_id=session_id,
+            message=message,
+            next_directive=next_directive,
+            is_synthesis=False,
+        )
 
-    message = rendered
-    if next_directive:
-        message = f"{rendered}\n\n{next_directive}"
-    return ResearchTurnOutcome(
-        role=role,
+    outcome = _run_role_take_via_queue(
         session_id=session_id,
-        message=message,
-        next_directive=next_directive,
-        is_synthesis=False,
+        role=role,
+        kind=ROLE_TURN_KIND_TURN,
+        runner_body=_turn_runner,
+        payload={"effective_role": str(effective_role)},
     )
+    if outcome is not None:
+        _mark_recently_handled(
+            role=role, session_id=session_id, kind=str(effective_role)
+        )
+    return outcome
 
 
 def _handle_research_open_call(
@@ -640,6 +669,46 @@ def _handle_research_open_call(
     sequence = deliberation_research_role_sequence(session)
     if role not in sequence:
         return None
+
+    # M4: route the actual render through the role_take queue so the
+    # supervisor sees the work + (session, role, kind="open") dedup
+    # blocks duplicate kicks. Per-role collection (which produces the
+    # per-role research_pack) stays inside the runner because the
+    # open-call path is precisely the one that *creates* a fresh
+    # pack — gating on its prior existence would deadlock the kickoff.
+    def _open_runner() -> Optional[ResearchTurnOutcome]:
+        return _build_open_call_outcome(
+            role=role,
+            session_id=session_id,
+            session=session,
+            pack_loader=pack_loader,
+        )
+
+    return _run_role_take_via_queue(
+        session_id=session_id,
+        role=role,
+        kind=ROLE_TURN_KIND_OPEN,
+        runner_body=_open_runner,
+        payload={"trigger": "research_open"},
+    )
+
+
+def _build_open_call_outcome(
+    *,
+    role: str,
+    session_id: str,
+    session: WorkflowSession,
+    pack_loader: Optional[Callable[[WorkflowSession], Any]],
+) -> Optional[ResearchTurnOutcome]:
+    """Pre-M4 body of :func:`_handle_research_open_call` extracted as
+    a runner so :class:`RoleTakeWorker` can drive it under queue
+    state-machine framing without changing the outcome shape.
+
+    Kept as its own function (rather than an inline closure inside
+    ``_handle_research_open_call``) so tests that want to exercise
+    only the render — without involving the queue — have a clean seam
+    to import.
+    """
 
     research_pack, role_research_record = _collect_role_research_pack(
         session=session, role=role
@@ -1076,6 +1145,77 @@ def _maybe_load_pack(
         return pack_loader(session)
     except Exception:  # noqa: BLE001 - never crash the chain
         return _load_pack_from_session_extra(session)
+
+
+# ---------------------------------------------------------------------------
+# A-M4 — route role takes through the SQLite job_queue.
+# ---------------------------------------------------------------------------
+
+
+def _run_role_take_via_queue(
+    *,
+    session_id: str,
+    role: str,
+    kind: str,
+    runner_body: Callable[[], Optional["ResearchTurnOutcome"]],
+    payload: Optional[Mapping[str, Any]] = None,
+) -> Optional["ResearchTurnOutcome"]:
+    """Wrap *runner_body* in a ``role_take`` job_queue lifecycle.
+
+    Drives the row through ``queued → assigned → in_progress → saved``
+    on success, or ``failed_retryable`` when *runner_body* raises.
+    Returns the runner's :class:`ResearchTurnOutcome` (so callers
+    keep their existing return shape) or ``None`` when the worker
+    declined to start (duplicate in flight / claimed by another
+    worker / runner exception).
+
+    The worker instance is created per call so the gateway / member
+    bot can stay stateless toward queue handles. Every call creates
+    its own short-lived JobQueue + HeartbeatStore connection — the
+    SQLite layer pools / serialises file access via WAL + RLock,
+    same as the rest of the orchestrator's storage.
+    """
+
+    if not session_id or not role or not kind:
+        return None
+
+    try:
+        from ..agents.job_queue import (
+            HeartbeatStore,
+            JobQueue,
+            RoleTakeWorker,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        # Queue infra missing (test stub / minimal install) — fall
+        # back to running the body directly so legacy callers still
+        # produce an outcome. The supervisor sees nothing, but the
+        # forum keeps getting comments.
+        return runner_body()
+
+    queue = JobQueue()
+    worker = RoleTakeWorker(queue=queue, heartbeats=HeartbeatStore())
+
+    def _runner(_job: Any) -> Any:
+        return runner_body()
+
+    try:
+        outcome = worker.run_one(
+            session_id=session_id,
+            role=role,
+            kind=kind,
+            runner=_runner,
+            payload=dict(payload or {}),
+        )
+    except Exception:
+        # The worker already moved the row to ``failed_retryable``
+        # before re-raising. Member bot stays silent so the forum
+        # doesn't post a half-baked comment; the supervisor / status
+        # diagnostic surfaces the failure via the queue row.
+        return None
+
+    if outcome.skipped_reason is not None:
+        return None
+    return outcome.runner_result  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
