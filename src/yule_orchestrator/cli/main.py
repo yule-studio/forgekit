@@ -531,6 +531,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=10,
         help="How many recent failed_retryable / failed_terminal rows to list.",
     )
+    runtime_status_parser.add_argument(
+        "--post-discord",
+        action="store_true",
+        help=(
+            "Also post the markdown summary to #봇-상태. "
+            "Idempotent: a state-hash dedup skips identical reposts."
+        ),
+    )
+    runtime_status_parser.add_argument(
+        "--force-post",
+        action="store_true",
+        help="Bypass the dedup-key check for the next post.",
+    )
 
     run_service_parser = subparsers.add_parser(
         "run-service",
@@ -943,6 +956,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 emit_json=args.json,
                 db_path=Path(args.db_path) if args.db_path else None,
                 failed_limit=args.failed_limit,
+                post_discord=args.post_discord,
+                force_post=args.force_post,
             )
         if args.command == "runtime" and args.runtime_command == "up":
             from ..runtime.subprocess_supervisor import (
