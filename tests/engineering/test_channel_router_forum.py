@@ -344,7 +344,7 @@ class DefaultResearchLoopTests(unittest.TestCase):
 
 class CentralisedLabelTests(unittest.TestCase):
     def test_pretty_provider_known_and_unknown(self) -> None:
-        from yule_orchestrator.agents.research_collector import pretty_provider
+        from yule_orchestrator.agents.research.collector import pretty_provider
 
         self.assertEqual(pretty_provider("mock"), "기본 검색(mock)")
         self.assertEqual(pretty_provider("tavily"), "Tavily 검색")
@@ -353,7 +353,7 @@ class CentralisedLabelTests(unittest.TestCase):
         self.assertEqual(pretty_provider(None), "알 수 없음")
 
     def test_pretty_task_type_unknown_passthrough(self) -> None:
-        from yule_orchestrator.agents.research_collector import pretty_task_type
+        from yule_orchestrator.agents.research.collector import pretty_task_type
 
         self.assertEqual(pretty_task_type("landing-page"), "랜딩 페이지")
         self.assertEqual(pretty_task_type("design-system"), "design-system")
@@ -361,8 +361,8 @@ class CentralisedLabelTests(unittest.TestCase):
         self.assertEqual(pretty_task_type(""), "일반")
 
     def test_pretty_source_type_unknown_passthrough(self) -> None:
-        from yule_orchestrator.agents.research_collector import pretty_source_type
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.collector import pretty_source_type
+        from yule_orchestrator.agents.research.pack import SourceType
 
         self.assertEqual(pretty_source_type(SourceType.OFFICIAL_DOCS), "공식 문서")
         # Raw enum values still translate
@@ -373,7 +373,7 @@ class CentralisedLabelTests(unittest.TestCase):
         self.assertEqual(pretty_source_type(None), "기타")
 
     def test_pretty_confidence_unknown_passthrough(self) -> None:
-        from yule_orchestrator.agents.research_collector import pretty_confidence
+        from yule_orchestrator.agents.research.collector import pretty_confidence
 
         self.assertEqual(pretty_confidence("high"), "신뢰도 높음")
         self.assertEqual(pretty_confidence("medium"), "신뢰도 보통")

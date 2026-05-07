@@ -24,7 +24,7 @@ from yule_orchestrator.agents.deliberation import (
     DeliberationContext,
     RetrievedMemory,
 )
-from yule_orchestrator.agents.research_pack import ResearchPack
+from yule_orchestrator.agents.research.pack import ResearchPack
 from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
 from yule_orchestrator.memory import (
     MEMORY_DB_ENV,

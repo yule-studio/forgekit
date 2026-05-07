@@ -26,8 +26,8 @@ except ModuleNotFoundError:
 
 from tests._helpers import isolate_cache_for_test as _isolate_cache_for_test
 
-from yule_orchestrator.agents.research_pack import ResearchPack, ResearchSource
-from yule_orchestrator.agents.research_persistence import (
+from yule_orchestrator.agents.research.pack import ResearchPack, ResearchSource
+from yule_orchestrator.agents.research.persistence import (
     persist_research_artifacts,
 )
 from yule_orchestrator.agents.workflow_state import (

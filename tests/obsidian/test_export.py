@@ -30,7 +30,7 @@ from yule_orchestrator.agents.obsidian_export import (
 
 def _default_project_folder(subdir: str, project: str = DEFAULT_PROJECT) -> str:
     return f"{PROJECTS_BASE}/{project}/{subdir}"
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchSource,
     ResearchPack,

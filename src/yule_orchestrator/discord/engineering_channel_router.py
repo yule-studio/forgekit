@@ -35,7 +35,7 @@ from ..agents.obsidian_approval import (
     is_obsidian_save_request,
     store_pending_proposal,
 )
-from ..agents.research_persistence import persist_research_artifacts
+from ..agents.research.persistence import persist_research_artifacts
 from ..agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
@@ -2603,7 +2603,7 @@ async def make_default_research_loop(
     # without depending on env state.
     if forum_comment_mode is None:
         try:
-            from ..agents.research_collector import resolve_forum_comment_mode
+            from ..agents.research.collector import resolve_forum_comment_mode
         except Exception:  # noqa: BLE001
             forum_comment_mode = "member-bots"
         else:
@@ -2914,7 +2914,7 @@ def extract_user_links_from_message(
     if not text:
         return ()
     try:
-        from ..agents.research_collector import extract_urls
+        from ..agents.research.collector import extract_urls
     except Exception:  # noqa: BLE001
         return ()
     return tuple(extract_urls(text))

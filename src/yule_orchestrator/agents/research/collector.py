@@ -46,8 +46,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
-from .deliberation import KNOWN_SOURCE_TYPES, ROLE_RESEARCH_PROFILES
-from .research_pack import (
+from ..deliberation import KNOWN_SOURCE_TYPES, ROLE_RESEARCH_PROFILES
+from .pack import (
     ResearchAttachment,
     ResearchFinding,
     ResearchPack,
@@ -1737,7 +1737,7 @@ def auto_collect_or_request_more_input(
     # (env-driven cost gate); the policy never asks for more than that.
     # The result feeds both BudgetTracker and the per-role sufficiency
     # targets used by the iterative loop.
-    from .research_budget import (
+    from .budget import (
         decide_budget,
         role_targets_to_sufficiency_targets,
     )
@@ -1788,7 +1788,7 @@ def auto_collect_or_request_more_input(
     under_covered: Tuple[str, ...] = ()
     if sufficiency is not None:
         try:
-            from .research_sufficiency import under_covered_roles as _under
+            from .sufficiency import under_covered_roles as _under
 
             under_covered = tuple(_under(sufficiency))
         except Exception:  # noqa: BLE001 - defensive
@@ -1888,7 +1888,7 @@ def _extend_pack_until_sufficient(
     """
 
     try:
-        from .research_sufficiency import (
+        from .sufficiency import (
             DEFAULT_ROLE_TARGETS,
             score_research_sufficiency,
             under_covered_roles,

@@ -54,15 +54,15 @@ from .research_forum import (
     truncate_for_starter_message,
 )
 from .typing_indicator import typing_context
-from ..agents.research_loop import (
+from ..agents.research.loop import (
     publish_research_loop_to_forum,
     run_research_loop,
 )
-from ..agents.research_collector import resolve_forum_comment_mode
+from ..agents.research.collector import resolve_forum_comment_mode
 from ..agents.deliberation import synthesis_to_dict
-from ..agents.research_pack import pack_to_dict
-from ..agents.research_persistence import persist_research_artifacts
-from ..agents.research_profiles import format_research_hints_block
+from ..agents.research.pack import pack_to_dict
+from ..agents.research.persistence import persist_research_artifacts
+from ..agents.research.profiles import format_research_hints_block
 from .engineering_team_runtime import kickoff_directive
 from .formatter import (
     format_checkpoints_message,
@@ -2291,7 +2291,7 @@ def _format_research_forum_disabled_status(outcome) -> str:
 def _format_research_hints_for_outcome(outcome) -> str:
     """Format per-role research hints derived from research_profiles.
 
-    Glue between :mod:`agents.research_profiles` and the live engineering
+    Glue between :mod:`agents.research.profiles` and the live engineering
     research loop output. When the loop already knows the session role
     sequence and task_type, we can show the operator which source types,
     queries, and reference categories each role should pull next. Empty

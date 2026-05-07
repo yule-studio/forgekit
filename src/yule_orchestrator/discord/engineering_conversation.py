@@ -33,7 +33,7 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
 from ..agents.dispatcher import TaskType
-from ..agents.research_pack import (
+from ..agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,
@@ -430,7 +430,7 @@ def _maybe_run_auto_collect(
     if _is_blocked is not None and _is_blocked(message_text):
         return None
     try:
-        from ..agents.research_collector import (
+        from ..agents.research.collector import (
             CollectorConfig as _CollectorConfig,
             auto_collect_or_request_more_input,
         )
@@ -1385,7 +1385,7 @@ def _pretty_task_type(value: Optional[str]) -> str:
     """
 
     try:
-        from ..agents.research_collector import pretty_task_type
+        from ..agents.research.collector import pretty_task_type
     except Exception:  # noqa: BLE001
         return value or "일반"
     return pretty_task_type(value)
@@ -1395,7 +1395,7 @@ def _pretty_provider(name: Optional[str]) -> str:
     """Delegate to the centralised provider label map."""
 
     try:
-        from ..agents.research_collector import pretty_provider
+        from ..agents.research.collector import pretty_provider
     except Exception:  # noqa: BLE001
         return name or "알 수 없음"
     return pretty_provider(name)

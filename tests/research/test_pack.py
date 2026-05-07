@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchFinding,
     ResearchPack,
@@ -175,7 +175,7 @@ class PackWithExtraSourceTestCase(unittest.TestCase):
         self.assertIn("https://b", result.urls)
 
     def test_no_dup_when_same_message(self) -> None:
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
 
         pack = pack_from_discord_message(title="t", content="https://a", message_id=1, channel_id=10)
         # Same source_type as pack_from_discord_message (USER_MESSAGE) so the

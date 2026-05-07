@@ -553,7 +553,7 @@ class BuildResearchPackTestCase(unittest.TestCase):
 
 class AutoCollectWireUpTestCase(unittest.TestCase):
     def _enabled_cfg(self):
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
@@ -608,7 +608,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertNotIn("1차 자료를", response.content)
 
     def test_user_provided_links_route_to_user_provided_mode(self) -> None:
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
@@ -635,7 +635,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertIn("보내주신 자료를 1순위", response.content)
 
     def test_unknown_role_falls_through_to_needs_user_input(self) -> None:
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
@@ -704,7 +704,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertLessEqual(len(paragraphs[0].splitlines()), 2)
 
     def test_collector_failure_does_not_break_response(self) -> None:
-        from yule_orchestrator.agents.research_collector import ResearchCollector
+        from yule_orchestrator.agents.research.collector import ResearchCollector
         from yule_orchestrator.discord.engineering_conversation import (
             TASK_INTAKE_CANDIDATE,
             build_engineering_conversation_response,
@@ -716,7 +716,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
             def search(self, query):  # noqa: D401 - test stub
                 raise RuntimeError("provider down")
 
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )

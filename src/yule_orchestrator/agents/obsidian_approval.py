@@ -50,7 +50,7 @@ from .obsidian_writer import (
     resolve_vault_root,
     write_note,
 )
-from .research_pack import ResearchPack, pack_from_dict
+from .research.pack import ResearchPack, pack_from_dict
 from .workflow_state import WorkflowSession, update_session
 
 

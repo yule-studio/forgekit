@@ -55,7 +55,7 @@ from yule_orchestrator.agents.obsidian_writer import (
     ObsidianWriteError,
     ObsidianWriteResult,
 )
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,

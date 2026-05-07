@@ -42,7 +42,7 @@ from .deliberation import (
     TechLeadSynthesis,
     render_role_take,
 )
-from .research_pack import ResearchAttachment, ResearchPack, ResearchSource
+from .research.pack import ResearchAttachment, ResearchPack, ResearchSource
 from .workflow_state import WorkflowSession
 
 

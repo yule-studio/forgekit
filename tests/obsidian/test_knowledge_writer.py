@@ -29,7 +29,7 @@ from yule_orchestrator.agents.obsidian_export import (
     PROJECTS_BASE,
     render_research_note,
 )
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,

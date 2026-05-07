@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence, Tuple
 
-from .deliberation import (
+from ..deliberation import (
     SOURCE_TYPE_CODE_CONTEXT,
     SOURCE_TYPE_COMMUNITY_SIGNAL,
     SOURCE_TYPE_DESIGN_REFERENCE,
@@ -32,7 +32,7 @@ from .deliberation import (
     SOURCE_TYPE_WEB_RESULT,
     source_type,
 )
-from .research_pack import ResearchPack
+from .pack import ResearchPack
 
 
 @dataclass(frozen=True)

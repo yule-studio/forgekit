@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,
@@ -420,7 +420,7 @@ class PostAgentCommentTestCase(unittest.TestCase):
 
 class CollectionBlockInForumBodyTestCase(unittest.TestCase):
     def _make_outcome(self):
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
             auto_collect_or_request_more_input,
@@ -477,7 +477,7 @@ class CollectionBlockInForumBodyTestCase(unittest.TestCase):
 
 class CollectionBlockInFallbackTestCase(unittest.TestCase):
     def test_fallback_includes_collection_block(self) -> None:
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
             auto_collect_or_request_more_input,
@@ -508,7 +508,7 @@ class CreateResearchPostCollectionTestCase(unittest.TestCase):
     def test_collection_block_passes_through_to_thread_body(self) -> None:
         import asyncio
 
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
             auto_collect_or_request_more_input,
@@ -613,7 +613,7 @@ class CreateResearchPostTitleAndBodyTests(unittest.TestCase):
         self.assertEqual(captured["name"].count(PREFIX_RESEARCH), 1)
 
     def test_body_includes_original_request_section(self) -> None:
-        from yule_orchestrator.agents.research_pack import ResearchRequest
+        from yule_orchestrator.agents.research.pack import ResearchRequest
 
         pack = ResearchPack(
             title="개발팀 학습 루프 설계",
@@ -662,7 +662,7 @@ class BudgetBlockInForumBodyTests(unittest.TestCase):
         stop_reason="budget_exhausted",
         under_covered_roles=("frontend-engineer", "product-designer"),
     ):
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectionMode,
             CollectionOutcome,
         )
@@ -702,7 +702,7 @@ class BudgetBlockInForumBodyTests(unittest.TestCase):
     def test_body_omits_budget_section_when_metadata_missing(self) -> None:
         # Legacy outcomes (no budget_tier) must NOT surface an empty
         # budget block. The body still renders the rest of the pack.
-        from yule_orchestrator.agents.research_collector import (
+        from yule_orchestrator.agents.research.collector import (
             CollectionMode,
             CollectionOutcome,
         )
@@ -769,7 +769,7 @@ class StarterMessageTruncationTests(unittest.TestCase):
             loop.close()
 
     def _huge_pack(self) -> ResearchPack:
-        from yule_orchestrator.agents.research_pack import ResearchRequest
+        from yule_orchestrator.agents.research.pack import ResearchRequest
 
         long_prompt = ("운영-리서치 forum 게시 안정화 검토. " * 200).strip()
         big_summary = (
@@ -931,7 +931,7 @@ class ForumStarterPlusRepliesSplitTests(unittest.TestCase):
             loop.close()
 
     def _huge_pack(self) -> ResearchPack:
-        from yule_orchestrator.agents.research_pack import ResearchRequest
+        from yule_orchestrator.agents.research.pack import ResearchRequest
 
         long_prompt = ("운영-리서치 forum 안정화 검토. " * 200).strip()
         big_summary = ("매우 긴 본문 시나리오를 재현한다. " * 50)

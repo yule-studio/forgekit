@@ -18,7 +18,7 @@ helper surface so:
   - the helper ensures everything written is JSON-serialisable so
     ``json_valid`` stays true on the SQLite payload.
 
-It does NOT replace :func:`agents.research_persistence.persist_research_artifacts`
+It does NOT replace :func:`agents.research.persistence.persist_research_artifacts`
 yet — that helper still owns the pack-shape conversions. Future work:
 have ``persist_research_artifacts`` delegate to
 :func:`persist_research_pack_state` for the status keys, leaving the

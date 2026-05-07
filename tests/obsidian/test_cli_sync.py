@@ -19,7 +19,7 @@ from yule_orchestrator.agents.deliberation import (
     TechLeadSynthesis,
     synthesis_to_dict,
 )
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchPack,
     ResearchSource,
     pack_to_dict,

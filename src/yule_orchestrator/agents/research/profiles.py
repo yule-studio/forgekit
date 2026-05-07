@@ -4,7 +4,7 @@
 qa-engineer)이 자료를 수집할 때 어떤 source type을 우선시하는지, 어떤
 검색 쿼리 템플릿을 쓸지, 어떤 reference 카테고리를 참고할지를 정의한다.
 
-이 모듈은 :mod:`yule_orchestrator.agents.research_pack`(자료 그릇)과 별개로
+이 모듈은 :mod:`yule_orchestrator.agents.research.pack`(자료 그릇)과 별개로
 "누가 무엇을 더 비중 있게 모으는가"의 **정책 표**를 책임진다. 실제 자료
 수집/검색은 다른 레이어(workflow / runners / discord 입력)가 한다.
 

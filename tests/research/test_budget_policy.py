@@ -16,21 +16,21 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research_budget import (
+from yule_orchestrator.agents.research.budget import (
     TIER_DEEP,
     TIER_LARGE,
     TIER_MEDIUM,
     TIER_SMALL,
     decide_budget,
 )
-from yule_orchestrator.agents.research_collector import (
+from yule_orchestrator.agents.research.collector import (
     CollectionMode,
     CollectorConfig,
     CollectorQuery,
     ResearchCollector,
     auto_collect_or_request_more_input,
 )
-from yule_orchestrator.agents.research_pack import ResearchSource, SourceType
+from yule_orchestrator.agents.research.pack import ResearchSource, SourceType
 
 
 def _result(url: str, *, source_type=SourceType.WEB_RESULT, role="engineering-agent/tech-lead"):

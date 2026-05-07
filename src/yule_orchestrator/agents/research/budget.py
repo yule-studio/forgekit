@@ -264,7 +264,7 @@ def role_targets_to_sufficiency_targets(
     """
 
     try:
-        from .research_sufficiency import (
+        from .sufficiency import (
             RoleSufficiencyTarget,
             DEFAULT_ROLE_TARGETS,
         )

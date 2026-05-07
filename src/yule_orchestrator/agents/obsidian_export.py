@@ -24,7 +24,7 @@ from datetime import date, datetime
 from typing import Iterable, Mapping, Optional, Sequence
 
 from .deliberation import TechLeadSynthesis
-from .research_pack import ResearchAttachment, ResearchPack
+from .research.pack import ResearchAttachment, ResearchPack
 from .workflow_state import WorkflowSession
 
 

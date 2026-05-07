@@ -7,7 +7,7 @@ except ModuleNotFoundError:
 
 import unittest
 
-from yule_orchestrator.agents.research_profiles import (
+from yule_orchestrator.agents.research.profiles import (
     ALL_ROLES,
     ALL_SOURCE_TYPES,
     ROLE_AI_ENGINEER,

@@ -37,7 +37,7 @@ from ..agents.deliberation import (
     run_role_deliberation,
     synthesize,
 )
-from ..agents.research_pack import ResearchPack
+from ..agents.research.pack import ResearchPack
 from ..agents.workflow_state import WorkflowSession, load_session
 
 
@@ -805,7 +805,7 @@ def _collect_role_research_pack(*, session: WorkflowSession, role: str) -> Any:
     """
 
     try:
-        from ..agents.research_collector import auto_collect_or_request_more_input
+        from ..agents.research.collector import auto_collect_or_request_more_input
     except Exception:  # noqa: BLE001
         return None
     try:
@@ -1015,7 +1015,7 @@ def _load_pack_from_session_extra(session: WorkflowSession) -> Any:
     if not isinstance(raw, dict) or not raw:
         return None
     try:
-        from ..agents.research_pack import pack_from_dict
+        from ..agents.research.pack import pack_from_dict
     except Exception:  # noqa: BLE001
         return None
     try:

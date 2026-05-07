@@ -42,8 +42,8 @@ from yule_orchestrator.agents.obsidian_approval import (
     build_save_proposal,
     store_pending_proposal,
 )
-from yule_orchestrator.agents.research_pack import ResearchPack, ResearchSource
-from yule_orchestrator.agents.research_pack import pack_to_dict
+from yule_orchestrator.agents.research.pack import ResearchPack, ResearchSource
+from yule_orchestrator.agents.research.pack import pack_to_dict
 from yule_orchestrator.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
