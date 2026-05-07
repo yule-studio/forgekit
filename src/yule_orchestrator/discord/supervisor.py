@@ -331,28 +331,17 @@ def _run_engineering_gateway_in_subprocess(
     repo_root_str: str,
     gateway_token_env_key: str,
 ) -> None:  # pragma: no cover - subprocess only
+    from ..runtime.gateway_env import build_gateway_env_overrides
     from .bot import run_discord_bot
 
     gateway_token = os.environ.get(gateway_token_env_key, "").strip()
     if not gateway_token:
         raise ValueError(f"{gateway_token_env_key} is required to start engineering gateway")
 
-    _apply_env_overrides(
-        {
-            "DISCORD_BOT_TOKEN": gateway_token,
-            "DISCORD_APPLICATION_ID": "",
-            "DISCORD_DAILY_CHANNEL_ID": "",
-            "DISCORD_DAILY_CHANNEL_NAME": "",
-            "DISCORD_CHECKPOINT_CHANNEL_ID": "",
-            "DISCORD_CHECKPOINT_CHANNEL_NAME": "",
-            "DISCORD_DEBUG_CHANNEL_ID": "",
-            "DISCORD_DEBUG_CHANNEL_NAME": "",
-            "DISCORD_CONVERSATION_CHANNEL_ID": "",
-            "DISCORD_CONVERSATION_CHANNEL_NAME": "",
-            "DISCORD_CONVERSATION_REPLY_MODE": "disabled",
-            "DISCORD_NOTIFY_USER_ID": "",
-        }
+    overrides = build_gateway_env_overrides(
+        gateway_token=gateway_token, base_env={}
     )
+    _apply_env_overrides(overrides)
     run_discord_bot(repo_root=Path(repo_root_str))
 
 

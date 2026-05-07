@@ -44,6 +44,7 @@ from yule_orchestrator.agents.job_queue.approval_discord_poster import (
     ERROR_UNAUTHORIZED,
     ApprovalPostError,
     PostResponse,
+    build_approval_channel_resolver,
     build_production_post_fn,
     resolve_approval_channel_id,
     resolve_discord_bot_token,
@@ -299,6 +300,193 @@ class PostFnTransportErrorTests(unittest.TestCase):
         self.assertIn("_Boom", msg)
         # Token must NOT appear in the wrapped error.
         self.assertNotIn("tok-do-not-leak", msg)
+
+
+class ApprovalChannelResolverFallbackTests(unittest.TestCase):
+    """A-M6.2 NAME-based channel resolution.
+
+    Pin that ``build_approval_channel_resolver``:
+
+      * prefers ``DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID`` when set
+      * falls back to NAME via Discord REST GET when only NAME +
+        guild are configured
+      * caches the resolved id per process so repeated calls don't
+        re-call Discord
+      * returns None (not raise) on every failure mode so the
+        ApprovalWorker maps it to ``approval_channel_unset``
+    """
+
+    def test_id_env_wins_over_name_fallback(self) -> None:
+        called: List[str] = []
+
+        def http_get(url, headers, timeout):
+            called.append(url)
+            raise AssertionError("REST GET must NOT fire when ID is set")
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID": "5555",
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        self.assertEqual(resolver(), 5555)
+        self.assertEqual(called, [])
+
+    def test_name_fallback_resolves_via_rest_and_caches(self) -> None:
+        calls: List[str] = []
+
+        def http_get(url, headers, timeout):
+            calls.append(url)
+            return PostResponse(
+                status=200,
+                body_text=(
+                    '[{"id": "9000", "name": "다른채널"},'
+                    ' {"id": "8888", "name": "승인-대기"}]'
+                ),
+                headers={},
+            )
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        self.assertEqual(resolver(), 8888)
+        self.assertEqual(resolver(), 8888)
+        # REST called exactly once — second call hit the per-process cache.
+        self.assertEqual(len(calls), 1)
+        self.assertIn("/guilds/111/channels", calls[0])
+
+    def test_name_fallback_strips_leading_hash(self) -> None:
+        # Operators often type ``#승인-대기`` in env. The resolver
+        # must compare the stripped name against Discord's output
+        # (Discord returns names without the leading hash).
+        def http_get(url, headers, timeout):
+            return PostResponse(
+                status=200,
+                body_text='[{"id": "8888", "name": "승인-대기"}]',
+                headers={},
+            )
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "#승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        self.assertEqual(resolver(), 8888)
+
+    def test_returns_none_when_neither_id_nor_name_set(self) -> None:
+        resolver = build_approval_channel_resolver(env={})
+        self.assertIsNone(resolver())
+
+    def test_returns_none_when_token_missing(self) -> None:
+        # NAME + guild set but no token — no REST call possible.
+        # Worker must surface approval_channel_unset, not crash.
+        called: List[str] = []
+
+        def http_get(url, headers, timeout):
+            called.append(url)
+            return PostResponse(status=200, body_text="[]", headers={})
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+            },
+            http_get=http_get,
+        )
+        self.assertIsNone(resolver())
+        self.assertEqual(called, [])
+
+    def test_returns_none_on_no_match(self) -> None:
+        def http_get(url, headers, timeout):
+            return PostResponse(
+                status=200,
+                body_text='[{"id": "9000", "name": "다른채널"}]',
+                headers={},
+            )
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        self.assertIsNone(resolver())
+
+    def test_returns_none_on_4xx_and_caches(self) -> None:
+        # 401/403/404 are permanent; cache the None so we don't
+        # keep hammering Discord. 5xx / 429 don't cache (next call
+        # retries).
+        calls: List[str] = []
+
+        def http_get(url, headers, timeout):
+            calls.append(url)
+            return PostResponse(
+                status=403,
+                body_text='{"message": "Missing Access"}',
+                headers={},
+            )
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        self.assertIsNone(resolver())
+        self.assertIsNone(resolver())
+        # Cached after the 403 — only one REST call.
+        self.assertEqual(len(calls), 1)
+
+    def test_5xx_does_not_cache(self) -> None:
+        # Transient 5xx — next call must retry. Otherwise an outage
+        # at startup time would permanently hide the channel.
+        calls: List[str] = []
+
+        def http_get(url, headers, timeout):
+            calls.append(url)
+            return PostResponse(status=503, body_text="", headers={})
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        self.assertIsNone(resolver())
+        self.assertIsNone(resolver())
+        self.assertEqual(len(calls), 2)
+
+    def test_swallowed_exception_returns_none(self) -> None:
+        def http_get(url, headers, timeout):
+            raise RuntimeError("network down")
+
+        resolver = build_approval_channel_resolver(
+            env={
+                "DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME": "승인-대기",
+                "DISCORD_GUILD_ID": "111",
+                "DISCORD_BOT_TOKEN": "tok",
+            },
+            http_get=http_get,
+        )
+        # Worker maps None → approval_channel_unset; mustn't crash.
+        self.assertIsNone(resolver())
 
 
 class IntegrationWithApprovalWorkerTests(unittest.TestCase):

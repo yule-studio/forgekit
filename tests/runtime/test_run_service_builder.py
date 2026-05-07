@@ -84,16 +84,10 @@ class ApprovalBuilderTests(_Fixture):
     def test_approval_worker_uses_production_post_fn(self) -> None:
         # M6.1b-1 replaced the M6.1a ``_no_post_fn_yet`` placeholder
         # with ``build_production_post_fn`` output (closure named
-        # ``_post_fn``). The placeholder helper itself is gone, and
-        # the channel resolver now points at
-        # ``resolve_approval_channel_id`` from
-        # ``approval_discord_poster`` rather than the M5a id-only
-        # env reader (functionally equivalent — both read the same
-        # env var; the new one is the canonical entry).
-        from yule_orchestrator.agents.job_queue.approval_discord_poster import (
-            resolve_approval_channel_id,
-        )
-
+        # ``_post_fn``). M6.2 wraps the channel resolver with a
+        # NAME-fallback closure (``build_approval_channel_resolver``)
+        # so the per-process cache + Discord REST GET both live in
+        # one factory.
         spec = resolve_service("eng-approval-worker")
         assert spec is not None
         process_fn = _build_process_job(
@@ -107,11 +101,14 @@ class ApprovalBuilderTests(_Fixture):
         self.assertNotEqual(
             getattr(worker._post_fn, "__name__", ""), "_no_post_fn_yet"
         )
-        # Channel resolver flows from approval_discord_poster so a
-        # future M6.1b-2 NAME-fallback patch lands in one place.
-        self.assertIs(
-            worker._channel_resolver, resolve_approval_channel_id
+        # Channel resolver is the NAME-fallback closure, not the
+        # bare id-only resolver.
+        self.assertEqual(
+            getattr(worker._channel_resolver, "__name__", ""), "_resolve"
         )
+        # The resolver must still default to env (call with no args
+        # raises nothing and returns None when env is empty).
+        self.assertIsNone(worker._channel_resolver())
 
 
 class ObsidianBuilderTests(_Fixture):

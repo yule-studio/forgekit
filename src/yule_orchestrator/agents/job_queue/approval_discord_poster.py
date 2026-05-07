@@ -134,10 +134,11 @@ def resolve_approval_channel_id(
 
     Mirrors :func:`agents.job_queue.approval_worker.env_approval_channel_resolver`
     so the production wrapper can call it without taking a
-    discord.py client. NAME-fallback resolution (channel name →
-    id via discord.Guild) needs a live client and lands in
-    M6.1b-2 — for now we expose this id-only entry for the
-    standalone worker.
+    discord.py client. The id-only path stays the supervisor's
+    happy path; A-M6.2 adds a NAME-fallback resolver
+    (:func:`build_approval_channel_resolver`) that talks Discord
+    REST when only ``DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME``
+    + ``DISCORD_GUILD_ID`` are set.
     """
 
     source = env if env is not None else os.environ
@@ -151,6 +152,156 @@ def resolve_approval_channel_id(
         return int(text)
     except ValueError:
         return None
+
+
+# Sync HTTP GET shape — same injection seam as :data:`HttpPostFn`
+# but for read-only Discord REST calls (channel listing). Tests
+# pass a fake fn returning a canned :class:`PostResponse`.
+HttpGetFn = Callable[[str, Mapping[str, str], float], "PostResponse"]
+
+
+def build_approval_channel_resolver(
+    *,
+    env: Optional[Mapping[str, str]] = None,
+    token_resolver: Optional[Callable[[], Optional[str]]] = None,
+    http_get: Optional[HttpGetFn] = None,
+    timeout_seconds: float = DEFAULT_POST_TIMEOUT_SECONDS,
+) -> Callable[[], Optional[int]]:
+    """Return a channel-id resolver with NAME-based fallback.
+
+    Resolution order, top-down — first match wins:
+
+      1. ``DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID`` (numeric).
+      2. ``DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME`` matched
+         against ``GET /guilds/{DISCORD_GUILD_ID}/channels`` —
+         resolved once per process and cached so we don't re-call
+         Discord every job.
+
+    The resolver returns ``None`` (not raise) when neither path
+    works — :class:`ApprovalWorker.process_job` already maps None
+    to ``approval_channel_unset`` (failed_retryable) so the
+    operator can fix env without losing the queued card.
+
+    Token / HTTP / env are injectable so unit tests can drive
+    every branch without hitting Discord. The returned closure
+    captures a small per-process cache for the resolved id —
+    invalidating it requires a worker restart, which is the right
+    granularity (channel renames are rare and the alternative is
+    a REST call per approval card).
+    """
+
+    source: Mapping[str, str] = env if env is not None else os.environ
+    token_fn = token_resolver or (lambda: resolve_discord_bot_token(env=source))
+    get_fn = http_get or _default_http_get
+    cache: dict[str, Optional[int]] = {}
+
+    def _resolve() -> Optional[int]:
+        # Fast path — id env wins.
+        id_value = resolve_approval_channel_id(env=source)
+        if id_value is not None:
+            return id_value
+
+        name_raw = source.get("DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME")
+        guild_raw = source.get("DISCORD_GUILD_ID")
+        if not name_raw or not name_raw.strip():
+            return None
+        if not guild_raw or not guild_raw.strip():
+            return None
+
+        cache_key = f"{guild_raw.strip()}::{name_raw.strip()}"
+        if cache_key in cache:
+            return cache[cache_key]
+
+        token = token_fn()
+        if not token:
+            return None
+
+        try:
+            guild_id = int(guild_raw.strip())
+        except ValueError:
+            return None
+
+        url = f"{DISCORD_API_BASE}/guilds/{guild_id}/channels"
+        headers = {
+            "Authorization": f"Bot {token}",
+            "User-Agent": (
+                "yule-runtime (eng-approval-worker; "
+                "+https://github.com/codwithyc)"
+            ),
+        }
+        try:
+            response = get_fn(url, headers, timeout_seconds)
+        except Exception:  # noqa: BLE001 - never let resolver crash worker
+            logger.warning(
+                "approval channel resolver: REST GET raised — falling back to None",
+                exc_info=True,
+            )
+            return None
+
+        if response.status < 200 or response.status >= 300:
+            # Non-2xx — log + cache None *only* on permanent shapes
+            # (404 guild missing). Transient 5xx / 429 stays uncached
+            # so the next job retries.
+            if response.status in (401, 403, 404):
+                cache[cache_key] = None
+            return None
+
+        try:
+            channels = json.loads(response.body_text or "[]")
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(channels, list):
+            return None
+
+        target = name_raw.strip().lstrip("#")
+        for entry in channels:
+            if not isinstance(entry, dict):
+                continue
+            channel_name = str(entry.get("name") or "").strip()
+            if channel_name == target:
+                try:
+                    resolved = int(entry["id"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                cache[cache_key] = resolved
+                return resolved
+
+        # Found channel list but no name match — cache None so we
+        # don't keep paying the GET cost; operator must restart
+        # after fixing the env.
+        cache[cache_key] = None
+        return None
+
+    return _resolve
+
+
+def _default_http_get(
+    url: str,
+    headers: Mapping[str, str],
+    timeout: float,
+) -> PostResponse:
+    request = urllib.request.Request(
+        url, headers=dict(headers), method="GET"
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            text = response.read().decode("utf-8", errors="replace")
+            return PostResponse(
+                status=int(response.status),
+                body_text=text,
+                headers=dict(response.headers.items()),
+            )
+    except urllib.error.HTTPError as exc:
+        body_text = ""
+        try:
+            body_text = exc.read().decode("utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - best-effort body capture
+            pass
+        return PostResponse(
+            status=int(exc.code),
+            body_text=body_text,
+            headers=dict(exc.headers.items()) if exc.headers else {},
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -356,9 +507,11 @@ __all__ = (
     "ERROR_TIMEOUT",
     "ERROR_TOKEN_MISSING",
     "ERROR_UNAUTHORIZED",
+    "HttpGetFn",
     "HttpPostFn",
     "PostResponse",
     "TOKEN_ENV_PRIORITY",
+    "build_approval_channel_resolver",
     "build_production_post_fn",
     "resolve_approval_channel_id",
     "resolve_discord_bot_token",

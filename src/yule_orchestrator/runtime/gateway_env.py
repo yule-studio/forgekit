@@ -28,16 +28,21 @@ GATEWAY_TOKEN_ENV: str = "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN"
 # who already have planning-bot env populated continue to see that
 # bot react in its own channel, while the gateway only watches its
 # engineering channels.
+#
+# Both ID and NAME variants must blank — name-based fallbacks
+# inside ``run_discord_bot`` would otherwise resolve the planning
+# channels via ``Guild.get_channel_by_name`` even with the IDs
+# blanked.
 _PLANNING_BOT_KEYS_TO_BLANK: tuple[str, ...] = (
     "DISCORD_APPLICATION_ID",
     "DISCORD_DAILY_CHANNEL_ID",
     "DISCORD_DAILY_CHANNEL_NAME",
     "DISCORD_CHECKPOINT_CHANNEL_ID",
     "DISCORD_CHECKPOINT_CHANNEL_NAME",
-    "DISCORD_DEBUG_CHANNEL_ID",
-    "DISCORD_DEBUG_CHANNEL_NAME",
     "DISCORD_CONVERSATION_CHANNEL_ID",
     "DISCORD_CONVERSATION_CHANNEL_NAME",
+    "DISCORD_DEBUG_CHANNEL_ID",
+    "DISCORD_DEBUG_CHANNEL_NAME",
     "DISCORD_NOTIFY_USER_ID",
 )
 

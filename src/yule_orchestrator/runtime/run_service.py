@@ -36,8 +36,8 @@ from ..agents.job_queue import (
     default_write_fn,
 )
 from ..agents.job_queue.approval_discord_poster import (
+    build_approval_channel_resolver,
     build_production_post_fn,
-    resolve_approval_channel_id,
 )
 from ..agents.job_queue.standalone_runners import (
     build_research_runner,
@@ -142,19 +142,21 @@ async def _run_discord_gateway(
     """Run the engineering gateway under ``run-service``.
 
     Resolves the gateway token, layers the planning-bot env
-    overrides on top of ``os.environ`` so the gateway sees only
-    its own channels, then invokes the legacy
-    :func:`discord.bot.run_discord_bot`. SIGTERM-aware shutdown is
-    a *minimal* hook for M6.1b-2 — we set the env override and
-    let ``discord.py`` 's KeyboardInterrupt path handle exit.
-    Full ``client.close()`` integration with the runtime
-    shutdown_event is a M6.2 follow-up; the bot still exits when
-    systemd / runtime up sends SIGTERM because the signal kicks
-    off the same default handler that ``yule discord up`` uses
-    today (no regression vs. the legacy launcher).
+    overrides via :func:`build_gateway_env_overrides`, then drives
+    the bot through :func:`run_engineering_gateway_until_shutdown`
+    so SIGTERM at the runtime level translates into
+    ``await bot.close()`` instead of relying on discord.py's
+    internal signal handlers (which only fire when ``bot.run``
+    owns the main thread — under ``run-service`` the runtime owns
+    the loop, so the legacy thread path saw the runtime swallow
+    the signal first and the bot kept running until the parent
+    killed it).
     """
 
-    from ..discord.bot import run_discord_bot
+    from ..discord.bot import (
+        build_engineering_gateway_bot,
+        run_engineering_gateway_until_shutdown,
+    )
     from .gateway_env import (
         build_gateway_env_overrides,
         resolve_gateway_token,
@@ -170,21 +172,18 @@ async def _run_discord_gateway(
         return EXIT_UNKNOWN_SERVICE
 
     overrides = build_gateway_env_overrides(gateway_token=token)
-    # Apply overrides in-place so ``run_discord_bot``'s env reads
-    # see the gateway-only view.
+    # Apply overrides in-place so the bot's env reads see the
+    # gateway-only view.
     for key, value in overrides.items():
         os.environ[key] = value
 
     repo_root = Path(os.environ.get("YULE_REPO_ROOT", os.getcwd()))
     try:
-        # Run the blocking bot loop in a worker thread so the
-        # asyncio shutdown_event still owns the main loop. When
-        # SIGTERM lands, ``shutdown_event.set()`` fires and we
-        # let the thread settle on its own (discord.py's run()
-        # closes the client on SIGINT/SIGTERM via its default
-        # signal handlers — same path the legacy ``yule discord
-        # up`` uses, no regression).
-        await asyncio.to_thread(run_discord_bot, repo_root)
+        await run_engineering_gateway_until_shutdown(
+            shutdown_event=shutdown_event,
+            bot_factory=lambda: build_engineering_gateway_bot(repo_root),
+            token=token,
+        )
     except KeyboardInterrupt:
         return EXIT_OK
     return EXIT_OK
@@ -240,15 +239,17 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
         # via the Discord REST API using
         # ``ENGINEERING_AGENT_BOT_GATEWAY_TOKEN`` (or
         # ``DISCORD_BOT_TOKEN`` as a single-bot dev fallback).
-        # Channel resolver / token are looked up at each call so an
-        # operator's env edit takes effect on the next job without a
-        # worker restart.
+        # M6.2 wraps the channel resolver with a NAME-fallback so an
+        # operator who only set ``DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME``
+        # + ``DISCORD_GUILD_ID`` still gets a resolved id without
+        # the gateway being involved.
         production_post_fn = build_production_post_fn()
+        channel_resolver = build_approval_channel_resolver()
         worker = ApprovalWorker(
             queue=queue,
             heartbeats=heartbeats,
             post_fn=production_post_fn,
-            channel_resolver=resolve_approval_channel_id,
+            channel_resolver=channel_resolver,
         )
 
         async def _process(job):

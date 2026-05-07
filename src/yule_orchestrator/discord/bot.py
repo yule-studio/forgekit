@@ -869,6 +869,107 @@ def run_discord_bot(repo_root: Path) -> None:
         raise
 
 
+async def run_engineering_gateway_until_shutdown(
+    *,
+    shutdown_event: asyncio.Event,
+    bot_factory: Any,
+    token: str,
+) -> None:
+    """SIGTERM-aware gateway runner — A-M6.2.
+
+    Replaces the M6.1b-2 ``asyncio.to_thread(run_discord_bot, ...)``
+    path used by ``yule run-service eng-discord-gateway``. The
+    legacy thread path relied on discord.py installing its own
+    signal handlers, which only works when ``bot.run`` owns the
+    main thread. Under ``run-service`` the runtime owns the main
+    loop, so signals went to the runtime's handler instead and the
+    gateway never saw them.
+
+    This helper drives the bot through the awaitable
+    ``bot.start(token)`` and races it against *shutdown_event*. On
+    SIGTERM the runtime sets the event and we call
+    ``await bot.close()`` so the gateway disconnects gracefully
+    instead of the parent killing it mid-WebSocket.
+
+    *bot_factory* is a zero-arg callable that returns a discord.py
+    ``Client``-shaped object. Production wires it to a closure that
+    calls :func:`build_engineering_gateway_bot`; tests pass a fake
+    client so the shutdown race can be exercised without discord.py.
+
+    Returns when the bot exits cleanly or shutdown is observed.
+    Login failures raise the same way ``run_discord_bot`` does.
+    """
+
+    import discord
+
+    bot = bot_factory()
+
+    async def _waiter() -> None:
+        await shutdown_event.wait()
+        try:
+            await bot.close()
+        except Exception:  # noqa: BLE001 - graceful close best-effort
+            pass
+
+    waiter_task = asyncio.create_task(_waiter())
+    try:
+        await bot.start(token)
+    except discord.LoginFailure as exc:
+        raise ValueError(
+            "Discord bot token login failed. Check DISCORD_BOT_TOKEN in .env.local and regenerate the token if needed."
+        ) from exc
+    finally:
+        waiter_task.cancel()
+        try:
+            await waiter_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+
+def build_engineering_gateway_bot(repo_root: Path) -> Any:
+    """Construct (without running) the engineering gateway bot.
+
+    Used by :func:`run_engineering_gateway_until_shutdown` to get
+    the same :class:`YuleDiscordBot` instance ``run_discord_bot``
+    builds. ``run_discord_bot`` defines its bot class inside its
+    function body, so we monkeypatch ``commands.Bot.run`` for one
+    call to capture the constructed instance — the patch is
+    guarded by ``try/finally`` so it can't leak.
+
+    A future refactor that lifts ``YuleDiscordBot`` to module scope
+    will let us drop this introspection trick. Today the function
+    body is ~750 lines of closure-captured config, so the refactor
+    is bigger than this milestone.
+    """
+
+    from discord.ext import commands
+
+    captured: dict[str, Any] = {}
+    sentinel: Any = type("_BotConstructed", (BaseException,), {})
+
+    original_run = commands.Bot.run
+
+    def _capture_run(self, *_args, **_kwargs):
+        captured["bot"] = self
+        raise sentinel()
+
+    commands.Bot.run = _capture_run  # type: ignore[assignment]
+    try:
+        try:
+            run_discord_bot(repo_root)
+        except sentinel:  # type: ignore[misc]
+            pass
+    finally:
+        commands.Bot.run = original_run  # type: ignore[assignment]
+
+    bot = captured.get("bot")
+    if bot is None:
+        raise RuntimeError(
+            "build_engineering_gateway_bot: run_discord_bot did not construct a bot"
+        )
+    return bot
+
+
 def _next_daily_run(target_time: time | None) -> datetime:
     if target_time is None:
         raise ValueError("daily briefing time is required for scheduling.")

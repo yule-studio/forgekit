@@ -187,19 +187,82 @@ class RoleTakeRunnerTests(unittest.TestCase):
         self.assertEqual(outcome.message, "rendered take body")
         self.assertEqual(seen[0]["role"], "ai-engineer")
 
-    def test_runner_rejects_chained_turn_kind_for_now(self) -> None:
-        # M6.1a only wires the open-call path through the standalone
-        # runner. Chained ``turn`` and ``synthesis`` need extra
-        # context (sequence, replay) that the gateway side carries —
-        # M6.2 brings them into the worker. Until then, fail loudly.
+    def test_runner_dispatches_to_turn_body(self) -> None:
+        # A-M6.2 wired the chained turn body through the standalone
+        # runner. Producer stamps ``effective_role`` on payload so a
+        # tech-lead bot answering for ai-engineer routes correctly.
+        session = _StubSession()
+        seen: List[dict] = []
+
+        def turn_call_fn(*, role, session_id, session, pack_loader, payload):
+            seen.append({
+                "role": role,
+                "session_id": session_id,
+                "effective_role": payload.get("effective_role"),
+            })
+            return SimpleNamespace(
+                role=role,
+                session_id=session_id,
+                message="rendered turn body\n\n[research-turn:sess <next>]",
+                next_directive="[research-turn:sess <next>]",
+                is_synthesis=False,
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            turn_call_fn=turn_call_fn,
+            persist_outcome_fn=lambda **_: None,
+        )
+        outcome = runner(
+            _job(
+                {"kind": "turn", "effective_role": "ai-engineer"},
+                role="tech-lead",
+            )
+        )
+        self.assertEqual(outcome.role, "tech-lead")
+        self.assertIn("[research-turn", outcome.message)
+        self.assertEqual(seen[0]["effective_role"], "ai-engineer")
+
+    def test_runner_dispatches_to_synthesis_body(self) -> None:
+        # synthesis kind closes the chain; the runner returns the
+        # is_synthesis=True outcome the member bot's render path
+        # uses to stamp the closing comment.
+        session = _StubSession()
+        called: List[dict] = []
+
+        def synthesis_call_fn(*, role, session_id, session, pack_loader):
+            called.append({"role": role, "session_id": session_id})
+            return SimpleNamespace(
+                role=role,
+                session_id=session_id,
+                message="tech-lead synthesis 종합",
+                next_directive=None,
+                is_synthesis=True,
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            synthesis_call_fn=synthesis_call_fn,
+            persist_outcome_fn=lambda **_: None,
+        )
+        outcome = runner(
+            _job({"kind": "synthesis"}, role="tech-lead")
+        )
+        self.assertTrue(outcome.is_synthesis)
+        self.assertEqual(outcome.message, "tech-lead synthesis 종합")
+        self.assertEqual(called[0]["role"], "tech-lead")
+
+    def test_runner_rejects_unknown_kind(self) -> None:
+        # An unknown kind would silently do nothing if we accepted it.
+        # Surface loudly so the supervisor row carries a useful error.
         runner = build_role_take_runner(
             session_loader=lambda _sid: _StubSession(),
             open_call_fn=lambda **_: None,
             persist_outcome_fn=lambda **_: None,
         )
         with self.assertRaises(RuntimeError) as ctx:
-            runner(_job({"kind": "turn"}, role="ai-engineer"))
-        self.assertIn("turn", str(ctx.exception))
+            runner(_job({"kind": "ghost"}, role="ai-engineer"))
+        self.assertIn("ghost", str(ctx.exception))
 
     def test_runner_raises_on_missing_session(self) -> None:
         runner = build_role_take_runner(
