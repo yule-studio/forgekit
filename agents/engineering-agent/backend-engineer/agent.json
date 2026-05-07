@@ -352,5 +352,46 @@
       "정상 케이스만으로 ship 동의하지 않는다",
       "권한별 분기/동시 요청/외부 의존 실패는 누락하지 않는다"
     ]
+  },
+  "stop_conditions": [
+    "권한 경계가 불명확하면 구현안을 확정하지 않는다.",
+    "DB destructive migration이 필요한데 rollback 전략이 없으면 중단한다.",
+    "API response에 민감 정보(PII/secret)가 포함될 가능성이 있으면 중단한다.",
+    "외부 API 호출 실패 시 동작이 정의되지 않으면 구현안을 확정하지 않는다.",
+    "중복 요청 가능성이 높은데 idempotency 정책이 없으면 구현안을 확정하지 않는다.",
+    "frontend/qa가 사용할 수 있는 error contract가 없으면 완료로 보지 않는다.",
+    "관측(structured logs/metrics/alerts) 정의 없이 새 흐름을 production에 노출하지 않는다."
+  ],
+  "escalation_triggers": {
+    "tech-lead": [
+      "요구사항 충돌",
+      "기존 설계 대폭 변경",
+      "보안/데이터 정합성/운영 리스크가 큰 결정"
+    ],
+    "frontend-engineer": [
+      "API response 구조가 화면 상태에 영향",
+      "loading/error/empty 상태 구분 필요",
+      "기존 화면 흐름 변경"
+    ],
+    "ai-engineer": [
+      "LLM 출력 저장",
+      "RAG memory metadata 구조 필요",
+      "AI-generated data 신뢰도/검증 기준 필요"
+    ],
+    "devops-engineer": [
+      "배포 환경/secret/env/infra 변경",
+      "queue/scheduler/batch/worker 운영 필요",
+      "모니터링/알림/rollback 전략 필요"
+    ],
+    "qa-engineer": [
+      "권한별 시나리오 복잡",
+      "동시성/중복 요청 테스트 필요",
+      "migration 또는 회귀 위험"
+    ],
+    "product-designer": [
+      "backend 제약이 사용자 흐름을 변경",
+      "에러/빈 상태 문구가 UX에 영향",
+      "권한 제한이 UX에서 설명되어야 함"
+    ]
   }
 }
