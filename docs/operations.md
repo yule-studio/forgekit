@@ -40,7 +40,7 @@ discovered → queued → assigned → in_progress
                                    └─ → failed_terminal (종단)
 ```
 
-상태 머신과 큐 인프라는 `agents/queue/` 모듈에 구현되어 있다. 자세한 transition 규칙은 코드 + `tests/queue/*` 참조.
+상태 머신과 큐 인프라는 `agents/job_queue/` 모듈에 구현되어 있다. 자세한 transition 규칙은 코드 + `tests/job_queue/*` 참조.
 
 ## 4. 병렬 / 직렬 실행
 
@@ -138,7 +138,7 @@ journalctl -u yule-eng-member@backend-engineer -f
 
 | 단계 | 범위 | 검증 |
 |---|---|---|
-| **M1. 큐 인프라** | `agents/queue/` 모듈 + 테이블 + lease + state machine | 큐 단위 테스트 |
+| **M1. 큐 인프라** | `agents/job_queue/` 모듈 + 테이블 + lease + state machine | 큐 단위 테스트 |
 | **M2. heartbeat / supervisor watch** | `service_heartbeats` + `yule supervisor --watch` | watchdog 90s 이내 detect 단위 테스트 |
 | **M3. research worker 분리** | `_run_engineering_research_loop` → `enqueue('research_collect')` | 라이브 시나리오 1 (k8s) 동일 결과 |
 | **M4. role worker 큐 변환** | `handle_research_turn_message` 가 큐 컨슈머에서 호출 | 라이브 시나리오 1·2 변경 없음 |
