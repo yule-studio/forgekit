@@ -63,23 +63,22 @@ class EngineeringProfileTests(unittest.TestCase):
         ids = [spec.service_id for spec in ENGINEERING_PROFILE]
         self.assertEqual(len(ids), len(set(ids)))
 
-    def test_reserved_gateway_is_not_implemented(self) -> None:
+    def test_gateway_is_implemented_after_m6_1b_2(self) -> None:
+        # M6.1b-2 flipped the gateway from RESERVED_DISCORD_GATEWAY
+        # to DISCORD_GATEWAY — ``yule run-service eng-discord-gateway``
+        # now spawns the engineering gateway via ``runtime.run_service``.
         gateway = next(
             spec for spec in ENGINEERING_PROFILE
             if spec.service_id == "eng-discord-gateway"
         )
-        self.assertEqual(
-            gateway.kind, ServiceKind.RESERVED_DISCORD_GATEWAY
-        )
-        self.assertFalse(gateway.is_implemented())
+        self.assertEqual(gateway.kind, ServiceKind.DISCORD_GATEWAY)
+        self.assertTrue(gateway.is_implemented())
 
-    def test_other_services_are_implemented(self) -> None:
+    def test_all_engineering_services_are_implemented(self) -> None:
         for spec in ENGINEERING_PROFILE:
-            if spec.kind == ServiceKind.RESERVED_DISCORD_GATEWAY:
-                continue
             self.assertTrue(
                 spec.is_implemented(),
-                f"{spec.service_id} should be implemented",
+                f"{spec.service_id} should be implemented after M6.1b-2",
             )
 
 

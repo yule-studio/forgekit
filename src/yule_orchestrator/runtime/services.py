@@ -36,6 +36,10 @@ class ServiceKind(str, Enum):
     APPROVAL_WORKER = "approval_worker"
     OBSIDIAN_WRITER = "obsidian_writer"
     SUPERVISOR = "supervisor"
+    DISCORD_GATEWAY = "discord_gateway"
+    # Kept for backward compatibility — older inventory dumps may
+    # reference the reserved name. New code should use
+    # ``DISCORD_GATEWAY``.
     RESERVED_DISCORD_GATEWAY = "reserved_discord_gateway"
 
 
@@ -126,11 +130,10 @@ def _build_engineering_profile() -> Tuple[ServiceSpec, ...]:
     rows.append(
         ServiceSpec(
             service_id="eng-discord-gateway",
-            kind=ServiceKind.RESERVED_DISCORD_GATEWAY,
+            kind=ServiceKind.DISCORD_GATEWAY,
             description=(
-                "reserved — gateway entrypoint lands in M6.1; until then "
-                "use `yule discord up` for dev or wait for the dedicated "
-                "yule run-service eng-discord-gateway implementation"
+                "engineering Discord gateway — listens on #업무-접수, "
+                "routes #승인-대기 replies through the queue"
             ),
         )
     )

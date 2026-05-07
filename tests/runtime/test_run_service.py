@@ -36,16 +36,29 @@ class UnknownServiceTests(unittest.TestCase):
         self.assertEqual(rc, EXIT_UNKNOWN_SERVICE)
         self.assertIn("unknown service", stderr.getvalue())
 
-    def test_reserved_service_returns_78(self) -> None:
-        # Gateway is in the inventory but not implemented yet (M6.1).
-        # run_service must refuse it loudly with the same exit code
-        # as unknown ids — the operator's recovery is "wait for M6.1
-        # or use yule discord up", not "retry".
-        stderr = io.StringIO()
-        with redirect_stderr(stderr):
-            rc = run_service_main("eng-discord-gateway")
-        self.assertEqual(rc, EXIT_UNKNOWN_SERVICE)
-        self.assertIn("reserved", stderr.getvalue())
+    def test_gateway_without_token_returns_78(self) -> None:
+        # M6.1b-2 made eng-discord-gateway implemented. Calling it
+        # without ENGINEERING_AGENT_BOT_GATEWAY_TOKEN returns 78
+        # (EX_CONFIG) so systemd's RestartPreventExitStatus=78
+        # keeps the failure visible to an operator instead of
+        # burning restart attempts. Token is never echoed in the
+        # error message.
+        import os
+
+        prev = os.environ.pop("ENGINEERING_AGENT_BOT_GATEWAY_TOKEN", None)
+        try:
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                rc = run_service_main("eng-discord-gateway")
+            self.assertEqual(rc, EXIT_UNKNOWN_SERVICE)
+            self.assertIn(
+                "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN", stderr.getvalue()
+            )
+        finally:
+            if prev is not None:
+                os.environ[
+                    "ENGINEERING_AGENT_BOT_GATEWAY_TOKEN"
+                ] = prev
 
 
 class ParseArgsTests(unittest.TestCase):

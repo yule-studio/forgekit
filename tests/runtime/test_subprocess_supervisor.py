@@ -86,31 +86,38 @@ class _FakeProcess:
 class DryRunPlanTests(unittest.TestCase):
     def test_dry_run_lists_every_implemented_service(self) -> None:
         plan = build_dry_run_plan(profile="engineering")
-        # Every implemented engineering service is in the plan.
+        # Every implemented engineering service is in the plan. M6.1b-2
+        # flipped the gateway to implemented so the count is now 12
+        # (gateway joins research/supervisor/role × 7/approval/obsidian).
         ids = {entry[0] for entry in plan.services}
-        # 11 implemented (gateway is reserved → in skipped, not services).
-        self.assertEqual(len(plan.services), 11)
+        self.assertEqual(len(plan.services), 12)
         self.assertIn("eng-research-worker", ids)
         self.assertIn("eng-role-tech-lead", ids)
         self.assertIn("eng-supervisor-watch", ids)
+        self.assertIn("eng-discord-gateway", ids)
         # cmd shape — ``yule run-service <id>``.
         for service_id, _description, cmd in plan.services:
             self.assertEqual(cmd[:2], ("yule", "run-service"))
             self.assertEqual(cmd[2], service_id)
 
-    def test_dry_run_marks_reserved_services_skipped(self) -> None:
+    def test_dry_run_has_no_skipped_services(self) -> None:
+        # M6.1b-2 promoted the last reserved service (gateway) to
+        # implemented, so the engineering profile carries no
+        # placeholders. New profiles or new reserved services will
+        # cause this list to grow again — the assertion is a
+        # tripwire for that.
         plan = build_dry_run_plan(profile="engineering")
-        skipped_ids = {entry[0] for entry in plan.skipped}
-        # Gateway is reserved for M6.1 — must surface in skipped list.
-        self.assertIn("eng-discord-gateway", skipped_ids)
+        self.assertEqual(plan.skipped, ())
 
     def test_render_includes_profile_and_counts(self) -> None:
         plan = build_dry_run_plan(profile="engineering")
         rendered = render_dry_run_plan(plan)
         self.assertIn("profile: engineering", rendered)
-        self.assertIn("services to start: 11", rendered)
+        self.assertIn("services to start: 12", rendered)
         self.assertIn("eng-research-worker", rendered)
-        self.assertIn("reserved (not started)", rendered)
+        self.assertIn("eng-discord-gateway", rendered)
+        # No reserved block now that gateway is implemented.
+        self.assertNotIn("reserved (not started)", rendered)
 
 
 # ---------------------------------------------------------------------------
@@ -153,11 +160,12 @@ class SpawnAndSuperviseTests(unittest.TestCase):
 
         rc = _run(driver())
         self.assertEqual(rc, 0)
-        # 11 implemented services spawned exactly once each. The
-        # reserved gateway must NOT have spawned.
+        # 12 implemented services spawned exactly once each (M6.1b-2
+        # flipped the gateway from reserved to implemented so it now
+        # joins the spawn list).
         spawned_ids = [cmd[-1] for cmd in spawned]
-        self.assertEqual(len(spawned_ids), 11)
-        self.assertNotIn("eng-discord-gateway", spawned_ids)
+        self.assertEqual(len(spawned_ids), 12)
+        self.assertIn("eng-discord-gateway", spawned_ids)
         # Every fake process received terminate() during drain.
         self.assertTrue(all(evt.is_set() for evt in terminate_events))
 

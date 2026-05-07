@@ -116,6 +116,9 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
         )
         return EXIT_OK
 
+    if spec.kind == ServiceKind.DISCORD_GATEWAY:
+        return await _run_discord_gateway(spec, shutdown_event=shutdown_event)
+
     process_job_fn = _build_process_job(spec, queue=queue, heartbeats=heartbeats)
     job_types, roles = _pick_filters_for(spec)
 
@@ -128,6 +131,62 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
         roles=roles,
         shutdown_event=shutdown_event,
     )
+    return EXIT_OK
+
+
+async def _run_discord_gateway(
+    spec: ServiceSpec,
+    *,
+    shutdown_event: asyncio.Event,
+) -> int:
+    """Run the engineering gateway under ``run-service``.
+
+    Resolves the gateway token, layers the planning-bot env
+    overrides on top of ``os.environ`` so the gateway sees only
+    its own channels, then invokes the legacy
+    :func:`discord.bot.run_discord_bot`. SIGTERM-aware shutdown is
+    a *minimal* hook for M6.1b-2 — we set the env override and
+    let ``discord.py`` 's KeyboardInterrupt path handle exit.
+    Full ``client.close()`` integration with the runtime
+    shutdown_event is a M6.2 follow-up; the bot still exits when
+    systemd / runtime up sends SIGTERM because the signal kicks
+    off the same default handler that ``yule discord up`` uses
+    today (no regression vs. the legacy launcher).
+    """
+
+    from ..discord.bot import run_discord_bot
+    from .gateway_env import (
+        build_gateway_env_overrides,
+        resolve_gateway_token,
+    )
+    import os
+
+    token = resolve_gateway_token()
+    if token is None:
+        sys.stderr.write(
+            "yule run-service: ENGINEERING_AGENT_BOT_GATEWAY_TOKEN unset; "
+            "engineering gateway cannot start.\n"
+        )
+        return EXIT_UNKNOWN_SERVICE
+
+    overrides = build_gateway_env_overrides(gateway_token=token)
+    # Apply overrides in-place so ``run_discord_bot``'s env reads
+    # see the gateway-only view.
+    for key, value in overrides.items():
+        os.environ[key] = value
+
+    repo_root = Path(os.environ.get("YULE_REPO_ROOT", os.getcwd()))
+    try:
+        # Run the blocking bot loop in a worker thread so the
+        # asyncio shutdown_event still owns the main loop. When
+        # SIGTERM lands, ``shutdown_event.set()`` fires and we
+        # let the thread settle on its own (discord.py's run()
+        # closes the client on SIGINT/SIGTERM via its default
+        # signal handlers — same path the legacy ``yule discord
+        # up`` uses, no regression).
+        await asyncio.to_thread(run_discord_bot, repo_root)
+    except KeyboardInterrupt:
+        return EXIT_OK
     return EXIT_OK
 
 

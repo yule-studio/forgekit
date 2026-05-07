@@ -168,6 +168,21 @@ def run_discord_bot(repo_root: Path) -> None:
             if content_text.startswith("/"):
                 return
 
+            # M6.1b-2: route #승인-대기 replies through the queue
+            # (handle_approval_reply) before the engineering route.
+            # Approval replies live in their own channel — they're not
+            # engineering intake — so the router short-circuits when
+            # it handles a message. The legacy in-channel obsidian
+            # approval phrase flow on the work thread still runs
+            # because that's a different channel.
+            approval_route_result = await _route_engineering_approval_reply(
+                message=message,
+                bot_user=self.user,
+                discord_module=discord,
+            )
+            if approval_route_result is not None and approval_route_result.handled:
+                return
+
             engineering_context = EngineeringRouteContext.from_env()
             if engineering_context.configured:
                 # Phase 1 fix: don't open a typing context around the
@@ -1448,6 +1463,94 @@ def _make_engineering_send_chunks(discord_module: "discord"):
         )
 
     return _send
+
+
+async def _route_engineering_approval_reply(
+    *,
+    message: Any,
+    bot_user: Any,
+    discord_module: "discord",
+):
+    """Adapter from ``on_message`` into the queue-side approval
+    reply router (M5a-2 + M6.1b-2).
+
+    Returns ``None`` when env isn't configured for the approval
+    channel — the caller falls through to the engineering route.
+    Otherwise returns the helper's
+    :class:`ApprovalReplyRouteResult` so ``on_message`` can decide
+    whether to short-circuit.
+
+    This adapter takes the worker construction cost (queue +
+    obsidian writer) only when the message lands in the approval
+    channel; for unrelated messages we exit fast on the channel
+    matcher.
+    """
+
+    import os
+    from .approval_reply_router import (
+        is_approval_channel_message,
+        route_approval_channel_message,
+    )
+
+    raw_id = (os.environ.get("DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID") or "").strip()
+    approval_channel_id: int | None
+    try:
+        approval_channel_id = int(raw_id) if raw_id else None
+    except ValueError:
+        approval_channel_id = None
+    approval_channel_name = (
+        os.environ.get("DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME") or ""
+    ).strip() or None
+
+    if approval_channel_id is None and not approval_channel_name:
+        # Env unset — gateway is running without an approval channel.
+        # Skip the matcher entirely so we don't pay the import /
+        # SQLite open cost for unrelated messages.
+        return None
+
+    if not is_approval_channel_message(
+        message=message,
+        approval_channel_id=approval_channel_id,
+        approval_channel_name=approval_channel_name,
+    ):
+        return None
+
+    from ..agents.job_queue import (
+        HeartbeatStore,
+        JobQueue,
+        ObsidianWriterWorker,
+        default_render_fn,
+        default_vault_root_resolver,
+        default_write_fn,
+    )
+    from ..agents.workflow_state import list_sessions as _list_sessions
+
+    queue = JobQueue()
+    obsidian_worker = ObsidianWriterWorker(
+        queue=queue,
+        heartbeats=HeartbeatStore(),
+        render_fn=default_render_fn,
+        write_fn=default_write_fn,
+        vault_root_resolver=default_vault_root_resolver,
+    )
+    send_chunks = _make_engineering_send_chunks(discord_module)
+
+    def _session_lister():
+        try:
+            return _list_sessions()
+        except Exception:  # noqa: BLE001 - best-effort lookup
+            return ()
+
+    return await route_approval_channel_message(
+        message=message,
+        bot_user=bot_user,
+        queue=queue,
+        obsidian_worker=obsidian_worker,
+        approval_channel_id=approval_channel_id,
+        approval_channel_name=approval_channel_name,
+        session_lister=_session_lister,
+        send_chunks=send_chunks,
+    )
 
 
 _ENGINEERING_LAST_PROPOSED: dict[int, str] = {}
