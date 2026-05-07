@@ -81,12 +81,19 @@ class RoleBuilderTests(_Fixture):
 
 
 class ApprovalBuilderTests(_Fixture):
-    def test_approval_worker_still_uses_no_post_fn_placeholder(self) -> None:
-        # M6.1a intentionally leaves the approval post_fn placeholder
-        # in place — the production Discord wrapper lands in M6.1b.
-        # This test is a tripwire: when M6.1b lands, this assertion
-        # flips to the negative variant and the placeholder helper
-        # is removed.
+    def test_approval_worker_uses_production_post_fn(self) -> None:
+        # M6.1b-1 replaced the M6.1a ``_no_post_fn_yet`` placeholder
+        # with ``build_production_post_fn`` output (closure named
+        # ``_post_fn``). The placeholder helper itself is gone, and
+        # the channel resolver now points at
+        # ``resolve_approval_channel_id`` from
+        # ``approval_discord_poster`` rather than the M5a id-only
+        # env reader (functionally equivalent — both read the same
+        # env var; the new one is the canonical entry).
+        from yule_orchestrator.agents.job_queue.approval_discord_poster import (
+            resolve_approval_channel_id,
+        )
+
         spec = resolve_service("eng-approval-worker")
         assert spec is not None
         process_fn = _build_process_job(
@@ -95,11 +102,15 @@ class ApprovalBuilderTests(_Fixture):
         free = inspect.getclosurevars(process_fn).nonlocals
         worker = free.get("worker")
         self.assertIsNotNone(worker)
-        # _post_fn is the placeholder until M6.1b. Confirm the name
-        # so a future cleanup deletes the placeholder + flips this
-        # assertion in lockstep.
-        self.assertEqual(
+        # _post_fn is now the closure produced by the production
+        # factory — never the placeholder.
+        self.assertNotEqual(
             getattr(worker._post_fn, "__name__", ""), "_no_post_fn_yet"
+        )
+        # Channel resolver flows from approval_discord_poster so a
+        # future M6.1b-2 NAME-fallback patch lands in one place.
+        self.assertIs(
+            worker._channel_resolver, resolve_approval_channel_id
         )
 
 

@@ -34,10 +34,10 @@ from ..agents.job_queue import (
     default_render_fn,
     default_vault_root_resolver,
     default_write_fn,
-    env_approval_channel_resolver,
 )
-from ..agents.job_queue.approval_worker import (
-    ApprovalRequest,
+from ..agents.job_queue.approval_discord_poster import (
+    build_production_post_fn,
+    resolve_approval_channel_id,
 )
 from ..agents.job_queue.standalone_runners import (
     build_research_runner,
@@ -176,11 +176,20 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
         return _process
 
     if spec.kind == ServiceKind.APPROVAL_WORKER:
+        # M6.1b-1 wiring: production post_fn POSTs the rendered
+        # approval card to ``DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID``
+        # via the Discord REST API using
+        # ``ENGINEERING_AGENT_BOT_GATEWAY_TOKEN`` (or
+        # ``DISCORD_BOT_TOKEN`` as a single-bot dev fallback).
+        # Channel resolver / token are looked up at each call so an
+        # operator's env edit takes effect on the next job without a
+        # worker restart.
+        production_post_fn = build_production_post_fn()
         worker = ApprovalWorker(
             queue=queue,
             heartbeats=heartbeats,
-            post_fn=_no_post_fn_yet,
-            channel_resolver=env_approval_channel_resolver,
+            post_fn=production_post_fn,
+            channel_resolver=resolve_approval_channel_id,
         )
 
         async def _process(job):
@@ -219,20 +228,8 @@ def _pick_filters_for(spec: ServiceSpec):
     return ((), ())
 
 
-# ---------------------------------------------------------------------------
-# M6.1b boundary placeholder — approval post_fn production wrapper
-# (Discord client / REST POST) lands in the next milestone. Until
-# then a standalone approval worker fails approval_post jobs to
-# ``failed_retryable`` with a clear error so the supervisor sees the
-# gap and an operator can fix the wiring.
-# ---------------------------------------------------------------------------
-
-
-async def _no_post_fn_yet(_request: ApprovalRequest, _rendered: str):
-    raise RuntimeError(
-        "approval_worker post_fn not wired yet "
-        "(M6.1b will connect a Discord REST POST to #승인-대기)"
-    )
+# M6.1b-1 landed the production post_fn (build_production_post_fn).
+# The remaining placeholder is the gateway service wiring (M6.1b-2).
 
 
 # ---------------------------------------------------------------------------
