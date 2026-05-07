@@ -39,6 +39,8 @@ __all__ = (
     "compute_report_status",
     "can_generate_final_work_report",
     "can_write_obsidian_record",
+    "has_role_research_evidence",
+    "missing_role_research_roles",
 )
 
 
@@ -231,6 +233,73 @@ def has_synthesis(session: Any) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Role research evidence (Phase 6)
+# ---------------------------------------------------------------------------
+#
+# Phase 4 records ``session.extra['role_research_results'][<role>]`` with
+# a per-role ``status`` field ("ok" / "empty" / "failed"). Phase 6 makes
+# the work-report status gate consult those records: a session that ran
+# role-scoped collection but produced *no* role with status="ok" must
+# stay in ``interim`` instead of graduating to ``ready``. We can't ship
+# a "ready" deliverable when no member bot actually surfaced sources
+# under its own role lens.
+#
+# Legacy sessions (Phase 4 didn't run yet — bucket missing entirely)
+# bypass this gate: returning True from :func:`has_role_research_evidence`
+# preserves the existing READY path so older flows keep working.
+
+
+def has_role_research_evidence(session: Any) -> bool:
+    """True when *session* has at least one role with status="ok" in
+    ``role_research_results`` — or when the bucket isn't recorded at all.
+
+    The "missing bucket → True" branch is intentional: legacy sessions
+    that pre-date Phase 4 would otherwise be stuck in ``interim``
+    forever. The gate only fires when the bucket exists *and* every
+    record either failed or returned zero sources, which is the
+    exact live-bug condition we want to refuse.
+    """
+
+    extra = _safe_extra(session)
+    bucket = extra.get("role_research_results")
+    if not isinstance(bucket, Mapping):
+        return True
+    if not bucket:
+        return True
+    for record in bucket.values():
+        if not isinstance(record, Mapping):
+            continue
+        status = str(record.get("status") or "").strip().lower()
+        if status == "ok":
+            return True
+    return False
+
+
+def missing_role_research_roles(session: Any) -> Tuple[str, ...]:
+    """Return the role ids that ran a collection pass but didn't land
+    any sources (status="empty" / "failed"). Used in the work-report
+    approval message so the user sees which roles need a retry.
+
+    Legacy sessions (no bucket) return an empty tuple — callers can
+    distinguish "we don't know" from "we know none worked" via
+    :func:`has_role_research_evidence`.
+    """
+
+    extra = _safe_extra(session)
+    bucket = extra.get("role_research_results")
+    if not isinstance(bucket, Mapping) or not bucket:
+        return ()
+    failing: list[str] = []
+    for role, record in bucket.items():
+        if not isinstance(record, Mapping):
+            continue
+        status = str(record.get("status") or "").strip().lower()
+        if status and status != "ok":
+            failing.append(str(role))
+    return tuple(sorted(failing))
+
+
+# ---------------------------------------------------------------------------
 # Report status
 # ---------------------------------------------------------------------------
 
@@ -261,7 +330,15 @@ def compute_report_status(session: Any) -> Tuple[str, Tuple[str, ...]]:
     played = _resolve_played_roles(extra)
     _, missing = compute_role_coverage(active, played)
 
-    if missing or not has_synthesis(session):
+    # Phase 6 — block READY when role_research_results was recorded
+    # but no role landed any sources. Legacy sessions (bucket missing)
+    # bypass this gate via has_role_research_evidence's "True on
+    # missing bucket" branch.
+    if (
+        missing
+        or not has_synthesis(session)
+        or not has_role_research_evidence(session)
+    ):
         return REPORT_STATUS_INTERIM, missing
     return REPORT_STATUS_READY, ()
 
@@ -291,6 +368,19 @@ def can_generate_final_work_report(session: Any) -> Tuple[bool, Optional[str]]:
         )
     if not has_synthesis(session):
         return False, "tech-lead synthesis 미작성"
+    if not has_role_research_evidence(session):
+        failed = missing_role_research_roles(session)
+        if failed:
+            return (
+                False,
+                "역할 연구 결과 부족 — status=ok 인 role 없음 (실패: "
+                + ", ".join(failed)
+                + ")",
+            )
+        return (
+            False,
+            "역할 연구 결과 부족 — role_research_results 에 status=ok 인 role 없음",
+        )
     return False, "lifecycle 미완료"
 
 

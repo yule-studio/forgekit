@@ -322,11 +322,13 @@ def build_work_report(
     has_pack, source_count = _resolve_pack_state(extra_map)
     has_synthesis = _resolve_has_synthesis(extra_map)
     missing_roles = _resolve_missing_roles(extra_map)
+    has_role_research = _resolve_has_role_research_evidence(extra_map)
+    failed_role_research = _resolve_failed_role_research_roles(extra_map)
     explicit_research_status = str(extra_map.get("research_status") or "").strip().lower()
 
     if not has_pack or source_count <= 0 or explicit_research_status == "insufficient":
         status = WORK_REPORT_STATUS_INSUFFICIENT
-    elif missing_roles or not has_synthesis:
+    elif missing_roles or not has_synthesis or not has_role_research:
         status = WORK_REPORT_STATUS_INTERIM
     else:
         status = WORK_REPORT_STATUS_READY
@@ -352,10 +354,25 @@ def build_work_report(
                 + ", ".join(missing_roles)
                 + " 의견이 빠져 있어 final 보고서로 제출할 수 없습니다."
             )
-        else:
+        elif not has_synthesis:
             approval_request = (
                 "tech-lead synthesis 미작성 상태라 final 보고서로 제출할 수 없습니다."
             )
+        else:
+            # Phase 6 — role_research_results was recorded but no role
+            # landed status="ok". Tell the user *which* roles need a
+            # retry so the next turn isn't another silent failure.
+            if failed_role_research:
+                approval_request = (
+                    "역할 연구 결과 부족 — "
+                    + ", ".join(failed_role_research)
+                    + " 가 자료를 모으지 못해 final 보고서로 제출할 수 없습니다."
+                )
+            else:
+                approval_request = (
+                    "역할 연구 결과 부족 — status=ok 인 role 이 없어 "
+                    "final 보고서로 제출할 수 없습니다."
+                )
 
     return WorkReport(
         session_id=session_id,
@@ -427,6 +444,31 @@ def _resolve_missing_roles(extra: Mapping[str, Any]) -> Tuple[str, ...]:
     played = _resolve_played_roles(extra)
     _, missing = compute_role_coverage(active, played)
     return missing
+
+
+def _resolve_has_role_research_evidence(extra: Mapping[str, Any]) -> bool:
+    """Phase 6 — at least one role with status="ok" in
+    ``role_research_results``. Legacy sessions (no bucket) bypass via
+    :func:`agents.lifecycle.status.has_role_research_evidence`'s
+    "missing bucket → True" branch.
+    """
+
+    from ..lifecycle.status import has_role_research_evidence
+
+    return has_role_research_evidence(_StubExtra(extra))
+
+
+def _resolve_failed_role_research_roles(
+    extra: Mapping[str, Any],
+) -> Tuple[str, ...]:
+    """Roles that ran a collection pass but didn't land any sources
+    (status="empty" / "failed"). Used to compose the work-report
+    approval message so the user sees which roles need a retry.
+    """
+
+    from ..lifecycle.status import missing_role_research_roles
+
+    return missing_role_research_roles(_StubExtra(extra))
 
 
 _STOP_REASON_LABELS: Mapping[str, str] = {
