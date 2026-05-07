@@ -1135,6 +1135,81 @@ def format_status_diagnostic_response(
                 descriptor += f" — {error}"
             lines.append(f"  · {descriptor}")
 
+    # Phase 5 — surface the role-scoped research outcomes recorded by
+    # Phase 4's ``record_role_research_result``. Answers "누가 어디까지
+    # 자료를 모았는지" without re-running collection: each role line
+    # shows provider, source count, status, and a one-line top finding.
+    role_research_results = extra.get("role_research_results")
+    if isinstance(role_research_results, Mapping) and role_research_results:
+        lines.append("- 역할 연구 결과:")
+        for role_name in sorted(role_research_results.keys()):
+            record = role_research_results.get(role_name)
+            if not isinstance(record, Mapping):
+                continue
+            status = str(record.get("status") or "?")
+            provider = record.get("provider")
+            source_count = record.get("source_count") or 0
+            try:
+                source_count = int(source_count)
+            except (TypeError, ValueError):
+                source_count = 0
+            descriptor = f"{role_name}: {status}"
+            if provider:
+                descriptor += f" (provider: {provider}, {source_count}건)"
+            else:
+                descriptor += f" ({source_count}건)"
+            error = record.get("error")
+            if error:
+                descriptor += f" — {error}"
+            lines.append(f"  · {descriptor}")
+            top_findings = record.get("top_findings") or []
+            if isinstance(top_findings, list) and top_findings:
+                first = str(top_findings[0]).strip()
+                if first:
+                    if len(first) > 120:
+                        first = first[:117] + "..."
+                    lines.append(f"    · 핵심: {first}")
+
+    # Phase 5 — activity log summary. Counts each event type and shows
+    # the last activity timestamp + last failure (if any) so the
+    # operator can answer "왜 멈췄지?" / "마지막으로 무엇이 일어났지?"
+    # at a glance without scanning the full audit trail.
+    role_activity_log = extra.get("role_activity_log")
+    if isinstance(role_activity_log, list) and role_activity_log:
+        counts: dict[str, int] = {}
+        last_event: Optional[Mapping[str, Any]] = None
+        last_failure: Optional[Mapping[str, Any]] = None
+        for raw_event in role_activity_log:
+            if not isinstance(raw_event, Mapping):
+                continue
+            event_type = str(raw_event.get("event_type") or "?")
+            counts[event_type] = counts.get(event_type, 0) + 1
+            last_event = raw_event
+            status = str(raw_event.get("status") or "")
+            if status and status != "ok":
+                last_failure = raw_event
+        if counts:
+            counts_text = ", ".join(
+                f"{kind}={counts[kind]}" for kind in sorted(counts.keys())
+            )
+            lines.append(f"- 활동 로그: {counts_text}")
+        if last_event:
+            timestamp = last_event.get("timestamp") or "?"
+            role_name = last_event.get("role") or "?"
+            event_type = last_event.get("event_type") or "?"
+            lines.append(
+                f"  · 마지막 이벤트: {timestamp} {role_name} {event_type}"
+            )
+        if last_failure and last_failure is not last_event:
+            timestamp = last_failure.get("timestamp") or "?"
+            role_name = last_failure.get("role") or "?"
+            event_type = last_failure.get("event_type") or "?"
+            err = last_failure.get("error") or last_failure.get("status") or ""
+            tail = f" — {err}" if err else ""
+            lines.append(
+                f"  · 마지막 실패: {timestamp} {role_name} {event_type}{tail}"
+            )
+
     if research_loop_report:
         report_error = None
         report_status = None
