@@ -225,3 +225,82 @@ A-M7 계열이 모두 닫힌 뒤 운영자가 알아야 할 항목을 한 자리
 
 - 실제 Discord live posting 검증은 사용자 명시 승인이 있을 때만 수행한다. 자동화된 단위 / 통합 테스트는 stub HTTP 로 동일 분기를 모두 검증하므로 코드 변경 자체로는 라이브 호출이 필요하지 않다.
 
+---
+
+## 10. M7.5 운영-리서치 토의 + Obsidian handoff 라이브 검증
+
+A-M7.5 / A-M7.5b 가 닫은 forum 토의 → 역할 추가 → Obsidian 저장 요청 → `#승인-대기` 카드 → 사용자 승인 → vault write 흐름을 실제 Discord 표면에서 검증하는 운영자 가이드. 자동화 unit / production-path smoke 는 모두 green (A-M7.5c). 라이브 단계는 사용자가 직접 메시지를 입력하는 절차다.
+
+자세한 단계별 시나리오 + 검증 항목은 [policies/runtime/agents/engineering-agent/live-regression.md §6](../policies/runtime/agents/engineering-agent/live-regression.md) 참고. 여기서는 **사전 환경 설정 + 운영자 체크리스트** 만 정리한다.
+
+### 10-1. 필수 env (`.env.local`)
+
+| 키 | 값 예시 | 의미 |
+|---|---|---|
+| `DISCORD_GUILD_ID` | `<guild id>` | 운영 길드 |
+| `ENGINEERING_AGENT_BOT_GATEWAY_TOKEN` | `<bot token>` | 게이트웨이 봇 토큰. 미설정 시 `DISCORD_BOT_TOKEN` fallback |
+| `DISCORD_ENGINEERING_INTAKE_CHANNEL_ID` | `<channel id>` | `#업무-접수` (intake) |
+| `DISCORD_AGENT_RESEARCH_FORUM_CHANNEL_ID` | `<forum id>` | `#운영-리서치` (forum) |
+| **`DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID`** | **`<channel id>`** | **`#승인-대기` — M7.5 라이브 검증 필수.** 미설정 시 NAME fallback (아래) 사용 |
+| `DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME` | `승인-대기` | NAME fallback (`DISCORD_GUILD_ID` 와 함께 REST GET 으로 자동 해석) |
+| `DISCORD_ENGINEERING_STATUS_CHANNEL_ID` | `<channel id>` | `#봇-상태` — M7.1 status posting 활성 시 |
+| `DISCORD_ENGINEERING_STATUS_CHANNEL_NAME` | `봇-상태` | status NAME fallback |
+| `OBSIDIAN_VAULT_PATH` | `<vault path>` | vault write 대상. 라이브 전에는 임시 vault 권장 (10-3 참고) |
+
+`.env.example` 의 같은 키들은 기본 commented-out — A-M7.5 부터는 approval / status 둘 다 런타임 활성이라는 라벨로 갱신되어 있다.
+
+### 10-2. 봇 권한 (Discord Server Settings)
+
+게이트웨이 봇 + 7 개 멤버 봇이 다음 권한을 보유해야 한다:
+
+| 채널 | 권한 |
+|---|---|
+| `#업무-접수` | 게이트웨이 봇 — `View Channel` / `Send Messages` / `Read Message History` |
+| `#운영-리서치` (Forum) | 게이트웨이 + 멤버 봇 모두 — 위 + `Send Messages in Threads` / `Create Public Threads` |
+| `#승인-대기` | 게이트웨이 봇 — `View Channel` / `Send Messages` / `Read Message History`. 답신 라우팅에 message-content intent 필요 |
+| `#봇-상태` | 게이트웨이 봇 — `Send Messages` (status posting 활성 시) |
+
+Discord Developer Portal 에서 각 봇 앱마다 **Message Content Intent** 가 켜져 있어야 한다 (런타임 검증 불가 — Portal 토글).
+
+### 10-3. 라이브 검증 전 체크리스트
+
+라이브 시나리오 시작 전에 한 번에 확인:
+
+- [ ] `.env.local` 의 `DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID` 또는 `_NAME` 활성 (uncomment + 값 채움).
+- [ ] `ENGINEERING_AGENT_BOT_GATEWAY_TOKEN` (또는 `DISCORD_BOT_TOKEN`) 활성.
+- [ ] 게이트웨이 봇이 `#승인-대기` 채널에 `Send Messages` 권한 보유 (Discord Server Settings).
+- [ ] 게이트웨이 + 멤버 봇이 `#운영-리서치` forum 안 thread 에 `Send Messages in Threads` 권한 보유.
+- [ ] 게이트웨이 봇이 `#승인-대기` 답신 메시지를 받기 위해 Message Content Intent 활성 (Developer Portal).
+- [ ] **vault dry-run 권장** — `OBSIDIAN_VAULT_PATH` 를 실서비스 vault 가 아닌 임시 디렉토리로 잠시 redirect. 시나리오 종료 후 원복.
+- [ ] **승인 전 vault write 금지 확인** — `agents/job_queue/obsidian_writer_worker.py:_APPROVAL_REQUIRED_KINDS` 가 `note_kind=knowledge` 또는 `overwrite=True` 에 대해 approval triple (`approval_id` / `approved_by` / `approved_at`) 없으면 `failed_retryable` 로 반려한다. 코드 변경하지 말 것 — 정책이다.
+- [ ] **승인 후 obsidian_write job 생성 확인 명령 준비** — `yule runtime status` 로 `obsidian_write` job_type 의 queued/saved 카운트가 +1 되는지 본다.
+- [ ] 자동화 baseline — `python3 -m unittest discover -s tests -t .` 모두 green. 직전 commit 해시 기록 (라이브 회귀 보고용).
+
+### 10-4. 라이브 smoke 플레이북 (8 단계)
+
+순서를 그대로 따른다. 각 단계 사이 5–10 초 간격으로 Discord rate-limit / 큐 처리를 안전하게 흡수.
+
+1. `#업무-접수` 채널에 intake prompt 입력 — 예: `DevOps 엔지니어가 되려면 어떻게 공부해야 할까`. 게이트웨이가 작업 thread 생성 + `#운영-리서치` forum thread 생성.
+2. `#운영-리서치` 에 새 thread 가 만들어졌는지 확인. starter 본문 + kickoff 의 `참여 역할 / 대기 역할 / 추가 안내 / 다음 단계` routing summary 4 라인 가시성.
+3. 활성 역할만 thread 댓글을 남기는지 관찰 (개입 없음). excluded 역할 (예: frontend-engineer / qa-engineer) 의 봇은 발화 X.
+4. thread 안에 `Obsidian에 정리하고 싶어` 입력. 봇 응답 `📨 Obsidian 저장 요청을 받았어요…` + `#승인-대기` 채널에 카드 등장.
+5. `#승인-대기` 카드 본문 확인 — thread 제목 / source thread id / decision_id 노출. `yule runtime status` 의 `approval_post` 카운트 +1.
+6. `#승인-대기` 카드에 `이대로 저장` 또는 `승인` 답신. 봇 응답 `✅ 승인 받았어요…` + `yule runtime status` 의 `obsidian_write` 카운트 +1.
+7. obsidian-writer 워커가 자동 처리 → vault 디렉토리에 새 markdown 파일 등장. 파일 metadata 에 `approval_id` / `approved_by` / `approved_at` 포함.
+8. `/engineer_show <session_id>` 또는 `yule engineer show <session_id> --json` 으로 `extra.obsidian_writes` 항목 추가 / `extra.fallback_audits` 변동 없음 확인.
+
+각 단계의 자세한 검증 항목 + 회귀 처리 절차는 [live-regression.md §6.2 / §6.4](../policies/runtime/agents/engineering-agent/live-regression.md#62-검증-항목-체크리스트).
+
+### 10-5. 사용자 직접 액션 요약
+
+다음 항목은 **운영자/사용자** 가 직접 수행해야 하는 부분이다 (자동화 불가):
+
+1. `.env.local` uncomment / 값 채움 (10-1 표).
+2. Discord 채널 권한 부여 (10-2 표).
+3. Developer Portal 의 Message Content Intent 토글.
+4. `OBSIDIAN_VAULT_PATH` 를 임시 vault 로 redirect (10-3 권장).
+5. `#업무-접수` 부터 답신 승인까지 8 단계 입력 (10-4 플레이북).
+6. 결과를 [live-regression.md §5 리포트 양식](../policies/runtime/agents/engineering-agent/live-regression.md#5-리포트-양식) 의 시나리오 5 라인에 기록.
+
+자동화 측면은 모두 통과 (2,182 tests green); 위 사용자 액션이 끝나면 M7.5 라이브 검증이 닫힌다.
+

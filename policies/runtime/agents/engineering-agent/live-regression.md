@@ -116,8 +116,71 @@ RAG/CAG memory 구조를 조사해줘. tech-lead / ai-engineer / backend-enginee
 - 시나리오 2 (RAG/CAG memory) : ✅ / ❌  — 메모
 - 시나리오 3 (status diagnostic) : ✅ / ❌  — 메모
 - 시나리오 4 (Obsidian write) : ✅ / ❌  — 메모
+- 시나리오 5 (M7.5 forum 토의 + role change + Obsidian handoff) : ✅ / ❌  — 메모
 - 환경: branch=…, commit=…, 봇 기동시각=…
 - 발견된 회귀: …
 ```
 
 발견된 회귀는 자동화 테스트로 옮겨서 `tests/engineering/` 또는 `tests/discord/` 에 pin 하고, 본 문서에 새 시나리오 또는 검증 항목을 추가한다.
+
+## 6. M7.5 forum 토의 + role change + Obsidian handoff (A-M7.5d 추가)
+
+A-M7.5 / A-M7.5b 가 닫은 세 가지 운영 흐름의 라이브 회귀를 한 시나리오로 묶는다 — (a) `#운영-리서치` thread 안의 토의, (b) 사용자 주도 역할 변경, (c) thread 안 Obsidian 저장 요청 → `#승인-대기` 카드 → 사용자 승인 → vault write.
+
+자율 검증 결과 (production code path against real SQLite + WorkflowSession + ApprovalWorker + ObsidianWriterWorker stack, Discord 트랜스포트만 stub) 는 A-M7.5c 에서 7/7 통과. 이 시나리오는 그 결과를 실제 Discord 표면에서 한 번 더 확인하는 절차다.
+
+### 6.0 사전 체크리스트
+
+라이브 검증 시작 전 다음 항목이 모두 ✅ 인지 한 번 본다 (한 항목이라도 미충족이면 시나리오를 시작하지 말 것).
+
+- [ ] **승인 채널 env 활성** — `.env.local` 의 `DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID` (또는 `_NAME` + `DISCORD_GUILD_ID`) uncomment + 채널 ID 가 실제 길드의 `#승인-대기` 채널을 가리킴.
+- [ ] **gateway token 활성** — `ENGINEERING_AGENT_BOT_GATEWAY_TOKEN` 또는 단일 봇 모드면 `DISCORD_BOT_TOKEN`. resolve_discord_bot_token 의 fallback 우선순위 적용.
+- [ ] **봇 권한** — engineering gateway 가 `#승인-대기` 채널에 `Send Messages` 권한 보유. forum thread 안에서 `Send Messages in Threads` 권한 보유.
+- [ ] **운영-리서치 forum 활성** — `DISCORD_AGENT_RESEARCH_FORUM_CHANNEL_ID` (또는 `_NAME`) 설정. thread 가 만들어졌고 `session.extra['research_forum_thread_id']` 에 thread id 가 persist 되어 있어야 한다 (시나리오 1 또는 2 를 먼저 돌려서 자동 생성 권장).
+- [ ] **vault dry-run 권장** — 진짜 운영 vault 가 부담되면 `OBSIDIAN_VAULT_PATH` 를 잠시 임시 디렉토리로 바꿔 둔다. 시나리오 종료 후 원복.
+- [ ] **승인 전 vault write 금지 확인** — `ObsidianWriterWorker` 의 approval guard (M5b) 가 켜져 있어 `note_kind=knowledge` 또는 `overwrite=True` 면 `approval_id` / `approved_by` / `approved_at` 없이는 `failed_retryable` 로 떨어진다. 사용자가 명시 승인하지 않으면 절대 vault 에 들어가지 않는다.
+- [ ] **자동화 테스트 baseline** — `python3 -m unittest discover -s tests -t .` 모두 green. 직전 commit 해시 기록.
+
+### 6.1 시나리오 — 단계별 입력 + 기대 결과
+
+`#업무-접수` intake 부터 vault write 까지의 전체 흐름을 한 번에 검증한다. 단계 사이에 5–10초 정도 간격을 두면 Discord rate-limit / 큐 처리 타이밍을 자연스럽게 흡수한다.
+
+| 순 | 사용자 액션 | 기대 결과 | 검증 명령 / 관찰 지점 |
+|---|---|---|---|
+| 0 | `#업무-접수` 채널에 intake prompt 입력 (예: "DevOps 엔지니어가 되려면 어떻게 공부해야 할까") | 게이트웨이가 작업 thread 생성 + 운영-리서치 forum thread 생성 + kickoff 메시지에 `참여 역할 / 대기 역할 / 추가 안내 / 다음 단계` routing summary 3–5 줄 포함 | `yule engineer show <session_id>` 로 `extra.research_forum_thread_id` / `extra.active_research_roles` 둘 다 채워졌는지 확인 |
+| 1 | 운영-리서치 thread 자체가 만들어졌는지 채널에서 직접 확인 | `#운영-리서치` 에 새 forum thread 표시. starter 본문에 자료 + 핵심 라인 | thread 클릭 → starter 본문 확인. 시나리오 1/2 의 §1.2 / §2.2 항목과 일치 |
+| 2 | 활성 역할만 thread 댓글을 남기는지 관찰 (개입 없음) | excluded 역할 봇은 thread 안에서 발화 X | thread 댓글 작성자 확인. `qa-engineer` / `frontend-engineer` 등 비활성 역할이 댓글을 남기면 실패 |
+| 3 | thread 안에 "QA도 참여시켜" 입력 | "✅ 다음 turn 부터 qa-engineer 도 함께 참여하도록 했어요…" 친절 응답이 thread 에 게시 | `yule engineer show <session_id>` 로 `extra.active_research_roles` 에 `qa-engineer` 추가 / `extra.role_changes` audit 한 건 추가 확인 |
+| 4 | thread 안에 "Obsidian에 정리하고 싶어" 입력 | "📨 Obsidian 저장 요청을 받았어요. `#승인-대기` 채널에 승인 카드를 게시했어요 (job=`…`)." 응답 + `#승인-대기` 채널에 카드 등장 | `yule runtime status` → `approval_post` job_type 의 saved 카운트 +1. `#승인-대기` 채널에서 카드 본문에 thread 제목 / source thread / decision_id 가 보여야 한다 |
+| 5 | 같은 thread 에서 같은 phrase 한 번 더 입력 | "⏳ 이 thread 의 동일 저장 요청이 이미 `#승인-대기` 큐에 들어가 있어요." 응답. 새 카드 만들어지지 **않음** | `#승인-대기` 채널에 새 메시지 추가 X. queue 의 `approval_post` 카운트 변화 X |
+| 6 | `#승인-대기` 카드에 "이대로 저장" 또는 "승인" 답신 | "✅ 승인 받았어요. Obsidian 저장 큐에 넣었습니다 (job=`…`)." 응답. queue 에 `obsidian_write` 행 추가 | `yule runtime status` → `obsidian_write` job_type 의 queued/saved 카운트 +1 |
+| 7 | obsidian-writer 가 vault write 완료 (자동) — `yule run-service eng-obsidian-writer` 또는 `yule runtime up` 으로 띄워진 워커가 자연스럽게 처리 | vault 디렉토리에 새 markdown 파일 생성. `obsidian_write` 행 state=saved | `ls $OBSIDIAN_VAULT_PATH` 또는 vault 동기화 도구. 파일 내부에 `approval_id` / `approved_by` / `approved_at` 메타데이터 또는 frontmatter 확인 |
+| 8 | `/engineer_show <session_id>` 또는 supervisor 응답으로 `session.extra` 검사 | `extra.obsidian_writes` 에 항목 추가 + `extra.fallback_audits` 에 변경 없음 (정상 흐름이라 fallback 없음) | `yule engineer show <session_id> --json` |
+
+### 6.2 검증 항목 (체크리스트)
+
+- [ ] **routing summary 게시** — kickoff 본문에 `참여 역할 / 대기 역할 / 추가 안내 / 다음 단계` 4 라인이 포함된다. "전원이 참여합니다" 는 사용자가 명시적으로 "전체 팀" 류 표현을 쓴 경우에만 등장 (`SOURCE_USER_ALL_TEAM`).
+- [ ] **excluded 역할 침묵** — thread 안에서 비활성 역할 봇은 발화 X. team-turn marker 가 임의 포함되어도 `_route_engineering_approval_reply` 이전 단계에서 `build_turn_plan` 이 필터링.
+- [ ] **role-change 친절 응답** — "QA도 참여시켜" / "백엔드도 불러줘" / "프론트도 같이 봐줘" / "전체 팀 관점으로 봐줘" 전부 친절 응답 + `active_research_roles` 갱신 + audit 한 건. 잘못된 역할명은 `RESPONSE_ROLE_NO_CHANGE` 로 떨어진다.
+- [ ] **forum → approval 핸드오프** — "Obsidian 에 정리하고 싶어" / "이거 저장해줘" / "옵시디언에 정리해줘" 류 phrase 를 `is_obsidian_save_request` 가 인식. context 부족 (세션 없음 / 채널 unset) 이면 silent fail 금지, 친절 안내 게시.
+- [ ] **idempotency** — 같은 forum 메시지 (`message.id` 동일) 로는 절대 두 번째 카드 안 나옴. SAVED 행도 dedup 차단 (`source_message_id` 기반).
+- [ ] **승인 전 vault write 금지** — 6 단계 (사용자 승인) 가 완료되기 전 vault 디렉토리에 새 파일이 만들어지면 회귀. ObsidianWriterWorker.process_job 의 approval guard 가 동작하는지 확인.
+- [ ] **승인 후 vault write 발생** — 7 단계에서 obsidian-writer 워커가 동작했을 때만 vault 에 파일 등장.
+- [ ] **토큰 비노출** — 라이브 흐름 중 supervisor / `journalctl` 출력 / `#승인-대기` 카드 본문 / forum thread 응답 어디에도 `Bot ` 토큰 prefix 또는 토큰 hex prefix 가 노출되지 않는다.
+- [ ] **fallback/degrade 정합성** — 시나리오 진행 중 의도치 않게 fallback / degrade 가 발생하지 않아야 한다 (`session.extra['fallback_audits']` 에 신규 entry X). 발생한다면 자동화 테스트로 옮겨 회귀 처리.
+
+### 6.3 자동화 테스트 cross-reference
+
+- `tests/engineering/test_role_selection_m75.py` — 8-prompt matrix + effective-roles helper + role-change parser + routing summary
+- `tests/discord/test_team_turn_active_gate.py` — team-turn legacy path active-roles 게이트 5 종
+- `tests/job_queue/test_forum_obsidian_handoff.py` — forum 저장 요청 → ApprovalRequest producer 9 종 (idempotency + 토큰 비노출 + 종단간 approval reply → obsidian_write)
+- `tests/discord/test_forum_message_adapter.py` — bot.py on_message → 어댑터 wiring 9 종 (Obsidian save / role change / 비-forum 통과 / kickoff routing summary)
+- `tests/runtime/test_synthesis_fallback_wiring.py` — degrade/fallback 트리거가 active_research_roles 만 기준으로 판단하는지 회귀
+
+### 6.4 발견된 회귀 처리
+
+라이브에서 회귀가 잡히면:
+
+1. 가능하면 unit test 로 재현 → `tests/engineering/test_role_selection_m75.py` / `tests/discord/test_forum_message_adapter.py` / `tests/job_queue/test_forum_obsidian_handoff.py` 중 한 곳에 pin.
+2. 본 문서 §6.2 체크리스트에 새 항목 추가.
+3. 별도 fix 커밋 (M7.5 이후 milestone) 으로 정리. 라이브 회귀 보고에 commit 해시 기록.
