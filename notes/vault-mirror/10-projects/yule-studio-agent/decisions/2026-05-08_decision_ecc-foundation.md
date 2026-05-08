@@ -113,3 +113,12 @@ ECC (`affaan-m/everything-claude-code`) 의 외부 layer 패턴을 Yule 의 회�
 5. `git diff --stat` 으로 코드 변경 0 확인.
 6. issue #25 progress comment.
 7. draft PR 생성 (squash merge / do-not-merge 정책).
+
+## 관련 문서
+
+- [[CLAUDE]]
+- [[2026-05-08_research_ecc-foundation]]
+- [[2026-05-08_task-log_25-ecc]]
+- [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
+- [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
+- [[2026-05-08_issue-69-task-log-governance-integration]]

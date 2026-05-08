@@ -231,3 +231,12 @@ Yule 이 이미 회사형 lifecycle 13 stage + role contract-v1 까지 발전한
 - ECC 분석은 sub-agent 의 GitHub web fetch 결과를 1 차 소스로 사용. raw 파일 경로는 본 노트의 `references` frontmatter 에 기록.
 - ECC 의 hook 동작 (exit code 2 block 등) 은 정책 인용 수준이며, Yule 도입 시점에는 markdown 정책 + (후속 PR) loader 로 분리해 검증할 예정.
 - 본 PR 자체는 runtime 거동을 변경하지 않으므로 회귀 위험은 `yule memory reindex` 의 retrieval 우선순위 변동에 한정.
+
+## 관련 문서
+
+- [[CLAUDE]]
+- [[2026-05-08_decision_ecc-foundation]]
+- [[2026-05-08_task-log_25-ecc]]
+- [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
+- [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
+- [[2026-05-08_issue-69-task-log-governance-integration]]
