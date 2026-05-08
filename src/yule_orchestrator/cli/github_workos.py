@@ -713,6 +713,23 @@ def _utc_timestamp_slug() -> str:
     return when.strftime("%Y%m%dT%H%M%SZ")
 
 
+def _resolve_repo_root_for_template() -> Path:
+    """Best-effort repo-root resolver for PR-template discovery.
+
+    Walks up from the current working directory looking for a
+    ``.github`` sibling. Falls back to the package install root so
+    a smoke run from a non-repo cwd still picks up the bundled
+    template.
+    """
+
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / ".github").is_dir():
+            return candidate
+    # Fallback: the file's repo root (works for tests + dev installs).
+    return Path(__file__).resolve().parents[3]
+
+
 def _new_smoke_audit_id() -> str:
     import uuid
 
@@ -897,21 +914,80 @@ def run_github_smoke_pr_command(
         return 1
 
     # Step 8 — draft PR.
-    pr_body_lines: list[str] = []
-    if plan_adapter is not None:
-        pr_body_lines.append(
-            render_pr_body(plan_adapter, audit_id=audit_id).render()
-        )
-    pr_body_lines.append(_MERGE_BLOCKED_NOTICE)
-    pr_body_lines.append(
-        f"\n## Smoke audit\n- audit_id: `{audit_id}`\n"
-        f"- branch: `{branch_name}` (from `{base}`)\n"
-        f"- commit: `{commit_sha}`\n"
-        f"- smoke marker: `{smoke_relpath}`"
+    # Build a PrTemplateFillContext from the live smoke metadata +
+    # (optional) triage adapter so the repo's PR template (.github/
+    # PULL_REQUEST_TEMPLATE) can drive the body shape. When no
+    # template is found we fall back to render_pr_body and stamp a
+    # ``template_missing`` audit reason.
+    from ..agents.github_workos.repository_pr_template import (
+        PrTemplateFillContext,
+        compose_pr_body,
     )
-    if issue_html_url:
-        pr_body_lines.append(f"- issue: {issue_html_url}")
-    pr_body = "\n\n".join(pr_body_lines).strip() + "\n"
+
+    smoke_change_summary = (
+        f"smoke marker file `{smoke_relpath}` 추가 (production code 변경 없음)",
+    )
+    fill_context = PrTemplateFillContext(
+        audit_id=audit_id,
+        branch=branch_name,
+        commit_sha=commit_sha,
+        actor="yule-studio-engineering-agent[bot]",
+        primary_role=(
+            getattr(plan_adapter, "primary_role", "") if plan_adapter else ""
+        ),
+        autonomy_level=(
+            getattr(plan_adapter, "autonomy_level", "") if plan_adapter else ""
+        ),
+        issue_number=issue_number,
+        issue_url=issue_html_url or "",
+        purpose=(
+            (getattr(plan_adapter, "body", "") or "").strip()
+            if plan_adapter
+            else "GitHub WorkOS (G1~G6) live App smoke — production code 변경 없음."
+        ),
+        change_summary=smoke_change_summary,
+        test_plan=(
+            tuple(getattr(plan_adapter, "test_plan", ()) or ())
+            if plan_adapter
+            else ()
+        ),
+        risks=(
+            tuple(getattr(plan_adapter, "risks", ()) or ())
+            if plan_adapter
+            else ()
+        ),
+        approvals_needed=(
+            tuple(getattr(plan_adapter, "approvals_needed", ()) or ())
+            if plan_adapter
+            else ()
+        ),
+        work_orders=(
+            tuple(getattr(plan_adapter, "work_orders", ()) or ())
+            if plan_adapter
+            else ()
+        ),
+        trace_links={
+            **({"github": issue_html_url} if issue_html_url else {}),
+        },
+        smoke_mode=True,
+        smoke_marker_path=smoke_relpath,
+        base_branch=base,
+        repo_full_name=repo_full,
+    )
+    composed = compose_pr_body(
+        repo_root=str(_resolve_repo_root_for_template()),
+        plan=plan_adapter,
+        context=fill_context,
+        fallback_renderer=render_pr_body,
+    )
+    pr_body = composed.rendered
+    if composed.template_missing:
+        # Surface the audit reason so the operator can grep
+        # "template_missing" in the smoke output / agent_ops log.
+        _print_err(
+            "PR template 을 찾지 못했습니다 (template_missing). "
+            "fallback render_pr_body 를 사용했습니다."
+        )
 
     pr_title = (
         f"[smoke][do-not-merge] github-workos live App smoke ({audit_id})"
