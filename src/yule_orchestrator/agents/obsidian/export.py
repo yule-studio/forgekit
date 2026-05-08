@@ -172,6 +172,15 @@ _KIND_TO_LABEL: Mapping[str, str] = {
     "proposal": "proposal",
     "blog-draft": "blog-draft",
     "blog_draft": "blog-draft",
+    # A-M10a — canonical knowledge ops kinds (full names). Approval-required
+    # archives that route to top-level vault folders (20-knowledge,
+    # 30-decisions). The legacy short forms ``knowledge`` and ``decision``
+    # above keep the existing ``10-projects/<project>/knowledge|decisions/``
+    # routing so M10b tests pinned at the project-nested layout stay green.
+    "knowledge-note": "knowledge",
+    "knowledge_note": "knowledge",
+    "decision-record": "decision",
+    "decision_record": "decision",
 }
 
 
@@ -330,11 +339,39 @@ def _kind_short_label(kind: str) -> str:
 def _yule_vault_kind_to_folder(kind: str, project: str) -> str:
     """yule-agent-vault folder for *kind* under ``10-projects/<project>/``.
 
+    M10a canonical names ``knowledge-note`` / ``decision-record`` route to
+    the new top-level Knowledge Ops folders (``20-knowledge/``,
+    ``30-decisions/``) — the project segment is dropped because these
+    archives are operator-wide rather than project-bound. The legacy
+    short forms ``knowledge`` / ``decision`` keep their original
+    project-nested routing so M10b tests stay green and existing notes
+    in ``10-projects/<project>/knowledge/`` are not orphaned.
+
     Unknown *kind* values land in ``00-inbox/unsorted/`` so they show up
     in the operator's triage queue instead of being silently buried.
     """
 
+    from .note_kinds import (
+        KIND_DECISION_RECORD,
+        KIND_KNOWLEDGE_NOTE,
+        canonical_kind,
+        folder_for_canonical_kind,
+    )
+
     normalized = (kind or "").strip().lower()
+    canonical = canonical_kind(normalized)
+    # Only the freshly-introduced canonical names take the M10a top-level
+    # routing; the legacy short forms (``knowledge``, ``decision``) keep
+    # their project-nested layout.
+    if (
+        canonical in (KIND_KNOWLEDGE_NOTE, KIND_DECISION_RECORD)
+        and normalized in {KIND_KNOWLEDGE_NOTE, KIND_DECISION_RECORD,
+                            "knowledge_note", "decision_record"}
+    ):
+        m10a_folder = folder_for_canonical_kind(canonical)
+        if m10a_folder is not None:
+            return m10a_folder
+
     subdir = _KIND_TO_PROJECT_SUBDIR.get(normalized)
     if subdir is None:
         return INBOX_UNSORTED
@@ -391,11 +428,13 @@ def render_research_note(
     """
 
     chosen_kind = (kind or _infer_kind(synthesis)).lower()
-    if chosen_kind == "knowledge":
+    if chosen_kind in ("knowledge", "knowledge-note", "knowledge_note"):
         # Knowledge mode delegates to the richer template — semantic
         # title, role-by-role review, decisions/next-actions split — so
         # the existing research/decision/reference branches stay
-        # byte-stable for vaults that haven't migrated.
+        # byte-stable for vaults that haven't migrated. The M10a
+        # canonical name ``knowledge-note`` shares the body renderer
+        # but routes to ``20-knowledge/`` via :func:`recommend_path`.
         from .knowledge_writer import render_knowledge_note
 
         return render_knowledge_note(
@@ -406,6 +445,7 @@ def render_research_note(
             layout=layout,
             env=env,
             exported_at=exported_at,
+            kind=chosen_kind,
         )
     layout_resolved = resolve_layout(layout, env=env)
     chosen_project = _resolve_project(

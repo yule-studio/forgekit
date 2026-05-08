@@ -860,6 +860,7 @@ def render_knowledge_note(
     layout: Optional[str] = None,
     env: Optional[Mapping[str, str]] = None,
     exported_at: Optional[datetime] = None,
+    kind: Optional[str] = None,
 ):
     """Build + render a knowledge note as an :class:`ObsidianNote`.
 
@@ -867,9 +868,20 @@ def render_knowledge_note(
     when ``kind="knowledge"`` is requested, so the existing CLI/sync
     pipeline can opt into the richer template without changing call
     sites.
+
+    Pass ``kind="knowledge-note"`` to opt into the M10a top-level vault
+    layout (``20-knowledge/<basename>.md`` instead of
+    ``10-projects/<project>/knowledge/<basename>.md``). Any other value
+    of *kind* (or omitting it) keeps the legacy project-nested routing
+    so existing callers stay byte-stable.
     """
 
     from .export import ExportPath, ObsidianNote
+    from .note_kinds import (
+        KIND_KNOWLEDGE_NOTE,
+        canonical_kind,
+        folder_for_canonical_kind,
+    )
 
     note = build_knowledge_note(
         pack=pack,
@@ -886,8 +898,22 @@ def render_knowledge_note(
         exported_at=exported_at,
     )
     content = render_knowledge_markdown(note)
+
+    folder = note.vault_folder
+    canonical = canonical_kind(kind)
+    # Route only the canonical M10a name ``knowledge-note`` to the new
+    # top-level folder; the legacy short form ``knowledge`` stays
+    # project-nested so existing notes / tests remain stable.
+    if canonical == KIND_KNOWLEDGE_NOTE and (kind or "").strip().lower() in {
+        "knowledge-note",
+        "knowledge_note",
+    }:
+        m10a_folder = folder_for_canonical_kind(canonical)
+        if m10a_folder is not None:
+            folder = m10a_folder
+
     return ObsidianNote(
-        path=ExportPath(folder=note.vault_folder, filename=note.vault_filename),
+        path=ExportPath(folder=folder, filename=note.vault_filename),
         content=content,
         frontmatter=dict(note.frontmatter),
     )
