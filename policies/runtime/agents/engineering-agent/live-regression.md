@@ -10,6 +10,8 @@
 2. 새 워크플로우 채널을 사용하거나, 기존 채널이라면 직전 작업 세션이 close 되어 있어야 함 (`/status` → "현재 채널에 매칭되는 열린 engineering-agent 세션이 보이지 않아요" 가 깔끔하게 떠야 정상).
 3. 본 문서의 시나리오 4 개를 **위에서 아래 순서대로** 실행. 시나리오 간 세션 충돌 방지 위해 각 시나리오 사이에 채널을 비우거나 명시적으로 새 thread 를 사용한다.
 
+> M13 readiness 판정 (M8~M12 gap matrix + Conditional Go 사유) 은 `docs/m13-readiness.md` 에서 본다. 본 문서 §0.4 의 Secret Hygiene 게이트가 그 readiness 의 prerequisite 로 묶여 있다.
+
 ### 0.4 사전 차단 — Secret Hygiene 미완료 시 진행 금지
 
 `docs/operations.md` §11 (P0 Secret Hygiene + Token Rotation) 이 완전히 끝나기 전까지 본 라이브 회귀 / M13 readiness 검증은 **시작하지 않는다.** 미완료 상태에서 라이브 봇을 다시 띄우면 이전 토큰이 또 다시 화면 / 로그 / Discord 메시지로 흘러갈 위험이 있다.

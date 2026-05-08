@@ -64,6 +64,10 @@ journalctl -u yule-run-service@eng-supervisor-watch.service -f
 
 `yule runtime status` 출력 끝에 6-step 라이브 스모크 체크리스트가 항상 포함된다. operator 가 한 화면에서 다음 명령을 그대로 복사해 검증할 수 있다 — `dry-run` → `up` → `status` → `#업무-접수 인입` → `#승인-대기 답신` → 의도적 worker kill 회귀.
 
+### 0.4. M8~M12 → M13 readiness 판정
+
+M13 (LLM 통합 / 라이브 자기개선 루프) 진입 전의 gap matrix + readiness 판정은 `docs/m13-readiness.md` 를 본다. 본 문서 §11 (P0 Secret Hygiene) 가 그 readiness 의 사전 게이트로 묶여 있다.
+
 ## 1. 핵심 원칙
 
 - **discord 연결과 작업 실행을 분리한다.** 각 worker 는 자기 큐를 polling 하고, Discord 클라이언트는 선택적 어댑터다.
