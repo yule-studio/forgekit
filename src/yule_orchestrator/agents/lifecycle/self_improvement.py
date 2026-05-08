@@ -370,6 +370,352 @@ def _default_remediation_for(signal: SelfImprovementSignal) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Proposal planner — A-M12 wiring
+# ---------------------------------------------------------------------------
+#
+# Maps a :class:`SelfImprovementSignal` (or several) to a concrete
+# :class:`SelfImprovementProposal`. The planner consults
+# :func:`agents.lifecycle.autonomy_policy.decide_autonomy` so the
+# L0–L4 ladder owns the routing decision; the planner only translates
+# the verdict into the right downstream artifact:
+#
+#   * L0 / L1 / L2 → :class:`ObsidianWriteRequest` for the
+#     ``self-improvement-proposal`` (or ``failure-postmortem``) note kind
+#     so the supervisor can enqueue it on the obsidian_write queue. The
+#     write itself runs without human approval (``audit_required`` is
+#     enforced separately by the agent-ops audit log).
+#   * L3 → an opaque approval-envelope mapping. The planner does NOT
+#     enqueue an approval card; the dispatch_fn the supervisor wires
+#     in (test stub or production helper) is responsible for that
+#     handoff. Keeping the envelope here means the planner stays free
+#     of queue side effects.
+#   * L4 → blocked. The planner refuses to build a write_request OR an
+#     approval envelope; ``blocked_reason`` carries the L4 verdict
+#     verbatim so callers can log it but never auto-execute. This is
+#     the "dangerous action 자동 실행 금지" rail.
+#
+# The runtime-code-change stub uses the same plan helpers but always
+# proposes :data:`autonomy_policy.ACTION_RUNTIME_CODE_CHANGE` (default
+# L3) so it never resolves to an L1/L2 auto-write — branch + commit
+# automation is intentionally deferred.
+
+
+# Default autonomy actions per signal — picks the L2 ``failure-
+# postmortem`` family for "something is failing" signals, the L2
+# ``self-improvement-proposal`` family for "user pattern" signals.
+_SIGNAL_TO_ACTION: Mapping[str, str] = {
+    SIGNAL_FAILED_RETRYABLE_PILEUP: "failure_postmortem_create",
+    SIGNAL_DUPLICATE_TOPIC_APPROVAL: "failure_postmortem_create",
+    SIGNAL_STALE_HEARTBEAT: "failure_postmortem_create",
+    SIGNAL_EMPTY_KNOWLEDGE_NOTE: "failure_postmortem_create",
+    SIGNAL_REPEATED_USER_COMPLAINT: "self_improvement_proposal",
+}
+
+
+# Note kind per autonomy action — only the L2 actions resolve to a
+# write here; L3+ never reaches the note-kind stage because the
+# planner returns an approval envelope or a blocked verdict instead.
+_ACTION_TO_NOTE_KIND: Mapping[str, str] = {
+    "failure_postmortem_create": "failure-postmortem",
+    "self_improvement_proposal": "self-improvement-proposal",
+    "blog_draft_create": "blog-draft",
+}
+
+
+@dataclass(frozen=True)
+class SelfImprovementProposal:
+    """One actionable plan derived from a :class:`SelfImprovementSignal`.
+
+    Exactly one of ``write_request`` / ``approval_envelope`` /
+    ``blocked_reason`` is populated:
+
+      * ``write_request`` — set for L0/L1/L2 signals; an
+        :class:`ObsidianWriteRequest` ready for
+        :meth:`ObsidianWriterWorker.enqueue`.
+      * ``approval_envelope`` — set for L3 signals; a JSON-friendly
+        mapping carrying the autonomy decision id, action type, and a
+        short summary the dispatch_fn can use to compose an approval
+        card. The planner never inserts queue rows.
+      * ``blocked_reason`` — set for L4 signals; the human-readable
+        rationale from the autonomy decision. The supervisor / caller
+        records this in agent-ops audit but MUST NOT auto-execute.
+
+    ``decision`` carries the :class:`AutonomyDecision` itself so callers
+    have the audit-required / requires_human / escalation_reasons for
+    free.
+    """
+
+    signal: SelfImprovementSignal
+    decision: Any  # AutonomyDecision (lazy import in test code)
+    write_request: Optional[Any] = None
+    approval_envelope: Optional[Mapping[str, Any]] = None
+    blocked_reason: Optional[str] = None
+
+    @property
+    def is_auto_executable(self) -> bool:
+        return (
+            self.write_request is not None
+            and self.approval_envelope is None
+            and self.blocked_reason is None
+        )
+
+    @property
+    def needs_human_approval(self) -> bool:
+        return self.approval_envelope is not None
+
+    @property
+    def is_blocked(self) -> bool:
+        return self.blocked_reason is not None
+
+
+def plan_self_improvement_proposal(
+    signal: SelfImprovementSignal,
+    *,
+    session_id: str = "",
+    project: Optional[str] = None,
+    layout: Optional[str] = None,
+    action_override: Optional[str] = None,
+    risk_level: Optional[str] = None,
+    reversible: Optional[bool] = None,
+    external_side_effect: Optional[bool] = None,
+    requested_by: str = "self_improvement_detector",
+    decide_fn: Optional[Any] = None,
+    request_builder: Optional[Any] = None,
+    extras: Optional[Mapping[str, Any]] = None,
+) -> SelfImprovementProposal:
+    """Plan a downstream artifact for *signal*.
+
+    Resolution order:
+
+      1. Pick the autonomy action — *action_override* if given,
+         otherwise :data:`_SIGNAL_TO_ACTION` (defaults to
+         ``self_improvement_proposal`` for unknown signals).
+      2. Build an :class:`AutonomyContext` and run *decide_fn*
+         (defaults to :func:`autonomy_policy.decide_autonomy`).
+         Risk metadata escalation flows through the policy as usual.
+      3. L0/L1/L2 → call *request_builder* (defaults to
+         :func:`autonomous_producers.build_simple_body_request`) with
+         the markdown body produced by
+         :func:`render_signals_as_proposal_body`.
+      4. L3 → return an approval envelope (no queue side effects).
+      5. L4 → return a blocked verdict.
+
+    ``decide_fn`` and ``request_builder`` are seams so unit tests can
+    isolate the planner without importing the full autonomy chain.
+    """
+
+    from .autonomy_policy import (
+        AutonomyContext,
+        AutonomyLevel,
+        decide_autonomy as _default_decide,
+    )
+
+    decide = decide_fn or _default_decide
+
+    action = action_override or _SIGNAL_TO_ACTION.get(
+        signal.signal, "self_improvement_proposal"
+    )
+
+    severity_to_risk = {
+        SEVERITY_HIGH: "high",
+        SEVERITY_MEDIUM: "medium",
+        SEVERITY_LOW: "low",
+    }
+    inferred_risk = severity_to_risk.get(signal.severity, "medium")
+    ctx = AutonomyContext(
+        action=action,
+        session_id=session_id,
+        topic_key=str(signal.evidence.get("topic_key") or "") or None,
+        summary=signal.summary,
+        risk_level=risk_level if risk_level is not None else inferred_risk,
+        reversible=True if reversible is None else bool(reversible),
+        external_side_effect=(
+            False
+            if external_side_effect is None
+            else bool(external_side_effect)
+        ),
+        requested_by=requested_by,
+        reason=signal.summary,
+        extra=dict(extras or {}),
+    )
+    decision = decide(ctx)
+
+    level = decision.autonomy_level
+    if level == AutonomyLevel.L4_STRONG_APPROVAL_OR_FORBIDDEN:
+        return SelfImprovementProposal(
+            signal=signal,
+            decision=decision,
+            blocked_reason=decision.reason
+            or "L4 — 강한 승인 또는 금지, 자동 실행 금지",
+        )
+
+    if level == AutonomyLevel.L3_HUMAN_APPROVAL:
+        envelope: Mapping[str, Any] = _build_approval_envelope(
+            signal=signal,
+            decision=decision,
+            session_id=session_id,
+        )
+        return SelfImprovementProposal(
+            signal=signal,
+            decision=decision,
+            approval_envelope=envelope,
+        )
+
+    # L0 / L1 / L2 — auto-executable write request.
+    note_kind = _ACTION_TO_NOTE_KIND.get(action, "self-improvement-proposal")
+    body = render_signals_as_proposal_body(
+        [signal],
+        title=_proposal_title(signal),
+    )
+    request_kwargs = {
+        "session": _SessionRef(session_id=session_id),
+        "note_kind": note_kind,
+        "title": _proposal_title(signal),
+        "body": body,
+        "autonomy_level": level.value,
+        "project": project,
+        "layout": layout,
+        "extras": {
+            "self_improvement_signal": signal.signal,
+            "severity": signal.severity,
+            "decision_id": decision.decision_id,
+            "topic_key": ctx.topic_key,
+        },
+    }
+    builder = request_builder
+    if builder is None:
+        from .autonomous_producers import build_simple_body_request as builder
+
+    write_request = builder(**request_kwargs)
+    return SelfImprovementProposal(
+        signal=signal,
+        decision=decision,
+        write_request=write_request,
+    )
+
+
+def plan_self_improvement_proposals(
+    signals: Sequence[SelfImprovementSignal],
+    *,
+    session_id: str = "",
+    project: Optional[str] = None,
+    layout: Optional[str] = None,
+    decide_fn: Optional[Any] = None,
+    request_builder: Optional[Any] = None,
+) -> Tuple[SelfImprovementProposal, ...]:
+    """Plan proposals for a batch of signals (preserves ``signals`` order)."""
+
+    proposals: list[SelfImprovementProposal] = []
+    for sig in signals:
+        proposals.append(
+            plan_self_improvement_proposal(
+                sig,
+                session_id=session_id,
+                project=project,
+                layout=layout,
+                decide_fn=decide_fn,
+                request_builder=request_builder,
+            )
+        )
+    return tuple(proposals)
+
+
+def propose_runtime_code_change_stub(
+    *,
+    summary: str,
+    session_id: str = "",
+    risk_level: str = "medium",
+    decide_fn: Optional[Any] = None,
+) -> SelfImprovementProposal:
+    """Adapter stub — propose a runtime code change without executing it.
+
+    This exists so the M12 self-improvement loop can wire a "we'd like
+    to fix the code that triggered this signal" proposal without the
+    branch + commit machinery. The autonomy ladder maps
+    ``runtime_code_change`` to L3, which means this helper always
+    returns an approval envelope. **The planner never creates a git
+    branch, runs a commit, or hits a remote** — that surface is
+    deferred to a later phase. Tests assert this contract.
+    """
+
+    synthetic_signal = SelfImprovementSignal(
+        signal=SIGNAL_REPEATED_USER_COMPLAINT,
+        severity=SEVERITY_MEDIUM,
+        summary=summary,
+        evidence={},
+        detected_at=_utc_now_iso(),
+    )
+    return plan_self_improvement_proposal(
+        synthetic_signal,
+        session_id=session_id,
+        action_override="runtime_code_change",
+        risk_level=risk_level,
+        # Code changes touch shared repo state — treat as an external
+        # side effect so the autonomy policy escalates if it somehow
+        # fell back to an L0/L1/L2 default.
+        external_side_effect=True,
+        decide_fn=decide_fn,
+    )
+
+
+def _proposal_title(signal: SelfImprovementSignal) -> str:
+    label = signal.signal.replace("_", "-")
+    return f"self-improvement: {label}"[:80]
+
+
+def _build_approval_envelope(
+    *,
+    signal: SelfImprovementSignal,
+    decision: Any,
+    session_id: str,
+) -> Mapping[str, Any]:
+    """Compose the JSON-friendly L3 approval envelope.
+
+    The dispatch_fn (test stub or production handoff) consumes this
+    payload to compose an approval card. Keeping it as a plain dict
+    means the planner doesn't depend on the queue layer.
+    """
+
+    decision_payload: Mapping[str, Any] = {}
+    try:
+        decision_payload = dict(decision.to_payload())
+    except Exception:  # noqa: BLE001 — best effort
+        decision_payload = {
+            "action": getattr(decision, "action", None),
+            "autonomy_level": getattr(
+                getattr(decision, "autonomy_level", None), "value", None
+            ),
+            "reason": getattr(decision, "reason", None),
+        }
+
+    return {
+        "kind": "approval_request",
+        "session_id": session_id,
+        "signal": signal.to_payload(),
+        "autonomy_decision": decision_payload,
+        "summary": signal.summary,
+        "requested_action": decision_payload.get("action"),
+        "title": _proposal_title(signal),
+    }
+
+
+@dataclass(frozen=True)
+class _SessionRef:
+    """Minimal stand-in for ``WorkflowSession`` so the request builder
+    only needs ``.session_id`` / ``.extra`` / ``.prompt`` / ``.thread_id``.
+
+    The self-improvement planner deliberately does NOT load a real
+    workflow session — these proposals are emitted from the supervisor
+    sweep, where no session context is naturally available.
+    """
+
+    session_id: str
+    extra: Mapping[str, Any] = field(default_factory=dict)
+    prompt: str = ""
+    thread_id: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
 
@@ -387,11 +733,15 @@ __all__ = (
     "SIGNAL_FAILED_RETRYABLE_PILEUP",
     "SIGNAL_REPEATED_USER_COMPLAINT",
     "SIGNAL_STALE_HEARTBEAT",
+    "SelfImprovementProposal",
     "SelfImprovementSignal",
     "collect_self_improvement_signals",
     "detect_duplicate_topic_approval",
     "detect_empty_knowledge_note_attempts",
     "detect_failed_retryable_pileup",
     "detect_stale_heartbeat",
+    "plan_self_improvement_proposal",
+    "plan_self_improvement_proposals",
+    "propose_runtime_code_change_stub",
     "render_signals_as_proposal_body",
 )

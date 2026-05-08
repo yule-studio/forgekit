@@ -169,5 +169,235 @@ class StatusPostingCadenceTests(_LoopFixture):
         self.assertEqual(len(post_calls), 4)
 
 
+# ---------------------------------------------------------------------------
+# A-M12 — self-improvement detect + dispatch hook on the supervisor loop
+# ---------------------------------------------------------------------------
+
+
+class SelfImprovementDispatchCadenceTests(_LoopFixture):
+    """The supervisor watch loop runs detect_fn at the cadence and
+    forwards each (signal, plan) pair to dispatch_fn. The loop never
+    enqueues a queue row itself — that surface is what M13 e2e relies
+    on. Failures in detect_fn / dispatch_fn must not crash the loop."""
+
+    def _signal(self):
+        from yule_orchestrator.agents.lifecycle.self_improvement import (
+            SEVERITY_MEDIUM,
+            SIGNAL_FAILED_RETRYABLE_PILEUP,
+            SelfImprovementSignal,
+        )
+
+        return SelfImprovementSignal(
+            signal=SIGNAL_FAILED_RETRYABLE_PILEUP,
+            severity=SEVERITY_MEDIUM,
+            summary="8 failed_retryable jobs",
+            evidence={"count": 8},
+            detected_at="2026-05-08T10:00:00+00:00",
+        )
+
+    def test_dispatch_fn_receives_signal_and_plan(self) -> None:
+        from yule_orchestrator.agents.lifecycle.self_improvement import (
+            SelfImprovementProposal,
+        )
+
+        captured = []
+        signal = self._signal()
+
+        def detect_fn():
+            return [signal]
+
+        def dispatch_fn(sig, plan):
+            captured.append((sig, plan))
+
+        async def no_sleep(_secs):
+            return None
+
+        clock = {"now": 0.0}
+
+        def time_fn():
+            clock["now"] += 50.0
+            return clock["now"]
+
+        _run(
+            run_supervisor_watch_loop(
+                heartbeat_store=self.heartbeats,
+                job_queue=self.queue,
+                sweep_fn=_empty_sweep,
+                sweep_interval_seconds=1.0,
+                sleep_fn=no_sleep,
+                max_iterations=3,
+                self_improvement_detect_fn=detect_fn,
+                self_improvement_dispatch_fn=dispatch_fn,
+                self_improvement_interval_seconds=60.0,
+                time_fn=time_fn,
+            )
+        )
+        # iter1: clock=50, last=None → detect (1)
+        # iter2: clock=100, 100-50=50<60 → skip
+        # iter3: clock=150, 150-50=100>=60 → detect (2)
+        self.assertEqual(len(captured), 2)
+        first_sig, first_plan = captured[0]
+        self.assertIs(first_sig, signal)
+        self.assertIsInstance(first_plan, SelfImprovementProposal)
+        # Plan is fully formed — auto-executable L2 write request.
+        self.assertTrue(first_plan.is_auto_executable)
+        self.assertEqual(
+            first_plan.write_request.note_kind, "failure-postmortem"
+        )
+
+    def test_no_callbacks_keeps_self_improvement_dormant(self) -> None:
+        # When detect_fn / dispatch_fn / interval are absent, the
+        # loop must not import the planner module and must not raise.
+        async def no_sleep(_secs):
+            return None
+
+        iterations = _run(
+            run_supervisor_watch_loop(
+                heartbeat_store=self.heartbeats,
+                job_queue=self.queue,
+                sweep_fn=_empty_sweep,
+                sweep_interval_seconds=1.0,
+                sleep_fn=no_sleep,
+                max_iterations=3,
+            )
+        )
+        self.assertEqual(iterations, 3)
+
+    def test_zero_interval_keeps_dormant(self) -> None:
+        captured = []
+
+        def detect_fn():
+            return [self._signal()]
+
+        def dispatch_fn(sig, plan):
+            captured.append((sig, plan))
+
+        async def no_sleep(_secs):
+            return None
+
+        _run(
+            run_supervisor_watch_loop(
+                heartbeat_store=self.heartbeats,
+                job_queue=self.queue,
+                sweep_fn=_empty_sweep,
+                sweep_interval_seconds=1.0,
+                sleep_fn=no_sleep,
+                max_iterations=3,
+                self_improvement_detect_fn=detect_fn,
+                self_improvement_dispatch_fn=dispatch_fn,
+                self_improvement_interval_seconds=0.0,
+            )
+        )
+        self.assertEqual(captured, [])
+
+    def test_detect_failure_does_not_crash_supervisor(self) -> None:
+        captured = []
+
+        def detect_fn():
+            raise RuntimeError("queue read failed")
+
+        def dispatch_fn(sig, plan):  # pragma: no cover - never reached
+            captured.append((sig, plan))
+
+        async def no_sleep(_secs):
+            return None
+
+        clock = {"now": 0.0}
+
+        def time_fn():
+            clock["now"] += 100.0
+            return clock["now"]
+
+        iterations = _run(
+            run_supervisor_watch_loop(
+                heartbeat_store=self.heartbeats,
+                job_queue=self.queue,
+                sweep_fn=_empty_sweep,
+                sweep_interval_seconds=1.0,
+                sleep_fn=no_sleep,
+                max_iterations=3,
+                self_improvement_detect_fn=detect_fn,
+                self_improvement_dispatch_fn=dispatch_fn,
+                self_improvement_interval_seconds=60.0,
+                time_fn=time_fn,
+            )
+        )
+        self.assertEqual(iterations, 3)
+        self.assertEqual(captured, [])
+
+    def test_dispatch_failure_does_not_crash_supervisor(self) -> None:
+        dispatch_calls = []
+
+        def detect_fn():
+            return [self._signal()]
+
+        def dispatch_fn(sig, plan):
+            dispatch_calls.append((sig, plan))
+            raise RuntimeError("approval queue down")
+
+        async def no_sleep(_secs):
+            return None
+
+        clock = {"now": 0.0}
+
+        def time_fn():
+            clock["now"] += 100.0
+            return clock["now"]
+
+        iterations = _run(
+            run_supervisor_watch_loop(
+                heartbeat_store=self.heartbeats,
+                job_queue=self.queue,
+                sweep_fn=_empty_sweep,
+                sweep_interval_seconds=1.0,
+                sleep_fn=no_sleep,
+                max_iterations=3,
+                self_improvement_detect_fn=detect_fn,
+                self_improvement_dispatch_fn=dispatch_fn,
+                self_improvement_interval_seconds=60.0,
+                time_fn=time_fn,
+            )
+        )
+        self.assertEqual(iterations, 3)
+        # Dispatch was attempted on every interval-eligible tick.
+        self.assertEqual(len(dispatch_calls), 3)
+
+    def test_async_detect_and_dispatch_supported(self) -> None:
+        captured = []
+        signal = self._signal()
+
+        async def detect_fn():
+            return [signal]
+
+        async def dispatch_fn(sig, plan):
+            captured.append((sig, plan))
+
+        async def no_sleep(_secs):
+            return None
+
+        clock = {"now": 0.0}
+
+        def time_fn():
+            clock["now"] += 100.0
+            return clock["now"]
+
+        _run(
+            run_supervisor_watch_loop(
+                heartbeat_store=self.heartbeats,
+                job_queue=self.queue,
+                sweep_fn=_empty_sweep,
+                sweep_interval_seconds=1.0,
+                sleep_fn=no_sleep,
+                max_iterations=2,
+                self_improvement_detect_fn=detect_fn,
+                self_improvement_dispatch_fn=dispatch_fn,
+                self_improvement_interval_seconds=60.0,
+                time_fn=time_fn,
+            )
+        )
+        self.assertEqual(len(captured), 2)
+        self.assertIs(captured[0][0], signal)
+
+
 if __name__ == "__main__":
     unittest.main()

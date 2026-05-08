@@ -199,6 +199,9 @@ async def run_supervisor_watch_loop(
     status_post_fn: Optional[Callable[[], Awaitable[Any]]] = None,
     status_post_interval_seconds: Optional[float] = None,
     time_fn: Optional[Callable[[], float]] = None,
+    self_improvement_detect_fn: Optional[Callable[..., Any]] = None,
+    self_improvement_dispatch_fn: Optional[Callable[..., Any]] = None,
+    self_improvement_interval_seconds: Optional[float] = None,
 ) -> int:
     """Long-running supervisor watchdog. Calls
     :func:`run_supervisor_sweep` every *sweep_interval_seconds* and
@@ -222,6 +225,33 @@ async def run_supervisor_watch_loop(
     Posting failures are caught + logged; they NEVER crash the
     supervisor. The dedup state lives inside *status_post_fn* (the
     poster's own state store) so this loop only owns the cadence.
+
+    A-M12 added optional self-improvement detect + dispatch:
+
+      * *self_improvement_detect_fn* — sync or coroutine callable
+        that returns a sequence of ``SelfImprovementSignal`` (or any
+        truthy iterable). Receives no arguments today; the production
+        wiring closes over the queue / heartbeat store so the
+        callable can run :func:`collect_self_improvement_signals`
+        against fresh state.
+      * *self_improvement_dispatch_fn* — sync or coroutine callable
+        invoked once per detected signal with two arguments —
+        ``(signal, plan)`` where ``plan`` is a
+        :class:`agents.lifecycle.self_improvement.SelfImprovementProposal`
+        the loop builds via :func:`plan_self_improvement_proposal`.
+        The dispatch_fn owns ALL side effects (queue insertion,
+        approval card emission, audit logging). The watch loop
+        deliberately does NOT enqueue obsidian_write rows or
+        approval_post rows — that boundary is what M13 e2e
+        tests can assert against without spinning the queue.
+      * *self_improvement_interval_seconds* — minimum spacing
+        between detect attempts. ``None`` (default) leaves the
+        path dormant. The interval gate uses the same *time_fn*
+        clock as status posting so tests can drive both with one
+        synthetic counter.
+
+    Detection / dispatch failures are caught + logged with the
+    same "never crash supervisor" guarantee as status posting.
     """
 
     if sweep_fn is None:
@@ -233,10 +263,17 @@ async def run_supervisor_watch_loop(
     clock = time_fn or time.time
     iterations = 0
     last_post_at: Optional[float] = None
+    last_si_detect_at: Optional[float] = None
     post_enabled = (
         status_post_fn is not None
         and status_post_interval_seconds is not None
         and status_post_interval_seconds > 0
+    )
+    si_enabled = (
+        self_improvement_detect_fn is not None
+        and self_improvement_dispatch_fn is not None
+        and self_improvement_interval_seconds is not None
+        and self_improvement_interval_seconds > 0
     )
 
     def _shutdown_requested() -> bool:
@@ -295,9 +332,83 @@ async def run_supervisor_watch_loop(
                 # the next state change anyway.
                 last_post_at = now_clock
 
+        # ----- A-M12: self-improvement detect + dispatch tick --------
+        if si_enabled:
+            now_clock_si = float(clock())
+            si_interval = float(self_improvement_interval_seconds or 0.0)
+            if (
+                last_si_detect_at is None
+                or (now_clock_si - last_si_detect_at) >= si_interval
+            ):
+                await _run_self_improvement_tick(
+                    detect_fn=self_improvement_detect_fn,
+                    dispatch_fn=self_improvement_dispatch_fn,
+                )
+                # Advance the gate even on failure so a buggy detector
+                # doesn't hammer the supervisor every tick — same
+                # rationale as the status-post gate above.
+                last_si_detect_at = now_clock_si
+
         await sleep_fn(sweep_interval_seconds)
 
     return iterations
+
+
+async def _run_self_improvement_tick(
+    *,
+    detect_fn: Callable[..., Any],
+    dispatch_fn: Callable[..., Any],
+) -> None:
+    """Run one detect → plan → dispatch cycle.
+
+    Detection / planning / dispatch failures are swallowed so the
+    supervisor watch loop never crashes on a misbehaving callback.
+    The planner imports lazily so worker_loop stays light when the
+    self-improvement path is dormant (the default).
+    """
+
+    try:
+        signals = detect_fn()
+        if asyncio.iscoroutine(signals):
+            signals = await signals  # type: ignore[assignment]
+    except Exception:  # noqa: BLE001 - never crash supervisor
+        logger.warning(
+            "self-improvement detect_fn raised", exc_info=True
+        )
+        return
+    if not signals:
+        return
+
+    try:
+        from ..lifecycle.self_improvement import (
+            plan_self_improvement_proposal as _plan,
+        )
+    except Exception:  # noqa: BLE001 - planner import failure is non-fatal
+        logger.warning(
+            "self-improvement planner import failed", exc_info=True
+        )
+        return
+
+    for sig in signals:
+        try:
+            plan = _plan(sig)
+        except Exception:  # noqa: BLE001 - per-signal failure tolerable
+            logger.warning(
+                "self-improvement planner raised for signal=%s",
+                getattr(sig, "signal", "?"),
+                exc_info=True,
+            )
+            continue
+        try:
+            outcome = dispatch_fn(sig, plan)
+            if asyncio.iscoroutine(outcome):
+                await outcome
+        except Exception:  # noqa: BLE001 - dispatch is best-effort
+            logger.warning(
+                "self-improvement dispatch_fn raised for signal=%s",
+                getattr(sig, "signal", "?"),
+                exc_info=True,
+            )
 
 
 __all__ = (
