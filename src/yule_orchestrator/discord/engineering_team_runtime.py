@@ -259,6 +259,19 @@ def build_turn_plan(session: WorkflowSession) -> Tuple[TeamTurn, ...]:
 
     Requires ``session.thread_id`` and a non-empty ``role_sequence``. The
     gateway (D's territory) is responsible for setting both before calling.
+
+    A-M7.5: the plan is **filtered by the effective active-roles set**
+    so excluded roles never receive dispatch markers in the legacy
+    work-thread chain. Resolution order (from
+    :func:`agents.lifecycle.role_selection.get_effective_active_roles`):
+
+      1. ``session.extra['active_research_roles']``
+      2. ``session.role_sequence`` (legacy ordered hint)
+      3. ``("tech-lead",)`` — minimum fallback so the chain is never empty.
+
+    The original sequence order is preserved for any role that survives
+    the filter; tech-lead is always present and is always the closer
+    when it's the last role left.
     """
 
     if session.thread_id is None:
@@ -270,8 +283,16 @@ def build_turn_plan(session: WorkflowSession) -> Tuple[TeamTurn, ...]:
             f"session {session.session_id} has no role_sequence; dispatcher must populate it"
         )
 
+    # A-M7.5 — gate the plan to the effective active-roles set.
+    # Without this gate, every role in role_sequence renders even when
+    # the user-driven role-selection narrowed participation.
+    from ..agents.lifecycle.role_selection import get_effective_active_roles
+
+    active = set(get_effective_active_roles(session))
     plan: list[TeamTurn] = []
     for idx, role in enumerate(session.role_sequence):
+        if role not in active:
+            continue
         is_executor = role == session.executor_role
         header, body = format_role_turn_text(session, role, is_executor=is_executor)
         plan.append(
