@@ -96,12 +96,18 @@ def _build_engineering_profile() -> Tuple[ServiceSpec, ...]:
         ServiceSpec(
             service_id="eng-supervisor-watch",
             kind=ServiceKind.SUPERVISOR,
-            description="watchdog: heartbeat sweep + lease reaper",
+            description=(
+                "supervisor watchdog — heartbeat sweep + lease reaper "
+                "(reads service_heartbeats / job_queue; no queue consumer)"
+            ),
         ),
         ServiceSpec(
             service_id="eng-research-worker",
             kind=ServiceKind.RESEARCH_WORKER,
-            description="research_collect job consumer",
+            description=(
+                "research_collect queue consumer — runs auto_collect, "
+                "stamps research_pack onto session.extra"
+            ),
         ),
     ]
     for role in _ENGINEERING_ROLES:
@@ -109,7 +115,10 @@ def _build_engineering_profile() -> Tuple[ServiceSpec, ...]:
             ServiceSpec(
                 service_id=f"eng-role-{role}",
                 kind=ServiceKind.ROLE_WORKER,
-                description=f"role_take consumer for {role}",
+                description=(
+                    f"role_take queue consumer (role={role}) — produces "
+                    "deliberation take + posts to #운영-리서치 thread"
+                ),
                 role=role,
             )
         )
@@ -117,14 +126,20 @@ def _build_engineering_profile() -> Tuple[ServiceSpec, ...]:
         ServiceSpec(
             service_id="eng-approval-worker",
             kind=ServiceKind.APPROVAL_WORKER,
-            description="approval_post broadcast (#승인-대기)",
+            description=(
+                "approval_post queue consumer — broadcasts approval cards "
+                "to #승인-대기, ingests user replies via handle_approval_reply"
+            ),
         )
     )
     rows.append(
         ServiceSpec(
             service_id="eng-obsidian-writer",
             kind=ServiceKind.OBSIDIAN_WRITER,
-            description="obsidian_write vault writer",
+            description=(
+                "obsidian_write queue consumer — writes approved knowledge "
+                "/ research notes into OBSIDIAN_VAULT_PATH (approval guard)"
+            ),
         )
     )
     rows.append(
@@ -133,7 +148,8 @@ def _build_engineering_profile() -> Tuple[ServiceSpec, ...]:
             kind=ServiceKind.DISCORD_GATEWAY,
             description=(
                 "engineering Discord gateway — listens on #업무-접수, "
-                "routes #승인-대기 replies through the queue"
+                "enqueues research_collect/role_take/approval_post jobs "
+                "for the workers above (does not consume from queue itself)"
             ),
         )
     )

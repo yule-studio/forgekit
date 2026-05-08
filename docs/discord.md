@@ -33,16 +33,24 @@
 - DAILY 와 CONVERSATION 을 다른 채널로 두면 DAILY 는 자동 브리핑 전용 broadcast 채널로 잠긴다. 사용자가 그곳에서 메시지를 보내거나 봇을 멘션해도 응답하지 않는다. 같은 채널로 두면 자동 브리핑과 채팅이 함께 이루어진다.
 - engineering-agent 는 planning-bot 과 다른 채널을 사용한다. `yule discord up` 이 두 봇을 띄울 때 자식 환경에서 서로의 채널을 비워 응답이 충돌하지 않게 강제한다.
 
-## 4. `yule discord up` (dev only)
+## 4. `yule discord up` (dev/test only — NOT production)
 
 ```bash
-yule discord up --dry-run        # 인벤토리 확인
+yule discord up --dry-run        # 인벤토리 확인 (9 bot 정렬 점검)
 yule discord up                  # 9 봇 일괄 기동 (planning + gateway + 7 멤버)
 yule discord member --role tech-lead --dry-run   # 단일 멤버 봇만
 yule discord bot                 # planning 단독
 ```
 
-**상시 운영은 `yule discord up` 이 아니라 systemd 기반 service unit 을 권장한다.** 자세한 운영 가이드는 [operations.md](operations.md).
+> **⚠️ `yule discord up` 은 dev / single-host smoke 용이다. queue 워커 (research / role / approval / obsidian-writer / supervisor) 는 띄우지 않으므로 gateway 가 enqueue 한 작업이 처리되지 않는다.** 실제 작업 처리가 필요하면 [operations.md](operations.md) §0.1 의 결정 트리에 따라 `yule runtime up` (단일 호스트) 또는 `systemctl start yule.target` (production) 을 사용한다.
+
+`yule discord up` 이 살아 있는 이유:
+
+- Discord 봇 자체의 발화만 빠르게 확인하고 싶을 때 (typing indicator / slash command 동작 / forum 게시 모양).
+- production 경로에 단계적으로 옮기는 도중에 봇 토큰만 검증하고 싶을 때.
+- 자동 테스트 / smoke 가 큐 처리를 stub 으로 대체하고 봇 발화만 검증하는 경우.
+
+위 케이스가 아니면 항상 `yule runtime up` 을 사용한다.
 
 자식 프로세스 분리 거동:
 

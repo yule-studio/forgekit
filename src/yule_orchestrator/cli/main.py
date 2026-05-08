@@ -461,17 +461,26 @@ def build_parser() -> argparse.ArgumentParser:
     discord_up_parser = discord_subparsers.add_parser(
         "up",
         help=(
-            "(dev launcher) Spawn planning-bot + engineering gateway + member bots "
-            "in one process tree. Production: use `yule runtime up` or systemd "
-            "`yule run-service`."
+            "[DEV-ONLY] Spawn planning-bot + engineering gateway + member bots "
+            "in one process tree. NOT a production path — does not run the "
+            "queue workers (research/role/approval/obsidian-writer) so jobs "
+            "enqueued by the gateway will sit unpicked. Production: use "
+            "`yule runtime up` (single-host) or systemd `yule run-service`."
         ),
         description=(
-            "Development / single-host launcher. Spawns each implemented bot as "
-            "its own multiprocessing.Process under one parent. Useful for local "
-            "smoke tests of the full Discord surface; not the production path. "
-            "For always-on operation use `yule runtime up --profile engineering` "
-            "(single-host) or systemd template units calling `yule run-service "
-            "<service-id>` (production). See docs/operations.md."
+            "DEVELOPMENT / SINGLE-HOST DISCORD LAUNCHER (NOT PRODUCTION).\n\n"
+            "Spawns each implemented Discord bot (planning + engineering "
+            "gateway + 7 member bots) as its own multiprocessing.Process "
+            "under one parent. Useful for local smoke tests of the full "
+            "Discord surface — but it does NOT spawn the queue workers, so "
+            "the gateway will enqueue research_collect / role_take / "
+            "approval_post / obsidian_write jobs that nothing picks up.\n\n"
+            "If you want a working end-to-end runtime, run `yule runtime up "
+            "--profile engineering` (single-host parent supervising every "
+            "worker + the gateway) or use systemd template units calling "
+            "`yule run-service <service-id>` (production).\n\n"
+            "See docs/operations.md for the supported runtime topology and "
+            "docs/discord.md §4 for the dev-launcher contract."
         ),
     )
     discord_up_parser.add_argument(
@@ -491,16 +500,29 @@ def build_parser() -> argparse.ArgumentParser:
     runtime_parser = subparsers.add_parser(
         "runtime",
         help=(
-            "Always-on engineering runtime — production path. "
-            "Subcommands: up / status / circuit / run-service (sibling)."
+            "[PRODUCTION] Always-on engineering runtime. "
+            "Subcommands: up (spawn all workers) / status (diagnostic) / "
+            "circuit reset (clear breaker). Sibling `yule run-service "
+            "<id>` runs a single worker (used by systemd)."
         ),
         description=(
-            "The standalone runtime is the supported production path. "
-            "`runtime up` spawns every implemented worker under one parent "
-            "(single-host); systemd template units run the same workers via "
-            "the sibling `yule run-service <service-id>` command. "
-            "`runtime status` is a read-only diagnostic, `runtime circuit "
-            "reset <id>` clears a tripped breaker. See docs/operations.md."
+            "ALWAYS-ON ENGINEERING RUNTIME — production / single-host path.\n\n"
+            "This is the path that actually processes jobs. Pick one of:\n"
+            "  • `yule runtime up --profile engineering` — single-host. One "
+            "parent supervises the supervisor + research worker + 7 role "
+            "workers + approval worker + obsidian writer + Discord gateway.\n"
+            "  • `systemctl start yule.target` — production. Same workers, "
+            "each as its own systemd unit invoking `yule run-service "
+            "<service-id>`.\n\n"
+            "Subcommand reference:\n"
+            "  yule runtime up [--dry-run]         # spawn / list services\n"
+            "  yule runtime status [--json]        # read-only diagnostic\n"
+            "  yule runtime circuit reset <id>     # clear tripped breaker\n"
+            "  yule run-service <id>               # single-worker entry "
+            "(sibling subcommand; systemd / `runtime up` both call this)\n\n"
+            "Dev-only Discord launcher (`yule discord up`) does NOT replace "
+            "this — it spawns Discord bots without the queue workers. See "
+            "docs/operations.md and deploy/systemd/README.md."
         ),
     )
     runtime_subparsers = runtime_parser.add_subparsers(
@@ -510,7 +532,11 @@ def build_parser() -> argparse.ArgumentParser:
         "up",
         help=(
             "Spawn every implemented worker for a profile under one parent "
-            "process (single-host production / dev). Use `--dry-run` to list."
+            "process (single-host production / dev). Engineering profile = "
+            "supervisor + research_worker + 7 role workers + approval_worker "
+            "+ obsidian_writer + discord_gateway. Use `--dry-run` to list "
+            "without spawning. For multi-host / systemd installs run each "
+            "service via the sibling `yule run-service <id>` command instead."
         ),
     )
     runtime_up_parser.add_argument(
@@ -534,7 +560,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     runtime_status_parser = runtime_subparsers.add_parser(
         "status",
-        help="Read-only runtime status — heartbeat ages + queue summary.",
+        help=(
+            "Read-only runtime diagnostic. Per-service health "
+            "(ALIVE/STALE/UNKNOWN/CIRCUIT_OPEN/RESERVED) + queue counts "
+            "+ recent failures + actionable warnings (with concrete "
+            "restart commands) + a 6-step live smoke checklist."
+        ),
+        description=(
+            "Read-only snapshot of the always-on runtime. Output sections:\n"
+            "  services      health + heartbeat age + handles description\n"
+            "  queue         per-job-type queued / in_progress / failed\n"
+            "  recent failures  most-recent FAILED rows w/ error string\n"
+            "  warnings      STALE/UNKNOWN/circuit-open with the exact "
+            "command to recover (`yule run-service <id>` / `systemctl "
+            "restart …` / `yule runtime circuit reset <id>`)\n"
+            "  live smoke checklist  6-step verification block to copy "
+            "from one screen.\n\n"
+            "Use `--post-discord` to mirror the markdown summary to "
+            "#봇-상태 (idempotent — dedup-key skips identical reposts)."
+        ),
     )
     runtime_status_parser.add_argument(
         "--profile",
@@ -602,7 +646,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_service_parser = subparsers.add_parser(
         "run-service",
-        help="Run a single long-running worker (called by systemd or runtime up).",
+        help=(
+            "Run a single long-running worker by service id (canonical "
+            "entrypoint for systemd template units AND `yule runtime up`). "
+            "Examples: `yule run-service eng-research-worker`, "
+            "`yule run-service eng-role-backend-engineer`, "
+            "`yule run-service eng-obsidian-writer`. Use "
+            "`yule runtime up --dry-run` to list every service id."
+        ),
+        description=(
+            "Single-worker entrypoint. Both `yule runtime up` and the "
+            "systemd template `yule-run-service@<id>.service` invoke this "
+            "command — the surrounding supervision (parent process vs. "
+            "systemd) is the only thing that differs.\n\n"
+            "Service ids come from the inventory in "
+            "src/yule_orchestrator/runtime/services.py. List them with "
+            "`yule runtime up --dry-run`."
+        ),
     )
     run_service_parser.add_argument(
         "service_id",

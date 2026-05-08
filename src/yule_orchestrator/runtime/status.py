@@ -353,8 +353,12 @@ def _build_warnings(
 ) -> list[str]:
     """Surface conditions an operator should act on.
 
-    Kept short — three lines on a 80-col terminal beats a wall of
-    text. Each warning is a single sentence.
+    Each warning is a single sentence and — where the next step is
+    a concrete command — embeds it inline so the operator can copy
+    it without leaving the status screen. M8 strengthening: STALE
+    and UNKNOWN warnings now include the exact command(s) the
+    operator should run to recover (`yule runtime up`,
+    `yule run-service`, or systemd unit names).
     """
 
     warnings: list[str] = []
@@ -367,24 +371,92 @@ def _build_warnings(
         )
     stale = [s for s in services if s.health == HEALTH_STALE]
     if stale:
+        ids = ", ".join(s.service_id for s in stale)
+        # Two recovery paths depending on how the operator is running
+        # the runtime (single-host parent vs. systemd). Prefer naming
+        # both so the hint is correct without asking the operator.
+        first_id = stale[0].service_id
         warnings.append(
-            "stale heartbeat: " + ", ".join(s.service_id for s in stale)
+            f"stale heartbeat: {ids} — restart options: "
+            f"`yule run-service {first_id}` (foreground/dev), "
+            f"`systemctl restart yule-run-service@{first_id}.service` "
+            "(systemd), or `yule runtime up` to respawn the whole "
+            "engineering parent."
         )
     unknown_implemented = [
         s for s in services if s.health == HEALTH_UNKNOWN and s.implemented
     ]
     if unknown_implemented:
+        ids = ", ".join(s.service_id for s in unknown_implemented)
+        first_id = unknown_implemented[0].service_id
         warnings.append(
-            "no heartbeat (worker may not be running): "
-            + ", ".join(s.service_id for s in unknown_implemented)
+            f"no heartbeat (worker likely never started): {ids} — start "
+            f"options: `yule runtime up` (single-host parent spawning all "
+            f"workers) or `yule run-service {first_id}` (one worker "
+            "foreground) or `systemctl start "
+            f"yule-run-service@{first_id}.service` (systemd). Without "
+            "one of these, the queue stays unpicked even though the "
+            "gateway is enqueuing jobs."
         )
     failed_terminal_total = sum(j.failed_terminal for j in job_types)
     if failed_terminal_total > 0:
         warnings.append(
             f"{failed_terminal_total} failed_terminal job(s) — "
-            "operator review required (no automatic retry)"
+            "operator review required (no automatic retry). Use "
+            "`yule runtime status --json` or query the SQLite "
+            "`job_queue` table for full result_json."
         )
     return warnings
+
+
+# ---------------------------------------------------------------------------
+# Live smoke checklist
+# ---------------------------------------------------------------------------
+#
+# A short, deterministic "what to check next" block appended to the
+# text render. Operators see the same screen they used to derive
+# health from, plus the exact commands they should run to confirm a
+# real Discord smoke pass (see docs/discord.md §10).
+
+
+_LIVE_SMOKE_CHECKLIST: Tuple[str, ...] = (
+    "1. `yule runtime up --dry-run` — confirm 12 services planned "
+    "(1 supervisor + 1 research + 7 role + approval + obsidian + "
+    "gateway).",
+    "2. `yule runtime up` (this terminal) or `systemctl start "
+    "yule.target` (systemd) — start the runtime parent / units.",
+    "3. `yule runtime status --profile engineering` — every service "
+    "should be ALIVE; STALE/UNKNOWN warnings list the exact restart "
+    "command.",
+    "4. `#업무-접수` test message → eng-discord-gateway enqueues "
+    "research_collect → eng-research-worker pulls it → role workers "
+    "produce takes (queue counts move through queued→saved).",
+    "5. Reply `이대로 저장` in `#승인-대기` → eng-approval-worker "
+    "ingests reply → eng-obsidian-writer writes vault note. Verify "
+    "with `yule runtime status` (obsidian_write saved += 1) + the "
+    "new file under OBSIDIAN_VAULT_PATH.",
+    "6. Trip a worker on purpose (kill `eng-role-tech-lead`) → status "
+    "must show STALE → restart hint above must list the exact unit "
+    "id. Failure here means the operator hint regressed.",
+)
+
+
+def render_live_smoke_checklist(
+    report: Optional[RuntimeStatusReport] = None,
+) -> str:
+    """Return the live-smoke checklist as a numbered text block.
+
+    *report* is accepted but currently unused — passing it lets a
+    future revision tailor lines to the actual deployment (e.g. omit
+    the `systemctl` line on macOS dev hosts). Today the block is
+    deployment-agnostic so the operator gets the same checklist
+    whichever environment they run from.
+    """
+
+    lines = ["live smoke checklist:"]
+    for item in _LIVE_SMOKE_CHECKLIST:
+        lines.append(f"  {item}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +465,21 @@ def _build_warnings(
 
 
 def render_runtime_status_text(report: RuntimeStatusReport) -> str:
-    """Human-readable single-screen render."""
+    """Human-readable single-screen render.
+
+    Section order:
+
+    1. ``profile`` / ``generated_at`` header.
+    2. ``services`` — one line per service: health, id, role, queue
+       job_type, heartbeat age, pid + a short description sub-line so
+       the operator sees what the service actually does.
+    3. ``queue`` — per-job-type summary.
+    4. ``recent failures`` — most recent first.
+    5. ``warnings`` — actionable next-step (with exact commands for
+       STALE/UNKNOWN/circuit-open).
+    6. ``live smoke checklist`` — deterministic 6-step verification
+       block so the operator can copy commands from one screen.
+    """
 
     lines: list[str] = []
     lines.append(f"profile: {report.profile}")
@@ -409,6 +495,8 @@ def render_runtime_status_text(report: RuntimeStatusReport) -> str:
     else:
         for svc in report.services:
             lines.append("  " + _format_service_line(svc))
+            if svc.description:
+                lines.append("    handles: " + svc.description)
     lines.append("")
 
     lines.append("queue:")
@@ -431,6 +519,9 @@ def render_runtime_status_text(report: RuntimeStatusReport) -> str:
         lines.append("warnings:")
         for warning in report.warnings:
             lines.append(f"  ! {warning}")
+
+    lines.append("")
+    lines.append(render_live_smoke_checklist(report))
 
     return "\n".join(lines)
 
@@ -570,6 +661,7 @@ def _fmt_unix(value: float) -> str:
 __all__ = (
     "FailedJobSummary",
     "HEALTH_ALIVE",
+    "HEALTH_CIRCUIT_OPEN",
     "HEALTH_RESERVED",
     "HEALTH_STALE",
     "HEALTH_UNKNOWN",
@@ -577,6 +669,7 @@ __all__ = (
     "RuntimeStatusReport",
     "ServiceStatus",
     "build_runtime_status",
+    "render_live_smoke_checklist",
     "render_runtime_status_json",
     "render_runtime_status_text",
 )

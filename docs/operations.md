@@ -1,15 +1,16 @@
 # Operations — Always-on engineering runtime
 
-이 문서는 engineering-agent 를 상시 서비스로 운영하기 위한 가이드다. M6.0 부터는 `yule runtime up --profile engineering` 한 명령으로 worker 전체를 단일 부모 process 아래 띄울 수 있고, production 배포는 동일 entrypoint (`yule run-service <id>`) 를 systemd unit 으로 호출한다. 기존 `yule discord up` 은 dev legacy launcher 로 유지된다 (deprecate 안 함).
+이 문서는 engineering-agent 를 상시 서비스로 운영하기 위한 가이드다. **M8 이후 운영 1급 경로는 `yule runtime up` / `yule run-service` / `yule runtime status` 세 가지뿐이다.** `yule discord up` 은 dev/test launcher 로만 남고, **queue 워커를 띄우지 않으므로 단독으로는 실제 작업을 처리할 수 없다.** 운영자가 어떤 프로세스를 켜야 queue 가 실제 처리되는지 헷갈리지 않게 — production 경로와 dev 경로를 한눈에 구분할 수 있는 표를 §0.1 에 둔다.
 
-## 0. 빠른 시작 (M6.0)
+## 0. 빠른 시작 (M8)
 
 dev / 단일 호스트:
 
 ```bash
 yule runtime up --dry-run               # 띄울 service 목록 확인 (실제 spawn 없음)
-yule runtime up                         # 전체 engineering runtime 부팅
-yule run-service eng-research-worker    # 단일 worker (CLI 또는 systemd 가 호출)
+yule runtime up                         # 전체 engineering runtime 부팅 (12 services)
+yule runtime status                     # 헬스 + 큐 + 실패 + 라이브 스모크 체크리스트
+yule run-service eng-research-worker    # 단일 worker (systemd 도 같은 명령을 호출)
 ```
 
 production (systemd):
@@ -21,6 +22,47 @@ journalctl -u yule-run-service@eng-supervisor-watch.service -f
 ```
 
 자세한 systemd unit / 설치 절차는 [`deploy/systemd/README.md`](../deploy/systemd/README.md).
+
+### 0.1. 운영 경로 vs. dev 경로
+
+| | `yule runtime up` (production) | `yule discord up` (dev only) |
+|---|---|---|
+| Discord 봇 spawn | ✅ gateway + 7 멤버 | ✅ gateway + 7 멤버 + planning |
+| queue 워커 spawn | ✅ research / role / approval / obsidian-writer / supervisor | ❌ 없음 — gateway 가 enqueue 한 job 은 unpicked |
+| 실제 작업 처리 | ✅ end-to-end | ❌ Discord 발화는 보이지만 결과가 안 나온다 |
+| systemd 동등 | `yule.target` (각 서비스 = `yule-run-service@<id>.service`) | 없음 |
+| 사용 시점 | 항상 (단일 호스트 / production) | Discord 발화만 빠르게 보고 싶은 dev smoke |
+
+**operator 결정 트리:**
+
+- 작업이 실제로 처리돼야 한다 → `yule runtime up` (또는 systemd `yule.target`).
+- Discord 발화만 확인하고 queue 는 신경 안 써도 된다 → `yule discord up`.
+- 단일 worker 만 띄우고 싶다 → `yule run-service <service-id>` (또는 `systemctl start yule-run-service@<id>.service`).
+
+### 0.2. 서비스 한눈에 보기
+
+`yule runtime up` (engineering profile) 이 띄우는 12 개 서비스 — 각 행이 어떤 job 을 처리하는지:
+
+| service id | kind | 처리하는 큐 / 작업 |
+|---|---|---|
+| `eng-supervisor-watch` | supervisor | 큐 컨슈머 아님. heartbeat sweep + lease reaper. |
+| `eng-research-worker` | research_worker | `research_collect` 큐 — auto_collect → research_pack 적재. |
+| `eng-role-tech-lead` | role_worker | `role_take` 큐 (role=tech-lead). |
+| `eng-role-backend-engineer` | role_worker | `role_take` 큐 (role=backend-engineer). |
+| `eng-role-qa-engineer` | role_worker | `role_take` 큐 (role=qa-engineer). |
+| `eng-role-devops-engineer` | role_worker | `role_take` 큐 (role=devops-engineer). |
+| `eng-role-ai-engineer` | role_worker | `role_take` 큐 (role=ai-engineer). |
+| `eng-role-frontend-engineer` | role_worker | `role_take` 큐 (role=frontend-engineer). |
+| `eng-role-product-designer` | role_worker | `role_take` 큐 (role=product-designer). |
+| `eng-approval-worker` | approval_worker | `approval_post` 큐 — `#승인-대기` 카드 게시 + 답신 인입. |
+| `eng-obsidian-writer` | obsidian_writer | `obsidian_write` 큐 — vault 저장 (approval guard 적용). |
+| `eng-discord-gateway` | discord_gateway | 큐 컨슈머 아님. `#업무-접수` listener — research/role/approval/obsidian_write 큐에 enqueue. |
+
+`yule runtime status` 의 ALIVE/STALE/UNKNOWN 라벨 + warnings 섹션이 위 표를 그대로 따른다. STALE/UNKNOWN 이 뜨면 status warnings 가 정확한 복구 명령을 함께 출력한다 (`yule run-service <id>` / `systemctl restart …` / `yule runtime up`).
+
+### 0.3. `yule runtime status` 의 라이브 스모크 체크리스트
+
+`yule runtime status` 출력 끝에 6-step 라이브 스모크 체크리스트가 항상 포함된다. operator 가 한 화면에서 다음 명령을 그대로 복사해 검증할 수 있다 — `dry-run` → `up` → `status` → `#업무-접수 인입` → `#승인-대기 답신` → 의도적 worker kill 회귀.
 
 ## 1. 핵심 원칙
 
