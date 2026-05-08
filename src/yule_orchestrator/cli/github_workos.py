@@ -357,7 +357,7 @@ def _fetch_issue_payload(
                 "--repo",
                 repo,
                 "--json",
-                "number,title,body,labels,user,html_url,state",
+                "number,title,body,labels,author,url,state",
             ],
             capture_output=True,
             text=True,
@@ -375,9 +375,21 @@ def _fetch_issue_payload(
         )
         return None
     try:
-        return json.loads(completed.stdout)
+        payload = json.loads(completed.stdout)
     except ValueError:
         return None
+    if isinstance(payload, dict):
+        # `gh issue view` returns GraphQL-shaped keys (`author`, `url`),
+        # while the WorkOS issue boundary consumes REST/webhook-shaped keys
+        # (`user`, `html_url`). Normalize here so the rest of the pipeline
+        # stays independent from the CLI transport.
+        author = payload.get("author")
+        if "user" not in payload and isinstance(author, Mapping):
+            payload["user"] = author
+        url = payload.get("url")
+        if "html_url" not in payload and isinstance(url, str):
+            payload["html_url"] = url
+    return payload
 
 
 def _triage_plan_payload(
