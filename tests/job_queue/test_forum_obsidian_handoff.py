@@ -432,5 +432,141 @@ class EndToEndApprovalToObsidianWriteTests(_HandoffFixture):
         self.assertEqual(payload["approved_by"], "masterway")
 
 
+# ---------------------------------------------------------------------------
+# A-M10a — agent-ops audit recording
+# ---------------------------------------------------------------------------
+
+
+class AgentOpsAuditTests(_HandoffFixture):
+    """Every handoff decision (queued / dedup / failure) records an
+    :mod:`agents.lifecycle.agent_ops_log` entry on session.extra so
+    the operator can reconstruct "왜 이 thread 에서 카드가 새로 안
+    뜨고 dedup 됐지?" without scraping Discord.
+    """
+
+    def _read_audit(self, session) -> list:
+        from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+            read_agent_ops_audit,
+        )
+
+        return list(read_agent_ops_audit(session))
+
+    def test_approval_card_queued_records_l3_audit_entry(self) -> None:
+        session = _open_session()
+        message = _forum_thread_message()
+        _run(
+            route_forum_obsidian_save_request(
+                message=message,
+                text=message.content,
+                queue=self.queue,
+                approval_worker=self.approval_worker,
+                session_lister=lambda **_: [session],
+            )
+        )
+        rows = self._read_audit(session)
+        self.assertGreaterEqual(len(rows), 1)
+        # The L3 (knowledge_note_finalize) entry is the human-handoff
+        # marker. Producer also stamps the topic_key from the ledger.
+        levels = {row.autonomy_level for row in rows}
+        self.assertIn("L3_HUMAN_APPROVAL", levels)
+        finalize_rows = [
+            r for r in rows if r.action == "knowledge_note_finalize"
+        ]
+        self.assertEqual(len(finalize_rows), 1)
+        self.assertEqual(finalize_rows[0].outcome, "approval_card_queued")
+        self.assertTrue(finalize_rows[0].topic_key)
+
+    def test_topic_pending_dedup_records_l1_audit_entry(self) -> None:
+        from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+            SKIPPED_TOPIC_PENDING_APPROVAL,
+        )
+
+        session = _open_session()
+        message = _forum_thread_message()
+        _run(
+            route_forum_obsidian_save_request(
+                message=message,
+                text=message.content,
+                queue=self.queue,
+                approval_worker=self.approval_worker,
+                session_lister=lambda **_: [session],
+            )
+        )
+        # Second pass — same thread, fresh message id; should hit
+        # the topic-level dedup branch.
+        message2 = _forum_thread_message(message_id=60002)
+        second = _run(
+            route_forum_obsidian_save_request(
+                message=message2,
+                text=message2.content,
+                queue=self.queue,
+                approval_worker=self.approval_worker,
+                session_lister=lambda **_: [session],
+            )
+        )
+        self.assertIn(
+            second.skipped_reason,
+            {SKIPPED_TOPIC_PENDING_APPROVAL, SKIPPED_DUPLICATE_APPROVAL},
+        )
+        rows = self._read_audit(session)
+        # At least one L1 forum_handoff_decision entry alongside the
+        # original L3 approval entry.
+        l1_rows = [
+            r
+            for r in rows
+            if r.autonomy_level == "L1_AUTO_RECORD_REQUIRED"
+            and r.action == "forum_handoff_decision"
+        ]
+        self.assertGreaterEqual(len(l1_rows), 1)
+        # Outcome string carries the dedup reason for grep-ability.
+        outcomes = " | ".join(r.outcome for r in l1_rows)
+        self.assertTrue(
+            "topic_pending" in outcomes
+            or "topic_obsidian_in_flight" in outcomes
+            or "duplicate_approval" in outcomes
+        )
+
+    def test_approval_channel_unset_records_failure_entry(self) -> None:
+        from yule_orchestrator.agents.job_queue.approval_worker import (
+            ApprovalWorker as Worker,
+        )
+
+        async def post_fn(_request, _rendered):
+            return {"posted_message_id": 1, "channel_id": 0}
+
+        # channel_resolver returning None forces approval_channel_unset.
+        worker = Worker(
+            queue=self.queue,
+            heartbeats=self.heartbeats,
+            post_fn=post_fn,
+            channel_resolver=lambda: None,
+        )
+        session = _open_session()
+        message = _forum_thread_message()
+        outcome = _run(
+            route_forum_obsidian_save_request(
+                message=message,
+                text=message.content,
+                queue=self.queue,
+                approval_worker=worker,
+                session_lister=lambda **_: [session],
+            )
+        )
+        self.assertEqual(
+            outcome.skipped_reason, SKIPPED_APPROVAL_CHANNEL_UNSET
+        )
+        rows = self._read_audit(session)
+        l1_rows = [
+            r
+            for r in rows
+            if r.autonomy_level == "L1_AUTO_RECORD_REQUIRED"
+        ]
+        self.assertGreaterEqual(len(l1_rows), 1)
+        # Failure outcome carries the diagnostic string.
+        self.assertTrue(
+            any("approval_channel_unset" in r.outcome for r in l1_rows)
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

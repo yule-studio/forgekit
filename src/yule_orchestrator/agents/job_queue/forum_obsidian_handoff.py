@@ -616,9 +616,23 @@ async def route_forum_obsidian_save_request(
         reason, row = dedup
         if reason == "topic_saved" and not revision_requested:
             vault_path = _vault_path_from_row(row) or "vault"
+            existing_job_id = getattr(row, "job_id", None)
+            _record_handoff_audit(
+                session=session,
+                outcome=f"skipped:topic_already_saved (vault={vault_path})",
+                summary=(
+                    f"이 주제(`{ledger_record.topic_key}`)는 이미 vault 에 "
+                    f"저장됨 — 신규 승인 카드 게시 생략"
+                ),
+                references=(vault_path,) if vault_path else (),
+                job_id=existing_job_id,
+                topic_key=ledger_record.topic_key,
+                requires_human=False,
+                session_updater=session_updater,
+            )
             return ForumObsidianHandoffOutcome(
                 handled=True,
-                approval_job_id=getattr(row, "job_id", None),
+                approval_job_id=existing_job_id,
                 skipped_reason=SKIPPED_TOPIC_ALREADY_SAVED,
                 response_template=RESPONSE_TOPIC_ALREADY_SAVED.format(
                     topic_key=ledger_record.topic_key,
@@ -626,13 +640,26 @@ async def route_forum_obsidian_save_request(
                 ),
             )
         if reason in {"topic_pending", "topic_obsidian_in_flight"}:
+            existing_job_id = getattr(row, "job_id", None)
+            _record_handoff_audit(
+                session=session,
+                outcome=f"skipped:{reason}",
+                summary=(
+                    f"이 주제(`{ledger_record.topic_key}`)는 이미 진행 중인 "
+                    f"승인/저장 잡 존재 — 신규 카드 게시 생략"
+                ),
+                job_id=existing_job_id,
+                topic_key=ledger_record.topic_key,
+                requires_human=False,
+                session_updater=session_updater,
+            )
             return ForumObsidianHandoffOutcome(
                 handled=True,
-                approval_job_id=getattr(row, "job_id", None),
+                approval_job_id=existing_job_id,
                 skipped_reason=SKIPPED_TOPIC_PENDING_APPROVAL,
                 response_template=RESPONSE_TOPIC_PENDING_APPROVAL.format(
                     topic_key=ledger_record.topic_key,
-                    approval_job_id=getattr(row, "job_id", "?") or "?",
+                    approval_job_id=existing_job_id or "?",
                 ),
             )
         # topic_saved + revision_requested → fall through and enqueue
@@ -710,9 +737,21 @@ async def route_forum_obsidian_save_request(
         source_message_id=request.source_message_id,
     )
     if existing is not None:
+        existing_job_id = getattr(existing, "job_id", None)
+        _record_handoff_audit(
+            session=session,
+            outcome="skipped:duplicate_approval_in_flight",
+            summary=(
+                f"같은 메시지 id 의 승인 카드가 이미 큐에 존재 — 중복 게시 차단"
+            ),
+            job_id=existing_job_id,
+            topic_key=ledger_record.topic_key,
+            requires_human=False,
+            session_updater=session_updater,
+        )
         return ForumObsidianHandoffOutcome(
             handled=True,
-            approval_job_id=getattr(existing, "job_id", None),
+            approval_job_id=existing_job_id,
             skipped_reason=SKIPPED_DUPLICATE_APPROVAL,
             response_template=RESPONSE_APPROVAL_DUPLICATE,
         )
@@ -723,6 +762,14 @@ async def route_forum_obsidian_save_request(
         logger.warning(
             "forum obsidian handoff: ApprovalWorker.run_one raised",
             exc_info=True,
+        )
+        _record_handoff_audit(
+            session=session,
+            outcome=f"failure:approval_worker_raised:{_short_error(exc)}",
+            summary="승인 카드 게시 시도 중 ApprovalWorker 가 예외 발생",
+            topic_key=ledger_record.topic_key,
+            requires_human=False,
+            session_updater=session_updater,
         )
         return ForumObsidianHandoffOutcome(
             handled=True,
@@ -736,6 +783,15 @@ async def route_forum_obsidian_save_request(
     skipped = getattr(outcome, "skipped_reason", None)
 
     if skipped == "duplicate_in_flight":
+        _record_handoff_audit(
+            session=session,
+            outcome="skipped:duplicate_approval_in_flight (worker)",
+            summary="ApprovalWorker idempotency 가 이미 게시된 카드 인식",
+            job_id=job_id,
+            topic_key=ledger_record.topic_key,
+            requires_human=False,
+            session_updater=session_updater,
+        )
         return ForumObsidianHandoffOutcome(
             handled=True,
             approval_job_id=job_id,
@@ -743,6 +799,15 @@ async def route_forum_obsidian_save_request(
             response_template=RESPONSE_APPROVAL_DUPLICATE,
         )
     if skipped == "approval_channel_unset":
+        _record_handoff_audit(
+            session=session,
+            outcome="failure:approval_channel_unset",
+            summary="`#승인-대기` 채널 환경설정 누락으로 카드 게시 실패",
+            job_id=job_id,
+            topic_key=ledger_record.topic_key,
+            requires_human=False,
+            session_updater=session_updater,
+        )
         return ForumObsidianHandoffOutcome(
             handled=True,
             approval_job_id=job_id,
@@ -751,6 +816,15 @@ async def route_forum_obsidian_save_request(
         )
     if skipped is not None:
         # claimed_by_other_worker / unknown — surface as friendly fail.
+        _record_handoff_audit(
+            session=session,
+            outcome=f"failure:{skipped}",
+            summary="승인 카드 게시가 알 수 없는 사유로 실패",
+            job_id=job_id,
+            topic_key=ledger_record.topic_key,
+            requires_human=False,
+            session_updater=session_updater,
+        )
         return ForumObsidianHandoffOutcome(
             handled=True,
             approval_job_id=job_id,
@@ -758,6 +832,19 @@ async def route_forum_obsidian_save_request(
             response_template=RESPONSE_APPROVAL_FAILED,
             error=skipped,
         )
+
+    _record_handoff_audit(
+        session=session,
+        outcome="approval_card_queued",
+        summary=(
+            f"운영-리서치 thread 의 knowledge note 저장 요청을 `#승인-대기` 에 "
+            f"카드로 게시 (topic=`{ledger_record.topic_key}`)"
+        ),
+        job_id=job_id,
+        topic_key=ledger_record.topic_key,
+        requires_human=True,
+        session_updater=session_updater,
+    )
 
     return ForumObsidianHandoffOutcome(
         handled=True,
@@ -982,6 +1069,107 @@ def _persist_ledger(
     except Exception:  # noqa: BLE001
         logger.warning(
             "forum obsidian handoff: ledger persist raised", exc_info=True
+        )
+
+
+# ---------------------------------------------------------------------------
+# A-M10a — agent-ops audit shim
+# ---------------------------------------------------------------------------
+
+
+def _record_handoff_audit(
+    *,
+    session: Any,
+    outcome: str,
+    summary: str,
+    references: Sequence[str] = (),
+    job_id: Optional[str] = None,
+    topic_key: Optional[str] = None,
+    requires_human: bool,
+    session_updater: Optional[Callable[..., Any]] = None,
+) -> None:
+    """Append an agent-ops entry for one forum-handoff decision.
+
+    The audit landing point is ``session.extra['agent_ops_audit']``
+    — same shape as :mod:`agents.lifecycle.agent_ops_log` defines.
+    Failure is swallowed; the audit is observability and must not
+    block the friendly Discord reply.
+
+    *requires_human* controls the autonomy level we stamp on the
+    entry: when True (the topic requires a human approval card)
+    we record the decision under the **L3** action surface so an
+    operator scanning the audit can see "이 thread 는 사람 승인 단계로
+    넘겼다" without inspecting the Discord channel. When False
+    (skip outcomes that resolved without a card going out) we
+    record the L1 forum-handoff-decision audit instead.
+    """
+
+    if session is None:
+        return
+
+    try:
+        from ..lifecycle.agent_ops_log import (
+            append_agent_ops_audit,
+            build_agent_ops_entry,
+        )
+        from ..lifecycle.autonomy_policy import (
+            ACTION_FORUM_HANDOFF_DECISION,
+            ACTION_KNOWLEDGE_NOTE_FINALIZE,
+            AutonomyContext,
+            decide_autonomy,
+        )
+        from dataclasses import replace as _replace
+
+        try:
+            from ..workflow_state import update_session as _default_update
+        except Exception:  # noqa: BLE001
+            _default_update = None  # type: ignore[assignment]
+    except Exception:  # noqa: BLE001
+        return
+
+    action = (
+        ACTION_KNOWLEDGE_NOTE_FINALIZE
+        if requires_human
+        else ACTION_FORUM_HANDOFF_DECISION
+    )
+    decision = decide_autonomy(
+        AutonomyContext(
+            action=action,
+            session_id=str(getattr(session, "session_id", "") or ""),
+            job_id=job_id,
+            topic_key=topic_key,
+            summary=summary,
+        )
+    )
+    if not decision.audit_required:
+        return
+
+    entry = build_agent_ops_entry(
+        decision=decision,
+        outcome=outcome,
+        summary=summary,
+        references=references,
+        job_id=job_id,
+    )
+    extra_in = getattr(session, "extra", None) or {}
+    new_extra = append_agent_ops_audit(extra_in, entry)
+
+    try:
+        updated = _replace(session, extra=new_extra)
+    except TypeError:
+        # SimpleNamespace-shaped session in tests — mutate in place.
+        if isinstance(getattr(session, "extra", None), dict):
+            session.extra.update(new_extra)
+        return
+    if _default_update is None and session_updater is None:
+        return
+    updater = session_updater or _default_update
+    try:
+        updater(updated, now=datetime.now(tz=timezone.utc))
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "forum obsidian handoff: agent-ops audit persist raised",
+            exc_info=True,
         )
 
 
