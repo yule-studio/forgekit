@@ -610,16 +610,30 @@ _DEFAULT_RENDER_KINDS: frozenset[str] = frozenset(
 def default_render_fn(request: ObsidianWriteRequest) -> Any:
     """Default render for ``research`` / ``decision`` / ``knowledge``.
 
-    Reuses :func:`agents.obsidian.export.render_research_note`, which
-    in turn delegates to :func:`agents.obsidian.knowledge_writer.render_knowledge_note`
-    when ``kind == "knowledge"``. Approval guard stays in
-    :meth:`ObsidianWriterWorker.process_job`; this helper is only
-    reached for knowledge requests after an approval triple
-    (``approval_id`` / ``approved_by`` / ``approved_at``) is present.
+    Approval guard stays in :meth:`ObsidianWriterWorker.process_job`;
+    this helper is only reached for knowledge requests after an
+    approval triple (``approval_id`` / ``approved_by`` /
+    ``approved_at``) is present.
 
-    Raises :class:`ObsidianRenderError` for unsupported kinds (meeting
-    / work-report) so a producer that forgets to inject
-    ``render_fn`` fails loudly instead of writing the wrong content.
+    Pack handling differs by kind (A-M7.5f):
+
+      * ``research`` / ``decision`` — ``session.extra['research_pack']``
+        is **required**. Both kinds quote sources / findings directly
+        and a missing pack means the rendered note has no body
+        worth writing.
+      * ``knowledge`` — pack is **optional**. The forum-handoff
+        producer enqueues knowledge writes for sessions whose pack
+        was never collected (operator just wants to capture the
+        thread's consensus). When the pack is missing we call
+        :func:`agents.obsidian.knowledge_writer.render_knowledge_note`
+        directly with whatever context the request + session carry
+        (title, prompt, source thread metadata) so the note still
+        lands in the vault with audit-grade frontmatter.
+
+    Raises :class:`ObsidianRenderError` for unsupported kinds
+    (``meeting`` / ``work-report``) so a producer that forgets to
+    inject ``render_fn`` fails loudly instead of writing the wrong
+    content.
     """
 
     if request.note_kind not in _DEFAULT_RENDER_KINDS:
@@ -639,19 +653,37 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
         raise ObsidianRenderError(
             f"session {request.session_id!r} not found; default render needs it"
         )
+
     raw_pack = (session.extra or {}).get("research_pack")
-    if not isinstance(raw_pack, Mapping) or not raw_pack:
+    pack = (
+        pack_from_dict(dict(raw_pack))
+        if isinstance(raw_pack, Mapping) and raw_pack
+        else None
+    )
+
+    if request.note_kind == NOTE_KIND_KNOWLEDGE:
+        # A-M7.5f no-pack fallback. Operators sometimes ask to save
+        # a thread's consensus before any research_pack is collected
+        # (forum handoff allows this). Hand whatever context we have
+        # to render_knowledge_note; the source-thread metadata
+        # carried in request.metadata stamps the frontmatter so the
+        # vault note remains auditable even without a pack.
+        from ..obsidian.knowledge_writer import render_knowledge_note
+
+        return render_knowledge_note(
+            pack=pack,
+            session=session,
+            original_prompt=getattr(session, "prompt", None),
+            title=request.title or None,
+            project=request.project,
+            layout=request.layout,
+        )
+
+    # research / decision — pack is mandatory, same as before.
+    if pack is None:
         raise ObsidianRenderError(
             "default render needs session.extra['research_pack']"
         )
-    pack = pack_from_dict(dict(raw_pack))
-
-    # ``render_research_note`` accepts ``project`` / ``layout`` (not
-    # ``*_override``) — the previous wiring used the wrong kwarg
-    # names which would have raised TypeError if a research/decision
-    # request had ever reached this default. A-M7.5e fixes that
-    # along with knowledge support; both names map to the same
-    # render-time inputs.
     return render_research_note(
         pack=pack,
         session=session,

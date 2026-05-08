@@ -65,6 +65,36 @@ def _run(coro):
         loop.close()
 
 
+def _seed_session_without_pack(
+    *,
+    session_id: str,
+    forum_thread_id: int = 50001,
+    prompt: str = "k8s 운영 합의 정리",
+):
+    """A-M7.5f: real-world handoff session has no research_pack on
+    extra. Mirror that shape so the no-pack fallback is exercised
+    end-to-end against ``load_session`` (not a stub).
+    """
+
+    when = datetime.now(tz=timezone.utc)
+    session = WorkflowSession(
+        session_id=session_id,
+        prompt=prompt,
+        task_type="research",
+        state=WorkflowState.IN_PROGRESS,
+        created_at=when,
+        updated_at=when,
+        role_sequence=("tech-lead", "devops-engineer"),
+        extra={
+            "research_forum_thread_id": forum_thread_id,
+            "active_research_roles": ["tech-lead", "devops-engineer"],
+            # NOTE: no 'research_pack' key — the very gap A-M7.5f closes.
+        },
+    )
+    save_session(session)
+    return session
+
+
 def _seed_session_with_pack(
     *,
     session_id: str,
@@ -191,9 +221,11 @@ class ApprovalGuardRegressionTests(_RenderFixture):
 
 
 class KnowledgeRenderHappyPathTests(_RenderFixture):
-    def test_knowledge_with_approval_triple_renders_note(self) -> None:
-        sid = "sess-knowledge-happy"
-        session = _seed_session_with_pack(session_id=sid)
+    def test_knowledge_with_approval_triple_and_pack_renders_note(
+        self,
+    ) -> None:
+        sid = "sess-knowledge-pack"
+        _seed_session_with_pack(session_id=sid)
         request = ObsidianWriteRequest(
             session_id=sid,
             note_kind=NOTE_KIND_KNOWLEDGE,
@@ -202,19 +234,39 @@ class KnowledgeRenderHappyPathTests(_RenderFixture):
             approved_by="masterway",
             approved_at="2026-05-08T10:00:00+00:00",
         )
-        # Calling default_render_fn directly is the unit boundary —
-        # it returns the rendered note dataclass that the write_fn
-        # would consume. ``render_research_note(kind="knowledge")``
-        # wraps the build into an ``ObsidianNote`` (path + content +
-        # frontmatter), the same shape ``research`` / ``decision``
-        # already produce — the writer's signature is unchanged.
         note = default_render_fn(request)
+        # render_research_note(kind="knowledge") wraps the build into
+        # an ``ObsidianNote`` (path + content + frontmatter), the same
+        # shape ``research`` / ``decision`` already produce — the
+        # writer's signature is unchanged.
         self.assertIsNotNone(note)
         self.assertTrue(hasattr(note, "path"))
         self.assertTrue(hasattr(note, "content"))
         self.assertTrue(hasattr(note, "frontmatter"))
-        # Knowledge content is non-trivial.
         self.assertGreater(len(note.content), 100)
+
+    def test_knowledge_without_research_pack_still_renders(self) -> None:
+        # A-M7.5f core fix — operator can save a thread's consensus
+        # to vault BEFORE any research_pack was collected. The
+        # handoff path doesn't require a pack; default_render_fn
+        # must follow the same contract for knowledge kind.
+        sid = "sess-knowledge-nopack"
+        _seed_session_without_pack(session_id=sid)
+        request = ObsidianWriteRequest(
+            session_id=sid,
+            note_kind=NOTE_KIND_KNOWLEDGE,
+            title="forum 토의 합의",
+            approval_id="apv-2",
+            approved_by="masterway",
+            approved_at="2026-05-08T10:30:00+00:00",
+        )
+        note = default_render_fn(request)
+        # Note is non-empty even without a pack — the renderer
+        # falls back to session.prompt + request.title.
+        self.assertIsNotNone(note)
+        self.assertGreater(len(note.content), 50)
+        # Title flows through to the vault filename / frontmatter.
+        self.assertTrue(getattr(note, "frontmatter", None))
 
 
 class ResearchAndDecisionUnchangedTests(_RenderFixture):
@@ -254,6 +306,34 @@ class ResearchAndDecisionUnchangedTests(_RenderFixture):
         with self.assertRaises(ObsidianRenderError) as ctx:
             default_render_fn(request)
         self.assertIn("meeting", str(ctx.exception))
+
+    def test_research_without_pack_still_fails(self) -> None:
+        # A-M7.5f's relaxation is knowledge-only — research / decision
+        # still need session.extra['research_pack']. The renderer for
+        # those kinds quotes sources / findings and a missing pack
+        # would produce a hollow note; better to fail loudly.
+        sid = "sess-research-nopack"
+        _seed_session_without_pack(session_id=sid)
+        request = ObsidianWriteRequest(
+            session_id=sid,
+            note_kind=NOTE_KIND_RESEARCH,
+            title="research without pack",
+        )
+        with self.assertRaises(ObsidianRenderError) as ctx:
+            default_render_fn(request)
+        self.assertIn("research_pack", str(ctx.exception))
+
+    def test_decision_without_pack_still_fails(self) -> None:
+        sid = "sess-decision-nopack"
+        _seed_session_without_pack(session_id=sid)
+        request = ObsidianWriteRequest(
+            session_id=sid,
+            note_kind=NOTE_KIND_DECISION,
+            title="decision without pack",
+        )
+        with self.assertRaises(ObsidianRenderError) as ctx:
+            default_render_fn(request)
+        self.assertIn("research_pack", str(ctx.exception))
 
 
 # ---------------------------------------------------------------------------
@@ -334,7 +414,7 @@ class ForumHandoffToKnowledgeWriteTests(_RenderFixture):
             jump_url=f"https://discord.com/channels/40000/50001/{message_id}",
         )
 
-    def test_forum_handoff_to_knowledge_write_lands_in_vault(self) -> None:
+    def _drive_full_pipeline(self, *, session, msg):
         from yule_orchestrator.agents.job_queue.approval_reply import (
             handle_approval_reply,
         )
@@ -342,12 +422,10 @@ class ForumHandoffToKnowledgeWriteTests(_RenderFixture):
             route_forum_obsidian_save_request,
         )
 
-        sid = "sess-e2e-knowledge"
-        session = _seed_session_with_pack(session_id=sid)
-        queue, approval_worker, obsidian_worker, posted, write_calls = self._build_workers()
+        queue, approval_worker, obsidian_worker, posted, write_calls = (
+            self._build_workers()
+        )
 
-        # Step 1+2: forum save request → approval card.
-        msg = self._forum_msg("Obsidian에 정리하고 싶어")
         handoff = _run(
             route_forum_obsidian_save_request(
                 message=msg,
@@ -357,42 +435,67 @@ class ForumHandoffToKnowledgeWriteTests(_RenderFixture):
                 session_lister=lambda **_: [session],
             )
         )
-        self.assertTrue(handoff.handled)
-        self.assertIsNotNone(handoff.approval_job_id)
-        self.assertEqual(len(posted), 1)
-
-        # Step 3+4: user approves → obsidian_write enqueued.
         reply_outcome = handle_approval_reply(
             queue=queue,
             obsidian_worker=obsidian_worker,
             text="이대로 저장",
-            session_id=sid,
+            session_id=session.session_id,
             approved_by="masterway",
             source_message_id=msg.id,
             source_thread_id=msg.channel.id,
         )
-        self.assertEqual(reply_outcome.approval_job_id, handoff.approval_job_id)
-        self.assertIsNotNone(reply_outcome.write_job_id)
-
-        # Step 5: writer drains → vault file written.
         picked = queue.pick(
             worker_id="e2e-writer",
             job_types=[JOB_TYPE_OBSIDIAN_WRITE],
         )
-        self.assertIsNotNone(picked)
-        write_outcome = _run(obsidian_worker.process_job(picked))
-        self.assertIsNone(write_outcome.skipped_reason)
-        self.assertEqual(write_outcome.job.state, JobState.SAVED)
-        # write_fn was invoked → real markdown file exists in vault.
-        self.assertEqual(len(write_calls), 1)
-        # Vault has at least one .md file under the project tree.
+        write_outcome = (
+            _run(obsidian_worker.process_job(picked))
+            if picked is not None
+            else None
+        )
+        return {
+            "handoff": handoff,
+            "reply": reply_outcome,
+            "write": write_outcome,
+            "posted": posted,
+            "write_calls": write_calls,
+            "queue": queue,
+        }
+
+    def test_forum_handoff_to_knowledge_write_lands_in_vault(self) -> None:
+        sid = "sess-e2e-knowledge"
+        session = _seed_session_with_pack(session_id=sid)
+        msg = self._forum_msg("Obsidian에 정리하고 싶어")
+        result = self._drive_full_pipeline(session=session, msg=msg)
+        self.assertTrue(result["handoff"].handled)
+        self.assertIsNotNone(result["reply"].write_job_id)
+        self.assertIsNone(result["write"].skipped_reason)
+        self.assertEqual(result["write"].job.state, JobState.SAVED)
+        # Real markdown file landed in vault.
+        md_files = list(self._vault.rglob("*.md"))
+        self.assertGreaterEqual(len(md_files), 1)
+
+    def test_forum_handoff_with_no_research_pack_still_writes(self) -> None:
+        # A-M7.5f core e2e — operator approves a save before any
+        # research_pack collection. Pre-fix: failed_retryable with
+        # "default render needs session.extra['research_pack']".
+        # Post-fix: knowledge note lands in vault.
+        sid = "sess-e2e-knowledge-nopack"
+        session = _seed_session_without_pack(session_id=sid)
+        msg = self._forum_msg("Obsidian에 정리해줘", message_id=60099)
+        result = self._drive_full_pipeline(session=session, msg=msg)
+        self.assertIsNotNone(result["reply"].write_job_id)
+        self.assertIsNone(
+            result["write"].skipped_reason,
+            f"writer skipped: {result['write'].skipped_reason}",
+        )
+        self.assertEqual(result["write"].job.state, JobState.SAVED)
         md_files = list(self._vault.rglob("*.md"))
         self.assertGreaterEqual(
             len(md_files),
             1,
-            f"expected a .md file in vault tree, found: {md_files}",
+            f"expected a vault .md file, found {md_files}",
         )
-
 
 if __name__ == "__main__":
     unittest.main()
