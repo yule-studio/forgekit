@@ -34,6 +34,12 @@ from .engineer import (
 from ..agents.workflow import WorkflowError
 from .doctor import run_doctor_command
 from .github import run_github_issues_command
+from .github_workos import (
+    run_github_doctor_command,
+    run_github_plan_pr_command,
+    run_github_smoke_pr_command,
+    run_github_triage_command,
+)
 from .memory import run_memory_reindex_command, run_memory_search_command
 from .obsidian import run_obsidian_sync_command
 from .planning import (
@@ -100,6 +106,110 @@ def build_parser() -> argparse.ArgumentParser:
         "--force-refresh",
         action="store_true",
         help="Ignore the local GitHub issue cache and fetch fresh issues.",
+    )
+
+    # G1~G6 GitHub App / WorkOS subcommands.
+    github_doctor_parser = github_subparsers.add_parser(
+        "doctor",
+        help="Diagnose the GitHub App env contract + (optional) live install access.",
+    )
+    github_doctor_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit the doctor result as JSON (redacted).",
+    )
+    github_doctor_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Issue an installation token and verify repo access (network call).",
+    )
+
+    github_triage_parser = github_subparsers.add_parser(
+        "triage",
+        help="Senior-engineer triage for a GitHub issue (dry-run only).",
+    )
+    github_triage_parser.add_argument("issue_number", type=int)
+    github_triage_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Required flag — triage currently runs only in dry-run.",
+    )
+    github_triage_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit the triage plan as JSON (redacted).",
+    )
+    github_triage_parser.add_argument(
+        "--repo",
+        default=None,
+        help="Override owner/repo (defaults to YULE_GITHUB_OWNER/YULE_GITHUB_REPO).",
+    )
+
+    github_plan_pr_parser = github_subparsers.add_parser(
+        "plan-pr",
+        help="Preview branch / draft-PR plan for a GitHub issue (dry-run only).",
+    )
+    github_plan_pr_parser.add_argument("issue_number", type=int)
+    github_plan_pr_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Required flag — plan-pr currently runs only in dry-run.",
+    )
+    github_plan_pr_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit the plan as JSON (redacted).",
+    )
+    github_plan_pr_parser.add_argument(
+        "--base-branch",
+        default=None,
+        help="Override base branch (defaults to main).",
+    )
+    github_plan_pr_parser.add_argument(
+        "--repo",
+        default=None,
+        help="Override owner/repo.",
+    )
+
+    github_smoke_pr_parser = github_subparsers.add_parser(
+        "smoke-pr",
+        help="GitHub App live smoke: branch + smoke marker file + draft PR (merge 금지).",
+    )
+    github_smoke_pr_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Required flag — performs real GitHub App writes against the repo.",
+    )
+    github_smoke_pr_parser.add_argument(
+        "--issue",
+        dest="issue_number",
+        type=int,
+        default=None,
+        help="Optional issue number to triage + reference in the smoke PR.",
+    )
+    github_smoke_pr_parser.add_argument(
+        "--repo",
+        default=None,
+        help="Override owner/repo.",
+    )
+    github_smoke_pr_parser.add_argument(
+        "--base-branch",
+        default=None,
+        help="Override base branch (defaults to main).",
+    )
+    github_smoke_pr_parser.add_argument(
+        "--branch-name",
+        default=None,
+        help="Override smoke branch name (must NOT be a protected branch).",
+    )
+    github_smoke_pr_parser.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        help="Emit the smoke outcome as JSON.",
     )
 
     daily_parser = subparsers.add_parser(
@@ -956,6 +1066,35 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             return run_doctor_command(repo_root, args.agent_id)
         if args.command == "github" and args.github_command == "issues":
             return run_github_issues_command(args.limit, args.force_refresh)
+        if args.command == "github" and args.github_command == "doctor":
+            return run_github_doctor_command(
+                json_output=args.json_output,
+                live=args.live,
+            )
+        if args.command == "github" and args.github_command == "triage":
+            return run_github_triage_command(
+                args.issue_number,
+                dry_run=args.dry_run,
+                json_output=args.json_output,
+                repo=args.repo,
+            )
+        if args.command == "github" and args.github_command == "plan-pr":
+            return run_github_plan_pr_command(
+                args.issue_number,
+                dry_run=args.dry_run,
+                base_branch=args.base_branch,
+                repo=args.repo,
+                json_output=args.json_output,
+            )
+        if args.command == "github" and args.github_command == "smoke-pr":
+            return run_github_smoke_pr_command(
+                live=args.live,
+                issue_number=args.issue_number,
+                repo=args.repo,
+                base_branch=args.base_branch,
+                branch_name_override=args.branch_name,
+                json_output=args.json_output,
+            )
         if args.command == "daily" and args.daily_command == "warmup":
             return run_daily_warmup_command(
                 args.date,

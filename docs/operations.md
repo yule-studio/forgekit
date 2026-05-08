@@ -68,6 +68,10 @@ journalctl -u yule-run-service@eng-supervisor-watch.service -f
 
 M13 (LLM 통합 / 라이브 자기개선 루프) 진입 전의 gap matrix + readiness 판정은 `docs/m13-readiness.md` 를 본다. 본 문서 §11 (P0 Secret Hygiene) 가 그 readiness 의 사전 게이트로 묶여 있다.
 
+### 0.5. GitHub App workspace 통합 (G1~G6)
+
+GitHub issue triage → branch/draft PR 생성을 GitHub App API 로 직접 도는 운영 흐름은 `docs/github-agent-workos.md` 를 본다. 본 문서 §11 (Secret Hygiene) 가 라이브 smoke (`yule github smoke-pr --live`) 의 사전 게이트다 — placeholder app id / 미rotate 토큰 상태에서는 doctor 가 자동으로 거부한다. CLI 는 `yule github doctor` / `triage` / `plan-pr` / `smoke-pr` 4개로 묶여 있고, 모두 secret 출력 자동 redact + main 직접 push / merge 금지 hard rail 을 공유한다.
+
 ## 1. 핵심 원칙
 
 - **discord 연결과 작업 실행을 분리한다.** 각 worker 는 자기 큐를 polling 하고, Discord 클라이언트는 선택적 어댑터다.
