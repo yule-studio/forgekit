@@ -17,7 +17,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Iterable, Mapping, Optional, Sequence, Tuple
 
-from ..agents.research_pack import ResearchAttachment, ResearchPack, ResearchSource
+from ..agents.research.pack import ResearchAttachment, ResearchPack, ResearchSource
 
 
 # ---------------------------------------------------------------------------
@@ -511,7 +511,7 @@ def _render_collection_block(
     if outcome is None:
         return ""
     try:
-        from ..agents.research_collector import format_collection_summary
+        from ..agents.research.collector import format_collection_summary
     except Exception:  # noqa: BLE001
         return ""
 

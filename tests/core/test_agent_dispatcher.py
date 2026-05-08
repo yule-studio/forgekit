@@ -15,7 +15,7 @@ from yule_orchestrator.agents import (
     TaskType,
     build_participants_pool,
 )
-from yule_orchestrator.agents.dispatcher import (
+from yule_orchestrator.agents.messaging.dispatcher import (
     ROLE_DEFAULT_WEIGHTS,
     TASK_REFERENCE_SOURCES,
     render_plan_summary,

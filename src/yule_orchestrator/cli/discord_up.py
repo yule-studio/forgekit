@@ -1,9 +1,16 @@
-"""``yule discord up`` CLI entry point.
+"""``yule discord up`` CLI entry point — dev / single-host launcher.
 
 Composes :mod:`yule_orchestrator.discord.supervisor` with stdout output.
-The supervisor builds the launch inventory and spawns the bots; this module
-just handles CLI args, prints the summary, and surfaces a non-zero exit code
-when nothing actually started.
+The supervisor builds the launch inventory and spawns the bots; this
+module just handles CLI args, prints the summary, and surfaces a
+non-zero exit code when nothing actually started.
+
+A-M8: this command is a **development launcher**, kept working for local
+smoke tests of the full Discord surface. The production / always-on path
+is the standalone runtime — ``yule runtime up --profile engineering`` on
+a single host, or systemd template units calling
+``yule run-service <service-id>`` per worker. See
+``docs/operations.md`` and ``policies/runtime/agents/engineering-agent/launcher.md``.
 """
 
 from __future__ import annotations
@@ -37,6 +44,16 @@ def run_discord_up_command(
     """
 
     inventory = build_inventory(repo_root=repo_root, agent_ids=agent_ids)
+    if not dry_run:
+        # A-M8: single-line dev framing so the operator notices this
+        # is the dev launcher, not the production path. Kept short and
+        # to stderr so the inventory summary still reads cleanly.
+        print(
+            "note: `yule discord up` is the development launcher. "
+            "For always-on operation use `yule runtime up` "
+            "(single-host) or systemd `yule run-service <id>`.",
+            file=sys.stderr,
+        )
     for line in render_inventory_summary(inventory):
         print(line, file=sys.stderr)
 

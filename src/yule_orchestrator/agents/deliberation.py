@@ -40,7 +40,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Mapping, Optional, Sequence, Tuple, Union
 
-from .research_pack import ResearchAttachment, ResearchPack, ResearchSource
+from .research.pack import ResearchAttachment, ResearchPack, ResearchSource
 from .workflow_state import WorkflowSession
 
 

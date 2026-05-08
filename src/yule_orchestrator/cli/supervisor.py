@@ -17,7 +17,7 @@ from __future__ import annotations
 import sys
 from typing import Any, Callable, Iterable, Optional, Sequence, TextIO
 
-from ..agents.session_status import (
+from ..agents.lifecycle.session_status import (
     SessionStatusReport,
     diagnose_session,
 )
@@ -120,6 +120,14 @@ def render_session_block(
         f"synthesis={'O' if report.has_synthesis else 'X'} · "
         f"obsidian_proposal={'O' if report.obsidian_proposal_present else 'X'}"
     )
+
+    if report.coding_job_status:
+        executor = report.coding_executor_role or "unknown"
+        scope_count = len(report.coding_write_scope)
+        scope_label = f", write_scope={scope_count}건" if scope_count else ""
+        yield (
+            f"  coding_job: {report.coding_job_status} (executor=`{executor}`{scope_label})"
+        )
 
     if report.signals:
         actionable = tuple(s for s in report.signals if s.severity != "info")

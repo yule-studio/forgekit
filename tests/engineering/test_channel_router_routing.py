@@ -914,5 +914,221 @@ class CoerceOutcomeForwardsResearchFieldsTestCase(unittest.TestCase):
         self.assertIsNone(outcome.role_for_research)
 
 
+class CommandOnlyAndBotEchoIntakeGuardTests(unittest.TestCase):
+    """Live MVP regression: the gateway must never persist a session
+    whose prompt is just a confirm phrase ("새 작업으로 진행" /
+    "이대로 진행") or a verbatim bot-echo paste-back ("좋습니다. 이대로
+    작업을 등록할게요…"). Without these guards the user observed an
+    auto-collect loop where pasting bot lines back produced 11
+    research sources, the gateway asked for confirmation, the user
+    typed a command-only phrase, and the cycle repeated.
+    """
+
+    def setUp(self) -> None:  # noqa: D401
+        _isolate_cache_for_test(self)
+        self.context = EngineeringRouteContext(intake_channel_id=111)
+        self.send_chunks = AsyncMock()
+
+    def _route(
+        self,
+        *,
+        message,
+        outcome,
+        intake_fn=None,
+        kickoff_fn=None,
+    ):
+        intake = intake_fn or AsyncMock(
+            side_effect=AssertionError(
+                "intake_fn must NOT run for command-only / bot-echo prompts"
+            )
+        )
+        kickoff = kickoff_fn or AsyncMock(
+            side_effect=AssertionError(
+                "kickoff_fn must NOT run when intake is skipped"
+            )
+        )
+
+        async def loop_fn(**_kwargs):
+            return EngineeringResearchLoopReport()
+
+        return _run(
+            route_engineering_message(
+                message=message,
+                bot_user=object(),
+                route_context=self.context,
+                extract_prompt=_extract_prompt,
+                conversation_fn=lambda **_: outcome,
+                intake_fn=intake,
+                thread_kickoff_fn=kickoff,
+                send_chunks=self.send_chunks,
+                research_loop_fn=loop_fn,
+            )
+        )
+
+    def test_bare_imdaero_jinhaeng_with_no_canonical_does_not_intake(self) -> None:
+        # User typed "이대로 진행" but the conversation layer didn't
+        # have a stashed prior prompt — intake_prompt falls back to
+        # the confirm phrase itself. The router must refuse to create
+        # a zombie session whose prompt is "이대로 진행".
+        message = FakeMessage(
+            content="이대로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        outcome = EngineeringConversationOutcome(
+            content="요약",
+            confirmed=True,
+            intake_prompt="이대로 진행",  # no canonical recovered
+        )
+        result = self._route(message=message, outcome=outcome)
+        self.assertTrue(result.handled)
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("진행할 업무 원문을 다시 알려주세요", sent)
+
+    def test_bare_saejakeop_jinhaeng_with_no_canonical_does_not_intake(self) -> None:
+        # "새 작업으로 진행" alone — explicit create override but no
+        # task body. Without a canonical prompt the router asks for
+        # the actual work instead of creating a zombie session.
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        outcome = EngineeringConversationOutcome(
+            content="요약",
+            confirmed=True,
+            intake_prompt="새 작업으로 진행",
+        )
+        result = self._route(message=message, outcome=outcome)
+        self.assertTrue(result.handled)
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("진행할 업무 원문을 다시 알려주세요", sent)
+
+    def test_bot_echo_paste_back_does_not_intake(self) -> None:
+        # User pasted the gateway's own intake confirmation line back
+        # into the channel. conversation_fn (a stub here) flagged it
+        # as confirmed with the same string as intake_prompt — the
+        # router must trip the bot-echo branch of the guard.
+        echo = (
+            "좋습니다. 이대로 작업을 등록할게요.\n"
+            "intake가 만들어지면 세션 ID와 승인 안내를 이어서 드릴게요."
+        )
+        message = FakeMessage(
+            content=echo,
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        outcome = EngineeringConversationOutcome(
+            content="요약",
+            confirmed=True,
+            intake_prompt=echo,
+        )
+        result = self._route(message=message, outcome=outcome)
+        self.assertTrue(result.handled)
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("gateway가 보낸 안내문", sent)
+
+    def test_self_quoted_sufficiency_message_does_not_intake(self) -> None:
+        # The "자료가 부족합니다…" template the bot emits in the
+        # research-sufficiency path is also covered by the bot-echo
+        # guard.
+        echo = (
+            "자료가 부족합니다. 참고할 링크나 이미지를 올려주실까요?"
+        )
+        message = FakeMessage(
+            content=echo,
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        outcome = EngineeringConversationOutcome(
+            content="요약",
+            confirmed=True,
+            intake_prompt=echo,
+        )
+        result = self._route(message=message, outcome=outcome)
+        self.assertTrue(result.handled)
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("gateway가 보낸 안내문", sent)
+
+    def test_long_research_prompt_followed_by_imdaero_persists_real_prompt(
+        self,
+    ) -> None:
+        # The healthy flow: user typed a long research prompt, the
+        # gateway echoed it as last_proposed; user replies "이대로
+        # 진행"; conversation_fn returns intake_prompt=<long prompt>.
+        # The router must call intake_fn with the LONG prompt.
+        long_task = (
+            "[Research] 하네스 엔지니어링을 yule-studio-agent에 어떻게 "
+            "도입할 수 있을지 조사해줘. 운영 흐름과 메모리 회수 정책 "
+            "포함."
+        )
+        intake_fn = AsyncMock(
+            return_value=FakeIntakeResult(
+                session=FakeSession(session_id="ok-1", task_type="research"),
+                plan=FakePlan(),
+                message="**[engineering-agent] 새 작업 접수**",
+            )
+        )
+        kickoff_fn = AsyncMock(
+            return_value=EngineeringThreadKickoff(
+                thread_id=4242, message="kickoff"
+            )
+        )
+        message = FakeMessage(
+            content="이대로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        outcome = EngineeringConversationOutcome(
+            content="요약",
+            confirmed=True,
+            intake_prompt=long_task,
+        )
+        result = self._route(
+            message=message,
+            outcome=outcome,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+        )
+        self.assertTrue(result.handled)
+        intake_fn.assert_awaited_once()
+        kw = intake_fn.await_args.kwargs
+        self.assertEqual(kw["prompt"], long_task)
+
+    def test_long_research_prompt_followed_by_saejakeop_persists_real_prompt(
+        self,
+    ) -> None:
+        long_task = (
+            "[Research] 결제 모듈 멱등성 검증 흐름을 백엔드에 추가하고 "
+            "관련 회귀 시나리오 정리"
+        )
+        intake_fn = AsyncMock(
+            return_value=FakeIntakeResult(
+                session=FakeSession(session_id="ok-2", task_type="feature"),
+                plan=FakePlan(),
+                message="**[engineering-agent] 새 작업 접수**",
+            )
+        )
+        kickoff_fn = AsyncMock(
+            return_value=EngineeringThreadKickoff(
+                thread_id=4243, message="kickoff"
+            )
+        )
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        outcome = EngineeringConversationOutcome(
+            content="요약",
+            confirmed=True,
+            intake_prompt=long_task,
+        )
+        result = self._route(
+            message=message,
+            outcome=outcome,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+        )
+        self.assertTrue(result.handled)
+        intake_fn.assert_awaited_once()
+        kw = intake_fn.await_args.kwargs
+        self.assertEqual(kw["prompt"], long_task)
+
+
 if __name__ == "__main__":
     unittest.main()

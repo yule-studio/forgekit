@@ -14,7 +14,7 @@ from yule_orchestrator.agents.deliberation import (
     TechLeadOpening,
     TechLeadSynthesis,
 )
-from yule_orchestrator.agents.knowledge_writer import (
+from yule_orchestrator.agents.obsidian.knowledge_writer import (
     KNOWLEDGE_CONTRACT_VERSION,
     KNOWLEDGE_KIND,
     KNOWLEDGE_SUBDIR,
@@ -24,12 +24,12 @@ from yule_orchestrator.agents.knowledge_writer import (
     render_knowledge_note,
     scrub_title_text,
 )
-from yule_orchestrator.agents.obsidian_export import (
+from yule_orchestrator.agents.obsidian.export import (
     DEFAULT_PROJECT,
     PROJECTS_BASE,
     render_research_note,
 )
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,

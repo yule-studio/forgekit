@@ -4,18 +4,18 @@ import sys
 from typing import Optional
 
 from ..agents.deliberation import synthesis_from_dict
-from ..agents.obsidian_export import render_research_note
-from ..agents.obsidian_git import (
+from ..agents.obsidian.export import render_research_note
+from ..agents.obsidian.git import (
     ObsidianGitError,
     commit_single_file,
     find_git_repo_root,
 )
-from ..agents.obsidian_writer import (
+from ..agents.obsidian.writer import (
     ObsidianWriteError,
     resolve_vault_root,
     write_note,
 )
-from ..agents.research_pack import pack_from_dict
+from ..agents.research.pack import pack_from_dict
 from ..agents.workflow_state import load_session
 
 

@@ -10,8 +10,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.obsidian_export import ExportPath, ObsidianNote
-from yule_orchestrator.agents.obsidian_writer import (
+from yule_orchestrator.agents.obsidian.export import ExportPath, ObsidianNote
+from yule_orchestrator.agents.obsidian.writer import (
     ENV_VAULT_PATH,
     ObsidianWriteError,
     resolve_vault_root,

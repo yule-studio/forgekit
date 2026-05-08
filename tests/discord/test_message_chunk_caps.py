@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchPack,
     ResearchRequest,
     ResearchSource,
@@ -221,7 +221,7 @@ class DecisionAndKickoffCapTests(unittest.TestCase):
 
     def test_decision_comment_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_orchestrator.agents.research_loop import _post_decision_comment
+        from yule_orchestrator.agents.research.loop import _post_decision_comment
 
         synthesis = SimpleNamespace(
             consensus="이번 릴리스는 starter 본문 캡 + thread 분할 게시 방식을 채택한다.",
@@ -249,7 +249,7 @@ class DecisionAndKickoffCapTests(unittest.TestCase):
 
     def test_kickoff_directive_is_chunked(self) -> None:
         from types import SimpleNamespace
-        import yule_orchestrator.agents.research_loop as research_loop
+        import yule_orchestrator.agents.research.loop as research_loop
 
         # Force ``research_open_call_directive`` to return a huge body
         # so we exercise the kickoff chunker even for extreme directives.

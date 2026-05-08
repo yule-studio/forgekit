@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research_loop import (
+from yule_orchestrator.agents.research.loop import (
     ForumPublicationOutcome,
     ResearchLoopOutcome,
     RoleAssignment,

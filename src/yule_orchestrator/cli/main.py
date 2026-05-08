@@ -460,7 +460,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     discord_up_parser = discord_subparsers.add_parser(
         "up",
-        help="Launch planning-bot + engineering-agent gateway/members in one shot.",
+        help=(
+            "[DEV-ONLY] Spawn planning-bot + engineering gateway + member bots "
+            "in one process tree. NOT a production path — does not run the "
+            "queue workers (research/role/approval/obsidian-writer) so jobs "
+            "enqueued by the gateway will sit unpicked. Production: use "
+            "`yule runtime up` (single-host) or systemd `yule run-service`."
+        ),
+        description=(
+            "DEVELOPMENT / SINGLE-HOST DISCORD LAUNCHER (NOT PRODUCTION).\n\n"
+            "Spawns each implemented Discord bot (planning + engineering "
+            "gateway + 7 member bots) as its own multiprocessing.Process "
+            "under one parent. Useful for local smoke tests of the full "
+            "Discord surface — but it does NOT spawn the queue workers, so "
+            "the gateway will enqueue research_collect / role_take / "
+            "approval_post / obsidian_write jobs that nothing picks up.\n\n"
+            "If you want a working end-to-end runtime, run `yule runtime up "
+            "--profile engineering` (single-host parent supervising every "
+            "worker + the gateway) or use systemd template units calling "
+            "`yule run-service <service-id>` (production).\n\n"
+            "See docs/operations.md for the supported runtime topology and "
+            "docs/discord.md §4 for the dev-launcher contract."
+        ),
     )
     discord_up_parser.add_argument(
         "--agents",
@@ -474,6 +495,184 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Print the launch inventory without contacting Discord.",
+    )
+
+    runtime_parser = subparsers.add_parser(
+        "runtime",
+        help=(
+            "[PRODUCTION] Always-on engineering runtime. "
+            "Subcommands: up (spawn all workers) / status (diagnostic) / "
+            "circuit reset (clear breaker). Sibling `yule run-service "
+            "<id>` runs a single worker (used by systemd)."
+        ),
+        description=(
+            "ALWAYS-ON ENGINEERING RUNTIME — production / single-host path.\n\n"
+            "This is the path that actually processes jobs. Pick one of:\n"
+            "  • `yule runtime up --profile engineering` — single-host. One "
+            "parent supervises the supervisor + research worker + 7 role "
+            "workers + approval worker + obsidian writer + Discord gateway.\n"
+            "  • `systemctl start yule.target` — production. Same workers, "
+            "each as its own systemd unit invoking `yule run-service "
+            "<service-id>`.\n\n"
+            "Subcommand reference:\n"
+            "  yule runtime up [--dry-run]         # spawn / list services\n"
+            "  yule runtime status [--json]        # read-only diagnostic\n"
+            "  yule runtime circuit reset <id>     # clear tripped breaker\n"
+            "  yule run-service <id>               # single-worker entry "
+            "(sibling subcommand; systemd / `runtime up` both call this)\n\n"
+            "Dev-only Discord launcher (`yule discord up`) does NOT replace "
+            "this — it spawns Discord bots without the queue workers. See "
+            "docs/operations.md and deploy/systemd/README.md."
+        ),
+    )
+    runtime_subparsers = runtime_parser.add_subparsers(
+        dest="runtime_command", required=True
+    )
+    runtime_up_parser = runtime_subparsers.add_parser(
+        "up",
+        help=(
+            "Spawn every implemented worker for a profile under one parent "
+            "process (single-host production / dev). Engineering profile = "
+            "supervisor + research_worker + 7 role workers + approval_worker "
+            "+ obsidian_writer + discord_gateway. Use `--dry-run` to list "
+            "without spawning. For multi-host / systemd installs run each "
+            "service via the sibling `yule run-service <id>` command instead."
+        ),
+    )
+    runtime_up_parser.add_argument(
+        "--profile",
+        default="engineering",
+        help="Service profile to launch. Defaults to engineering.",
+    )
+    runtime_up_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the planned services + commands without spawning.",
+    )
+    runtime_up_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Alias for --dry-run.",
+    )
+    runtime_up_parser.add_argument(
+        "--log-level", default="INFO", help="Python logging level."
+    )
+
+    runtime_status_parser = runtime_subparsers.add_parser(
+        "status",
+        help=(
+            "Read-only runtime diagnostic. Per-service health "
+            "(ALIVE/STALE/UNKNOWN/CIRCUIT_OPEN/RESERVED) + queue counts "
+            "+ recent failures + actionable warnings (with concrete "
+            "restart commands) + a 6-step live smoke checklist."
+        ),
+        description=(
+            "Read-only snapshot of the always-on runtime. Output sections:\n"
+            "  services      health + heartbeat age + handles description\n"
+            "  queue         per-job-type queued / in_progress / failed\n"
+            "  recent failures  most-recent FAILED rows w/ error string\n"
+            "  warnings      STALE/UNKNOWN/circuit-open with the exact "
+            "command to recover (`yule run-service <id>` / `systemctl "
+            "restart …` / `yule runtime circuit reset <id>`)\n"
+            "  live smoke checklist  6-step verification block to copy "
+            "from one screen.\n\n"
+            "Use `--post-discord` to mirror the markdown summary to "
+            "#봇-상태 (idempotent — dedup-key skips identical reposts)."
+        ),
+    )
+    runtime_status_parser.add_argument(
+        "--profile",
+        default="engineering",
+        help="Service profile to summarise. Defaults to engineering.",
+    )
+    runtime_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a stable JSON payload instead of the text render.",
+    )
+    runtime_status_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Override SQLite cache path (defaults to YULE_CACHE_DB_PATH).",
+    )
+    runtime_status_parser.add_argument(
+        "--failed-limit",
+        type=int,
+        default=10,
+        help="How many recent failed_retryable / failed_terminal rows to list.",
+    )
+    runtime_status_parser.add_argument(
+        "--post-discord",
+        action="store_true",
+        help=(
+            "Also post the markdown summary to #봇-상태. "
+            "Idempotent: a state-hash dedup skips identical reposts."
+        ),
+    )
+    runtime_status_parser.add_argument(
+        "--force-post",
+        action="store_true",
+        help="Bypass the dedup-key check for the next post.",
+    )
+
+    runtime_circuit_parser = runtime_subparsers.add_parser(
+        "circuit",
+        help="Inspect / reset persisted circuit-breaker state.",
+    )
+    runtime_circuit_subparsers = runtime_circuit_parser.add_subparsers(
+        dest="runtime_circuit_command", required=True
+    )
+    runtime_circuit_reset_parser = runtime_circuit_subparsers.add_parser(
+        "reset",
+        help=(
+            "Clear the open-circuit state for one service so the next "
+            "supervisor restart can spawn it again."
+        ),
+    )
+    runtime_circuit_reset_parser.add_argument(
+        "service_id",
+        help="Service id from the inventory (e.g. eng-role-backend-engineer).",
+    )
+    runtime_circuit_reset_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Override SQLite cache path (defaults to YULE_CACHE_DB_PATH).",
+    )
+    runtime_circuit_reset_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit a stable JSON payload instead of human-readable text.",
+    )
+
+    run_service_parser = subparsers.add_parser(
+        "run-service",
+        help=(
+            "Run a single long-running worker by service id (canonical "
+            "entrypoint for systemd template units AND `yule runtime up`). "
+            "Examples: `yule run-service eng-research-worker`, "
+            "`yule run-service eng-role-backend-engineer`, "
+            "`yule run-service eng-obsidian-writer`. Use "
+            "`yule runtime up --dry-run` to list every service id."
+        ),
+        description=(
+            "Single-worker entrypoint. Both `yule runtime up` and the "
+            "systemd template `yule-run-service@<id>.service` invoke this "
+            "command — the surrounding supervision (parent process vs. "
+            "systemd) is the only thing that differs.\n\n"
+            "Service ids come from the inventory in "
+            "src/yule_orchestrator/runtime/services.py. List them with "
+            "`yule runtime up --dry-run`."
+        ),
+    )
+    run_service_parser.add_argument(
+        "service_id",
+        help="Service id from the inventory (eng-research-worker, eng-role-tech-lead, ...).",
+    )
+    run_service_parser.add_argument("--log-level", default="INFO")
+    run_service_parser.add_argument(
+        "--db-path",
+        default=None,
+        help="Override SQLite cache path (defaults to YULE_CACHE_DB_PATH).",
     )
 
     engineer_parser = subparsers.add_parser(
@@ -864,6 +1063,59 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 agent_ids=parse_agent_ids(args.agents),
                 dry_run=args.dry_run,
             )
+        if args.command == "runtime" and args.runtime_command == "status":
+            from ..runtime.status_cli import run_runtime_status_command
+
+            return run_runtime_status_command(
+                profile=args.profile,
+                emit_json=args.json,
+                db_path=Path(args.db_path) if args.db_path else None,
+                failed_limit=args.failed_limit,
+                post_discord=args.post_discord,
+                force_post=args.force_post,
+            )
+        if (
+            args.command == "runtime"
+            and args.runtime_command == "circuit"
+            and args.runtime_circuit_command == "reset"
+        ):
+            from ..runtime.circuit_cli import run_circuit_reset_command
+
+            return run_circuit_reset_command(
+                service_id=args.service_id,
+                db_path=Path(args.db_path) if args.db_path else None,
+                emit_json=args.json,
+            )
+        if args.command == "runtime" and args.runtime_command == "up":
+            from ..runtime.subprocess_supervisor import (
+                build_dry_run_plan,
+                render_dry_run_plan,
+                run_runtime_up,
+            )
+            import asyncio as _asyncio
+            import logging as _logging
+
+            _logging.basicConfig(
+                level=args.log_level,
+                format="[%(name)s] %(levelname)s %(message)s",
+            )
+            if args.dry_run or args.list:
+                plan = build_dry_run_plan(profile=args.profile)
+                print(render_dry_run_plan(plan))
+                return 0
+            try:
+                return _asyncio.run(run_runtime_up(profile=args.profile))
+            except KeyboardInterrupt:
+                return 0
+
+        if args.command == "run-service":
+            from ..runtime.run_service import run_service_main
+
+            db = Path(args.db_path) if args.db_path else None
+            return run_service_main(
+                args.service_id, db_path=db, log_level=args.log_level
+            )
+
         if args.command == "engineer":
             return _dispatch_engineer_command(repo_root, args)
         if args.command == "supervisor" and args.supervisor_command == "run":

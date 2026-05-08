@@ -1,0 +1,110 @@
+# Approval Matrix — A-M10
+
+[autonomy-policy.md](autonomy-policy.md) 가 정의한 5-단계 사다리에 따라
+*어떤 행동이 어떤 단계에서 자동/승인/금지되는지* 한 표로 정리한다. 새
+action 을 추가할 때는 반드시 본 표 + `autonomy_policy._DEFAULT_LEVELS` +
+관련 reason 템플릿 세 곳을 모두 갱신한다.
+
+## 약어
+
+- **L0**: `L0_AUTO_RECORD_OPTIONAL` — 자동, 기록 선택
+- **L1**: `L1_AUTO_RECORD_REQUIRED` — 자동, audit 필수
+- **L2**: `L2_AUTO_POST_REPORT` — 자동, 사후 보고
+- **L3**: `L3_HUMAN_APPROVAL` — 승인 필요
+- **L4**: `L4_STRONG_APPROVAL_OR_FORBIDDEN` — 강한 승인 / 금지
+
+## 1. Research / Knowledge
+
+| Action | Level | 비고 |
+| --- | --- | --- |
+| 운영-리서치 thread 메시지 읽기 | L0 | `local_file_read` 와 동등 |
+| 사용자 명시 오더 기반 리서치 | L1 | `user_ordered_research` |
+| 운영-리서치 thread 스냅샷 캡처 | L1 | `thread_snapshot_capture` |
+| 공개 자료 링크 수집 | L1 | `link_collection` |
+| 역할별 take 기록 | L1 | `role_take_record` |
+| research-log Obsidian 자동 저장 | L1 | `research_log_save` (M10b 에서 wiring) |
+| draft 문서 생성 | L2 | `draft_document_create` |
+| **canonical knowledge 확정** | **L3** | `knowledge_note_finalize` — Discord `#승인-대기` 카드 |
+| **decision-record 확정** | **L3** | `decision_record_finalize` |
+| 기존 문서 supersede / overwrite | L3 | `document_overwrite` |
+| 외부 API (유료) 호출 | L3 | `external_paid_call` |
+| 대량 크롤링 | L3 | `large_scale_crawl` |
+| **외부 채널 공식 발행** | **L4** | `external_publication` / `blog_publication` |
+
+## 2. Code
+
+| Action | Level | 비고 |
+| --- | --- | --- |
+| 코드 grep / 파일 읽기 | L0 | `local_file_read` |
+| feature branch 생성 (로컬) | L2 | `feature_branch_create` |
+| 낮은 위험 docs/test 수정 | L2 | `low_risk_docs_edit` / `low_risk_test_edit` |
+| 테스트 실행 | L2 | `test_execute` |
+| 로컬 commit | L2 | `local_commit` |
+| **runtime/prod 코드 변경** | **L3** | `runtime_code_change` |
+| 공유 repo 로 push (feature branch) | L3 | `push_to_shared_repo` |
+| draft PR 생성 | L3 | `draft_pr_create` (사용자 정책으로 사전 자동 허용 가능) |
+| **main 직접 push** | **L4** | `main_branch_push` — 사실상 금지 |
+| **merge** | **L4** | `branch_merge` |
+| **deploy** | **L4** | `deploy` |
+
+## 3. Vault (Obsidian)
+
+| Action | Level | 비고 |
+| --- | --- | --- |
+| vault 파일 읽기 | L0 | `local_file_read` |
+| research-log 자동 저장 | L1 | `research_log_save` |
+| agent-ops audit 자동 기록 | L1 | `agent_ops_record` |
+| failure-postmortem 자동 작성 | L2 | `failure_postmortem_create` |
+| self-improvement proposal | L2 | `self_improvement_proposal` |
+| blog draft 작성 | L2 | `blog_draft_create` |
+| vault research-log branch 자동 commit | L2 | `vault_research_log_commit` |
+| **canonical knowledge 확정 저장** | **L3** | `knowledge_note_finalize` |
+| **vault remote push** | **L3** | `vault_remote_push` |
+| **vault main merge** | **L4** | `branch_merge` 와 동일 정책 |
+
+## 4. Runtime / Infra
+
+| Action | Level | 비고 |
+| --- | --- | --- |
+| heartbeat 조회 | L0 | `heartbeat_check` |
+| supervisor 자가진단 | L0 | `status_query` 와 동등 |
+| **runtime 재시작** | **L3** | `runtime_restart` |
+| **infra 변경** | **L3** | legacy `infra_change` 매핑 |
+| **deploy** | **L4** | `deploy` |
+
+## 5. Secrets / Data
+
+| Action | Level | 비고 |
+| --- | --- | --- |
+| 메모리 조회 | L0 | `memory_read` |
+| 세션 조회 | L0 | `session_lookup` |
+| **secret 조회** | **L4** | `secret_access` |
+| **secret 변경** | **L4** | `secret_modify` |
+| **prod DB write** | **L4** | `prod_db_write` |
+| **비가역 delete** | **L4** | `destructive_delete` |
+
+## 메타데이터에 의한 상승
+
+행동 자체가 L1 이어도 다음 메타가 붙으면 **자동으로 상위 단계** 로
+상승한다. `AutonomyDecision.escalation_reasons` 에 사유가 남는다.
+
+| 메타 | 효과 |
+| --- | --- |
+| `risk_level=critical` | 최소 L4 |
+| `reversible=False` | 최소 L3 |
+| `external_side_effect=True` | 최소 L3 |
+| `cost_impact=major` | 최소 L3 |
+| `data_sensitivity=confidential` 또는 `secret` | 최소 L4 |
+
+## 알 수 없는 action
+
+`_DEFAULT_LEVELS` 에 없는 action 은 **L4** 로 떨어진다 — 안전한 회귀 경로.
+새 action 을 추가하려면 카탈로그 + 매트릭스 + reason 템플릿을 같이
+업데이트해야 한다.
+
+## audit 기록
+
+`audit_required == True` 인 모든 결정 (L1 이상) 은
+`session.extra['agent_ops_audit']` 에 `AgentOpsEntry` 로 append.
+A-M10b 에서 vault `40-agent-ops/<date>.md` 자동 export.
+A-M10c 에서 `#봇-상태` daily summary 게시.

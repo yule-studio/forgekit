@@ -78,6 +78,7 @@ def decide_routing(
     open_sessions: Optional[Sequence[WorkflowSession]] = None,
     session_loader=None,
     list_open_fn=None,
+    thread_id: Optional[int] = None,
 ) -> EngineeringRoutingDecision:
     """Classify how the gateway should route ``prompt``.
 
@@ -88,6 +89,14 @@ def decide_routing(
     "기존 세션 <id>" references — we accept the seam without using it
     in the deterministic path so production can plug in a custom
     resolver later.
+
+    *thread_id* — when set, sessions whose ``thread_id`` matches win
+    outright (high confidence JOIN), unless the user explicitly typed
+    a "새 작업으로 진행" override. This guarantees that a confirm
+    phrase typed inside an existing work thread always lands on that
+    thread's session, even when the prompt body is something the
+    token scorer would otherwise pull toward an unrelated zombie
+    session (the live MVP confirm-routing bug).
     """
 
     text = (prompt or "").strip()
@@ -122,6 +131,22 @@ def decide_routing(
             reason="explicit '새 작업으로 진행' override",
             confidence="high",
         )
+
+    # Thread-local priority — if the message arrived in a Discord
+    # thread that already anchors an open session, that session wins
+    # over any token-scored candidate. Skipped for the explicit
+    # "새 작업으로 진행" override above so users can still force a
+    # fresh session even from inside a work thread.
+    if thread_id is not None:
+        thread_sessions = _resolve_open_sessions(open_sessions, list_open_fn)
+        for session in thread_sessions:
+            if getattr(session, "thread_id", None) == thread_id:
+                return _decision_from_session(
+                    session,
+                    action=ACTION_JOIN,
+                    confidence="high",
+                    reason=f"thread anchor — session.thread_id={thread_id}",
+                )
 
     if _explicit_append_context(text):
         # Best-effort: try to find the most recently updated open
@@ -201,6 +226,117 @@ def decide_routing(
 # ---------------------------------------------------------------------------
 # Heuristics
 # ---------------------------------------------------------------------------
+
+
+# Phrases that are pure confirmation / control commands, not task
+# descriptions. Sessions whose ``prompt`` is one of these have no real
+# content to score against — they sit on top of the canonical prompt
+# in ``extra.canonical_prompt_override`` (modern fix) or are zombie
+# rows from an earlier bug that stored the confirmation phrase as the
+# session prompt. Either way, the router must NOT let an inbound
+# command-only confirm phrase ("이대로 진행") match a command-only
+# session prompt at score 1.0; that bug surfaces as Discord recall
+# returning 3+ identical "이대로 진행" sessions as candidates.
+_COMMAND_ONLY_PROMPTS: frozenset[str] = frozenset(
+    {
+        "새 작업으로 진행",
+        "새 작업으로 시작",
+        "이대로 진행",
+        "이대로 등록",
+        "그대로 진행",
+        "그대로 등록",
+        "기존 세션으로 진행",
+        "기존 세션으로 시작",
+        "기존 세션 진행",
+        "기존 작업으로 진행",
+        "기존 작업으로 시작",
+        "기존 작업 진행",
+        "이 thread로 진행",
+        "이 thread에서 진행",
+        "여기서 진행",
+        "여기서 이어가",
+        "확정",
+        "진행",
+        "승인",
+        "수정 승인",
+        "ok",
+    }
+)
+
+
+def is_command_only_prompt(value: object) -> bool:
+    """True when *value* is just a confirmation/command phrase rather
+    than a real task description.
+
+    Used in two places:
+      • routing/recall scoring — sessions whose prompt is itself a
+        command-only phrase must not match against an inbound
+        command-only confirm phrase at score 1.0.
+      • route guard — the gateway must refuse to route on a bare
+        confirm phrase, otherwise it would silently create yet
+        another command-only session or join a zombie one.
+    """
+
+    if not isinstance(value, str):
+        return False
+    normalised = " ".join(value.lower().split())
+    if not normalised:
+        return True
+    if len(normalised) <= 2:
+        return True
+    return normalised in _COMMAND_ONLY_PROMPTS
+
+
+# Distinct phrases the bot itself emits in its intake / sufficiency
+# templates. When the user copies one of these back into the channel
+# the gateway must not treat it as a fresh research request — that's
+# the bot-echo loop reported in the live MVP test (gateway prompts
+# "좋습니다. 이대로 작업을 등록할게요…" → user pastes it back → gateway
+# auto-collects 11 sources → user types "이대로 진행" → gateway shows
+# command-only candidates → loop). Match as substrings so multi-line
+# pastes still trip the guard.
+_BOT_ECHO_FRAGMENTS: tuple[str, ...] = (
+    "좋습니다. 이대로 작업을 등록할게요",
+    "좋습니다 이대로 작업을 등록할게요",
+    "intake가 만들어지면 세션 id",
+    "intake가 만들어지면 세션 ID",
+    "자료가 부족합니다",
+    "참고할 링크나 이미지를 올려주실까요",
+    "참고 링크나 이미지를 올려주세요",
+    "열려 있는 thread를 찾아 이어갈게요",
+    "이 작업의 코딩 권한 제안을 정리했습니다",
+    "코딩 권한 승인 완료",
+    "**[engineering-agent]",
+    "engineer-agent intake",
+    "engineer intake 실패",
+    "research loop 실패",
+)
+
+
+def is_bot_echo_phrase(value: object) -> bool:
+    """True when *value* contains a phrase the gateway itself emits.
+
+    Catches the live MVP bug where the user copies one of the bot's
+    template lines back into the channel and the gateway treats it as
+    a new research request. Substring match is intentionally
+    aggressive — false positives here just nudge the user to restate
+    the task, while false negatives perpetuate the auto-collect loop.
+    """
+
+    if not isinstance(value, str):
+        return False
+    lowered = value.lower()
+    return any(fragment.lower() in lowered for fragment in _BOT_ECHO_FRAGMENTS)
+
+
+def is_non_actionable_prompt(value: object) -> bool:
+    """Convenience predicate combining ``is_command_only_prompt`` and
+    ``is_bot_echo_phrase``. Use this whenever you're about to commit
+    *value* as a session prompt, research query, or routing key — it
+    catches both bare confirmation phrases and bot-echo paste-backs.
+    """
+
+    return is_command_only_prompt(value) or is_bot_echo_phrase(value)
 
 
 _EXPLICIT_NEW_WORK_PATTERNS = (
@@ -330,12 +466,24 @@ def _score_one(
     """Return overlap score in [0,1] + a short ``why`` string."""
 
     fields: list[tuple[str, str]] = []
-    fields.append(("prompt", session.prompt or ""))
+    extra = dict(getattr(session, "extra", None) or {})
+
+    # Prefer ``canonical_prompt_override`` (the real task description
+    # captured on a continuation turn) over the raw session.prompt
+    # whenever it is present. When the session.prompt is itself a
+    # command-only confirm phrase ("이대로 진행" / "새 작업으로 진행")
+    # and there is no override, drop the prompt field entirely so the
+    # session does not win on a spurious confirm-vs-confirm overlap.
+    canonical_override = extra.get("canonical_prompt_override")
+    if isinstance(canonical_override, str) and canonical_override.strip():
+        fields.append(("prompt", canonical_override))
+    elif not is_command_only_prompt(session.prompt):
+        fields.append(("prompt", session.prompt or ""))
+
     fields.append(("task_type", session.task_type or ""))
     if session.summary:
         fields.append(("summary", session.summary))
 
-    extra = dict(getattr(session, "extra", None) or {})
     pack = extra.get("research_pack")
     if isinstance(pack, dict):
         if pack.get("title"):

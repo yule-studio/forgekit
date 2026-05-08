@@ -1,0 +1,32 @@
+[Unit]
+Description=Yule engineering runtime service (%i)
+After=network-online.target
+Wants=network-online.target
+PartOf=yule.target
+
+[Service]
+Type=simple
+User=yule
+WorkingDirectory=/opt/yule-studio-agent
+EnvironmentFile=/etc/yule/yule-env.conf
+EnvironmentFile=-/etc/yule/yule-env.%i.conf
+ExecStart=/opt/yule-studio-agent/.venv/bin/yule run-service %i
+Restart=on-failure
+RestartSec=5s
+# yule run-service exits with 78 (EX_CONFIG) on permanently-broken
+# state — unknown service id, missing token, etc. Don't burn restart
+# attempts on that.
+RestartPreventExitStatus=78
+StartLimitIntervalSec=300
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+
+# Forward SIGTERM as the shutdown signal — yule run-service installs
+# its own handler that sets the worker loop's shutdown_event so the
+# in-flight job can finish before exit.
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=yule.target

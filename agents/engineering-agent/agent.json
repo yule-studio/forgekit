@@ -20,6 +20,7 @@
     "policies/runtime/common/context-loading.md",
     "policies/runtime/agents/engineering-agent/team-structure.md",
     "policies/runtime/agents/engineering-agent/mvp-scope.md",
+    "policies/runtime/agents/engineering-agent/role-profiles.md",
     "policies/runtime/agents/engineering-agent/role-weights-v0.md",
     "policies/runtime/agents/engineering-agent/runners.md",
     "policies/runtime/agents/engineering-agent/env-strategy.md",

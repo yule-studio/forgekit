@@ -15,9 +15,18 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional, Sequence, Union
+from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
-from ..agents.obsidian_approval import (
+from ..agents.coding.authorization import (
+    CodingAuthorizationProposal,
+    format_authorization_message,
+    recommend_authorization,
+)
+from ..agents.coding.job import (
+    STATUS_READY,
+    build_coding_job_from_proposal,
+)
+from ..agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     execute_pending_proposal,
@@ -26,14 +35,18 @@ from ..agents.obsidian_approval import (
     is_obsidian_save_request,
     store_pending_proposal,
 )
-from ..agents.research_persistence import persist_research_artifacts
+from ..agents.research.persistence import persist_research_artifacts
 from ..agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
     ACTION_CREATE,
     ACTION_JOIN,
     EngineeringRoutingDecision,
+    _explicit_session_request,
     decide_routing,
+    is_bot_echo_phrase,
+    is_command_only_prompt,
+    is_non_actionable_prompt,
     list_open_sessions,
 )
 from ..agents.runtime import (
@@ -376,6 +389,22 @@ async def route_engineering_message(
     if not prompt_text:
         return EngineeringRouteResult(handled=False)
 
+    # Coding authorization gate — handles the two new MVP intents:
+    #   ① "코딩 권한 제안" / "수정 권한 제안" → build proposal preview,
+    #   ② "수정 승인" / "이대로 구현 진행" / "구현 시작" → flip pending
+    #      proposal to a ready CodingJob.
+    # Runs before the runtime preflight so a bare approval phrase never
+    # gets re-classified as a new task.
+    if list_sessions_fn is not None:
+        coding = await _run_coding_authorization_gate(
+            message=message,
+            prompt_text=prompt_text,
+            list_sessions_fn=list_sessions_fn,
+            send_chunks=send_chunks,
+        )
+        if coding is not None:
+            return coding
+
     # Obsidian approval gate — runs before runtime preflight so an
     # explicit "저장 승인" / "이대로 저장" never falls through to the
     # default new-work classifier and intakes a brand-new session.
@@ -391,6 +420,65 @@ async def route_engineering_message(
         if approval is not None:
             return approval
 
+    # Explicit-session-id JOIN — the user typed `기존 세션 <id>` so we
+    # already know which session they want; bypass preflight and
+    # conversation_fn so the runtime classifier doesn't intercept
+    # ("이어가" continue verbs would otherwise route into recall).
+    # The append payload prefers a cached canonical_prompt over the
+    # routing-command reply itself so the JOIN never appends "기존
+    # 세션 <id> 이어가" as the resumed task body.
+    if thread_continuation_fn is not None:
+        explicit_session_id = _explicit_session_request(prompt_text)
+        if explicit_session_id:
+            try:
+                from ..agents.workflow_state import load_session as _load_session
+                target_session = _load_session(explicit_session_id)
+            except Exception:  # noqa: BLE001 - lookup failures fall through to legacy flow
+                target_session = None
+            if target_session is not None:
+                explicit_canonical = _recall_clarification_canonical_prompt(message)
+                join_intake = (explicit_canonical or prompt_text or "").strip()
+                if join_intake:
+                    target_extra = dict(getattr(target_session, "extra", None) or {})
+                    forum_thread_id = (
+                        target_extra.get("research_forum_thread_id")
+                        or target_extra.get("forum_thread_id")
+                    )
+                    try:
+                        forum_id_int = (
+                            int(forum_thread_id)
+                            if forum_thread_id is not None
+                            else None
+                        )
+                    except (TypeError, ValueError):
+                        forum_id_int = None
+                    synthetic_outcome = EngineeringConversationOutcome(
+                        content="",
+                        intake_prompt=join_intake,
+                    )
+                    synthetic_decision = EngineeringRoutingDecision(
+                        action=ACTION_JOIN,
+                        matched_session_id=getattr(target_session, "session_id", None),
+                        matched_thread_id=getattr(target_session, "thread_id", None),
+                        matched_forum_thread_id=forum_id_int,
+                        confidence="high",
+                        reason=(
+                            f"explicit '기존 세션 {explicit_session_id}' override"
+                        ),
+                    )
+                    explicit_result = await _handle_join_or_append(
+                        message=message,
+                        outcome=synthetic_outcome,
+                        decision=synthetic_decision,
+                        intake_prompt=join_intake,
+                        send_chunks=send_chunks,
+                        thread_continuation_fn=thread_continuation_fn,
+                        research_loop_fn=None,
+                    )
+                    if explicit_result is not None:
+                        _clear_clarification_context(message)
+                        return explicit_result
+
     # Runtime preflight — opt-in via ``list_sessions_fn``. The production
     # gateway in bot.py wires this to ``workflow_state.list_sessions`` so
     # auto_collect-first traffic for "어제 작업 이어서 요약해줘" and
@@ -404,11 +492,54 @@ async def route_engineering_message(
             list_sessions_fn=list_sessions_fn,
             send_chunks=send_chunks,
             thread_continuation_fn=thread_continuation_fn,
+            research_loop_fn=research_loop_fn,
             obsidian_writer_fn=obsidian_writer_fn,
             obsidian_env=obsidian_env,
         )
         if preflight is not None:
             return preflight
+
+    # Clarification follow-up CREATE branch — when the prior turn
+    # showed candidates and the user replied "새 작업으로 진행" (or a
+    # verbose paraphrase like "기존 후보들은 다 제거해주고 새 작업으로
+    # 진행해줘"), the cached canonical_prompt is the actionable
+    # Research원문 — NOT the user's routing-command reply. Drive
+    # intake + kickoff + research_loop with the canonical so
+    # session.prompt / forum body / role-bot context all see the real
+    # task. Without a cached canonical we refuse outright (no zombie
+    # session whose prompt is the routing-command phrase).
+    if _looks_like_new_work_selection(prompt_text):
+        clarification_canonical = _recall_clarification_canonical_prompt(message)
+        clarification_candidates = _recall_clarification_candidates(message)
+        clarification_cache_present = (
+            _clarification_context_key(message) in _GATEWAY_CLARIFICATION_CONTEXT
+        )
+        if clarification_canonical:
+            create_result = await _drive_clarification_create_new_work(
+                message=message,
+                canonical_prompt=clarification_canonical,
+                intake_fn=intake_fn,
+                thread_kickoff_fn=thread_kickoff_fn,
+                send_chunks=send_chunks,
+                research_loop_fn=research_loop_fn,
+            )
+            if create_result is not None:
+                _clear_clarification_context(message)
+                return create_result
+        elif clarification_candidates or clarification_cache_present:
+            # Older cache entry from before the canonical_prompt fix
+            # (or candidates lost during truncation) — refuse to spawn
+            # a session with the routing-command phrase as session.prompt.
+            await send_chunks(
+                message.channel,
+                (
+                    "직전 clarification 캐시에서 원문 task 본문을 찾지 못했어요.\n"
+                    "진행할 업무 원문을 다시 알려주세요. \"새 작업으로 진행\"은 "
+                    "routing 명령이라 작업 본문으로 사용할 수 없어요."
+                ),
+            )
+            _clear_clarification_context(message)
+            return EngineeringRouteResult(handled=True)
 
     attachments = extract_message_attachments(message)
     user_links = extract_user_links_from_message(message, prompt_text)
@@ -441,6 +572,25 @@ async def route_engineering_message(
 
     confirmed = outcome.confirmed or detect_confirmation_signal(prompt_text)
     intake_prompt = (outcome.intake_prompt or prompt_text).strip()
+
+    # Clarification follow-up canonical-prompt rewrite. Last turn's
+    # clarification stashed the original task description (e.g. "[Research]
+    # 하네스 엔지니어링…"). When the user replies with a routing-command
+    # phrase ("새 작업으로 진행" / "기존 세션 abc"), we substitute the
+    # cached canonical text into ``intake_prompt`` so every downstream
+    # writer (intake_fn → session.prompt, _handle_join_or_append → append
+    # payload, research_loop_fn → forum body / research query) sees the
+    # real task instead of the routing-command reply. ``decide_routing``
+    # still receives the user's literal reply via ``routing_input`` so
+    # explicit-session and "새 작업으로 진행" parsing still fire.
+    clarification_canonical = _recall_clarification_canonical_prompt(message)
+    if clarification_canonical:
+        intake_prompt = clarification_canonical
+        # The follow-up reply is the user's decision after seeing the
+        # original prompt last turn, so it's confirmed even when the
+        # literal text is just "새 작업으로 진행" / "1번".
+        confirmed = True
+
     if not confirmed or not intake_prompt:
         return EngineeringRouteResult(
             handled=True,
@@ -452,15 +602,56 @@ async def route_engineering_message(
     # returns one of join/create/ask/append-context. Failures fall back to the
     # legacy "create new" path so the bot never gets wedged.
     #
-    # Use ``intake_prompt`` (the canonical task description) instead of
-    # ``prompt_text`` (which is just the user's confirmation reply like
-    # "이대로 진행") so similarity scoring runs on the actual work content,
-    # not on the short confirm phrase. ``intake_prompt`` already falls back
-    # to ``prompt_text`` when the conversation layer has no separate task
-    # text (direct-confirm / single-message confirmation).
-    routing_prompt = intake_prompt or prompt_text
+    # Routing input vs intake_prompt:
+    # - ``routing_input`` is what ``decide_routing`` parses for explicit
+    #   session ids ("기존 세션 abc"), explicit new-work signals
+    #   ("새 작업으로 진행"), and similarity scoring against open sessions.
+    # - ``intake_prompt`` is what we persist as ``session.prompt`` (CREATE)
+    #   or hand to ``_handle_join_or_append`` as the append payload (JOIN).
+    # In a clarification follow-up these diverge — the user's reply is the
+    # routing signal but the cached canonical_prompt is the task content.
+    if clarification_canonical:
+        routing_input = (prompt_text or "").strip() or clarification_canonical
+    else:
+        routing_input = intake_prompt or prompt_text
+    routing_prompt = routing_input
+    routing_thread_id = _thread_id_for_runtime(message)
+
+    # Confirm-routing + bot-echo guard. The firewall rejects when the
+    # user's reply is a non-actionable phrase AND we have no canonical
+    # task description to substitute. With a stored canonical_prompt
+    # the rewrite above already swapped intake_prompt to actionable
+    # text so a CREATE/JOIN can land safely on the canonical content.
+    if (
+        is_non_actionable_prompt(routing_input)
+        and not clarification_canonical
+        and routing_thread_id is None
+    ):
+        if is_bot_echo_phrase(routing_input):
+            clarification = (
+                "방금 받은 메시지가 gateway가 보낸 안내문 문구와 똑같아서 "
+                "새 작업으로 등록하지 않았어요.\n"
+                "진행할 업무 원문을 다시 알려주세요. 짧은 확인 문구는 "
+                "작업 본문으로 사용할 수 없어요."
+            )
+        else:
+            clarification = (
+                "진행할 업무 원문을 다시 알려주세요. \"이대로 진행\" / "
+                "\"새 작업으로 진행\" 같은 확인 문구는 작업 본문으로 "
+                "사용할 수 없어요.\n"
+                "기존 작업을 이어가려면 `기존 세션 <id>`로 답해 주세요."
+            )
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
+        )
+
     try:
-        routing_decision = decide_routing(prompt=routing_prompt)
+        routing_decision = decide_routing(
+            prompt=routing_prompt,
+            thread_id=routing_thread_id,
+        )
     except Exception as exc:  # noqa: BLE001 - routing must not crash the bot
         routing_decision = EngineeringRoutingDecision(
             action=ACTION_CREATE,
@@ -468,7 +659,27 @@ async def route_engineering_message(
             confidence="low",
         )
 
+    # Clarification follow-up cleanup — the canonical_prompt is about to
+    # be consumed (CREATE writes it as session.prompt, JOIN/append uses
+    # it as the payload). Drop the cache so the next message in this
+    # channel does not re-use the same canonical against an unrelated
+    # routing-command reply.
+    if clarification_canonical:
+        _clear_clarification_context(message)
+
     if routing_decision.action == ACTION_ASK:
+        # Stash the routing decision's candidates AND the canonical
+        # task description so the next-turn follow-up ("1번" / "기존
+        # 세션 …" / "새 작업으로 진행") joins the right session OR
+        # creates a new one with the real intake_prompt — never with
+        # the routing-command phrase. ``intake_prompt`` here is the
+        # canonical task text (long Research원문 in the live MVP bug)
+        # that ``decide_routing`` just scored against.
+        _remember_clarification_candidates(
+            message,
+            routing_decision.candidate_summaries,
+            canonical_prompt=intake_prompt,
+        )
         clarification = _format_clarification_message(routing_decision)
         await send_chunks(message.channel, clarification)
         return EngineeringRouteResult(
@@ -545,6 +756,25 @@ async def route_engineering_message(
             routing_decision=routing_decision,
         )
 
+    # Defensive intake guard — even if the upstream routing guard
+    # didn't trip (e.g. thread_id was set but no anchor matched and
+    # token scoring returned CREATE), we must NOT persist a zombie
+    # session whose prompt is "새 작업으로 진행" / "이대로 진행" /
+    # a bot-echo paste-back. The CREATE branch is the last writer of
+    # session.prompt, so this is the final firewall.
+    if is_non_actionable_prompt(intake_prompt):
+        clarification = (
+            "진행할 업무 원문을 다시 알려주세요. \"이대로 진행\" / "
+            "\"새 작업으로 진행\" 같은 확인 문구나 gateway 안내문은 "
+            "작업 본문으로 사용할 수 없어요."
+        )
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(
+            handled=True,
+            conversation_message=outcome.content or None,
+            routing_decision=routing_decision,
+        )
+
     try:
         intake = intake_fn(
             prompt=intake_prompt,
@@ -571,6 +801,11 @@ async def route_engineering_message(
         research_pack=outcome.research_pack,
         collection_outcome=outcome.collection_outcome,
     )
+    # Phase 1 wiring: stash active role selection on the new session so
+    # downstream research_loop / work_report / status diagnostic all
+    # see the same set without re-running the rule bank.
+    session = _persist_role_selection(session, intake_prompt)
+    session = _persist_lifecycle_mode(session, intake_prompt)
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -596,6 +831,12 @@ async def route_engineering_message(
         if kickoff is not None:
             thread_id = kickoff.thread_id
             kickoff_message = kickoff.message
+            # Phase 1 stabilisation: stamp the new work-thread id back
+            # on session.thread_id so status / Obsidian / continuation
+            # lookups by thread anchor resolve cleanly. Without this
+            # the session row stayed thread-less in SQLite even after
+            # a successful kickoff.
+            session = _persist_thread_id(session, thread_id)
 
     research_loop_report: Optional[EngineeringResearchLoopReport] = None
     if research_loop_fn is not None and session is not None:
@@ -610,6 +851,17 @@ async def route_engineering_message(
             role_for_research=outcome.role_for_research,
             thread_id=thread_id,
         )
+
+    # Phase 4: post a deterministic work report once the research +
+    # synthesis pass closes. Always best-effort; a failure here keeps
+    # the existing reply chain intact.
+    await _emit_work_report_preview(
+        message=message,
+        session=session,
+        canonical_prompt=intake_prompt,
+        send_chunks=send_chunks,
+        collection_outcome=outcome.collection_outcome,
+    )
 
     return EngineeringRouteResult(
         handled=True,
@@ -647,154 +899,130 @@ _PREFLIGHT_SHORT_CIRCUIT_INTENTS = frozenset(
 # ---------------------------------------------------------------------------
 
 
-_GATEWAY_CLARIFICATION_CONTEXT: dict[
-    tuple[Optional[int], Optional[int]], tuple[dict, ...]
-] = {}
-
-
-_NUMERIC_SELECTION_RE = __import__("re").compile(
-    r"^\s*(\d{1,2})\s*(번|번째|개|위치)?\s*\.?\s*$"
-)
-
-# Map a Korean ordinal/positional prefix to a 1-based candidate index.
-# We match by ``startswith`` after whitespace removal so phrases like
-# "첫 번째 거" / "두번째로" still resolve.
-_ORDINAL_KO_PREFIXES: tuple[tuple[str, int], ...] = (
-    ("첫번째", 1),
-    ("첫 번째", 1),
-    ("첫째", 1),
-    ("두번째", 2),
-    ("두 번째", 2),
-    ("둘째", 2),
-    ("세번째", 3),
-    ("세 번째", 3),
-    ("셋째", 3),
-    ("네번째", 4),
-    ("네 번째", 4),
-    ("넷째", 4),
-    ("다섯번째", 5),
-    ("다섯 번째", 5),
-    ("다섯째", 5),
+# MVP closure refactor — clarification cache + selection helpers were
+# extracted to :mod:`discord.engineering.clarification` so the router
+# stays focused on flow orchestration. The router-prefixed (``_``)
+# names below are kept as aliases so existing tests / callers that
+# import from ``engineering_channel_router`` keep working.
+from .engineering.clarification import (
+    GATEWAY_CLARIFICATION_CONTEXT as _GATEWAY_CLARIFICATION_CONTEXT,
+    clarification_context_key as _clarification_context_key,
+    clear_clarification_context as _clear_clarification_context,
+    looks_like_new_work_selection as _looks_like_new_work_selection,
+    recall_clarification_candidates as _recall_clarification_candidates,
+    recall_clarification_canonical_prompt as _recall_clarification_canonical_prompt,
+    remember_clarification_candidates as _remember_clarification_candidates,
+    try_select_candidate as _try_select_candidate,
 )
 
 
-# Phrases that mean "the one I just showed" — only meaningful with at
-# least one stored candidate. With multiple candidates these stay
-# ambiguous and we ask for a number; with a single candidate they pick
-# it. ``기존 세션으로 진행`` is included so users who saw a
-# single-candidate clarification can confirm with that exact wording.
-_DEMONSTRATIVE_SELECTION_PHRASES: tuple[str, ...] = (
-    "이걸로",
-    "이거로",
-    "이걸루",
-    "이거",
-    "저걸로",
-    "그걸로",
-    "위에 거",
-    "위에거",
-    "위 거",
-    "위 것",
-    "방금 그거",
-    "방금 그것",
-    "방금 거",
-    "기존 세션으로 진행",
-    "기존 작업으로 진행",
-)
-
-
-def _clarification_context_key(message: Any) -> tuple[Optional[int], Optional[int]]:
-    """Scope key for the clarification cache.
-
-    Uses the channel/thread id the user is currently typing in, plus
-    the author id, so a clarification shown to user A in #업무-접수
-    doesn't get hijacked by user B's "1번" reply in the same channel.
-    """
-
-    channel = getattr(message, "channel", None)
-    scope_id = getattr(channel, "id", None)
-    user_id = getattr(getattr(message, "author", None), "id", None)
-    return (scope_id, user_id)
-
-
-def _remember_clarification_candidates(
+async def _drive_clarification_create_new_work(
+    *,
     message: Any,
-    candidates: Sequence[Any],
-) -> None:
-    """Stash candidate session ids + thread ids from the recall result.
+    canonical_prompt: str,
+    intake_fn: "IntakeFn",
+    thread_kickoff_fn: "ThreadKickoffFn",
+    send_chunks: SendChunksFn,
+    research_loop_fn: Optional["ResearchLoopFn"],
+) -> Optional[EngineeringRouteResult]:
+    """Drive intake → kickoff → research_loop with a cached canonical
+    prompt when the user's clarification follow-up was "새 작업으로
+    진행".
 
-    Stored as plain dicts so the cache value round-trips through
-    pickling-friendly types and we never hold a reference to a
-    dataclass that may grow new fields underneath us.
+    Bypasses ``conversation_fn`` and ``decide_routing`` entirely so
+    the new ``session.prompt`` is the canonical task text — never the
+    routing-command phrase the user just typed. Defensive guards
+    refuse non-actionable canonicals (the same firewall as the legacy
+    intake path).
     """
 
-    if not candidates:
-        return
-    serialized = tuple(
-        {
-            "session_id": getattr(cand, "session_id", None),
-            "title": getattr(cand, "title", "") or "",
-            "score": float(getattr(cand, "score", 0.0) or 0.0),
-            "thread_id": getattr(cand, "thread_id", None),
-            "forum_thread_id": getattr(cand, "forum_thread_id", None),
-            "task_type": getattr(cand, "task_type", None),
-        }
-        for cand in candidates[:5]
-        if getattr(cand, "session_id", None)
+    if is_non_actionable_prompt(canonical_prompt):
+        clarification = (
+            "방금 받은 메시지는 routing 명령(`새 작업으로 진행`) 이라 "
+            "session.prompt 로 쓸 수 없고, 직전 clarification 캐시에서도 "
+            "원문 task 본문을 찾지 못했어요. 진행할 업무 원문을 다시 "
+            "알려주세요."
+        )
+        await send_chunks(message.channel, clarification)
+        return EngineeringRouteResult(handled=True)
+
+    try:
+        intake = intake_fn(
+            prompt=canonical_prompt,
+            write_requested=False,
+            channel_id=getattr(getattr(message, "channel", None), "id", None),
+            user_id=getattr(getattr(message, "author", None), "id", None),
+        )
+        intake = await _maybe_await(intake)
+    except Exception as exc:  # noqa: BLE001 - surface error to user, do not crash bot
+        await send_chunks(message.channel, f"⚠️ engineer intake 실패: {exc}")
+        return EngineeringRouteResult(handled=True, error=str(exc))
+
+    intake_message = getattr(intake, "message", None)
+    session = getattr(intake, "session", None)
+    plan = getattr(intake, "plan", None)
+    # Phase 1 wiring: stash active role selection on the freshly
+    # spawned session before kickoff / research_loop / work_report
+    # consume it.
+    session = _persist_role_selection(session, canonical_prompt)
+    session = _persist_lifecycle_mode(session, canonical_prompt)
+    session_id = getattr(session, "session_id", None)
+
+    if intake_message:
+        await send_chunks(message.channel, intake_message)
+
+    kickoff_message: Optional[str] = None
+    thread_id: Optional[int] = None
+    kickoff_error: Optional[str] = None
+    try:
+        kickoff = await thread_kickoff_fn(
+            channel=message.channel,
+            session=session,
+            plan=plan,
+            topic=None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        kickoff_error = str(exc)
+        await send_chunks(message.channel, f"⚠️ thread kickoff 실패: {exc}")
+        kickoff = None
+    if kickoff is not None:
+        kickoff_message = getattr(kickoff, "message", None)
+        thread_id = getattr(kickoff, "thread_id", None)
+        # Phase 1 stabilisation: stamp the new work-thread id back on
+        # session.thread_id so subsequent status / Obsidian lookups
+        # resolve via the thread anchor.
+        session = _persist_thread_id(session, thread_id)
+        if kickoff_message:
+            await send_chunks(message.channel, kickoff_message)
+
+    research_loop_report = None
+    if research_loop_fn is not None and session is not None and kickoff is not None:
+        research_loop_report = await _run_research_loop_hook(
+            research_loop_fn=research_loop_fn,
+            message=message,
+            session=session,
+            prompt_text=canonical_prompt,
+            send_chunks=send_chunks,
+            thread_id=thread_id,
+        )
+
+    # Phase 4: post the deterministic work report at lifecycle close.
+    await _emit_work_report_preview(
+        message=message,
+        session=session,
+        canonical_prompt=canonical_prompt,
+        send_chunks=send_chunks,
+        collection_outcome=None,
     )
-    if serialized:
-        _GATEWAY_CLARIFICATION_CONTEXT[_clarification_context_key(message)] = serialized
 
-
-def _recall_clarification_candidates(message: Any) -> tuple[dict, ...]:
-    return _GATEWAY_CLARIFICATION_CONTEXT.get(_clarification_context_key(message), ())
-
-
-def _clear_clarification_context(message: Any) -> None:
-    _GATEWAY_CLARIFICATION_CONTEXT.pop(_clarification_context_key(message), None)
-
-
-def _try_select_candidate(
-    text: str,
-    candidates: tuple[dict, ...],
-) -> Optional[dict]:
-    """Resolve a follow-up message into a stored candidate, or None.
-
-    Recognises:
-    - bare number ``"1"`` / ordinal-shaped ``"1번"`` / ``"2번째"``
-    - Korean ordinals ``"첫 번째"`` / ``"두번째"`` / ...
-    - demonstrative phrases (``"이걸로"`` / ``"기존 세션으로 진행"``)
-      — only return a hit when there's exactly one stored candidate so
-      multi-candidate ambiguity falls through to a fresh clarification
-      instead of being silently resolved.
-
-    Out-of-range numbers (e.g. user typed "9번" but only 3 candidates)
-    return None so the router can re-ask. The cache is left in place
-    because the next reply might still be a valid pick.
-    """
-
-    if not candidates:
-        return None
-    cleaned = (text or "").strip().lower()
-    if not cleaned:
-        return None
-
-    numeric_match = _NUMERIC_SELECTION_RE.match(cleaned)
-    if numeric_match is not None:
-        index = int(numeric_match.group(1)) - 1
-        if 0 <= index < len(candidates):
-            return candidates[index]
-        return None
-
-    for prefix, idx in _ORDINAL_KO_PREFIXES:
-        if cleaned.startswith(prefix) and idx <= len(candidates):
-            return candidates[idx - 1]
-
-    if any(phrase in cleaned for phrase in _DEMONSTRATIVE_SELECTION_PHRASES):
-        if len(candidates) == 1:
-            return candidates[0]
-        return None
-
-    return None
+    return EngineeringRouteResult(
+        handled=True,
+        session_id=session_id,
+        thread_id=thread_id,
+        kickoff_message=kickoff_message,
+        research_loop_report=research_loop_report,
+        error=kickoff_error,
+    )
 
 
 async def _handle_clarification_selection(
@@ -802,18 +1030,25 @@ async def _handle_clarification_selection(
     message: Any,
     selected: dict,
     prompt_text: str,
+    canonical_prompt: Optional[str],
     send_chunks: SendChunksFn,
     thread_continuation_fn: Optional[ThreadContinuationFn],
 ) -> Optional[EngineeringRouteResult]:
     """Drive the legacy join helper for a clarification follow-up
-    selection. Returns a populated result on success or ``None`` to
-    leave the cache in place and fall through to the regular flow."""
+    selection. ``canonical_prompt`` (when present) is the original task
+    description captured at clarification time — used as the join /
+    append payload so session.extra and forum body see real content.
+    The user's routing-command reply (``prompt_text``) is dropped from
+    the join payload entirely. Returns a populated result on success or
+    ``None`` to leave the cache in place and fall through to the regular
+    flow."""
 
     if thread_continuation_fn is None:
         return None
+    intake_prompt = (canonical_prompt or "").strip() or prompt_text
     synthetic_outcome = EngineeringConversationOutcome(
         content="",
-        intake_prompt=prompt_text,
+        intake_prompt=intake_prompt,
     )
     synthetic_decision = EngineeringRoutingDecision(
         action=ACTION_JOIN,
@@ -827,11 +1062,704 @@ async def _handle_clarification_selection(
         message=message,
         outcome=synthetic_outcome,
         decision=synthetic_decision,
-        intake_prompt=prompt_text,
+        intake_prompt=intake_prompt,
         send_chunks=send_chunks,
         thread_continuation_fn=thread_continuation_fn,
         research_loop_fn=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Coding authorization gate
+# ---------------------------------------------------------------------------
+
+
+# MVP closure refactor — phrase-detection predicates moved to
+# :mod:`discord.engineering.phrase_detect`. Re-exported here under
+# the historical underscore-prefixed names so existing tests / callers
+# (e.g. ``engineering_channel_router.is_coding_approval_phrase``) keep
+# working.
+from .engineering.phrase_detect import (
+    CODING_APPROVAL_PHRASES as _CODING_APPROVAL_PHRASES,
+    CODING_PROPOSAL_REQUEST_PHRASES as _CODING_PROPOSAL_REQUEST_PHRASES,
+    CONTINUATION_RESEARCH_KEYWORDS as _CONTINUATION_RESEARCH_KEYWORDS,
+    NO_CODING_INTENT_PHRASES as _NO_CODING_INTENT_PHRASES,
+    continuation_requests_research as _continuation_requests_research,
+    is_coding_approval_phrase,
+    is_coding_proposal_request,
+    user_explicitly_blocked_coding as _user_explicitly_blocked_coding,
+)
+
+
+def _find_session_with_pending_coding_proposal(
+    *,
+    message: Any,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+) -> Optional[Any]:
+    """Pick the session whose ``extra['coding_proposal']`` should pair
+    with this approval phrase. Mirrors ``_find_session_with_pending_proposal``
+    but reads the coding key instead of the obsidian key."""
+
+    try:
+        try:
+            sessions = list_sessions_fn(limit=50)
+        except TypeError:
+            sessions = list_sessions_fn()
+    except Exception:  # noqa: BLE001
+        return None
+    if not sessions:
+        return None
+
+    channel = getattr(message, "channel", None)
+    channel_id = getattr(channel, "id", None)
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is None and getattr(channel, "parent", None) is None:
+        thread_id = None
+        scoped_channel_id = channel_id
+    else:
+        thread_id = channel_id
+        scoped_channel_id = parent_id
+    user_id = getattr(getattr(message, "author", None), "id", None)
+
+    candidates = [
+        s
+        for s in sessions
+        if isinstance(getattr(s, "extra", None), Mapping)
+        and dict(getattr(s, "extra")).get("coding_proposal")
+    ]
+    if not candidates:
+        return None
+
+    if thread_id is not None:
+        for session in candidates:
+            if getattr(session, "thread_id", None) == thread_id:
+                return session
+
+    if scoped_channel_id is not None:
+        same_scope = [
+            s
+            for s in candidates
+            if getattr(s, "channel_id", None) == scoped_channel_id
+            and (user_id is None or getattr(s, "user_id", None) == user_id)
+        ]
+        if same_scope:
+            return _most_recent_session(same_scope)
+
+    return _most_recent_session(candidates)
+
+
+def _find_latest_open_session(
+    *,
+    message: Any,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+) -> Optional[Any]:
+    """Pick the session a coding proposal should target when the user
+    didn't reference one explicitly. Same channel/thread > same channel
+    > most recently updated open session."""
+
+    try:
+        try:
+            sessions = list_sessions_fn(limit=50)
+        except TypeError:
+            sessions = list_sessions_fn()
+    except Exception:  # noqa: BLE001
+        return None
+    if not sessions:
+        return None
+
+    open_sessions = [s for s in sessions if not _is_terminal(s)]
+    if not open_sessions:
+        return None
+
+    channel = getattr(message, "channel", None)
+    channel_id = getattr(channel, "id", None)
+    parent_id = getattr(channel, "parent_id", None)
+    if parent_id is None and getattr(channel, "parent", None) is None:
+        thread_id = None
+        scoped_channel_id = channel_id
+    else:
+        thread_id = channel_id
+        scoped_channel_id = parent_id
+
+    if thread_id is not None:
+        for session in open_sessions:
+            if getattr(session, "thread_id", None) == thread_id:
+                return session
+
+    if scoped_channel_id is not None:
+        same_scope = [
+            s
+            for s in open_sessions
+            if getattr(s, "channel_id", None) == scoped_channel_id
+        ]
+        if same_scope:
+            return _most_recent_session(same_scope)
+
+    return _most_recent_session(open_sessions)
+
+
+def _is_terminal(session: Any) -> bool:
+    state = getattr(session, "state", None)
+    state_value = getattr(state, "value", state)
+    return str(state_value).lower() in {"completed", "rejected"}
+
+
+def _persist_coding_proposal(
+    session: Any,
+    proposal: CodingAuthorizationProposal,
+) -> Any:
+    """Stash a fresh proposal under ``session.extra['coding_proposal']``."""
+
+    return _persist_extra_keys(
+        session,
+        {
+            "coding_proposal": _proposal_to_dict(proposal),
+            "coding_job": None,  # supersedes any prior pending job copy
+        },
+    )
+
+
+def _persist_coding_job(session: Any, job_payload: Mapping[str, object]) -> Any:
+    """Replace any pending proposal with the approved coding job payload."""
+
+    return _persist_extra_keys(
+        session,
+        {
+            "coding_job": dict(job_payload),
+            "coding_proposal": None,  # consumed
+        },
+    )
+
+
+def _persist_role_selection(
+    session: Any,
+    canonical_prompt: str,
+) -> Any:
+    """Run :func:`role_selection.recommend_active_roles` against
+    *canonical_prompt* and stash the result on ``session.extra``.
+
+    Best-effort: import or persistence failures simply skip — the
+    legacy "all roles" fallback path remains operational. Used right
+    after intake so the work-report builder + research scoping see a
+    populated ``active_research_roles`` from turn one.
+    """
+
+    if session is None:
+        return session
+    try:
+        from ..agents.lifecycle.role_selection import (
+            apply_role_selection_to_extra,
+            recommend_active_roles,
+        )
+    except Exception:  # noqa: BLE001
+        return session
+    try:
+        hint_sequence = tuple(getattr(session, "role_sequence", ()) or ())
+    except Exception:  # noqa: BLE001
+        hint_sequence = ()
+    try:
+        selection = recommend_active_roles(
+            user_prompt=canonical_prompt or "",
+            hint_role_sequence=hint_sequence,
+        )
+    except Exception:  # noqa: BLE001
+        return session
+    try:
+        existing = dict(getattr(session, "extra", {}) or {})
+    except Exception:  # noqa: BLE001
+        existing = {}
+    merged = apply_role_selection_to_extra(existing, selection)
+    # Only forward the four selection-specific keys to _persist_extra_keys
+    # so we don't accidentally rewrite unrelated extras with stale copies.
+    selection_updates = {
+        key: merged[key]
+        for key in (
+            "active_research_roles",
+            "excluded_research_roles",
+            "role_selection_source",
+            "role_selection_reasons",
+        )
+        if key in merged
+    }
+    if not selection_updates:
+        return session
+    return _persist_extra_keys(session, selection_updates)
+
+
+def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
+    """Mark *session* as research-only when the prompt signals that.
+
+    Live regression: the gateway used to advertise an executor role
+    ("실행 후보 backend-engineer") even on a request like "오늘은 코드
+    수정 없이 자료 수집이 목표야". Phase 2 fixes that by stashing the
+    lifecycle mode at intake so every downstream consumer (work_report
+    builder, status diagnostic, member-bot research path) reads the
+    same answer.
+
+    The session.extra layout matches the spec's bullet 5:
+        lifecycle_mode: "research_only" | "implementation"
+        executor_role:  null when research-only
+        research_leads: list[str]   roles leading the investigation
+
+    Best-effort — any import or persistence failure leaves the session
+    untouched so a partial agent layout cannot block intake.
+    """
+
+    if session is None:
+        return session
+    try:
+        from ..agents.coding.authorization import (
+            LIFECYCLE_MODE_IMPLEMENTATION,
+            LIFECYCLE_MODE_RESEARCH_ONLY,
+            recommend_authorization,
+        )
+    except Exception:  # noqa: BLE001
+        return session
+
+    try:
+        proposal = recommend_authorization(user_request=canonical_prompt or "")
+    except Exception:  # noqa: BLE001
+        return session
+
+    if proposal.lifecycle_mode == LIFECYCLE_MODE_RESEARCH_ONLY:
+        updates = {
+            "lifecycle_mode": LIFECYCLE_MODE_RESEARCH_ONLY,
+            "executor_role": None,
+            "research_leads": list(proposal.research_leads),
+        }
+    else:
+        updates = {
+            "lifecycle_mode": LIFECYCLE_MODE_IMPLEMENTATION,
+        }
+    return _persist_extra_keys(session, updates)
+
+
+def _work_report_to_dict(report: Any) -> dict:
+    """Serialise a :class:`agents.reports.work_report.WorkReport` into a plain
+    JSON-friendly dict so the workflow store can persist it under
+    ``session.extra['work_report']``."""
+
+    return {
+        "session_id": getattr(report, "session_id", None),
+        "title": getattr(report, "title", "") or "",
+        "canonical_prompt": getattr(report, "canonical_prompt", "") or "",
+        "executive_summary": getattr(report, "executive_summary", "") or "",
+        "research_summary": getattr(report, "research_summary", "") or "",
+        "tech_lead_recommendation": getattr(
+            report, "tech_lead_recommendation", ""
+        )
+        or "",
+        "role_decisions": dict(getattr(report, "role_decisions", {}) or {}),
+        "risks": list(getattr(report, "risks", ()) or ()),
+        "proposed_next_steps": list(
+            getattr(report, "proposed_next_steps", ()) or ()
+        ),
+        "requires_code_change": bool(
+            getattr(report, "requires_code_change", False)
+        ),
+        "recommended_executor_role": getattr(
+            report, "recommended_executor_role", None
+        ),
+        "approval_request": getattr(report, "approval_request", None),
+        "participants": list(getattr(report, "participants", ()) or ()),
+        "reference_count": int(getattr(report, "reference_count", 0) or 0),
+        "research_stop_reason": getattr(report, "research_stop_reason", None),
+        "under_covered_roles": list(
+            getattr(report, "under_covered_roles", ()) or ()
+        ),
+        # Phase 3 status gate fields.
+        "status": getattr(report, "status", "interim"),
+        "missing_roles": list(getattr(report, "missing_roles", ()) or ()),
+        "has_research_pack": bool(
+            getattr(report, "has_research_pack", False)
+        ),
+        "has_synthesis": bool(getattr(report, "has_synthesis", False)),
+    }
+
+
+async def _emit_work_report_preview(
+    *,
+    message: Any,
+    session: Any,
+    canonical_prompt: str,
+    send_chunks: SendChunksFn,
+    collection_outcome: Any = None,
+    fallback_participants: Sequence[str] = (),
+) -> None:
+    """Build + persist + post a :class:`WorkReport` for *session*.
+
+    Best-effort end-of-lifecycle hook: builds a deterministic work
+    report from ``session.extra``, stashes a snapshot under
+    ``session.extra['work_report']`` so the status diagnostic + Phase
+    5 Obsidian export can read it back, and posts a Markdown preview
+    to the originating Discord channel. Any failure here must NOT
+    undo the intake / kickoff / research_loop that already landed —
+    every step is wrapped so the user-visible reply is always
+    delivered.
+    """
+
+    if session is None:
+        return
+    try:
+        from ..agents.reports.work_report import (
+            build_work_report,
+            format_work_report_markdown,
+        )
+    except Exception:  # noqa: BLE001 - import wiring failure must not crash bot
+        return
+
+    try:
+        extra = dict(getattr(session, "extra", {}) or {})
+    except Exception:  # noqa: BLE001
+        extra = {}
+
+    stop_reason: Optional[str] = None
+    under_covered: tuple = ()
+    if collection_outcome is not None:
+        stop_reason = getattr(collection_outcome, "stop_reason", None)
+        try:
+            under_covered = tuple(
+                getattr(collection_outcome, "under_covered_roles", ()) or ()
+            )
+        except TypeError:
+            under_covered = ()
+
+    try:
+        report = build_work_report(
+            session_id=getattr(session, "session_id", None),
+            canonical_prompt=canonical_prompt,
+            extra=extra,
+            research_stop_reason=stop_reason,
+            under_covered_roles=under_covered,
+            fallback_participants=fallback_participants,
+        )
+    except Exception:  # noqa: BLE001 - report build is non-fatal
+        return
+
+    try:
+        _persist_extra_keys(session, {"work_report": _work_report_to_dict(report)})
+    except Exception:  # noqa: BLE001 - cache failures must not block the user reply
+        pass
+
+    try:
+        body = format_work_report_markdown(report)
+    except Exception:  # noqa: BLE001
+        body = ""
+    if body:
+        try:
+            await send_chunks(message.channel, body)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
+    """Merge *updates* into ``session.extra`` and persist via ``update_session``.
+
+    Always mutates the live ``extra`` dict when one is present, so test
+    fixtures using mutable dataclass stubs observe the new keys without
+    having to capture the returned session. Production WorkflowSession
+    is frozen — for that path we rely on ``dataclasses.replace`` +
+    ``update_session`` to land the change in SQLite.
+
+    Stabilisation Phase 1: persistence failures used to be silently
+    swallowed, which made live debugging impossible. We now stamp a
+    ``persistence_error`` entry on the session's live extra dict (when
+    available) so the status diagnostic + supervisor can surface
+    "왜 저장이 안 됐어?" without having to grep logs. The user-visible
+    reply chain is still kept intact (no exception leaks past this
+    helper).
+    """
+
+    try:
+        from dataclasses import replace as _dc_replace
+        from datetime import datetime as _dt
+
+        from ..agents.workflow_state import update_session
+    except Exception as exc:  # noqa: BLE001
+        _record_persistence_failure(
+            session,
+            step="import update_session",
+            reason=str(exc),
+            updates=updates,
+        )
+        return session
+
+    # Try in-place mutation first so test stubs (plain dataclasses with
+    # a regular dict ``extra``) observe the change directly. Production
+    # WorkflowSession holds an immutable mapping; this no-ops there.
+    live = getattr(session, "extra", None)
+    if isinstance(live, dict):
+        for key, value in updates.items():
+            live[key] = value
+
+    existing = dict(getattr(session, "extra", {}) or {})
+    merged = {**existing, **dict(updates)}
+    try:
+        updated = _dc_replace(session, extra=merged)
+    except TypeError:
+        # Non-dataclass stub — in-place mutation above already covered it.
+        return session
+    try:
+        update_session(updated, now=_dt.now().astimezone())
+    except Exception as exc:  # noqa: BLE001
+        _record_persistence_failure(
+            updated,
+            step="update_session",
+            reason=str(exc),
+            updates=updates,
+        )
+    return updated
+
+
+def _record_persistence_failure(
+    session: Any,
+    *,
+    step: str,
+    reason: str,
+    updates: Mapping[str, object],
+) -> None:
+    """Stamp a persistence failure note on the live ``session.extra``.
+
+    Best-effort — the session.extra mutation is wrapped so even
+    pathological stubs never raise out of this helper. The note keeps
+    the offending step + reason + the keys that were being written so
+    the diagnostic responder can show the operator exactly which
+    update silently failed during the live MVP loop.
+    """
+
+    if session is None:
+        return
+    try:
+        live = getattr(session, "extra", None)
+        if isinstance(live, dict):
+            live["persistence_error"] = {
+                "step": step,
+                "reason": reason,
+                "keys": sorted(str(k) for k in (updates or {}).keys()),
+            }
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _persist_thread_id(
+    session: Any,
+    thread_id: Optional[int],
+) -> Any:
+    """Write the Discord work-thread id back to ``session.thread_id``.
+
+    MVP closure refactor: delegates to
+    :func:`agents.lifecycle.persistence.persist_thread_link` so the
+    router and any other caller (member-bot, supervisor cleanup)
+    follow the same persistence contract — including the structured
+    ``persistence_error`` stamp on failure. Behaviour is identical to
+    the prior inline implementation; only the import/replace
+    sequence is consolidated upstream.
+    """
+
+    from ..agents.lifecycle.persistence import persist_thread_link
+
+    result = persist_thread_link(session, thread_id)
+    return result.session
+
+
+def _proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, object]:
+    return {
+        "session_id": proposal.session_id,
+        "user_request": proposal.user_request,
+        "executor_role": proposal.executor_role,
+        "review_roles": list(proposal.review_roles),
+        "participant_roles": list(proposal.participant_roles),
+        "write_scope": list(proposal.write_scope),
+        "forbidden_scope": list(proposal.forbidden_scope),
+        "reason": proposal.reason,
+        "safety_rules": list(proposal.safety_rules),
+        "approval_required": bool(proposal.approval_required),
+        "metadata": dict(proposal.metadata),
+        "lifecycle_mode": proposal.lifecycle_mode,
+        "research_leads": list(proposal.research_leads),
+    }
+
+
+def _proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProposal:
+    lifecycle_mode = str(payload.get("lifecycle_mode") or "implementation")
+    raw_executor = payload.get("executor_role")
+    if lifecycle_mode == "research_only":
+        executor_role = str(raw_executor or "")
+    else:
+        executor_role = str(raw_executor or "tech-lead")
+    return CodingAuthorizationProposal(
+        session_id=payload.get("session_id"),
+        user_request=str(payload.get("user_request") or ""),
+        executor_role=executor_role,
+        review_roles=tuple(payload.get("review_roles") or ()),
+        participant_roles=tuple(payload.get("participant_roles") or ()),
+        write_scope=tuple(payload.get("write_scope") or ()),
+        forbidden_scope=tuple(payload.get("forbidden_scope") or ()),
+        reason=str(payload.get("reason") or ""),
+        safety_rules=tuple(payload.get("safety_rules") or ()),
+        approval_required=bool(payload.get("approval_required", True)),
+        metadata=dict(payload.get("metadata") or {}),
+        lifecycle_mode=lifecycle_mode,
+        research_leads=tuple(payload.get("research_leads") or ()),
+    )
+
+
+async def _run_coding_authorization_gate(
+    *,
+    message: Any,
+    prompt_text: str,
+    list_sessions_fn: Callable[..., Sequence[Any]],
+    send_chunks: SendChunksFn,
+) -> Optional[EngineeringRouteResult]:
+    """Two-branch gate.
+
+    1. ``is_coding_proposal_request`` — build a fresh proposal and
+       stash it under ``session.extra['coding_proposal']``, then post
+       the preview. The user follows up with an approval phrase.
+    2. ``is_coding_approval_phrase`` — flip the latest stashed
+       proposal into a ``CodingJob`` (status=ready) and persist under
+       ``session.extra['coding_job']``.
+
+    Returns ``None`` when the message isn't either kind so the caller
+    falls through to the rest of the route.
+    """
+
+    # Hard "no code change" override: if the user explicitly said
+    # "코드 수정 하지 말고 리서치만" the coding gate must not act on
+    # this message even if it also contains a proposal/approval phrase.
+    if _user_explicitly_blocked_coding(prompt_text):
+        return None
+
+    if is_coding_proposal_request(prompt_text):
+        target = _find_latest_open_session(
+            message=message,
+            list_sessions_fn=list_sessions_fn,
+        )
+        if target is None:
+            await send_chunks(
+                message.channel,
+                (
+                    "현재 채널에 매칭되는 열린 engineering-agent 세션이 보이지 않아요.\n"
+                    "먼저 작업을 접수해서 세션을 만들고 다시 `코딩 권한 제안`이라고 답해 주세요."
+                ),
+            )
+            return EngineeringRouteResult(handled=True)
+
+        proposal = recommend_authorization(
+            user_request=getattr(target, "prompt", "") or "",
+            session_id=getattr(target, "session_id", None),
+        )
+        _persist_coding_proposal(target, proposal)
+        await send_chunks(message.channel, format_authorization_message(proposal))
+        return EngineeringRouteResult(
+            handled=True,
+            session_id=getattr(target, "session_id", None),
+            thread_id=getattr(target, "thread_id", None),
+        )
+
+    if is_coding_approval_phrase(prompt_text):
+        owner = _find_session_with_pending_coding_proposal(
+            message=message,
+            list_sessions_fn=list_sessions_fn,
+        )
+        if owner is None:
+            await send_chunks(
+                message.channel,
+                (
+                    "지금은 대기 중인 코딩 권한 제안이 없어요.\n"
+                    "먼저 `코딩 권한 제안` 이라고 답해서 Tech Lead 추천을 받아 주세요."
+                ),
+            )
+            return EngineeringRouteResult(handled=True)
+
+        extra = dict(getattr(owner, "extra", {}) or {})
+        payload = extra.get("coding_proposal")
+        if not isinstance(payload, Mapping):
+            await send_chunks(
+                message.channel,
+                "대기 중인 코딩 권한 제안 payload를 읽지 못했어요. 다시 `코딩 권한 제안`을 시도해 주세요.",
+            )
+            return EngineeringRouteResult(handled=True)
+
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
+
+        approved_at = _dt.now(_tz.utc)
+        proposal = _proposal_from_dict(payload)
+        try:
+            job = build_coding_job_from_proposal(
+                proposal,
+                status=STATUS_READY,
+                approved_at=approved_at,
+            )
+        except Exception as exc:  # noqa: BLE001
+            await send_chunks(
+                message.channel,
+                f"⚠️ 코딩 권한 승인 중 오류가 발생했어요: {exc}",
+            )
+            return EngineeringRouteResult(handled=True, error=str(exc))
+
+        _persist_coding_job(owner, job.to_dict())
+
+        thread_label = (
+            f"thread `{job.session_id}`"
+            if job.session_id
+            else "(session id 미기록)"
+        )
+        await send_chunks(
+            message.channel,
+            "\n".join(
+                [
+                    "**[engineering-agent] 코딩 권한 승인 완료**",
+                    "",
+                    f"executor: `{job.executor_role}`",
+                    f"세션: {thread_label}",
+                    f"승인 시각: {approved_at.isoformat()}",
+                    "",
+                    "이제 executor에게 안전한 prompt가 전달될 준비가 됐어요. 실제 코드 변경은 executor가 계획을 보여 드린 뒤에만 진행합니다.",
+                ]
+            ),
+        )
+        return EngineeringRouteResult(
+            handled=True,
+            session_id=getattr(owner, "session_id", None),
+            thread_id=getattr(owner, "thread_id", None),
+        )
+
+    return None
+
+
+# MVP closure refactor — explicit session id regex moved to
+# :mod:`agents.lifecycle.resolver` so router / bot / obsidian gate
+# share one canonical implementation. The router-private alias is
+# kept for backward compat with internal callers (and the runtime
+# preflight ``_explicit_session_id`` substring check).
+from ..agents.lifecycle.resolver import (
+    _EXPLICIT_SESSION_ID_RE as _EXPLICIT_SESSION_ID_RE,
+    extract_explicit_session_id as _extract_session_id_from_router_text,
+)
+
+
+def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
+    """Return (allowed, blocking_reason).
+
+    Phase 4 stab: an Obsidian write must NOT proceed when the
+    lifecycle hasn't actually closed. Reads ``session.extra`` for the
+    Phase 2/3 status keys and refuses if research is empty / forum
+    isn't connected / work_report is not ready/final.
+
+    Returns ``(True, None)`` to allow, ``(False, "<korean reason>")``
+    to block. Test stubs that don't carry rich extras get a generous
+    "missing canonical readiness" reason rather than a hard pass.
+    """
+
+    # Refactor: delegate to the canonical :mod:`agents.lifecycle.status`
+    # helper so the router, work_report builder, and Discord status
+    # diagnostic all share one set of "can we save?" rules. The block
+    # reasons stay identical to keep operator-visible messages stable.
+    from ..agents.lifecycle.status import can_write_obsidian_record
+
+    return can_write_obsidian_record(session)
 
 
 async def _run_obsidian_approval_gate(
@@ -845,6 +1773,12 @@ async def _run_obsidian_approval_gate(
 ) -> Optional[EngineeringRouteResult]:
     """Try to interpret *prompt_text* as an Obsidian save approval.
 
+    Phase 4 stab: explicit "세션 <id> 기준으로 저장해줘" prompts now
+    resolve via the id first (load_session) — channel/thread walks
+    only fire when the user didn't name a session. Final write is
+    blocked when the lifecycle is incomplete (no research_pack,
+    interim/insufficient work_report, missing role coverage).
+
     Returns a populated :class:`EngineeringRouteResult` when the message
     was an approval phrase (regardless of whether the write succeeded),
     or ``None`` to fall through to the runtime preflight + conversation
@@ -852,13 +1786,51 @@ async def _run_obsidian_approval_gate(
     so a bare "저장 승인" never gets promoted to ``new_work_request``.
     """
 
-    if not is_obsidian_approval(prompt_text):
+    # Phase 4 stab: accept "세션 <id> 기준으로 저장 승인" by stripping
+    # the explicit-id preamble before testing the approval phrase.
+    explicit_id = _extract_session_id_from_router_text(prompt_text)
+    test_text = prompt_text
+    if explicit_id and not is_obsidian_approval(test_text):
+        # Drop the "세션 <id> 기준으로" prefix and re-test so a
+        # session-scoped approval still routes through this gate.
+        stripped = _EXPLICIT_SESSION_ID_RE.sub("", prompt_text).strip()
+        if stripped:
+            for filler in ("기준으로", "기준 으로", "기준에서", "기준"):
+                if stripped.startswith(filler):
+                    stripped = stripped[len(filler):].strip()
+                    break
+            if is_obsidian_approval(stripped):
+                test_text = stripped
+
+    if not is_obsidian_approval(test_text):
         return None
 
-    candidate = _find_session_with_pending_proposal(
-        message=message,
-        list_sessions_fn=list_sessions_fn,
-    )
+    candidate: Optional[Any] = None
+    if explicit_id:
+        try:
+            from ..agents.workflow_state import load_session as _load_session
+
+            candidate = _load_session(explicit_id)
+        except Exception:  # noqa: BLE001 - lookup failure falls through
+            candidate = None
+        if candidate is None:
+            await send_chunks(
+                message.channel,
+                (
+                    f"세션 `{explicit_id}` 을 찾지 못했어요.\n"
+                    "session id 가 정확한지 확인하거나, 새 작업이라면 `새 작업으로 진행`이라고 답해 주세요."
+                ),
+            )
+            return EngineeringRouteResult(
+                handled=True,
+                error=f"obsidian approval: explicit session {explicit_id} not found",
+            )
+
+    if candidate is None:
+        candidate = _find_session_with_pending_proposal(
+            message=message,
+            list_sessions_fn=list_sessions_fn,
+        )
     if candidate is None:
         await send_chunks(
             message.channel,
@@ -868,6 +1840,22 @@ async def _run_obsidian_approval_gate(
             ),
         )
         return EngineeringRouteResult(handled=True)
+
+    allowed, block_reason = _can_save_to_obsidian(candidate)
+    if not allowed:
+        await send_chunks(
+            message.channel,
+            (
+                "Obsidian 저장을 진행하지 않았어요.\n"
+                f"차단 사유: {block_reason}\n"
+                "lifecycle 이 완료되면 다시 `저장 승인` 으로 답해 주세요."
+            ),
+        )
+        return EngineeringRouteResult(
+            handled=True,
+            session_id=getattr(candidate, "session_id", None),
+            error=f"obsidian approval blocked: {block_reason}",
+        )
 
     try:
         updated, outcome = execute_pending_proposal(
@@ -1065,6 +2053,7 @@ async def _run_runtime_preflight(
     list_sessions_fn: Callable[..., Sequence[Any]],
     send_chunks: SendChunksFn,
     thread_continuation_fn: Optional[ThreadContinuationFn],
+    research_loop_fn: Optional[ResearchLoopFn] = None,
     obsidian_writer_fn: Optional[Callable[..., Any]] = None,
     obsidian_env: Optional[Any] = None,
 ) -> Optional[EngineeringRouteResult]:
@@ -1088,6 +2077,7 @@ async def _run_runtime_preflight(
     # context to classify on their own. Only consulted when we have a
     # cached set of candidates from a prior clarification turn.
     stored_candidates = _recall_clarification_candidates(message)
+    stored_canonical = _recall_clarification_canonical_prompt(message)
     if stored_candidates:
         selected = _try_select_candidate(prompt_text, stored_candidates)
         if selected is not None:
@@ -1095,12 +2085,33 @@ async def _run_runtime_preflight(
                 message=message,
                 selected=selected,
                 prompt_text=prompt_text,
+                canonical_prompt=stored_canonical,
                 send_chunks=send_chunks,
                 thread_continuation_fn=thread_continuation_fn,
             )
             if join_result is not None:
                 _clear_clarification_context(message)
                 return join_result
+
+    # 0b. Clarification follow-up "새 작업으로 진행" path is *not*
+    # handled in the preflight (we do not own intake_fn / kickoff_fn
+    # here). The caller (``route_engineering_message``) inspects the
+    # same cache via ``_recall_clarification_canonical_prompt`` after
+    # preflight returns None, and runs the legacy CREATE branch with
+    # the cached canonical_prompt as ``intake_prompt``.
+
+    # 0c. Explicit "기존 세션 <id>" reply with a stored canonical_prompt:
+    # the runtime recall doesn't parse the explicit-session-id pattern
+    # so it would force ASK_CLARIFICATION here even though decide_routing
+    # could resolve the JOIN cleanly. Hand off to the legacy flow so
+    # the canonical_prompt rewrite in ``route_engineering_message``
+    # handles the append payload.
+    if (
+        stored_canonical
+        and isinstance(prompt_text, str)
+        and _explicit_session_request(prompt_text)
+    ):
+        return None
 
     runtime_input = RuntimeInput(
         role_id="gateway",
@@ -1150,10 +2161,15 @@ async def _run_runtime_preflight(
         # Re-use the legacy join/append helper so research_loop_hook
         # still runs against the resumed session. The helper expects an
         # EngineeringConversationOutcome shape; we synthesise a minimal
-        # one carrying the prompt text as ``intake_prompt``.
+        # one carrying the prompt text as ``intake_prompt``. When a
+        # clarification cache stashed a canonical_prompt last turn we
+        # use that instead so the append payload carries the original
+        # task description, not the routing-command reply.
+        canonical_for_join = _recall_clarification_canonical_prompt(message)
+        join_intake_prompt = canonical_for_join or prompt_text
         synthetic_outcome = EngineeringConversationOutcome(
             content="",
-            intake_prompt=prompt_text,
+            intake_prompt=join_intake_prompt,
         )
         synthetic_decision = EngineeringRoutingDecision(
             action=ACTION_JOIN,
@@ -1163,22 +2179,51 @@ async def _run_runtime_preflight(
             confidence=intent.confidence,
             reason=f"runtime preflight · {intent.intent_id}",
         )
+        # Decide whether to pass research_loop_fn into the join/append
+        # helper. The runtime preflight only re-triggers research
+        # collection when the live MVP bug repeats: the matched session
+        # has no research_pack yet *and* the continuation prompt names
+        # research-shaped intent. Otherwise we keep the legacy
+        # "no auto research loop on join" contract so simple resume /
+        # status pings don't kick off a fresh forum sweep.
+        effective_research_loop_fn: Optional[ResearchLoopFn] = None
+        if (
+            research_loop_fn is not None
+            and _continuation_requests_research(prompt_text)
+        ):
+            matched_session = _load_session_by_id(
+                list_sessions_fn,
+                primary.payload.get("session_id"),
+            )
+            matched_extra: Mapping[str, Any]
+            try:
+                matched_extra = dict(getattr(matched_session, "extra", {}) or {})
+            except Exception:  # noqa: BLE001
+                matched_extra = {}
+            if not matched_extra.get("research_pack"):
+                effective_research_loop_fn = research_loop_fn
         result = await _handle_join_or_append(
             message=message,
             outcome=synthetic_outcome,
             decision=synthetic_decision,
-            intake_prompt=prompt_text,
+            intake_prompt=join_intake_prompt,
             send_chunks=send_chunks,
             thread_continuation_fn=thread_continuation_fn,
-            research_loop_fn=None,  # Phase 4 MVP: no auto research loop here
+            research_loop_fn=effective_research_loop_fn,
         )
         if result is not None:
+            if canonical_for_join:
+                _clear_clarification_context(message)
             return result
         # Fallthrough to clarification when continuation couldn't reach
         # the matched thread (e.g. it's archived) — do NOT silently
         # create a new session. Stash the candidates so the user can
         # reply with "1번" / "기존 세션으로 진행" on the next turn.
-        _remember_clarification_candidates(message, recall.candidates)
+        _remember_clarification_candidates(
+            message,
+            recall.candidates,
+            canonical_prompt=prompt_text,
+        )
         await send_chunks(
             message.channel,
             _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
@@ -1198,7 +2243,11 @@ async def _run_runtime_preflight(
         # context append. Either way the message reuses the same
         # template so the operator sees what's missing — and we cache
         # the candidate list so a follow-up "1번" turn resolves cleanly.
-        _remember_clarification_candidates(message, recall.candidates)
+        _remember_clarification_candidates(
+            message,
+            recall.candidates,
+            canonical_prompt=prompt_text,
+        )
         await send_chunks(
             message.channel,
             _format_runtime_preflight_clarification(intent.intent_id, recall.candidates),
@@ -1351,6 +2400,16 @@ async def _handle_join_or_append(
             role_for_research=outcome.role_for_research,
             thread_id=thread_id,
         )
+        # Phase 4: post the deterministic work report at lifecycle close.
+        # Skipped on pure ACTION_APPEND_CONTEXT — append-only turns
+        # don't have a fresh research outcome to summarise.
+        await _emit_work_report_preview(
+            message=message,
+            session=continued_session,
+            canonical_prompt=intake_prompt,
+            send_chunks=send_chunks,
+            collection_outcome=outcome.collection_outcome,
+        )
 
     return EngineeringRouteResult(
         handled=True,
@@ -1437,19 +2496,48 @@ async def _run_research_loop_hook(
 ) -> EngineeringResearchLoopReport:
     """Call *research_loop_fn* with the message context and surface its result.
 
-    The hook receives the autonomous collector's outputs
-    (``collection_outcome``/``research_pack``) plus the working thread
-    id so the production wiring can post the collection summary to the
-    research forum and start a deliberation chain in the same thread —
-    without the router needing to know the publisher/deliberation APIs.
+    A-M3 wiring: the actual ``research_loop_fn`` invocation now happens
+    inside :class:`ResearchWorker`, so each gateway call lands as a
+    ``research_collect`` job in the SQLite job queue and goes through
+    the ``queued → assigned → in_progress → saved`` state machine.
+    Concretely:
 
-    Errors are caught and reported via a ``⚠️`` chat line so a research
-    loop failure does not undo the intake + kickoff that already landed.
+      * Duplicate intakes for the same session are dropped at the
+        ``enqueue`` step — the user sees "이미 진행 중" instead of a
+        second collect kicking off.
+      * Worker crashes mid-run leave the row in ``in_progress`` with
+        a lease; the M2 supervisor sweep moves it back to
+        ``failed_retryable`` so a future pick can retry.
+      * The Discord-visible artifacts (``follow_up_message``,
+        ``forum_status_message``, ``session.extra`` updates) are
+        unchanged — only state-machine framing is added around the
+        same call.
+
+    Errors are still caught and reported via a ``⚠️`` chat line so a
+    research loop failure does not undo the intake + kickoff that
+    already landed.
     """
 
     attachments = extract_message_attachments(message)
-    try:
-        raw = await _maybe_await(
+    # Phase 1 fix: research loops can run for tens of seconds (autonomous
+    # collection + forum publish + member-bot fan-out). Discord's typing
+    # indicator auto-expires after ~10s, so without the keepalive the
+    # user saw long silent gaps. Wrap the work in ``typing_keepalive``
+    # so "입력 중..." stays visible from the moment we start collecting
+    # until the loop returns a follow-up message (or an error).
+    from .typing_indicator import typing_keepalive
+    from ..agents.job_queue import (
+        HeartbeatStore,
+        JobQueue,
+        ResearchWorker,
+    )
+
+    session_id = getattr(session, "session_id", "") or ""
+    queue = JobQueue()
+    worker = ResearchWorker(queue=queue, heartbeats=HeartbeatStore())
+
+    async def _runner(_job: Any) -> Any:
+        return await _maybe_await(
             research_loop_fn(
                 session=session,
                 message_text=prompt_text,
@@ -1461,6 +2549,22 @@ async def _run_research_loop_hook(
                 thread_id=thread_id,
             )
         )
+
+    try:
+        async with typing_keepalive(
+            message.channel,
+            label="research_loop",
+            session_id=session_id or None,
+        ):
+            outcome = await worker.run_one(
+                session_id=session_id,
+                runner=_runner,
+                payload={
+                    "thread_id": thread_id,
+                    "role_for_research": role_for_research,
+                    "prompt_excerpt": (prompt_text or "")[:160],
+                },
+            )
     except Exception as exc:  # noqa: BLE001 - non-fatal; report and return
         report = EngineeringResearchLoopReport(error=str(exc))
         await send_chunks(
@@ -1469,7 +2573,24 @@ async def _run_research_loop_hook(
         )
         return report
 
-    report = _coerce_research_loop_report(raw)
+    if outcome.skipped_reason == "duplicate_in_flight":
+        # Idempotency notice — keeps the user informed without
+        # double-running the collector. We deliberately don't post
+        # the typical "운영-리서치 forum thread 게시:" status here
+        # because the original in-flight job will publish it.
+        await send_chunks(
+            message.channel,
+            "⏳ 이 세션은 이미 운영-리서치 수집이 진행 중이에요. "
+            "끝나는 대로 thread에 결과가 올라옵니다.",
+        )
+        return EngineeringResearchLoopReport()
+    if outcome.skipped_reason == "claimed_by_other_worker":
+        # Race only relevant once M6 introduces a standalone worker.
+        # In M3 in-process this branch is theoretical; surfacing a
+        # message keeps the contract explicit.
+        return EngineeringResearchLoopReport()
+
+    report = _coerce_research_loop_report(outcome.runner_result)
     # Persist forum publication / open-call signals onto session.extra
     # so the diagnostic responder can describe the live setup later
     # without round-tripping through the publish object. Best-effort —
@@ -1523,52 +2644,23 @@ def persist_research_forum_status(
     if not session_id:
         return
 
-    extra_updates: dict[str, Any] = {}
-    if report.forum_comment_mode is not None:
-        extra_updates["forum_comment_mode"] = report.forum_comment_mode
-    if report.forum_thread_id is not None:
-        extra_updates["research_forum_thread_id"] = report.forum_thread_id
-    if report.forum_thread_url is not None:
-        extra_updates["research_forum_thread_url"] = report.forum_thread_url
+    # MVP closure refactor: delegate to lifecycle_persistence so the
+    # canonical + legacy mirror keys are always written by one helper.
+    # Behaviour is identical; the helper covers the dataclass replace,
+    # in-place test-stub fallback, structured persistence_error stamp,
+    # and stale-error cleanup that this function used to inline.
+    from ..agents.lifecycle.persistence import persist_research_forum_link
 
-    if report.forum_comment_mode == "member-bots":
-        # Always stamp the open-call signal pair — including ``None`` —
-        # so a retry that succeeded clears the previous failure note.
-        extra_updates["research_open_call_posted"] = report.kickoff_posted
-        extra_updates["research_open_call_error"] = report.kickoff_error
-        extra_updates["forum_kickoff_posted"] = report.kickoff_posted
-        extra_updates["forum_kickoff_error"] = report.kickoff_error
-
-    if not extra_updates:
-        return
-
-    try:
-        from dataclasses import replace
-        from datetime import datetime
-
-        from ..agents.workflow_state import update_session
-    except Exception:  # noqa: BLE001 - degrade silently for partial installs
-        return
-
-    existing_extra = dict(getattr(session, "extra", {}) or {})
-    merged = {**existing_extra, **extra_updates}
-    try:
-        updated = replace(session, extra=merged)
-    except TypeError:
-        # ``replace`` only works on dataclasses — test stubs that use
-        # plain objects fall through to mutating the live extra dict so
-        # at least the in-memory session reflects the change.
-        try:
-            live = getattr(session, "extra", None)
-            if isinstance(live, dict):
-                live.update(extra_updates)
-        except Exception:  # noqa: BLE001
-            pass
-        return
-    try:
-        update_session(updated, now=datetime.now().astimezone())
-    except Exception:  # noqa: BLE001
-        pass
+    open_call_posted = report.kickoff_posted if report.forum_comment_mode == "member-bots" else None
+    open_call_error = report.kickoff_error if report.forum_comment_mode == "member-bots" else None
+    persist_research_forum_link(
+        session,
+        thread_id=report.forum_thread_id,
+        url=report.forum_thread_url,
+        open_call_posted=open_call_posted,
+        open_call_error=open_call_error,
+        forum_comment_mode=report.forum_comment_mode,
+    )
 
 
 async def make_default_research_loop(
@@ -1633,7 +2725,7 @@ async def make_default_research_loop(
     # without depending on env state.
     if forum_comment_mode is None:
         try:
-            from ..agents.research_collector import resolve_forum_comment_mode
+            from ..agents.research.collector import resolve_forum_comment_mode
         except Exception:  # noqa: BLE001
             forum_comment_mode = "member-bots"
         else:
@@ -1944,7 +3036,7 @@ def extract_user_links_from_message(
     if not text:
         return ()
     try:
-        from ..agents.research_collector import extract_urls
+        from ..agents.research.collector import extract_urls
     except Exception:  # noqa: BLE001
         return ()
     return tuple(extract_urls(text))

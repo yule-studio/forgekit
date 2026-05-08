@@ -39,7 +39,7 @@ from yule_orchestrator.agents.deliberation import (
     synthesis_to_dict,
     synthesize,
 )
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,

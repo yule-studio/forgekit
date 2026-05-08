@@ -18,6 +18,7 @@ from ..agents import (
 from ..agents.workflow_state import (
     find_latest_open_session,
     list_sessions as workflow_list_sessions,
+    load_session,
     update_session,
 )
 from ..integrations.calendar import list_naver_calendar_items
@@ -52,16 +53,20 @@ from .research_forum import (
     chunk_for_discord_message,
     truncate_for_starter_message,
 )
-from .typing_indicator import typing_context
-from ..agents.research_loop import (
+from .typing_indicator import (
+    typing_context,
+    typing_keepalive,
+    wrap_send_chunks_with_typing,
+)
+from ..agents.research.loop import (
     publish_research_loop_to_forum,
     run_research_loop,
 )
-from ..agents.research_collector import resolve_forum_comment_mode
+from ..agents.research.collector import resolve_forum_comment_mode
 from ..agents.deliberation import synthesis_to_dict
-from ..agents.research_pack import pack_to_dict
-from ..agents.research_persistence import persist_research_artifacts
-from ..agents.research_profiles import format_research_hints_block
+from ..agents.research.pack import pack_to_dict
+from ..agents.research.persistence import persist_research_artifacts
+from ..agents.research.profiles import format_research_hints_block
 from .engineering_team_runtime import kickoff_directive
 from .formatter import (
     format_checkpoints_message,
@@ -163,41 +168,66 @@ def run_discord_bot(repo_root: Path) -> None:
             if content_text.startswith("/"):
                 return
 
+            # M6.1b-2: route #승인-대기 replies through the queue
+            # (handle_approval_reply) before the engineering route.
+            # Approval replies live in their own channel — they're not
+            # engineering intake — so the router short-circuits when
+            # it handles a message. The legacy in-channel obsidian
+            # approval phrase flow on the work thread still runs
+            # because that's a different channel.
+            approval_route_result = await _route_engineering_approval_reply(
+                message=message,
+                bot_user=self.user,
+                discord_module=discord,
+            )
+            if approval_route_result is not None and approval_route_result.handled:
+                return
+
+            # A-M7.5b: forum-thread message routing — Obsidian save
+            # request → #승인-대기 producer, role-change request →
+            # active_research_roles update. Lazy adapter; pays no
+            # cost when the message is not in a forum thread.
+            forum_route_result = await _route_forum_thread_message(
+                message=message,
+                content_text=content_text,
+                discord_module=discord,
+            )
+            if forum_route_result is not None and forum_route_result.handled:
+                return
+
             engineering_context = EngineeringRouteContext.from_env()
             if engineering_context.configured:
-                send_chunks = _make_engineering_send_chunks(discord)
-                # Wrap the entire engineering route in a typing context so
-                # the gateway bot account shows ``입력 중...`` while it runs
-                # conversation classification, intake, kickoff, and the
-                # research loop. Without this the user has no signal that
-                # the gateway is alive during the multi-second flow.
-                #
-                # tech-lead synthesis coverage: when synthesis runs through
-                # the gateway-side legacy path inside research_loop_fn
-                # (publish_research_loop_to_forum -> _post_decision_comment),
-                # the typing indicator stays under this same context so the
-                # gateway bot keeps showing 입력 중... until the synthesis
-                # comment lands. The dedicated tech-lead bot path is
-                # covered separately by member_bot.py's typing wrap.
-                async with typing_context(message.channel):
-                    engineering_result = await route_engineering_message(
-                        message=message,
-                        bot_user=self.user,
-                        route_context=engineering_context,
-                        extract_prompt=_extract_conversation_prompt,
-                        conversation_fn=_default_engineering_conversation_fn,
-                        intake_fn=_default_engineering_intake_fn,
-                        thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
-                        send_chunks=send_chunks,
-                        research_loop_fn=_make_default_engineering_research_loop_fn(discord),
-                        thread_continuation_fn=_make_default_thread_continuation_fn(discord),
-                        # Phase 4 — runtime preflight uses the live
-                        # workflow session store so "어제 작업 이어서
-                        # 요약해줘" et al. never reach
-                        # auto_collect=True. Disabled flag-style by
-                        # tests that inject their own routing seam.
-                        list_sessions_fn=workflow_list_sessions,
-                    )
+                # Phase 1 fix: don't open a typing context around the
+                # whole route. Doing so showed "입력 중..." even when the
+                # router ultimately returned ``handled=False`` (non-
+                # engineering channel, ignored phrase, member-bot scope
+                # mismatch) — the indicator stopped being a real
+                # response signal. Instead, wrap ``send_chunks`` so the
+                # typing indicator fires only during the actual chunk
+                # send. That keeps the "bot is composing" cue visible
+                # whenever the gateway commits a response, and silent
+                # the rest of the time.
+                send_chunks = wrap_send_chunks_with_typing(
+                    _make_engineering_send_chunks(discord)
+                )
+                engineering_result = await route_engineering_message(
+                    message=message,
+                    bot_user=self.user,
+                    route_context=engineering_context,
+                    extract_prompt=_extract_conversation_prompt,
+                    conversation_fn=_default_engineering_conversation_fn,
+                    intake_fn=_default_engineering_intake_fn,
+                    thread_kickoff_fn=_make_default_thread_kickoff_fn(discord),
+                    send_chunks=send_chunks,
+                    research_loop_fn=_make_default_engineering_research_loop_fn(discord),
+                    thread_continuation_fn=_make_default_thread_continuation_fn(discord),
+                    # Phase 4 — runtime preflight uses the live
+                    # workflow session store so "어제 작업 이어서
+                    # 요약해줘" et al. never reach
+                    # auto_collect=True. Disabled flag-style by
+                    # tests that inject their own routing seam.
+                    list_sessions_fn=workflow_list_sessions,
+                )
                 if engineering_result.handled:
                     return
 
@@ -851,6 +881,178 @@ def run_discord_bot(repo_root: Path) -> None:
         raise
 
 
+async def run_engineering_gateway_until_shutdown(
+    *,
+    shutdown_event: asyncio.Event,
+    bot_factory: Any,
+    token: str,
+) -> None:
+    """SIGTERM-aware gateway runner — A-M6.2.
+
+    Replaces the M6.1b-2 ``asyncio.to_thread(run_discord_bot, ...)``
+    path used by ``yule run-service eng-discord-gateway``. The
+    legacy thread path relied on discord.py installing its own
+    signal handlers, which only works when ``bot.run`` owns the
+    main thread. Under ``run-service`` the runtime owns the main
+    loop, so signals went to the runtime's handler instead and the
+    gateway never saw them.
+
+    This helper drives the bot through the awaitable
+    ``bot.start(token)`` and races it against *shutdown_event*. On
+    SIGTERM the runtime sets the event and we call
+    ``await bot.close()`` so the gateway disconnects gracefully
+    instead of the parent killing it mid-WebSocket.
+
+    *bot_factory* is a zero-arg callable that returns a discord.py
+    ``Client``-shaped object. Production wires it to a closure that
+    calls :func:`build_engineering_gateway_bot`; tests pass a fake
+    client so the shutdown race can be exercised without discord.py.
+
+    Returns when the bot exits cleanly or shutdown is observed.
+    Login failures raise the same way ``run_discord_bot`` does.
+    """
+
+    import discord
+
+    bot = bot_factory()
+
+    async def _waiter() -> None:
+        await shutdown_event.wait()
+        try:
+            await bot.close()
+        except Exception:  # noqa: BLE001 - graceful close best-effort
+            pass
+
+    waiter_task = asyncio.create_task(_waiter())
+    try:
+        await bot.start(token)
+    except discord.LoginFailure as exc:
+        raise ValueError(
+            "Discord bot token login failed. Check DISCORD_BOT_TOKEN in .env.local and regenerate the token if needed."
+        ) from exc
+    finally:
+        waiter_task.cancel()
+        try:
+            await waiter_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
+
+
+def build_engineering_gateway_bot(repo_root: Path) -> Any:
+    """Construct (without running) the engineering gateway bot.
+
+    Used by :func:`run_engineering_gateway_until_shutdown` to get
+    the same :class:`YuleDiscordBot` instance ``run_discord_bot``
+    builds. ``run_discord_bot`` defines its bot class inside its
+    function body, so we monkeypatch ``commands.Bot.run`` for one
+    call to capture the constructed instance — the patch is
+    guarded by ``try/finally`` so it can't leak.
+
+    A future refactor that lifts ``YuleDiscordBot`` to module scope
+    will let us drop this introspection trick. Today the function
+    body is ~750 lines of closure-captured config, so the refactor
+    is bigger than this milestone.
+
+    A-M11b: after the bot is captured we install the engineering
+    role-runner dispatcher from env. The install is best-effort —
+    if the env names no provider (or every provider is unavailable)
+    the dispatcher stays at the deterministic terminal and the
+    in-process role bodies behave exactly as before. Failure during
+    install is logged via the trace return and never raised so the
+    gateway always boots.
+    """
+
+    from discord.ext import commands
+
+    captured: dict[str, Any] = {}
+    sentinel: Any = type("_BotConstructed", (BaseException,), {})
+
+    original_run = commands.Bot.run
+
+    def _capture_run(self, *_args, **_kwargs):
+        captured["bot"] = self
+        raise sentinel()
+
+    commands.Bot.run = _capture_run  # type: ignore[assignment]
+    try:
+        try:
+            run_discord_bot(repo_root)
+        except sentinel:  # type: ignore[misc]
+            pass
+    finally:
+        commands.Bot.run = original_run  # type: ignore[assignment]
+
+    bot = captured.get("bot")
+    if bot is None:
+        raise RuntimeError(
+            "build_engineering_gateway_bot: run_discord_bot did not construct a bot"
+        )
+
+    _install_engineering_role_runner_dispatch_for_gateway()
+    return bot
+
+
+def _install_engineering_role_runner_dispatch_for_gateway() -> None:
+    """Best-effort role-runner wiring for the engineering gateway.
+
+    Call site for both :func:`build_engineering_gateway_bot` (run-service
+    entrypoint) and :func:`_run_discord_gateway` in
+    :mod:`runtime.run_service`. Idempotent — calling twice just rebinds
+    the dispatcher to the latest env snapshot.
+
+    Failure here MUST NOT propagate: a missing or partially configured
+    runner backend is recoverable (the deterministic in-process body
+    keeps the gateway useful), so we log and move on.
+    """
+
+    try:
+        from ..agents.runners.bootstrap import (
+            install_engineering_role_runner_dispatch,
+        )
+    except Exception as exc:  # noqa: BLE001 - partial install fallback
+        print(
+            f"warning: role-runner bootstrap import failed ({type(exc).__name__}); "
+            "gateway continues with deterministic in-process role bodies"
+        )
+        return
+
+    def _on_failure(exc: BaseException) -> None:
+        # Sanitised — never log the env value or stack frames containing
+        # secrets. Only the exception type is surfaced.
+        print(
+            "warning: role-runner dispatch install failed "
+            f"({type(exc).__name__}); using deterministic fallback"
+        )
+
+    try:
+        trace = install_engineering_role_runner_dispatch(
+            on_install_failure=_on_failure
+        )
+    except Exception as exc:  # noqa: BLE001 - never let bootstrap kill the gateway
+        _on_failure(exc)
+        return
+    if trace is None:
+        # Engineering runtime module wasn't importable; the in-process
+        # body remains. install_engineering_role_runner_dispatch already
+        # logged a warning.
+        return
+
+    # Friendly status line for run-service stdout — operator sees which
+    # providers are configured/available without grepping logs.
+    available = [
+        e.provider for e in trace.entries if e.configured and e.available
+    ]
+    if trace.deterministic_fallback_only:
+        print(
+            "role-runner dispatch installed: deterministic fallback only "
+            f"(opted-in providers: {[e.provider for e in trace.entries if e.configured] or 'none'})"
+        )
+    else:
+        print(
+            f"role-runner dispatch installed: priority={available} + deterministic terminal"
+        )
+
+
 def _next_daily_run(target_time: time | None) -> datetime:
     if target_time is None:
         raise ValueError("daily briefing time is required for scheduling.")
@@ -1447,6 +1649,137 @@ def _make_engineering_send_chunks(discord_module: "discord"):
     return _send
 
 
+async def _route_forum_thread_message(
+    *,
+    message: Any,
+    content_text: str,
+    discord_module: "discord",
+):
+    """Adapter from ``on_message`` into the M7.5 forum-thread helpers.
+
+    Returns ``None`` (treated as fall-through) when the message
+    isn't from a forum thread or carries no recognisable intent.
+    A non-``None`` :class:`ForumMessageRouteResult` whose
+    ``handled`` is True means the user got a friendly reply
+    (Obsidian save approval card created, role-change applied,
+    or a context-missing notice) and ``on_message`` must short-
+    circuit the engineering route.
+
+    Lazy import + no-cost fall-through: a message in a regular
+    text channel never reaches the SQLite open / approval-worker
+    construction path because the adapter exits at the
+    ``parent_id`` check before touching any of that.
+    """
+
+    channel = getattr(message, "channel", None)
+    if channel is None:
+        return None
+    # Cheap exit when not a thread — avoids the lazy-import cost
+    # for every regular-channel message.
+    if (
+        getattr(channel, "parent_id", None) is None
+        and getattr(channel, "parent", None) is None
+    ):
+        return None
+
+    from .forum_message_adapter import route_forum_message
+
+    return await route_forum_message(
+        message=message,
+        text=content_text,
+        discord_module=discord_module,
+        send_chunks_factory=_make_engineering_send_chunks,
+    )
+
+
+async def _route_engineering_approval_reply(
+    *,
+    message: Any,
+    bot_user: Any,
+    discord_module: "discord",
+):
+    """Adapter from ``on_message`` into the queue-side approval
+    reply router (M5a-2 + M6.1b-2).
+
+    Returns ``None`` when env isn't configured for the approval
+    channel — the caller falls through to the engineering route.
+    Otherwise returns the helper's
+    :class:`ApprovalReplyRouteResult` so ``on_message`` can decide
+    whether to short-circuit.
+
+    This adapter takes the worker construction cost (queue +
+    obsidian writer) only when the message lands in the approval
+    channel; for unrelated messages we exit fast on the channel
+    matcher.
+    """
+
+    import os
+    from .approval_reply_router import (
+        is_approval_channel_message,
+        route_approval_channel_message,
+    )
+
+    raw_id = (os.environ.get("DISCORD_ENGINEERING_APPROVAL_CHANNEL_ID") or "").strip()
+    approval_channel_id: int | None
+    try:
+        approval_channel_id = int(raw_id) if raw_id else None
+    except ValueError:
+        approval_channel_id = None
+    approval_channel_name = (
+        os.environ.get("DISCORD_ENGINEERING_APPROVAL_CHANNEL_NAME") or ""
+    ).strip() or None
+
+    if approval_channel_id is None and not approval_channel_name:
+        # Env unset — gateway is running without an approval channel.
+        # Skip the matcher entirely so we don't pay the import /
+        # SQLite open cost for unrelated messages.
+        return None
+
+    if not is_approval_channel_message(
+        message=message,
+        approval_channel_id=approval_channel_id,
+        approval_channel_name=approval_channel_name,
+    ):
+        return None
+
+    from ..agents.job_queue import (
+        HeartbeatStore,
+        JobQueue,
+        ObsidianWriterWorker,
+        default_render_fn,
+        default_vault_root_resolver,
+        default_write_fn,
+    )
+    from ..agents.workflow_state import list_sessions as _list_sessions
+
+    queue = JobQueue()
+    obsidian_worker = ObsidianWriterWorker(
+        queue=queue,
+        heartbeats=HeartbeatStore(),
+        render_fn=default_render_fn,
+        write_fn=default_write_fn,
+        vault_root_resolver=default_vault_root_resolver,
+    )
+    send_chunks = _make_engineering_send_chunks(discord_module)
+
+    def _session_lister():
+        try:
+            return _list_sessions()
+        except Exception:  # noqa: BLE001 - best-effort lookup
+            return ()
+
+    return await route_approval_channel_message(
+        message=message,
+        bot_user=bot_user,
+        queue=queue,
+        obsidian_worker=obsidian_worker,
+        approval_channel_id=approval_channel_id,
+        approval_channel_name=approval_channel_name,
+        session_lister=_session_lister,
+        send_chunks=send_chunks,
+    )
+
+
 _ENGINEERING_LAST_PROPOSED: dict[int, str] = {}
 _ENGINEERING_LAST_RESEARCH_CONTEXT: dict[int, dict[str, Any]] = {}
 
@@ -1542,16 +1875,59 @@ def _default_engineering_conversation_fn(
         _ENGINEERING_LAST_PROPOSED.get(channel_id) if channel_id is not None else None
     )
 
-    def _load_latest_open_session_for_status() -> Any:
-        """Resolve the latest open session for the channel/thread.
+    def _load_latest_open_session_for_status(*, message_text: str | None = None) -> Any:
+        """Resolve the session a status / diagnostic question targets.
 
-        Wired into the conversation layer's ``status_session_loader``
-        seam so a "왜 안 됐어?" / "운영 리서치는 안 열어?" question
-        gets answered against real workflow state instead of triggering
-        a fresh intake. Falls back to ``None`` on lookup errors so the
+        Lookup order — first hit wins:
+          1. Explicit ``세션 <id>`` mention parsed out of ``message_text``.
+          2. The session whose ``thread_id`` matches ``channel_id``
+             (Discord exposes the thread id under ``channel.id`` when
+             the user is sitting inside a work thread, so this hits
+             for thread-bound status questions).
+          3. The session whose ``extra['resumed_thread_id']`` matches
+             ``channel_id`` (continuation may resume on a thread
+             different from ``session.thread_id``).
+          4. The latest open session for the channel/user pair (legacy
+             behaviour kept as final fallback).
+
+        Falls back to ``None`` on every lookup error so the
         conversation layer can render the no-session message.
         """
 
+        # 1. Explicit session id in message body.
+        if message_text:
+            explicit_id = _extract_session_id_from_text(message_text)
+            if explicit_id:
+                try:
+                    explicit_session = load_session(explicit_id)
+                except Exception:  # noqa: BLE001
+                    explicit_session = None
+                if explicit_session is not None:
+                    return explicit_session
+
+        # 2. Thread anchor — when the user is asking from a work thread,
+        # ``channel_id`` is actually the thread id. find_latest_open_session
+        # returns None when no session has that thread_id (e.g. a
+        # plain channel message), so this is safe to attempt always.
+        if channel_id is not None:
+            try:
+                thread_match = find_latest_open_session(thread_id=channel_id)
+            except Exception:  # noqa: BLE001
+                thread_match = None
+            if thread_match is not None:
+                return thread_match
+
+            # 3. Resumed thread id stashed on session.extra (continuation
+            # may resume on a thread different from the original
+            # session.thread_id; we can match either).
+            try:
+                resumed = _find_session_with_resumed_thread(channel_id)
+            except Exception:  # noqa: BLE001
+                resumed = None
+            if resumed is not None:
+                return resumed
+
+        # 4. Channel + user fallback.
         try:
             return find_latest_open_session(
                 channel_id=channel_id,
@@ -1688,6 +2064,23 @@ def _make_default_thread_continuation_fn(discord_module: "discord"):
         for piece in chunk_for_discord_message(continuation_text) or (continuation_text,):
             await thread.send(piece)
         _clear_engineering_last_proposed_for_channel(message)
+
+        # Persist the continuation prompt onto session.extra. The
+        # session was created with a confirmation phrase like "새 작업으로
+        # 진행" or "기존 세션으로 진행" as ``session.prompt`` — that
+        # leaves the canonical task description blank, so a later
+        # status / research / export turn looks at the wrong text. We
+        # save the latest continuation under ``latest_continuation_prompt``
+        # always, and also flip ``canonical_prompt_override`` to the
+        # continuation prompt when the original was command-only.
+        persisted = _record_engineering_continuation(
+            session=session,
+            continuation_prompt=prompt,
+            resumed_thread_id=current_thread_id or thread_id,
+        )
+        if persisted is not None:
+            session = persisted
+
         status = (
             "**[engineering-agent] 기존 thread에 이어서 접수**\n"
             f"세션 ID: `{session.session_id}`\n"
@@ -1701,6 +2094,148 @@ def _make_default_thread_continuation_fn(discord_module: "discord"):
         )
 
     return _continue
+
+
+# Phrases we treat as "no actual task description" — when
+# ``session.prompt`` equals one of these we know the user said
+# something like "이대로 진행" / "기존 세션으로 진행" without giving
+# the gateway a real task description, so the continuation prompt
+# should override it as the canonical record.
+_CONTINUATION_COMMAND_ONLY_PROMPTS: tuple[str, ...] = (
+    "새 작업으로 진행",
+    "새 작업으로 시작",
+    "이대로 진행",
+    "이대로 등록",
+    "그대로 진행",
+    "그대로 등록",
+    "기존 세션으로 진행",
+    "기존 세션으로 시작",
+    "기존 세션 진행",
+    "기존 작업으로 진행",
+    "기존 작업으로 시작",
+    "기존 작업 진행",
+    "이 thread로 진행",
+    "이 thread에서 진행",
+    "여기서 진행",
+    "여기서 이어가",
+    "확정",
+    "진행",
+    "ok",
+)
+
+
+_SESSION_ID_PATTERN = __import__("re").compile(
+    r"(?:세션|session)\s*(?:id\s*[:=]?\s*)?[`'\"]?([0-9a-fA-F]{12})[`'\"]?",
+    flags=__import__("re").IGNORECASE,
+)
+
+
+def _extract_session_id_from_text(text: str) -> str | None:
+    """Pull a 12-hex session id out of a status / diagnostic question.
+
+    The pattern is permissive about phrasing — we accept "세션
+    abc123def456", "session abc123def456", and the same wrapped in
+    backticks/quotes. A bare 12-hex token elsewhere in the message is
+    NOT matched on purpose so a random hash in a URL doesn't hijack
+    the lookup.
+    """
+
+    if not text:
+        return None
+    match = _SESSION_ID_PATTERN.search(text)
+    if match is None:
+        return None
+    return match.group(1).lower()
+
+
+def _find_session_with_resumed_thread(thread_id: int):
+    """Return the open session whose ``extra['resumed_thread_id']``
+    matches *thread_id*, or ``None``. Used as a fallback in the
+    status-loader when ``session.thread_id`` is set to the original
+    work thread but the user is asking from the resumed thread."""
+
+    try:
+        sessions = workflow_list_sessions(limit=50)
+    except Exception:  # noqa: BLE001
+        return None
+    for session in sessions or ():
+        state = getattr(session, "state", None)
+        state_value = getattr(state, "value", state)
+        if str(state_value).lower() in {"completed", "rejected"}:
+            continue
+        extra = dict(getattr(session, "extra", {}) or {})
+        if extra.get("resumed_thread_id") == thread_id:
+            return session
+    return None
+
+
+def _is_command_only_prompt(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalised = " ".join(value.lower().split())
+    if not normalised:
+        return True
+    if len(normalised) <= 2:
+        return True
+    return normalised in _CONTINUATION_COMMAND_ONLY_PROMPTS
+
+
+def _record_engineering_continuation(
+    *,
+    session,
+    continuation_prompt: str,
+    resumed_thread_id: int | None,
+):
+    """Append the continuation prompt to ``session.extra`` and persist.
+
+    Returns the updated session (or the original when persistence isn't
+    possible — production WorkflowSession is frozen, so we always
+    return a replaced copy on success).
+    """
+
+    cleaned_prompt = (continuation_prompt or "").strip()
+    if not cleaned_prompt:
+        return session
+
+    extra = dict(getattr(session, "extra", {}) or {})
+
+    history = list(extra.get("continuation_requests") or ())
+    history.append(
+        {
+            "prompt": cleaned_prompt,
+            "thread_id": resumed_thread_id,
+            "recorded_at": datetime.now().astimezone().isoformat(),
+        }
+    )
+    # Cap the history so a single long-running session doesn't bloat
+    # the SQLite cache row indefinitely.
+    if len(history) > 20:
+        history = history[-20:]
+    extra["continuation_requests"] = history
+    extra["latest_continuation_prompt"] = cleaned_prompt
+    if resumed_thread_id is not None:
+        extra["resumed_thread_id"] = resumed_thread_id
+    if _is_command_only_prompt(getattr(session, "prompt", None)):
+        # The original prompt was a command, not a task description —
+        # let downstream readers prefer the continuation as the
+        # canonical record.
+        extra["canonical_prompt_override"] = cleaned_prompt
+
+    try:
+        from dataclasses import replace
+        from ..agents.workflow_state import update_session
+
+        updated = replace(session, extra=extra)
+    except Exception:  # noqa: BLE001 - degrade gracefully for stub sessions
+        live = getattr(session, "extra", None)
+        if isinstance(live, dict):
+            live.update(extra)
+        return session
+    try:
+        update_session(updated, now=datetime.now().astimezone())
+    except Exception:  # noqa: BLE001 - cache failure is non-fatal
+        pass
+    return updated
 
 
 def _clear_engineering_last_proposed_for_channel(message) -> None:
@@ -2088,7 +2623,7 @@ def _format_research_forum_disabled_status(outcome) -> str:
 def _format_research_hints_for_outcome(outcome) -> str:
     """Format per-role research hints derived from research_profiles.
 
-    Glue between :mod:`agents.research_profiles` and the live engineering
+    Glue between :mod:`agents.research.profiles` and the live engineering
     research loop output. When the loop already knows the session role
     sequence and task_type, we can show the operator which source types,
     queries, and reference categories each role should pull next. Empty
@@ -2333,9 +2868,70 @@ def _format_engineering_kickoff_message(session, plan) -> str:
         role_sequence = getattr(plan, "role_sequence", None)
         if role_sequence:
             lines.append(f"참여 후보: {', '.join(role_sequence)}")
+    # A-M7.5b — append the tech-lead routing summary right after the
+    # plan so the operator sees who is participating, who is on
+    # standby, and how to extend the team in the same kickoff post.
+    summary = _build_kickoff_routing_summary(session)
+    if summary:
+        lines.append("")
+        lines.append(summary)
     lines.append("")
     lines.append("이 thread에서 각 멤버 봇의 조사, 실행 메모, 결과 회신을 이어 갑니다.")
     return "\n".join(lines)
+
+
+def _build_kickoff_routing_summary(session: Any) -> Optional[str]:
+    """Render the M7.5 routing summary for the kickoff message.
+
+    Returns ``None`` when the session has no role-selection metadata
+    so legacy kickoff messages stay byte-identical (existing
+    ``_format_engineering_kickoff_message`` callers keep their
+    rendered text).
+    """
+
+    if session is None:
+        return None
+    extra = dict(getattr(session, "extra", None) or {})
+    selected = extra.get("active_research_roles")
+    if not isinstance(selected, (list, tuple)) or not selected:
+        return None
+    try:
+        from ..agents.lifecycle.role_selection import (
+            ROLE_TECH_LEAD,
+            RoleSelection,
+            SOURCE_USER_ALL_TEAM,
+            format_routing_summary,
+        )
+    except Exception:  # noqa: BLE001 - role_selection import failure → no summary
+        return None
+
+    excluded = extra.get("excluded_research_roles") or []
+    primary = extra.get("role_selection_primary") or []
+    reviewer = extra.get("role_selection_reviewer") or []
+    optional = extra.get("role_selection_optional") or []
+    reasons = extra.get("role_selection_reasons") or {}
+    source = extra.get("role_selection_source") or "fallback"
+    fallback_policy = extra.get("role_selection_fallback_policy")
+    participation = extra.get("role_participation") or {}
+
+    selection = RoleSelection(
+        selected_roles=tuple(selected),
+        excluded_roles=tuple(excluded),
+        required_roles=(ROLE_TECH_LEAD,),
+        optional_roles=tuple(optional),
+        reason_by_role=dict(reasons) if isinstance(reasons, dict) else {},
+        selection_source=str(source),
+        participation_by_role=dict(participation)
+        if isinstance(participation, dict)
+        else {},
+        primary_roles=tuple(primary),
+        reviewer_roles=tuple(reviewer),
+        optional_roles_v2=tuple(optional),
+        matched_keywords_by_role={},
+        fallback_policy=str(fallback_policy) if fallback_policy else None,
+    )
+    label = (extra.get("role_selection_request_label") or "").strip() or None
+    return format_routing_summary(selection, request_label=label)
 
 
 def _checkpoint_window_minutes(window_start: datetime, window_end: datetime) -> int:

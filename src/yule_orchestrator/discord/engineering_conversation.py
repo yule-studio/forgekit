@@ -32,14 +32,14 @@ from datetime import datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
-from ..agents.dispatcher import TaskType
-from ..agents.research_pack import (
+from ..agents.messaging.dispatcher import TaskType
+from ..agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,
     extract_urls,
 )
-from ..agents.session_status import (
+from ..agents.lifecycle.session_status import (
     diagnose_session,
     render_member_bot_summary,
 )
@@ -147,16 +147,51 @@ def build_engineering_conversation_response(
     intent = detect_engineering_intent(message_text)
     mention_user_id = author_user_id if mention_user else None
 
+    # Bot-echo guard — when the user pastes one of the gateway's own
+    # template lines back into the channel, the live MVP loop fires:
+    # gateway treats the paste as a fresh research request, runs
+    # auto_collect, asks for confirmation, repeats. Catch it before
+    # any branch (status / confirm / split / intake) can act on the
+    # echoed text. Status questions are exempt because the diagnostic
+    # responder reads existing state, not the message body.
+    try:
+        from ..agents.routing import is_bot_echo_phrase as _is_bot_echo
+    except Exception:  # noqa: BLE001 - never fail conversation on import wiring
+        _is_bot_echo = None
+    if (
+        _is_bot_echo is not None
+        and intent.intent_id != STATUS_DIAGNOSTIC
+        and _is_bot_echo(message_text)
+    ):
+        body = (
+            "방금 받은 메시지가 gateway가 보낸 안내문 문구와 똑같아서 "
+            "새 작업으로 등록하지 않았어요.\n"
+            "진행할 업무 원문을 다시 알려주세요."
+        )
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=NEEDS_CLARIFICATION,
+            needs_clarification=True,
+            mention_user_id=mention_user_id,
+        )
+
     if intent.intent_id == STATUS_DIAGNOSTIC:
         # User is asking what's going on with the existing work, not
         # filing a new task. Read the latest open session via the
         # injected loader (bot.py wires find_latest_open_session) and
         # describe its real state. We never trigger auto_collect or
         # intake here.
+        #
+        # The loader is allowed to take ``message_text`` as a kwarg so
+        # explicit "세션 a8d1707808ac" hints in the message body are
+        # preferred over the channel/user lookup.
         session = None
         if callable(status_session_loader):
             try:
-                session = status_session_loader()
+                try:
+                    session = status_session_loader(message_text=message_text)
+                except TypeError:
+                    session = status_session_loader()
             except Exception:  # noqa: BLE001 - loader failures must not crash gateway
                 session = None
         is_member_bot_question = _asks_about_member_bots(message_text)
@@ -379,8 +414,23 @@ def _maybe_run_auto_collect(
         return None
     if not (message_text or "").strip():
         return None
+    # Bot-echo / command-only guard — the gateway's own template lines
+    # ("좋습니다. 이대로 작업을 등록할게요…" / "자료가 부족합니다…")
+    # and bare confirm phrases ("새 작업으로 진행" / "이대로 진행")
+    # must never be queried as fresh research material. Without this
+    # guard the live MVP loop fires: user pastes the bot's own line
+    # back, gateway auto-collects 11 sources, gateway then asks for
+    # confirmation, user replies with another command-only phrase,
+    # repeat. See ``routing.is_non_actionable_prompt`` for the
+    # canonical predicate.
     try:
-        from ..agents.research_collector import (
+        from ..agents.routing import is_non_actionable_prompt as _is_blocked
+    except Exception:  # noqa: BLE001 - never block conversation on import wiring
+        _is_blocked = None
+    if _is_blocked is not None and _is_blocked(message_text):
+        return None
+    try:
+        from ..agents.research.collector import (
             CollectorConfig as _CollectorConfig,
             auto_collect_or_request_more_input,
         )
@@ -898,6 +948,44 @@ def _format_general_help() -> str:
     )
 
 
+def _coerce_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _format_coding_status_line(
+    proposal_payload: Any,
+    job_payload: Any,
+) -> Optional[str]:
+    """Render a single ``- coding_job: ...`` line for the diagnostic.
+
+    Coding job (approved) wins over a still-pending proposal. Empty
+    extras yield ``None`` so the caller skips the line entirely.
+    """
+
+    if isinstance(job_payload, Mapping) and job_payload:
+        status = job_payload.get("status") or "ready"
+        executor = job_payload.get("executor_role") or "unknown"
+        scope = job_payload.get("write_scope") or ()
+        if isinstance(scope, (list, tuple)) and scope:
+            preview = ", ".join(str(s) for s in tuple(scope)[:2])
+            if len(scope) > 2:
+                preview += " 외"
+            return (
+                f"- coding_job: {status} (executor=`{executor}`, write_scope={preview})"
+            )
+        return f"- coding_job: {status} (executor=`{executor}`)"
+    if isinstance(proposal_payload, Mapping) and proposal_payload:
+        executor = proposal_payload.get("executor_role") or "unknown"
+        return (
+            f"- coding_job: pending-approval (executor=`{executor}`) — "
+            "사용자 `수정 승인` 대기"
+        )
+    return None
+
+
 def format_status_diagnostic_response(
     session: Optional[Any],
     *,
@@ -943,6 +1031,13 @@ def format_status_diagnostic_response(
     forum_comment_mode = extra.get("forum_comment_mode")
     forum_kickoff_posted = extra.get("forum_kickoff_posted")
     forum_kickoff_error = extra.get("forum_kickoff_error")
+    coding_proposal_payload = extra.get("coding_proposal")
+    coding_job_payload = extra.get("coding_job")
+    canonical_prompt_override = _coerce_str(extra.get("canonical_prompt_override"))
+    latest_continuation_prompt = _coerce_str(
+        extra.get("latest_continuation_prompt")
+    )
+    resumed_thread_id = extra.get("resumed_thread_id")
 
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value) or "unknown"
@@ -957,6 +1052,28 @@ def format_status_diagnostic_response(
         f"- 종류: {task_type}",
         f"- research_pack: {'있음' if research_pack else '없음'}",
     ]
+
+    coding_status_line = _format_coding_status_line(
+        coding_proposal_payload, coding_job_payload
+    )
+    if coding_status_line:
+        lines.append(coding_status_line)
+
+    if canonical_prompt_override:
+        canonical_short = canonical_prompt_override
+        if len(canonical_short) > 160:
+            canonical_short = canonical_short[:157] + "..."
+        lines.append(f"- canonical 작업 prompt: {canonical_short}")
+    if latest_continuation_prompt and (
+        not canonical_prompt_override
+        or latest_continuation_prompt != canonical_prompt_override
+    ):
+        cont_short = latest_continuation_prompt
+        if len(cont_short) > 160:
+            cont_short = cont_short[:157] + "..."
+        lines.append(f"- 최근 continuation prompt: {cont_short}")
+    if resumed_thread_id is not None:
+        lines.append(f"- 이어붙인 thread id: `{resumed_thread_id}`")
 
     if forum_thread_id or forum_thread_url:
         thread_label = forum_thread_url or f"thread `{forum_thread_id}`"
@@ -1018,6 +1135,81 @@ def format_status_diagnostic_response(
                 descriptor += f" — {error}"
             lines.append(f"  · {descriptor}")
 
+    # Phase 5 — surface the role-scoped research outcomes recorded by
+    # Phase 4's ``record_role_research_result``. Answers "누가 어디까지
+    # 자료를 모았는지" without re-running collection: each role line
+    # shows provider, source count, status, and a one-line top finding.
+    role_research_results = extra.get("role_research_results")
+    if isinstance(role_research_results, Mapping) and role_research_results:
+        lines.append("- 역할 연구 결과:")
+        for role_name in sorted(role_research_results.keys()):
+            record = role_research_results.get(role_name)
+            if not isinstance(record, Mapping):
+                continue
+            status = str(record.get("status") or "?")
+            provider = record.get("provider")
+            source_count = record.get("source_count") or 0
+            try:
+                source_count = int(source_count)
+            except (TypeError, ValueError):
+                source_count = 0
+            descriptor = f"{role_name}: {status}"
+            if provider:
+                descriptor += f" (provider: {provider}, {source_count}건)"
+            else:
+                descriptor += f" ({source_count}건)"
+            error = record.get("error")
+            if error:
+                descriptor += f" — {error}"
+            lines.append(f"  · {descriptor}")
+            top_findings = record.get("top_findings") or []
+            if isinstance(top_findings, list) and top_findings:
+                first = str(top_findings[0]).strip()
+                if first:
+                    if len(first) > 120:
+                        first = first[:117] + "..."
+                    lines.append(f"    · 핵심: {first}")
+
+    # Phase 5 — activity log summary. Counts each event type and shows
+    # the last activity timestamp + last failure (if any) so the
+    # operator can answer "왜 멈췄지?" / "마지막으로 무엇이 일어났지?"
+    # at a glance without scanning the full audit trail.
+    role_activity_log = extra.get("role_activity_log")
+    if isinstance(role_activity_log, list) and role_activity_log:
+        counts: dict[str, int] = {}
+        last_event: Optional[Mapping[str, Any]] = None
+        last_failure: Optional[Mapping[str, Any]] = None
+        for raw_event in role_activity_log:
+            if not isinstance(raw_event, Mapping):
+                continue
+            event_type = str(raw_event.get("event_type") or "?")
+            counts[event_type] = counts.get(event_type, 0) + 1
+            last_event = raw_event
+            status = str(raw_event.get("status") or "")
+            if status and status != "ok":
+                last_failure = raw_event
+        if counts:
+            counts_text = ", ".join(
+                f"{kind}={counts[kind]}" for kind in sorted(counts.keys())
+            )
+            lines.append(f"- 활동 로그: {counts_text}")
+        if last_event:
+            timestamp = last_event.get("timestamp") or "?"
+            role_name = last_event.get("role") or "?"
+            event_type = last_event.get("event_type") or "?"
+            lines.append(
+                f"  · 마지막 이벤트: {timestamp} {role_name} {event_type}"
+            )
+        if last_failure and last_failure is not last_event:
+            timestamp = last_failure.get("timestamp") or "?"
+            role_name = last_failure.get("role") or "?"
+            event_type = last_failure.get("event_type") or "?"
+            err = last_failure.get("error") or last_failure.get("status") or ""
+            tail = f" — {err}" if err else ""
+            lines.append(
+                f"  · 마지막 실패: {timestamp} {role_name} {event_type}{tail}"
+            )
+
     if research_loop_report:
         report_error = None
         report_status = None
@@ -1041,6 +1233,54 @@ def format_status_diagnostic_response(
         lines.append("- tech-lead synthesis: 기록됨")
     elif research_pack:
         lines.append("- tech-lead synthesis: 아직 기록되지 않음")
+
+    # Phase 4 — surface role_selection + work_report so the user can
+    # see *who* participated and *whether* a deliverable already
+    # landed. ``active_research_roles`` comes from the role_selection
+    # module; ``work_report`` is the snapshot the gateway posts at
+    # lifecycle close.
+    active_roles_value = extra.get("active_research_roles")
+    if isinstance(active_roles_value, list) and active_roles_value:
+        role_names = ", ".join(str(r) for r in active_roles_value if r)
+        if role_names:
+            selection_source = extra.get("role_selection_source") or "?"
+            lines.append(
+                f"- 활성 role: {role_names} (선정: {selection_source})"
+            )
+
+    work_report_payload = extra.get("work_report")
+    if isinstance(work_report_payload, Mapping):
+        title = str(work_report_payload.get("title") or "?")
+        if len(title) > 80:
+            title = title[:77] + "..."
+        requires_change = bool(
+            work_report_payload.get("requires_code_change")
+        )
+        code_flag = (
+            "코드 수정 필요"
+            if requires_change
+            else "코드 수정 없음"
+        )
+        ref_count = work_report_payload.get("reference_count") or 0
+        stop_reason = work_report_payload.get("research_stop_reason")
+        # Phase 3 stabilisation — status is the load-bearing field that
+        # tells the operator whether the report is a draft (interim),
+        # blocked (insufficient), ready, or final.
+        status = str(work_report_payload.get("status") or "?")
+        missing_roles = work_report_payload.get("missing_roles") or []
+        meta_bits = [f"status={status}", f"자료 {ref_count}건", code_flag]
+        if stop_reason:
+            meta_bits.append(f"stop: {stop_reason}")
+        if isinstance(missing_roles, list) and missing_roles:
+            meta_bits.append(
+                "미완료 role: " + ", ".join(str(r) for r in missing_roles)
+            )
+        lines.append(
+            f"- 업무 보고서: 작성됨 — \"{title}\" · "
+            + " · ".join(meta_bits)
+        )
+    elif synthesis:
+        lines.append("- 업무 보고서: 아직 미작성")
 
     progress_notes = tuple(getattr(session, "progress_notes", ()) or ())
     if progress_notes:
@@ -1220,7 +1460,7 @@ def _pretty_task_type(value: Optional[str]) -> str:
     """
 
     try:
-        from ..agents.research_collector import pretty_task_type
+        from ..agents.research.collector import pretty_task_type
     except Exception:  # noqa: BLE001
         return value or "일반"
     return pretty_task_type(value)
@@ -1230,7 +1470,7 @@ def _pretty_provider(name: Optional[str]) -> str:
     """Delegate to the centralised provider label map."""
 
     try:
-        from ..agents.research_collector import pretty_provider
+        from ..agents.research.collector import pretty_provider
     except Exception:  # noqa: BLE001
         return name or "알 수 없음"
     return pretty_provider(name)
@@ -2014,6 +2254,7 @@ __all__ = [
     "classify_url",
     "collect_research_candidates_from_message",
     "format_insufficient_research_prompt",
+    "format_status_diagnostic_response",
     "suggest_role_research_assignments",
     # source_type constants
     "SOURCE_TYPE_USER_MESSAGE",

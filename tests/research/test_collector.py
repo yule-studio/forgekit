@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research_collector import (
+from yule_orchestrator.agents.research.collector import (
     BraveSearchCollector,
     BudgetTracker,
     CollectionMode,
@@ -48,7 +48,7 @@ from yule_orchestrator.agents.research_collector import (
     parse_github_url,
     short_role,
 )
-from yule_orchestrator.agents.research_pack import (
+from yule_orchestrator.agents.research.pack import (
     ResearchAttachment,
     SourceType,
 )
@@ -593,7 +593,7 @@ class ParseGithubUrlTestCase(unittest.TestCase):
 
 class ConfidenceTestCase(unittest.TestCase):
     def test_official_docs_for_backend_is_high(self) -> None:
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
         self.assertEqual(
             compute_confidence(
                 source_type=SourceType.OFFICIAL_DOCS,
@@ -605,7 +605,7 @@ class ConfidenceTestCase(unittest.TestCase):
         )
 
     def test_design_reference_for_designer_is_medium_or_high(self) -> None:
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
         result = compute_confidence(
             source_type=SourceType.DESIGN_REFERENCE,
             role="engineering-agent/product-designer",
@@ -616,7 +616,7 @@ class ConfidenceTestCase(unittest.TestCase):
         self.assertIn(result, {CONFIDENCE_HIGH, CONFIDENCE_MEDIUM})
 
     def test_community_signal_without_match_is_low(self) -> None:
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
         # tech-lead profile doesn't include community_signal at high rank
         result = compute_confidence(
             source_type=SourceType.COMMUNITY_SIGNAL,
@@ -627,7 +627,7 @@ class ConfidenceTestCase(unittest.TestCase):
         self.assertEqual(result, CONFIDENCE_LOW)
 
     def test_web_result_baseline_is_low(self) -> None:
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
         result = compute_confidence(
             source_type=SourceType.WEB_RESULT,
             role="engineering-agent/tech-lead",
@@ -637,7 +637,7 @@ class ConfidenceTestCase(unittest.TestCase):
         self.assertIn(result, {CONFIDENCE_LOW, CONFIDENCE_MEDIUM})
 
     def test_provider_score_boosts_confidence(self) -> None:
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
         without = compute_confidence(
             source_type=SourceType.WEB_RESULT,
             role="engineering-agent/tech-lead",
@@ -738,7 +738,7 @@ class ResultDictParsingTestCase(unittest.TestCase):
 
     def test_github_url_is_classified_correctly(self) -> None:
         from datetime import datetime
-        from yule_orchestrator.agents.research_pack import SourceType
+        from yule_orchestrator.agents.research.pack import SourceType
         source = _result_dict_to_source(
             {
                 "title": "Issue 42",
@@ -778,7 +778,7 @@ class BudgetTrackerTestCase(unittest.TestCase):
         self.assertFalse(b.can_call())
 
     def test_trim_results_caps_to_per_role(self) -> None:
-        from yule_orchestrator.agents.research_pack import ResearchSource
+        from yule_orchestrator.agents.research.pack import ResearchSource
         b = BudgetTracker(max_provider_calls=3, max_results_per_role=2)
         sources = [ResearchSource(source_url=f"https://x/{i}") for i in range(5)]
         trimmed = b.trim_results(sources)
@@ -791,7 +791,7 @@ class BudgetTrackerTestCase(unittest.TestCase):
         self.assertIn("budget", (b.limit_note() or "").lower())
 
     def test_limit_note_when_only_truncated(self) -> None:
-        from yule_orchestrator.agents.research_pack import ResearchSource
+        from yule_orchestrator.agents.research.pack import ResearchSource
         b = BudgetTracker(max_provider_calls=3, max_results_per_role=1)
         b.trim_results([ResearchSource(), ResearchSource()])
         self.assertIn("잘랐", b.limit_note() or "")

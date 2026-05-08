@@ -1,6 +1,6 @@
 """Engineering-agent department runtime: runners, registry, hooks."""
 
-from .dispatcher import (
+from .messaging.dispatcher import (
     DispatchPlan,
     DispatchRequest,
     Dispatcher,
@@ -8,7 +8,7 @@ from .dispatcher import (
     TaskType,
     render_plan_summary,
 )
-from .message import (
+from .messaging.message import (
     AgentMessage,
     ContextRef,
     Priority,
@@ -19,7 +19,7 @@ from .message import (
     role_address,
     with_thread_id,
 )
-from .registry import (
+from .messaging.registry import (
     DEFAULT_RUNNER_FACTORIES,
     ParticipantsPool,
     RegistryError,
