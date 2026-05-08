@@ -592,28 +592,45 @@ class ObsidianWriterWorker:
 # ---------------------------------------------------------------------------
 
 
-def default_render_fn(request: ObsidianWriteRequest) -> Any:
-    """Best-effort default render for ``research`` / ``decision``.
+_DEFAULT_RENDER_KINDS: frozenset[str] = frozenset(
+    {
+        NOTE_KIND_RESEARCH,
+        NOTE_KIND_DECISION,
+        # A-M7.5e: knowledge kind delegates to
+        # ``render_knowledge_note`` (already wired inside
+        # ``render_research_note`` since the knowledge_writer split).
+        # Approval guard above (``request.requires_approval`` /
+        # ``has_full_approval``) still runs first so an unauthorised
+        # knowledge write never reaches this renderer.
+        NOTE_KIND_KNOWLEDGE,
+    }
+)
 
-    Reuses :func:`agents.obsidian.export.render_research_note` —
-    same path the legacy CLI sync drives. Raises for unsupported
-    kinds so a producer that forgets to inject ``render_fn`` for
-    e.g. ``knowledge`` fails loudly instead of silently writing the
-    wrong content.
+
+def default_render_fn(request: ObsidianWriteRequest) -> Any:
+    """Default render for ``research`` / ``decision`` / ``knowledge``.
+
+    Reuses :func:`agents.obsidian.export.render_research_note`, which
+    in turn delegates to :func:`agents.obsidian.knowledge_writer.render_knowledge_note`
+    when ``kind == "knowledge"``. Approval guard stays in
+    :meth:`ObsidianWriterWorker.process_job`; this helper is only
+    reached for knowledge requests after an approval triple
+    (``approval_id`` / ``approved_by`` / ``approved_at``) is present.
+
+    Raises :class:`ObsidianRenderError` for unsupported kinds (meeting
+    / work-report) so a producer that forgets to inject
+    ``render_fn`` fails loudly instead of writing the wrong content.
     """
 
-    if request.note_kind not in (NOTE_KIND_RESEARCH, NOTE_KIND_DECISION):
+    if request.note_kind not in _DEFAULT_RENDER_KINDS:
         raise ObsidianRenderError(
             f"default_render_fn does not support note_kind={request.note_kind!r}; "
-            "pass a custom render_fn"
+            f"supported: {sorted(_DEFAULT_RENDER_KINDS)} — pass a custom render_fn"
         )
     # Lazy import to keep this module light when only the queue
     # primitives are needed (the obsidian export chain pulls a fair
     # amount of code in).
-    from ..obsidian.export import (
-        recommend_path,
-        render_research_note,
-    )
+    from ..obsidian.export import render_research_note
     from ..research.pack import pack_from_dict
     from ..workflow_state import load_session
 
@@ -628,12 +645,19 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
             "default render needs session.extra['research_pack']"
         )
     pack = pack_from_dict(dict(raw_pack))
+
+    # ``render_research_note`` accepts ``project`` / ``layout`` (not
+    # ``*_override``) — the previous wiring used the wrong kwarg
+    # names which would have raised TypeError if a research/decision
+    # request had ever reached this default. A-M7.5e fixes that
+    # along with knowledge support; both names map to the same
+    # render-time inputs.
     return render_research_note(
         pack=pack,
         session=session,
         kind=request.note_kind,
-        project_override=request.project,
-        layout_override=request.layout,
+        project=request.project,
+        layout=request.layout,
     )
 
 
