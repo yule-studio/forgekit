@@ -84,6 +84,15 @@ PROJECT_TASK_LOGS_SUBDIR = "task-logs"
 PROJECT_MEETING_NOTES_SUBDIR = "meeting-notes"
 PROJECT_KNOWLEDGE_SUBDIR = "knowledge"
 PROJECT_WORK_REPORTS_SUBDIR = "reports"
+# A-M10b — autonomous engineering ops subdirectories. Land within
+# the project tree so they sit next to the human-driven research /
+# knowledge / decisions notes; no top-level shuffle of the existing
+# yule-agent-vault layout.
+PROJECT_RESEARCH_LOG_SUBDIR = "research-log"
+PROJECT_AGENT_OPS_SUBDIR = "agent-ops"
+PROJECT_POSTMORTEMS_SUBDIR = "agent-ops/postmortems"
+PROJECT_PROPOSALS_SUBDIR = "agent-ops/proposals"
+PROJECT_BLOG_DRAFTS_SUBDIR = "blog-drafts"
 
 # Legacy-agent layout (kept for opt-in legacy mode + back-compat imports).
 VAULT_BASE = "Agents/Engineering"
@@ -115,6 +124,19 @@ _KIND_TO_PROJECT_SUBDIR: Mapping[str, str] = {
     "work_report": PROJECT_WORK_REPORTS_SUBDIR,
     "report": PROJECT_WORK_REPORTS_SUBDIR,
     "reports": PROJECT_WORK_REPORTS_SUBDIR,
+    # A-M10b — autonomous engineering ops kinds.
+    "research-log": PROJECT_RESEARCH_LOG_SUBDIR,
+    "research_log": PROJECT_RESEARCH_LOG_SUBDIR,
+    "agent-ops": PROJECT_AGENT_OPS_SUBDIR,
+    "agent_ops": PROJECT_AGENT_OPS_SUBDIR,
+    "failure-postmortem": PROJECT_POSTMORTEMS_SUBDIR,
+    "failure_postmortem": PROJECT_POSTMORTEMS_SUBDIR,
+    "postmortem": PROJECT_POSTMORTEMS_SUBDIR,
+    "self-improvement-proposal": PROJECT_PROPOSALS_SUBDIR,
+    "self_improvement_proposal": PROJECT_PROPOSALS_SUBDIR,
+    "proposal": PROJECT_PROPOSALS_SUBDIR,
+    "blog-draft": PROJECT_BLOG_DRAFTS_SUBDIR,
+    "blog_draft": PROJECT_BLOG_DRAFTS_SUBDIR,
 }
 
 # Filename label per kind (used by ``recommend_path`` to build basenames
@@ -137,6 +159,19 @@ _KIND_TO_LABEL: Mapping[str, str] = {
     "work_report": "work-report",
     "report": "work-report",
     "reports": "work-report",
+    # A-M10b
+    "research-log": "research-log",
+    "research_log": "research-log",
+    "agent-ops": "agent-ops",
+    "agent_ops": "agent-ops",
+    "failure-postmortem": "postmortem",
+    "failure_postmortem": "postmortem",
+    "postmortem": "postmortem",
+    "self-improvement-proposal": "proposal",
+    "self_improvement_proposal": "proposal",
+    "proposal": "proposal",
+    "blog-draft": "blog-draft",
+    "blog_draft": "blog-draft",
 }
 
 

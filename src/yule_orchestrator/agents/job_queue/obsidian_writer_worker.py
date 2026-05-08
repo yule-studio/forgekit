@@ -73,6 +73,14 @@ NOTE_KIND_DECISION: str = "decision"
 NOTE_KIND_MEETING: str = "meeting"
 NOTE_KIND_KNOWLEDGE: str = "knowledge"
 NOTE_KIND_WORK_REPORT: str = "work-report"
+# A-M10b — autonomous-execution note kinds. None of these require
+# explicit human approval; they correspond to L1/L2 actions in the
+# autonomy ladder defined in :mod:`agents.lifecycle.autonomy_policy`.
+NOTE_KIND_RESEARCH_LOG: str = "research-log"
+NOTE_KIND_AGENT_OPS: str = "agent-ops"
+NOTE_KIND_FAILURE_POSTMORTEM: str = "failure-postmortem"
+NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL: str = "self-improvement-proposal"
+NOTE_KIND_BLOG_DRAFT: str = "blog-draft"
 
 
 # Skipped reasons surfaced via :class:`ObsidianWriteJobOutcome`.
@@ -603,8 +611,66 @@ _DEFAULT_RENDER_KINDS: frozenset[str] = frozenset(
         # ``has_full_approval``) still runs first so an unauthorised
         # knowledge write never reaches this renderer.
         NOTE_KIND_KNOWLEDGE,
+        # A-M10b — autonomous-execution kinds. No approval guard
+        # because they map to L1/L2 in the autonomy ladder. The
+        # producer is responsible for stuffing the relevant payload
+        # (snapshot / audit list / postmortem body / proposal body
+        # / blog draft body) into ``request.metadata`` so the
+        # renderer has something to write.
+        NOTE_KIND_RESEARCH_LOG,
+        NOTE_KIND_AGENT_OPS,
+        NOTE_KIND_FAILURE_POSTMORTEM,
+        NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL,
+        NOTE_KIND_BLOG_DRAFT,
     }
 )
+
+
+_M10B_AUTONOMOUS_KINDS: frozenset[str] = frozenset(
+    {
+        NOTE_KIND_RESEARCH_LOG,
+        NOTE_KIND_AGENT_OPS,
+        NOTE_KIND_FAILURE_POSTMORTEM,
+        NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL,
+        NOTE_KIND_BLOG_DRAFT,
+    }
+)
+
+
+def _render_autonomous_note(request: ObsidianWriteRequest) -> Any:
+    """Render an A-M10b L1/L2 autonomous note.
+
+    These kinds run without an approval triple and without depending
+    on a still-open ``WorkflowSession`` row. The producer (M10c
+    triggers) stuffs the relevant payload into ``request.metadata``
+    and the renderer composes the markdown + path. Empty-body
+    requests are rejected so a hollow vault file never lands.
+
+    Per kind the producer must populate at minimum:
+
+      * ``research-log`` — ``thread_snapshot`` payload
+        (:meth:`ThreadSnapshot.to_payload`) and/or
+        ``research_pack`` summary; ``original_prompt`` optional.
+      * ``agent-ops`` — ``audit_entries`` list of
+        :class:`AgentOpsEntry` payloads.
+      * ``failure-postmortem`` / ``self-improvement-proposal`` /
+        ``blog-draft`` — free-form ``body`` markdown.
+    """
+
+    metadata = dict(request.metadata or {})
+    if request.note_kind == NOTE_KIND_RESEARCH_LOG:
+        from ..obsidian.research_log_writer import render_research_log_note
+
+        return render_research_log_note(request=request, metadata=metadata)
+    if request.note_kind == NOTE_KIND_AGENT_OPS:
+        from ..obsidian.research_log_writer import render_agent_ops_note
+
+        return render_agent_ops_note(request=request, metadata=metadata)
+    # postmortem / proposal / blog-draft share a generic markdown
+    # composer — the producer has already authored the body.
+    from ..obsidian.research_log_writer import render_simple_body_note
+
+    return render_simple_body_note(request=request, metadata=metadata)
 
 
 def default_render_fn(request: ObsidianWriteRequest) -> Any:
@@ -641,6 +707,14 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
             f"default_render_fn does not support note_kind={request.note_kind!r}; "
             f"supported: {sorted(_DEFAULT_RENDER_KINDS)} — pass a custom render_fn"
         )
+    # A-M10b — autonomous-execution kinds short-circuit the
+    # research_pack / session lookup path. Their payload lives
+    # entirely in ``request.metadata`` so the renderer can run
+    # without a session row (handy for daily agent-ops rollups
+    # whose session may already be closed).
+    if request.note_kind in _M10B_AUTONOMOUS_KINDS:
+        return _render_autonomous_note(request)
+
     # Lazy import to keep this module light when only the queue
     # primitives are needed (the obsidian export chain pulls a fair
     # amount of code in).
@@ -847,10 +921,15 @@ def _short_error(exc: BaseException) -> str:
 
 __all__ = (
     "JOB_TYPE_OBSIDIAN_WRITE",
+    "NOTE_KIND_AGENT_OPS",
+    "NOTE_KIND_BLOG_DRAFT",
     "NOTE_KIND_DECISION",
+    "NOTE_KIND_FAILURE_POSTMORTEM",
     "NOTE_KIND_KNOWLEDGE",
     "NOTE_KIND_MEETING",
     "NOTE_KIND_RESEARCH",
+    "NOTE_KIND_RESEARCH_LOG",
+    "NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL",
     "NOTE_KIND_WORK_REPORT",
     "ObsidianRenderError",
     "ObsidianWriteJobOutcome",

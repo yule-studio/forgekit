@@ -141,11 +141,30 @@ M10c 에서는 `#봇-상태` 채널에 daily summary 가 게시된다.
   분기 (queued / topic_pending / topic_already_saved / duplicate-message /
   failure) 모두 audit 기록.
 
-향후 (A-M10b) 추가 통합:
+A-M10b 추가:
 
-- 연구 synthesis 완료 → research-log 자동 저장.
-- approval reply → vault commit 분기.
-- self-improvement proposal 작성 → vault `40-agent-ops/proposals/`.
+- 5 가지 자율 실행 note 종류 — `research-log`, `agent-ops`,
+  `failure-postmortem`, `self-improvement-proposal`, `blog-draft` —
+  를 `obsidian_writer_worker.default_render_fn` 이 직접 처리.
+- 폴더 라우팅: 모두 `10-projects/<project>/` 아래에 자리 잡음
+  (`research-log/`, `agent-ops/`, `agent-ops/postmortems/`,
+  `agent-ops/proposals/`, `blog-drafts/`).
+- 승인 우회: 5 가지 모두 `requires_approval()` 가 False 라 `#승인-대기`
+  카드 없이 vault 에 자동 저장.
+- 빈 본문 가드: snapshot/pack/synthesis/prompt 가 모두 비면 vault 저장
+  거부 (failed_retryable).
+- 빌더: `lifecycle/autonomous_producers.py` 가
+  `build_research_log_request` / `build_agent_ops_request` /
+  `build_simple_body_request` 제공. M10c 트리거 (research synthesis
+  완료, 정해진 audit-flush 주기, postmortem/proposal 발생 등) 가
+  이 빌더를 호출해 obsidian_write 큐에 enqueue 하면 끝.
+
+향후 (A-M10c) 추가 통합:
+
+- research synthesis 완료 → `build_research_log_request` 호출 → vault 자동 저장.
+- agent-ops audit 누적 → 일일/세션별 flush → vault 자동 저장.
+- failure-postmortem / self-improvement-proposal 자동 작성 트리거.
+- ClaudeCodeRunner / OllamaRunner 와 deliberation runner_fn wiring.
 
 ## 코드 진입점
 
@@ -153,6 +172,8 @@ M10c 에서는 `#봇-상태` 채널에 daily summary 가 게시된다.
 | --- | --- |
 | `agents/lifecycle/autonomy_policy.py` | 5-단계 enum + action 카탈로그 + `decide_autonomy()` |
 | `agents/lifecycle/agent_ops_log.py` | `AgentOpsEntry` + session.extra round-trip + markdown 렌더 |
+| `agents/lifecycle/autonomous_producers.py` | M10b 자율 실행 kind 들의 `ObsidianWriteRequest` 빌더 |
+| `agents/obsidian/research_log_writer.py` | research-log / agent-ops / postmortem / proposal / blog-draft 렌더러 |
 | `agents/approval_policy.py` (M5a) | 기존 4-단계 정책. M10 의 L3/L4 가 `to_action_context()` 로 다리 놓음 |
 | `agents/job_queue/forum_obsidian_handoff.py` | 운영-리서치 thread 저장 dispatch (audit 기록 포함) |
 
