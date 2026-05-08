@@ -16,6 +16,19 @@
 | qa-engineer | `ENGINEERING_AGENT_BOT_QA_ENGINEER_TOKEN` | 회귀 / 테스트 / acceptance |
 | devops-engineer | `ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN` | CI/CD / Docker / 배포 / 운영 |
 
+### 1.1 토큰 보안 / rotation 트리거 (P0)
+
+위 9 개 토큰은 모두 **장기 자격증명** 이다. 한 번이라도 다음 표면에 노출되면 그 토큰은 무효로 간주하고 즉시 rotate 한다.
+
+- 스크린샷 / 화면 공유 / 영상에 토큰 prefix(`Bot ` 또는 hex 두세 글자) 가 보임.
+- 터미널 출력 / `journalctl` / Discord 메시지 / 외부 채팅(Slack / 메일 / 이슈) 에 노출.
+- git history / commit message / `.env.example` / 공개 PR diff 에 포함.
+- 외부 협업자/에이전트(예: 외부 LLM, 페어 프로그래밍 도구) 의 컨텍스트로 전달.
+
+rotation 절차는 [`docs/operations.md` §11 — P0 Secret Hygiene + Token Rotation](operations.md#11-p0-secret-hygiene--token-rotation) 한 곳에 정리되어 있다. 라이브 회귀 / production runtime 은 rotation 이 끝나기 전에는 새로 띄우지 않는다 (`policies/runtime/agents/engineering-agent/live-regression.md` §0.4 사전 차단 조건).
+
+> 운영 메모 — engineering gateway / 7 멤버 / planning bot 은 **각자 다른 Discord application** 이다. 하나가 노출되면 그 봇만 rotate 하면 충분하지만, 같은 시점에 같은 환경(.env.local 한 파일) 에 모인 모든 토큰이 동일 노출 경로를 탔을 가능성이 크므로 9 개 전부를 rotation 후보로 보고 점검한다.
+
 ## 2. 채널 운영 표준
 
 - **`#일정-관리`** (= `DISCORD_CONVERSATION_CHANNEL_*`) — planning 자유 대화.

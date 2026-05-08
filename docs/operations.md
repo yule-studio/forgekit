@@ -346,3 +346,121 @@ Discord Developer Portal 에서 각 봇 앱마다 **Message Content Intent** 가
 
 자동화 측면은 모두 통과 (2,182 tests green); 위 사용자 액션이 끝나면 M7.5 라이브 검증이 닫힌다.
 
+## 11. P0 Secret Hygiene + Token Rotation
+
+> **이 섹션은 코드 변경보다 항상 먼저 실행한다.** 노출된 토큰을 가진 채로 다음 commit 을 만들거나 라이브 검증을 시작하지 않는다.
+
+### 11.1 언제 rotate 하는가
+
+다음 트리거 중 **하나라도** 일치하면 해당 토큰은 즉시 무효로 간주한다.
+
+- 스크린샷 / 화면 공유 / 영상에 `Bot ` prefix 또는 토큰 hex 첫 몇 글자가 노출됨.
+- 터미널 / `journalctl` / `tail -f` / 봇이 보낸 Discord 메시지에 토큰 문자열 그대로 출력됨.
+- 외부 채팅(Slack / 메일 / 이슈) 또는 외부 LLM / pair-programming 도구 컨텍스트에 토큰이 흘러감.
+- git history / commit message / 공개 PR diff / 공개 fork / `.env.example` 에 실제 값이 들어감.
+- `.env.local` 파일이 .gitignore 밖으로 나가거나, 백업 / Dropbox / iCloud / 사진앨범 등 원치 않는 저장소에 사본이 남음.
+- Discord Developer Portal 의 token regenerate 페이지가 열린 흔적은 있는데 사용 흔적이 없음(누군가 reset 시도 가능성).
+
+### 11.2 토큰별 Rotation 체크리스트
+
+각 봇은 **별도 Discord application** 이다. 한 봇만 rotate 해도 되지만, 같은 노출 경로를 탔다면 9 개 전부를 점검 대상으로 본다. 토큰 값은 어떤 단계에서도 화면 / 채팅 / 로그에 그대로 출력하지 않는다 — 항상 secret manager / `.env.local` 직접 편집으로만 다룬다.
+
+#### 11.2.1 Gateway / 멤버 봇 (8 종)
+
+| 봇 | env key | Discord app |
+|---|---|---|
+| Engineering gateway | `ENGINEERING_AGENT_BOT_GATEWAY_TOKEN` | engineering-gateway |
+| tech-lead | `ENGINEERING_AGENT_BOT_TECH_LEAD_TOKEN` | engineering-tech-lead |
+| ai-engineer | `ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN` | engineering-ai-engineer |
+| product-designer | `ENGINEERING_AGENT_BOT_PRODUCT_DESIGNER_TOKEN` | engineering-product-designer |
+| backend-engineer | `ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN` | engineering-backend-engineer |
+| frontend-engineer | `ENGINEERING_AGENT_BOT_FRONTEND_ENGINEER_TOKEN` | engineering-frontend-engineer |
+| qa-engineer | `ENGINEERING_AGENT_BOT_QA_ENGINEER_TOKEN` | engineering-qa-engineer |
+| devops-engineer | `ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN` | engineering-devops-engineer |
+
+per-token 절차 — 한 봇씩 다음을 그대로 따른다.
+
+1. **새 토큰 생성**: Discord Developer Portal → 해당 application → **Bot** → **Reset Token**. 새 값은 곧바로 OS secret manager(macOS Keychain / 1Password / Bitwarden) 에 붙여넣고, 임시 클립보드 내용은 즉시 비운다.
+2. **`.env.local` 갱신**: 해당 env key 한 줄만 새 값으로 교체. 다른 토큰은 건드리지 않는다. 파일을 git diff 로 보지 말 것 — `.env.local` 은 gitignore 됐지만 실수로 볼 수 있다.
+3. **runtime 재시작 (§11.3)**: 해당 봇만 재시작하면 충분하지만 같은 시점 노출이라면 §11.3 의 일괄 재시작 사용.
+4. **검증**: 새 토큰으로 로그인 성공이 `journalctl` 또는 `yule runtime status` 에서 보이는지만 확인. **로그에 토큰 그대로 출력하는 디버그 켜지 않는다.**
+5. **이전 토큰 무효화 확인**: Developer Portal 에서 reset 직후 이전 토큰은 자동 invalid 가 되지만, 외부 캐시(GitHub Actions secret / CI / 외부 협업자) 에 남아 있을 수 있으므로 24h 내 점검.
+
+#### 11.2.2 Planning bot (1 종)
+
+| 봇 | env key | Discord app |
+|---|---|---|
+| Planning bot | `DISCORD_BOT_TOKEN` | yule-planning |
+
+절차는 §11.2.1 과 동일. 단, planning-bot 은 engineering 큐에 의존하지 않으므로 재시작 영향이 가장 작다.
+
+#### 11.2.3 비-Discord secret (참고)
+
+다음은 본 P0 의 직접 대상은 아니지만 같은 노출 경로를 탔다면 함께 rotate.
+
+- `NAVER_APP_PASSWORD` (Naver CalDAV 앱 비밀번호) — Naver 마이페이지에서 재발급.
+- `TAVILY_API_KEY` / `BRAVE_SEARCH_API_KEY` — 각 provider 콘솔에서 재발급. 사용량 알림이 떠 있으면 도용 의심.
+- 그 외 `REFERENCE_*` slot 은 현재 wired 되어 있지 않으므로 노출 영향 적음.
+
+### 11.3 Runtime restart 절차 (rotation 직후)
+
+토큰을 갈아끼운 직후 **이전 토큰을 캐싱 중인 프로세스 메모리** 가 남는다. 다음 절차로 강제 cycle.
+
+```bash
+# (A) systemd production
+sudo systemctl restart yule-run-service@eng-discord-gateway.service
+sudo systemctl restart yule-run-service@eng-role-tech-lead.service
+sudo systemctl restart yule-run-service@eng-role-backend-engineer.service
+sudo systemctl restart yule-run-service@eng-role-frontend-engineer.service
+sudo systemctl restart yule-run-service@eng-role-qa-engineer.service
+sudo systemctl restart yule-run-service@eng-role-devops-engineer.service
+sudo systemctl restart yule-run-service@eng-role-ai-engineer.service
+sudo systemctl restart yule-run-service@eng-role-product-designer.service
+# planning-bot 이 별도 unit 으로 떠 있다면 그 service 도 재시작.
+
+# (B) 단일 호스트(yule runtime up)
+yule runtime down       # 또는 Ctrl-C 로 종료
+yule runtime up         # 새 토큰으로 다시 spawn
+yule runtime status     # 모든 봇이 ALIVE / queue worker 가 비어 있지 않은지 확인
+
+# (C) 단일 봇만 빠르게
+yule run-service eng-discord-gateway        # 또는 다른 service-id
+```
+
+queue 워커(`eng-research-worker` 등) 는 토큰을 들고 있지 않으므로 (A)/(B) 의 일괄 재시작에 포함되긴 하지만 토큰 cycle 의 직접 대상은 아니다.
+
+### 11.4 Git history / screenshot / log 위생
+
+토큰이 한 번 git 에 들어가면 reset 만으로는 끝나지 않는다.
+
+- **commit message / diff** 에 토큰이 포함됐다면 push 전이라 해도 **재현 가능성** 이 있다고 보고 즉시 rotate(§11.2). pull/clone 한 작업본이 어딘가에 남아 있다.
+- **이미 push 됐다면**: rotate 가 1 순위(이전 토큰을 무효로 만드는 것이 history 정리보다 더 중요). 이후 GitHub support → secret scanning bypass / history rewrite 검토. 강제 history rewrite(force-push) 는 사용자 승인 후에만 진행.
+- **screenshot / 영상** 에 노출됐다면 SNS / 채팅 / 메일 / 캡처 도구 캐시(macOS 미리보기, Notion 업로드, Slack 스레드) 까지 검색해 모두 삭제.
+- **journalctl / log** 에 출력됐다면 호스트의 `journalctl --vacuum-time=…` 또는 로그 rotate. 외부 로그 수집기(예: Datadog) 가 있다면 거기서도 삭제 요청.
+- **외부 LLM / pair-programming 도구** 컨텍스트에 들어갔다면 해당 서비스의 conversation 삭제 + retention policy 확인. 일부 서비스는 학습 캐시에 남으므로 토큰 자체를 무효로 만드는 것이 유일한 안전책.
+
+> 이 운영 문서 자체에는 절대 실제 토큰 / hex prefix / 부분 문자열을 적지 않는다. 노출 사례가 발생했다면 별도 incident note 에 기록하되 그 노트도 `.env.local` 과 같은 등급으로 다룬다(공개 vault / 공개 PR 금지).
+
+### 11.5 M13 Live-test readiness gating
+
+라이브 회귀 / production restart 은 **secret rotation 이 완전히 끝난 뒤에만** 시작한다. 미완료 상태에서 라이브 검증을 돌리면 새 노출 경로가 생긴다.
+
+- `policies/runtime/agents/engineering-agent/live-regression.md` §0.4 가 본 §11 의 완료를 prerequisite 로 명시.
+- 미완료 상태 신호:
+  - Developer Portal 에서 마지막 token reset 시각이 노출 시점보다 이른 봇이 하나라도 있음.
+  - `.env.local` 에 이전 토큰이 그대로 남아 있음(파일 modify time 미변경).
+  - §11.3 runtime restart 가 실행되지 않았음(=현 프로세스가 이전 토큰을 메모리에 캐싱).
+- M13 readiness 체크리스트(아직 별도 문서 없음)에 추가될 라인:
+  - [ ] §11 P0 Secret Hygiene 완료 — 노출된 토큰 9 개 모두 rotate, runtime restart 끝, ≥24h 외부 캐시 점검.
+
+### 11.6 사용자 직접 액션 — 자동화 불가
+
+본 봇은 절대 secret 을 직접 다루지 않는다. 아래는 **운영자/사용자** 가 손으로 해야 한다.
+
+1. Discord Developer Portal 에서 9 개 봇 모두 **Reset Token** 클릭.
+2. 새 토큰을 OS secret manager 에 보관 후 `.env.local` 의 해당 env key 한 줄씩 교체.
+3. §11.3 의 runtime restart 명령 실행.
+4. §11.4 의 화면/로그/외부 컨텍스트 위생 점검.
+5. 노출된 시점, rotate 한 시점, 영향 범위를 incident note 에 기록(.env.local 과 동일 등급으로 보관).
+6. 본 §11 체크리스트가 모두 끝났을 때 비로소 라이브 회귀 / production runtime 을 다시 띄운다.
+

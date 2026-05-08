@@ -10,6 +10,21 @@
 2. 새 워크플로우 채널을 사용하거나, 기존 채널이라면 직전 작업 세션이 close 되어 있어야 함 (`/status` → "현재 채널에 매칭되는 열린 engineering-agent 세션이 보이지 않아요" 가 깔끔하게 떠야 정상).
 3. 본 문서의 시나리오 4 개를 **위에서 아래 순서대로** 실행. 시나리오 간 세션 충돌 방지 위해 각 시나리오 사이에 채널을 비우거나 명시적으로 새 thread 를 사용한다.
 
+### 0.4 사전 차단 — Secret Hygiene 미완료 시 진행 금지
+
+`docs/operations.md` §11 (P0 Secret Hygiene + Token Rotation) 이 완전히 끝나기 전까지 본 라이브 회귀 / M13 readiness 검증은 **시작하지 않는다.** 미완료 상태에서 라이브 봇을 다시 띄우면 이전 토큰이 또 다시 화면 / 로그 / Discord 메시지로 흘러갈 위험이 있다.
+
+진행 전 다음 항목이 모두 ✅ 인지 한 번 본다.
+
+- [ ] **노출 사실 파악** — 토큰이 어떤 표면(스크린샷 / 터미널 / 외부 채팅 / git diff)에 노출됐는지 구체적으로 식별. 추정이 아니라 사실 기반.
+- [ ] **9 개 봇 모두 reset** — engineering gateway + 7 멤버 + planning bot 모두 Discord Developer Portal 에서 Reset Token 완료. 마지막 reset 시각이 노출 시각보다 늦어야 함.
+- [ ] **`.env.local` 갱신** — 새 토큰이 `.env.local` 의 해당 env key 9 종에 모두 반영. 이전 값은 어디에도 남아 있지 않음(편집기 history / 클립보드 매니저 포함).
+- [ ] **runtime restart 완료** — `docs/operations.md` §11.3 의 (A)/(B)/(C) 중 하나로 모든 봇 프로세스 재기동. 메모리에 이전 토큰이 남아 있지 않음.
+- [ ] **위생 점검** — 화면 / 영상 / 외부 채팅 / 외부 LLM 컨텍스트 / journalctl / git history 어디에도 토큰이 남아 있지 않은지 §11.4 체크리스트로 한 번 더 본다.
+- [ ] **incident note 기록** — 노출 시각 / rotate 시각 / 영향 범위를 별도 incident note 에 기록. (.env.local 과 동일 등급으로 보관, 공개 vault 금지.)
+
+위 6 개 중 한 항목이라도 미충족이면 본 문서의 §1 ~ §6 시나리오 어떤 것도 시작하지 않는다. 자동화 테스트 (`python3 -m unittest discover -s tests -t .`) 는 secret 없이 동작하므로 그쪽은 계속 돌려도 무방하지만 **라이브 봇 기동은 차단**.
+
 ## 1. Kubernetes research-only 시나리오
 
 ### 1.1 입력
