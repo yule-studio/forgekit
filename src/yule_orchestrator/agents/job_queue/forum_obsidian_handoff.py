@@ -527,6 +527,7 @@ async def route_forum_obsidian_save_request(
     role_resolver: Optional[Callable[[Any], Optional[str]]] = None,
     session_updater: Optional[Callable[..., Any]] = None,
     note_kind: str = "knowledge",
+    obsidian_writer_worker: Any = None,
 ) -> ForumObsidianHandoffOutcome:
     """Detect a save request and enqueue a #승인-대기 card via the worker.
 
@@ -846,6 +847,35 @@ async def route_forum_obsidian_save_request(
         session_updater=session_updater,
     )
 
+    # A-M10c — alongside the L3 approval card, emit an L1
+    # research-log obsidian_write so the research synthesis state
+    # at request time is captured in the vault even before the user
+    # finishes reviewing the canonical knowledge note. Auto-execute
+    # path: no approval_id, no human gate; the obsidian writer's
+    # find_active dedup keeps repeat triggers from creating duplicate
+    # files. Failure here must NOT poison the approval queue path —
+    # research-log is observability, the approval card is the
+    # load-bearing user-facing artifact.
+    _emit_research_log_auto_save(
+        session=session,
+        ledger_record=ledger_record,
+        snapshot=snapshot,
+        selected_roles=selected_roles,
+        source_thread_url=getattr(message, "jump_url", None)
+        or _build_jump_url(
+            getattr(getattr(message, "channel", None), "guild", None),
+            getattr(message, "channel", None),
+            message,
+        ),
+        source_thread_title=getattr(
+            getattr(message, "channel", None), "name", None
+        ),
+        requested_by=requested_by,
+        obsidian_writer_worker=obsidian_writer_worker,
+        session_updater=session_updater,
+        approval_job_id=job_id,
+    )
+
     return ForumObsidianHandoffOutcome(
         handled=True,
         approval_job_id=job_id,
@@ -1069,6 +1099,166 @@ def _persist_ledger(
     except Exception:  # noqa: BLE001
         logger.warning(
             "forum obsidian handoff: ledger persist raised", exc_info=True
+        )
+
+
+# ---------------------------------------------------------------------------
+# A-M10c — research-log auto-save shim (L1 — auto-execute, audit required)
+# ---------------------------------------------------------------------------
+
+
+def _emit_research_log_auto_save(
+    *,
+    session: Any,
+    ledger_record: Any,
+    snapshot: Any,
+    selected_roles: Sequence[str],
+    source_thread_url: Optional[str],
+    source_thread_title: Optional[str],
+    requested_by: Optional[str],
+    obsidian_writer_worker: Any,
+    session_updater: Optional[Callable[..., Any]],
+    approval_job_id: Optional[str],
+) -> None:
+    """Enqueue an L1 research-log obsidian_write alongside the L3
+    approval card, with an agent-ops audit row recording the
+    decision. Failure is swallowed — the approval queue must not
+    suffer for the auto-save side-effect.
+    """
+
+    if obsidian_writer_worker is None:
+        # Observability — the production wiring will inject the
+        # worker; tests that don't care about the auto-save path
+        # leave it None and we silently no-op.
+        return
+
+    try:
+        from ..lifecycle.autonomous_producers import build_research_log_request
+    except Exception:  # noqa: BLE001
+        return
+
+    try:
+        request = build_research_log_request(
+            session=session,
+            snapshot=snapshot,
+            canonical_title=getattr(ledger_record, "canonical_title", None),
+            topic_key=getattr(ledger_record, "topic_key", None),
+            source_thread_url=source_thread_url,
+            source_thread_title=source_thread_title,
+            selected_roles=selected_roles,
+            requested_by=requested_by,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "forum obsidian handoff: build_research_log_request raised",
+            exc_info=True,
+        )
+        return
+
+    try:
+        job, created = obsidian_writer_worker.enqueue(request)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "forum obsidian handoff: research-log enqueue raised",
+            exc_info=True,
+        )
+        _record_research_log_audit(
+            session=session,
+            ledger_record=ledger_record,
+            outcome=f"failure:research_log_enqueue_raised:{_short_error(exc)}",
+            summary="research-log 자동 저장 enqueue 실패",
+            job_id=None,
+            session_updater=session_updater,
+        )
+        return
+
+    job_id = getattr(job, "job_id", None)
+    if not created:
+        outcome = f"skipped:research_log_already_active (job=`{job_id or '?'}`)"
+        summary = (
+            "동일 세션/topic/thread 의 research-log 잡이 이미 큐에 존재 — 신규 enqueue 생략"
+        )
+    else:
+        outcome = "research_log_enqueued"
+        summary = (
+            f"운영-리서치 thread 의 research-log 자동 저장 잡 enqueue "
+            f"(approval=`{approval_job_id or '-'}`)"
+        )
+    _record_research_log_audit(
+        session=session,
+        ledger_record=ledger_record,
+        outcome=outcome,
+        summary=summary,
+        job_id=job_id,
+        session_updater=session_updater,
+    )
+
+
+def _record_research_log_audit(
+    *,
+    session: Any,
+    ledger_record: Any,
+    outcome: str,
+    summary: str,
+    job_id: Optional[str],
+    session_updater: Optional[Callable[..., Any]],
+) -> None:
+    """Append an L1 research-log audit entry to session.extra."""
+
+    if session is None:
+        return
+    try:
+        from ..lifecycle.agent_ops_log import (
+            append_agent_ops_audit,
+            build_agent_ops_entry,
+        )
+        from ..lifecycle.autonomy_policy import (
+            ACTION_RESEARCH_LOG_SAVE,
+            AutonomyContext,
+            decide_autonomy,
+        )
+        from dataclasses import replace as _replace
+
+        try:
+            from ..workflow_state import update_session as _default_update
+        except Exception:  # noqa: BLE001
+            _default_update = None  # type: ignore[assignment]
+    except Exception:  # noqa: BLE001
+        return
+
+    decision = decide_autonomy(
+        AutonomyContext(
+            action=ACTION_RESEARCH_LOG_SAVE,
+            session_id=str(getattr(session, "session_id", "") or ""),
+            job_id=job_id,
+            topic_key=getattr(ledger_record, "topic_key", None),
+            summary=summary,
+        )
+    )
+    entry = build_agent_ops_entry(
+        decision=decision,
+        outcome=outcome,
+        summary=summary,
+        job_id=job_id,
+    )
+
+    extra_in = getattr(session, "extra", None) or {}
+    new_extra = append_agent_ops_audit(extra_in, entry)
+    try:
+        updated = _replace(session, extra=new_extra)
+    except TypeError:
+        if isinstance(getattr(session, "extra", None), dict):
+            session.extra.update(new_extra)
+        return
+    if _default_update is None and session_updater is None:
+        return
+    updater = session_updater or _default_update
+    try:
+        updater(updated, now=datetime.now(tz=timezone.utc))
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "forum obsidian handoff: research-log audit persist raised",
+            exc_info=True,
         )
 
 

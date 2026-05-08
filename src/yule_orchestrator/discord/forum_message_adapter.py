@@ -108,6 +108,7 @@ async def route_forum_message(
     send_chunks_factory: Optional[Callable[[Any], Callable[..., Awaitable[Any]]]] = None,
     queue: Any = None,
     approval_worker: Any = None,
+    obsidian_writer_worker: Any = None,
     session_lister: Any = None,
     session_loader: Any = None,
     session_updater: Any = None,
@@ -148,6 +149,10 @@ async def route_forum_message(
         approval_worker=approval_worker,
         session_lister=session_lister,
     )
+    obsidian_writer_handle = _resolve_obsidian_writer_worker(
+        obsidian_writer_worker=obsidian_writer_worker,
+        queue=queue_handle,
+    )
     handoff_outcome = await route_forum_obsidian_save_request(
         message=message,
         text=text,
@@ -155,6 +160,7 @@ async def route_forum_message(
         approval_worker=worker_handle,
         session_lister=session_lister_fn,
         save_request_detector=save_request_detector,
+        obsidian_writer_worker=obsidian_writer_handle,
     )
     if handoff_outcome.handled:
         rendered = render_handoff_response(handoff_outcome)
@@ -328,6 +334,43 @@ def _resolve_queue_deps(*, queue, approval_worker, session_lister):
         lister = session_lister
 
     return q, worker, lister
+
+
+def _resolve_obsidian_writer_worker(*, obsidian_writer_worker, queue):
+    """Return the production :class:`ObsidianWriterWorker` lazily.
+
+    Tests pass ``None`` to skip the M10c auto-save loop; production
+    wiring builds the worker on the same SQLite queue + heartbeat
+    store so research-log enqueues land in the same DB the
+    standalone consumer (M6) reads.
+    """
+
+    if obsidian_writer_worker is not None:
+        return obsidian_writer_worker
+    try:
+        from ..agents.job_queue import HeartbeatStore
+        from ..agents.job_queue.obsidian_writer_worker import (
+            ObsidianWriterWorker,
+            default_render_fn,
+            default_vault_root_resolver,
+            default_write_fn,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return ObsidianWriterWorker(
+            queue=queue,
+            heartbeats=HeartbeatStore(),
+            render_fn=default_render_fn,
+            write_fn=default_write_fn,
+            vault_root_resolver=default_vault_root_resolver,
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "forum message adapter: ObsidianWriterWorker init raised",
+            exc_info=True,
+        )
+        return None
 
 
 def _resolve_session_persistence(*, session_loader, session_updater):

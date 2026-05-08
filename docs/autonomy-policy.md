@@ -159,12 +159,28 @@ A-M10b 추가:
   완료, 정해진 audit-flush 주기, postmortem/proposal 발생 등) 가
   이 빌더를 호출해 obsidian_write 큐에 enqueue 하면 끝.
 
-향후 (A-M10c) 추가 통합:
+A-M10c 추가:
 
-- research synthesis 완료 → `build_research_log_request` 호출 → vault 자동 저장.
-- agent-ops audit 누적 → 일일/세션별 flush → vault 자동 저장.
-- failure-postmortem / self-improvement-proposal 자동 작성 트리거.
-- ClaudeCodeRunner / OllamaRunner 와 deliberation runner_fn wiring.
+- 운영-리서치 thread 저장 요청 → 동시에 L1 research-log obsidian_write
+  자동 enqueue. forum-handoff 가 `obsidian_writer_worker` 를 받아
+  `build_research_log_request` 로 페이로드를 만들고 worker.enqueue 의
+  find_active dedup 으로 중복 방지. 실패는 audit 로 기록되며 approval
+  카드 흐름은 영향을 받지 않음.
+- forum-message-adapter 가 production 기본 ObsidianWriterWorker 를
+  lazy 빌드하므로 #운영-리서치 thread 메시지 한 번이면 vault 에 자동
+  저장 잡이 동시 enqueue.
+- self-improvement 감지 skeleton (`lifecycle/self_improvement.py`):
+  failed_retryable 누적 / 동일 topic 의 중복 approval / 빈 knowledge
+  hydration 실패 / stale heartbeat 신호를 감지해 severity-ranked
+  `SelfImprovementSignal` 튜플 반환. 마크다운 렌더러는
+  `build_simple_body_request` 가 받을 proposal body 를 생성.
+
+향후 (A-M10d 후속) 통합 작업:
+
+- ClaudeCodeRunner / OllamaRunner 와 deliberation runner_fn 실제 wiring.
+- self-improvement 신호 → 제안서 자동 작성 → L2 vault commit / L3 승인
+  요청 자동 분기.
+- 낮은 위험 docs/test 자동 fix branch + commit 루프.
 
 ## 코드 진입점
 

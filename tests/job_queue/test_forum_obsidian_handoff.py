@@ -568,5 +568,110 @@ class AgentOpsAuditTests(_HandoffFixture):
         )
 
 
+# ---------------------------------------------------------------------------
+# A-M10c — research-log auto-save alongside approval card
+# ---------------------------------------------------------------------------
+
+
+class ResearchLogAutoSaveTests(_HandoffFixture):
+    """The forum-handoff producer enqueues an L1 research-log
+    obsidian_write alongside the L3 approval card so the user sees
+    the research synthesis state captured in the vault even before
+    they finish reviewing the canonical knowledge note.
+    """
+
+    def _writer(self):
+        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+            ObsidianWriterWorker,
+        )
+
+        # Stub render / write / vault — research-log enqueue path
+        # only exercises ``enqueue`` here, not the consumer path.
+        return ObsidianWriterWorker(
+            queue=self.queue,
+            heartbeats=self.heartbeats,
+            render_fn=lambda req: ("dummy", "dummy"),
+            write_fn=lambda *a, **k: None,
+            vault_root_resolver=lambda req: None,
+        )
+
+    def test_approval_card_triggers_research_log_enqueue(self) -> None:
+        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+            JOB_TYPE_OBSIDIAN_WRITE,
+            NOTE_KIND_RESEARCH_LOG,
+        )
+
+        session = _open_session()
+        message = _forum_thread_message()
+        outcome = _run(
+            route_forum_obsidian_save_request(
+                message=message,
+                text=message.content,
+                queue=self.queue,
+                approval_worker=self.approval_worker,
+                session_lister=lambda **_: [session],
+                obsidian_writer_worker=self._writer(),
+            )
+        )
+        self.assertTrue(outcome.handled)
+        self.assertIsNotNone(outcome.approval_job_id)
+        # Approval card was queued AND a research-log write row landed.
+        write_rows = [
+            j
+            for j in self.queue.list_for_session(session.session_id)
+            if j.job_type == JOB_TYPE_OBSIDIAN_WRITE
+        ]
+        self.assertEqual(len(write_rows), 1)
+        payload = write_rows[0].payload or {}
+        self.assertEqual(payload.get("note_kind"), NOTE_KIND_RESEARCH_LOG)
+        # research-log payload carries hydration so the writer can
+        # render without a session lookup.
+        metadata = payload.get("metadata") or {}
+        self.assertIn("thread_snapshot", metadata)
+        self.assertEqual(metadata.get("autonomy_level"), "L1_AUTO_RECORD_REQUIRED")
+        # Audit row records the L1 research-log decision.
+        from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+            read_agent_ops_audit,
+        )
+
+        rows = read_agent_ops_audit(session)
+        actions = {r.action for r in rows}
+        self.assertIn("research_log_save", actions)
+        self.assertTrue(
+            any(
+                r.action == "research_log_save"
+                and r.outcome.startswith("research_log_enqueued")
+                for r in rows
+            )
+        )
+
+    def test_no_writer_means_no_research_log_enqueue(self) -> None:
+        # Production-shaped tests that don't pass the writer must
+        # not silently swallow the approval card. The L3 approval
+        # path is unaffected.
+        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+            JOB_TYPE_OBSIDIAN_WRITE,
+        )
+
+        session = _open_session()
+        message = _forum_thread_message()
+        outcome = _run(
+            route_forum_obsidian_save_request(
+                message=message,
+                text=message.content,
+                queue=self.queue,
+                approval_worker=self.approval_worker,
+                session_lister=lambda **_: [session],
+            )
+        )
+        self.assertIsNotNone(outcome.approval_job_id)
+        write_rows = [
+            j
+            for j in self.queue.list_for_session(session.session_id)
+            if j.job_type == JOB_TYPE_OBSIDIAN_WRITE
+        ]
+        self.assertEqual(write_rows, [])
+
+
 if __name__ == "__main__":
     unittest.main()
