@@ -952,6 +952,14 @@ def build_engineering_gateway_bot(repo_root: Path) -> Any:
     will let us drop this introspection trick. Today the function
     body is ~750 lines of closure-captured config, so the refactor
     is bigger than this milestone.
+
+    A-M11b: after the bot is captured we install the engineering
+    role-runner dispatcher from env. The install is best-effort —
+    if the env names no provider (or every provider is unavailable)
+    the dispatcher stays at the deterministic terminal and the
+    in-process role bodies behave exactly as before. Failure during
+    install is logged via the trace return and never raised so the
+    gateway always boots.
     """
 
     from discord.ext import commands
@@ -979,7 +987,70 @@ def build_engineering_gateway_bot(repo_root: Path) -> Any:
         raise RuntimeError(
             "build_engineering_gateway_bot: run_discord_bot did not construct a bot"
         )
+
+    _install_engineering_role_runner_dispatch_for_gateway()
     return bot
+
+
+def _install_engineering_role_runner_dispatch_for_gateway() -> None:
+    """Best-effort role-runner wiring for the engineering gateway.
+
+    Call site for both :func:`build_engineering_gateway_bot` (run-service
+    entrypoint) and :func:`_run_discord_gateway` in
+    :mod:`runtime.run_service`. Idempotent — calling twice just rebinds
+    the dispatcher to the latest env snapshot.
+
+    Failure here MUST NOT propagate: a missing or partially configured
+    runner backend is recoverable (the deterministic in-process body
+    keeps the gateway useful), so we log and move on.
+    """
+
+    try:
+        from ..agents.runners.bootstrap import (
+            install_engineering_role_runner_dispatch,
+        )
+    except Exception as exc:  # noqa: BLE001 - partial install fallback
+        print(
+            f"warning: role-runner bootstrap import failed ({type(exc).__name__}); "
+            "gateway continues with deterministic in-process role bodies"
+        )
+        return
+
+    def _on_failure(exc: BaseException) -> None:
+        # Sanitised — never log the env value or stack frames containing
+        # secrets. Only the exception type is surfaced.
+        print(
+            "warning: role-runner dispatch install failed "
+            f"({type(exc).__name__}); using deterministic fallback"
+        )
+
+    try:
+        trace = install_engineering_role_runner_dispatch(
+            on_install_failure=_on_failure
+        )
+    except Exception as exc:  # noqa: BLE001 - never let bootstrap kill the gateway
+        _on_failure(exc)
+        return
+    if trace is None:
+        # Engineering runtime module wasn't importable; the in-process
+        # body remains. install_engineering_role_runner_dispatch already
+        # logged a warning.
+        return
+
+    # Friendly status line for run-service stdout — operator sees which
+    # providers are configured/available without grepping logs.
+    available = [
+        e.provider for e in trace.entries if e.configured and e.available
+    ]
+    if trace.deterministic_fallback_only:
+        print(
+            "role-runner dispatch installed: deterministic fallback only "
+            f"(opted-in providers: {[e.provider for e in trace.entries if e.configured] or 'none'})"
+        )
+    else:
+        print(
+            f"role-runner dispatch installed: priority={available} + deterministic terminal"
+        )
 
 
 def _next_daily_run(target_time: time | None) -> datetime:

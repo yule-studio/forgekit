@@ -15,6 +15,15 @@ from .codex import CodexRunner
 from .gemini import GeminiRunner
 from .github_copilot import GitHubCopilotRunner
 from .ollama import OllamaRunner
+from .bootstrap import (
+    ENV_OLLAMA_ENDPOINT,
+    ENV_PROVIDERS,
+    RunnerWiringEntry,
+    RunnerWiringTrace,
+    build_role_runner_candidates,
+    build_role_runner_dispatch_from_env,
+    install_engineering_role_runner_dispatch,
+)
 from .role_runner import (
     DEFAULT_PROVIDER_PRIORITY,
     DeterministicRoleRunner,
@@ -46,6 +55,8 @@ __all__ = [
     "CodexRunner",
     "DEFAULT_PROVIDER_PRIORITY",
     "DeterministicRoleRunner",
+    "ENV_OLLAMA_ENDPOINT",
+    "ENV_PROVIDERS",
     "GeminiRunner",
     "GitHubCopilotRunner",
     "OllamaRunner",
@@ -61,15 +72,20 @@ __all__ = [
     "RunnerHooks",
     "RunnerStatus",
     "RunnerUnavailableError",
+    "RunnerWiringEntry",
+    "RunnerWiringTrace",
     "STATUS_ERROR",
     "STATUS_FALLBACK",
     "STATUS_INACTIVE_ROLE",
     "STATUS_OK",
     "STATUS_UNAVAILABLE",
     "build_audit_record",
+    "build_role_runner_candidates",
+    "build_role_runner_dispatch_from_env",
     "build_role_runner_dispatcher",
     "claude_role_runner",
     "codex_role_runner",
+    "install_engineering_role_runner_dispatch",
     "is_role_active_for_research",
     "ollama_role_runner",
 ]

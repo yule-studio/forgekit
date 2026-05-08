@@ -182,6 +182,16 @@ async def _run_discord_gateway(
     for key, value in overrides.items():
         os.environ[key] = value
 
+    # A-M11b: install the role-runner dispatcher from env *before* the
+    # bot starts. ``build_engineering_gateway_bot`` also calls the
+    # installer (legacy ``run_discord_bot`` direct path), so this call
+    # is idempotent — last-one-wins on the dispatcher binding. We
+    # install here so an operator running ``yule run-service
+    # eng-discord-gateway`` sees the trace stdout line *before* the
+    # bot's discord login attempt, which makes "왜 fallback 떨어졌어?"
+    # answerable from the run-service logs alone.
+    _install_role_runner_dispatch_for_run_service()
+
     repo_root = Path(os.environ.get("YULE_REPO_ROOT", os.getcwd()))
     try:
         await run_engineering_gateway_until_shutdown(
@@ -192,6 +202,57 @@ async def _run_discord_gateway(
     except KeyboardInterrupt:
         return EXIT_OK
     return EXIT_OK
+
+
+def _install_role_runner_dispatch_for_run_service() -> None:
+    """Best-effort role-runner wiring shim for the run-service path.
+
+    Mirrors the bot.py installer so a ``yule run-service`` start
+    publishes the same env-derived dispatcher. Sanitised stdout line
+    on success / fallback. Failure is swallowed — the gateway must
+    boot even if the role-runner subsystem is misconfigured.
+    """
+
+    try:
+        from ..agents.runners.bootstrap import (
+            install_engineering_role_runner_dispatch,
+        )
+    except Exception as exc:  # noqa: BLE001 - partial install fallback
+        sys.stderr.write(
+            f"warning: role-runner bootstrap import failed ({type(exc).__name__}); "
+            "gateway continues with deterministic in-process role bodies\n"
+        )
+        return
+
+    def _on_failure(exc: BaseException) -> None:
+        sys.stderr.write(
+            "warning: role-runner dispatch install failed "
+            f"({type(exc).__name__}); using deterministic fallback\n"
+        )
+
+    try:
+        trace = install_engineering_role_runner_dispatch(
+            on_install_failure=_on_failure
+        )
+    except Exception as exc:  # noqa: BLE001 - bootstrap must not kill run-service
+        _on_failure(exc)
+        return
+    if trace is None:
+        return
+    if trace.deterministic_fallback_only:
+        configured = [e.provider for e in trace.entries if e.configured]
+        sys.stderr.write(
+            "role-runner dispatch installed: deterministic fallback only "
+            f"(opted-in providers: {configured or 'none'})\n"
+        )
+    else:
+        available = [
+            e.provider for e in trace.entries if e.configured and e.available
+        ]
+        sys.stderr.write(
+            f"role-runner dispatch installed: priority={available} "
+            "+ deterministic terminal\n"
+        )
 
 
 # ---------------------------------------------------------------------------
