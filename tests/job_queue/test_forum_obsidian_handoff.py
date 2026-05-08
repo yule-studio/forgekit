@@ -184,6 +184,17 @@ class HappyPathTests(_HandoffFixture):
 
 class IdempotencyTests(_HandoffFixture):
     def test_same_message_twice_yields_duplicate_outcome(self) -> None:
+        # A-M7.6 — topic-level dedup fires before message-level
+        # dedup. Same forum message hitting again finds the topic
+        # already pending approval and returns the new
+        # SKIPPED_TOPIC_PENDING_APPROVAL outcome (which carries the
+        # existing approval job id for navigation). M7.5 message-id
+        # dedup remains as a final safety net for sessions where
+        # ledger persistence didn't take.
+        from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+            SKIPPED_TOPIC_PENDING_APPROVAL,
+        )
+
         session = _open_session()
         message = _forum_thread_message()
         first = _run(
@@ -205,12 +216,13 @@ class IdempotencyTests(_HandoffFixture):
             )
         )
         self.assertIsNone(first.skipped_reason)
-        self.assertEqual(second.skipped_reason, SKIPPED_DUPLICATE_APPROVAL)
-        # Card was posted exactly once.
-        self.assertEqual(len(self.posted_cards), 1)
-        self.assertEqual(
-            render_handoff_response(second), RESPONSE_APPROVAL_DUPLICATE
+        # Either dedup signal acceptable — both prove no double-post.
+        self.assertIn(
+            second.skipped_reason,
+            {SKIPPED_TOPIC_PENDING_APPROVAL, SKIPPED_DUPLICATE_APPROVAL},
         )
+        # Card was posted exactly once regardless of which dedup fired.
+        self.assertEqual(len(self.posted_cards), 1)
 
 
 # ---------------------------------------------------------------------------

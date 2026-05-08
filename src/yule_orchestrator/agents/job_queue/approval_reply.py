@@ -292,18 +292,54 @@ def approval_to_obsidian_write_request(
 
     resolved_at = (approved_at or "").strip() or _utc_now_iso()
     extra = dict(approval_request.extra or {})
-    metadata = {
+
+    # A-M7.6 — preserve forum-handoff hydration payload.
+    # The producer stamped these fields on ApprovalRequest.extra so
+    # the writer can compose a hydrated knowledge note instead of
+    # an empty stub.
+    metadata: dict[str, Any] = {
         "decision_id": extra.get("decision_id"),
         "policy_level": extra.get("policy_level"),
         "approval_kind": approval_request.approval_kind,
+        "approval_job_id": approval_id,
     }
+    for key in (
+        "topic_key",
+        "canonical_title",
+        "source_thread_url",
+        "source_thread_title",
+        "thread_snapshot",
+        "selected_roles",
+        "research_pack_title",
+        "ledger_revision",
+        "origin",
+        "requested_by",
+        "requested_at",
+    ):
+        if key in extra and extra[key] is not None:
+            metadata[key] = extra[key]
+
+    source_thread_url = None
+    raw_url = extra.get("source_thread_url")
+    if isinstance(raw_url, str) and raw_url.strip():
+        source_thread_url = raw_url.strip()
+
+    # Prefer the canonical (normalised) title over the raw approval
+    # request title — the producer might have stored a longer title
+    # before the ledger normalised it. Fall back to the request
+    # title for older sessions.
+    canonical = extra.get("canonical_title")
+    if isinstance(canonical, str) and canonical.strip():
+        chosen_title = canonical.strip()
+    else:
+        chosen_title = approval_request.title
 
     return ObsidianWriteRequest(
         session_id=approval_request.session_id,
         note_kind=note_kind or NOTE_KIND_KNOWLEDGE,
-        title=approval_request.title,
+        title=chosen_title,
         source_thread_id=approval_request.source_thread_id,
-        source_thread_url=None,
+        source_thread_url=source_thread_url,
         approval_id=approval_id,
         approved_by=approved_by,
         approved_at=resolved_at,

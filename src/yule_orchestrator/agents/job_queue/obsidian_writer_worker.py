@@ -662,21 +662,96 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
     )
 
     if request.note_kind == NOTE_KIND_KNOWLEDGE:
-        # A-M7.5f no-pack fallback. Operators sometimes ask to save
-        # a thread's consensus before any research_pack is collected
-        # (forum handoff allows this). Hand whatever context we have
-        # to render_knowledge_note; the source-thread metadata
-        # carried in request.metadata stamps the frontmatter so the
-        # vault note remains auditable even without a pack.
+        # A-M7.5f no-pack fallback + A-M7.6 thread-snapshot
+        # hydration. The forum handoff producer stuffs a
+        # ``thread_snapshot`` payload into request.metadata so the
+        # renderer can quote the actual operator discussion / role
+        # summaries / extracted links instead of writing a hollow
+        # stub. Empty-note guard: if pack is None AND the snapshot
+        # carries nothing AND no synthesis is recorded on the
+        # session, refuse to write — better failed_retryable than
+        # an empty vault file.
+        from ..lifecycle.thread_snapshot import (
+            ThreadSnapshot,
+            render_thread_snapshot_block,
+        )
         from ..obsidian.knowledge_writer import render_knowledge_note
 
-        return render_knowledge_note(
+        metadata = dict(request.metadata or {})
+        snapshot = ThreadSnapshot.from_payload(
+            metadata.get("thread_snapshot")
+        )
+        synthesis_text = (
+            (session.extra or {}).get("research_synthesis_text")
+            if isinstance(getattr(session, "extra", None), Mapping)
+            else None
+        )
+
+        # Empty-note guard — forbid hollow vault file.
+        if (
+            pack is None
+            and snapshot.is_empty
+            and not (synthesis_text and str(synthesis_text).strip())
+        ):
+            raise ObsidianRenderError(
+                "knowledge note has no body to write — pack/snapshot/"
+                "synthesis 모두 비어 있어 vault 저장을 거부합니다 "
+                "(failed_retryable: hydration 부족)"
+            )
+
+        rendered = render_knowledge_note(
             pack=pack,
             session=session,
             original_prompt=getattr(session, "prompt", None),
             title=request.title or None,
             project=request.project,
             layout=request.layout,
+        )
+
+        # Splice the snapshot block into the rendered note so the
+        # vault file carries the operator's reasoning trail. The
+        # renderer returns ObsidianNote(path, content, frontmatter);
+        # we append a hydration block and return a new dataclass
+        # (frozen — must construct).
+        snapshot_block = render_thread_snapshot_block(snapshot)
+        thread_url = metadata.get("source_thread_url")
+        thread_title = metadata.get("source_thread_title")
+        topic_key = metadata.get("topic_key")
+        approval_job_id = metadata.get("approval_job_id")
+
+        header_lines: list[str] = []
+        if thread_url:
+            header_lines.append(f"- 운영-리서치 thread: {thread_url}")
+        if thread_title:
+            header_lines.append(f"- thread 제목: {thread_title}")
+        if topic_key:
+            header_lines.append(f"- topic_key: `{topic_key}`")
+        if approval_job_id:
+            header_lines.append(f"- approval_job_id: `{approval_job_id}`")
+        header_block = (
+            "## 출처 / 추적 ID\n" + "\n".join(header_lines)
+            if header_lines
+            else ""
+        )
+
+        appended = "\n\n".join(
+            block for block in (rendered.content, header_block, snapshot_block) if block
+        )
+        # Stamp hydration into frontmatter for downstream search.
+        new_frontmatter = dict(rendered.frontmatter)
+        if topic_key:
+            new_frontmatter.setdefault("topic_key", topic_key)
+        if thread_url:
+            new_frontmatter.setdefault("source_thread_url", thread_url)
+        if approval_job_id:
+            new_frontmatter.setdefault("approval_job_id", approval_job_id)
+
+        from ..obsidian.export import ObsidianNote
+
+        return ObsidianNote(
+            path=rendered.path,
+            content=appended,
+            frontmatter=new_frontmatter,
         )
 
     # research / decision — pack is mandatory, same as before.

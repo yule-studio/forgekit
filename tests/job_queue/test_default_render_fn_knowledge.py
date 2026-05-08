@@ -246,10 +246,11 @@ class KnowledgeRenderHappyPathTests(_RenderFixture):
         self.assertGreater(len(note.content), 100)
 
     def test_knowledge_without_research_pack_still_renders(self) -> None:
-        # A-M7.5f core fix — operator can save a thread's consensus
-        # to vault BEFORE any research_pack was collected. The
-        # handoff path doesn't require a pack; default_render_fn
-        # must follow the same contract for knowledge kind.
+        # A-M7.5f no-pack fallback + A-M7.6 hydration — operator can
+        # save a thread's consensus to vault BEFORE any research_pack
+        # is collected, AS LONG AS the request carries a non-empty
+        # thread_snapshot (or the session has a synthesis_text).
+        # The empty-note guard refuses purely-hollow writes.
         sid = "sess-knowledge-nopack"
         _seed_session_without_pack(session_id=sid)
         request = ObsidianWriteRequest(
@@ -259,14 +260,60 @@ class KnowledgeRenderHappyPathTests(_RenderFixture):
             approval_id="apv-2",
             approved_by="masterway",
             approved_at="2026-05-08T10:30:00+00:00",
+            metadata={
+                # M7.6 hydration payload — thread snapshot saves the
+                # operator's discussion so the note is non-empty.
+                "thread_snapshot": {
+                    "messages": [
+                        {
+                            "author": "masterway",
+                            "content": "오늘 운영 합의: k8s 노드 풀 분리.",
+                            "role": None,
+                            "posted_at": None,
+                        }
+                    ],
+                    "extracted_links": ["https://kubernetes.io/docs/"],
+                    "role_summaries": {
+                        "tech-lead": "노드 풀 분리로 워크로드 격리"
+                    },
+                },
+                "source_thread_url": "https://discord.com/channels/1/2/3",
+                "topic_key": "k8s-node-pool-split-abc123",
+                "approval_job_id": "apv-2",
+            },
         )
         note = default_render_fn(request)
-        # Note is non-empty even without a pack — the renderer
-        # falls back to session.prompt + request.title.
+        # Note is non-empty — pack absent but snapshot hydrates body.
         self.assertIsNotNone(note)
         self.assertGreater(len(note.content), 50)
-        # Title flows through to the vault filename / frontmatter.
         self.assertTrue(getattr(note, "frontmatter", None))
+        # Hydration shows up in the rendered content.
+        self.assertIn("k8s 노드 풀 분리", note.content)
+        self.assertIn("https://kubernetes.io/docs/", note.content)
+        # Frontmatter carries audit IDs.
+        self.assertEqual(
+            note.frontmatter.get("topic_key"), "k8s-node-pool-split-abc123"
+        )
+
+    def test_knowledge_with_no_pack_no_snapshot_no_synthesis_blocked(
+        self,
+    ) -> None:
+        # A-M7.6 empty-note guard — pack absent, snapshot absent,
+        # synthesis absent → must NOT write a hollow vault file.
+        sid = "sess-knowledge-empty-guard"
+        _seed_session_without_pack(session_id=sid)
+        request = ObsidianWriteRequest(
+            session_id=sid,
+            note_kind=NOTE_KIND_KNOWLEDGE,
+            title="empty",
+            approval_id="apv-empty",
+            approved_by="masterway",
+            approved_at="2026-05-08T11:00:00+00:00",
+            # No metadata.thread_snapshot — pure stub request.
+        )
+        with self.assertRaises(ObsidianRenderError) as ctx:
+            default_render_fn(request)
+        self.assertIn("hydration", str(ctx.exception))
 
 
 class ResearchAndDecisionUnchangedTests(_RenderFixture):
