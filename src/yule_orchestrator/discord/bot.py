@@ -183,6 +183,18 @@ def run_discord_bot(repo_root: Path) -> None:
             if approval_route_result is not None and approval_route_result.handled:
                 return
 
+            # A-M7.5b: forum-thread message routing — Obsidian save
+            # request → #승인-대기 producer, role-change request →
+            # active_research_roles update. Lazy adapter; pays no
+            # cost when the message is not in a forum thread.
+            forum_route_result = await _route_forum_thread_message(
+                message=message,
+                content_text=content_text,
+                discord_module=discord,
+            )
+            if forum_route_result is not None and forum_route_result.handled:
+                return
+
             engineering_context = EngineeringRouteContext.from_env()
             if engineering_context.configured:
                 # Phase 1 fix: don't open a typing context around the
@@ -1566,6 +1578,49 @@ def _make_engineering_send_chunks(discord_module: "discord"):
     return _send
 
 
+async def _route_forum_thread_message(
+    *,
+    message: Any,
+    content_text: str,
+    discord_module: "discord",
+):
+    """Adapter from ``on_message`` into the M7.5 forum-thread helpers.
+
+    Returns ``None`` (treated as fall-through) when the message
+    isn't from a forum thread or carries no recognisable intent.
+    A non-``None`` :class:`ForumMessageRouteResult` whose
+    ``handled`` is True means the user got a friendly reply
+    (Obsidian save approval card created, role-change applied,
+    or a context-missing notice) and ``on_message`` must short-
+    circuit the engineering route.
+
+    Lazy import + no-cost fall-through: a message in a regular
+    text channel never reaches the SQLite open / approval-worker
+    construction path because the adapter exits at the
+    ``parent_id`` check before touching any of that.
+    """
+
+    channel = getattr(message, "channel", None)
+    if channel is None:
+        return None
+    # Cheap exit when not a thread — avoids the lazy-import cost
+    # for every regular-channel message.
+    if (
+        getattr(channel, "parent_id", None) is None
+        and getattr(channel, "parent", None) is None
+    ):
+        return None
+
+    from .forum_message_adapter import route_forum_message
+
+    return await route_forum_message(
+        message=message,
+        text=content_text,
+        discord_module=discord_module,
+        send_chunks_factory=_make_engineering_send_chunks,
+    )
+
+
 async def _route_engineering_approval_reply(
     *,
     message: Any,
@@ -2742,9 +2797,70 @@ def _format_engineering_kickoff_message(session, plan) -> str:
         role_sequence = getattr(plan, "role_sequence", None)
         if role_sequence:
             lines.append(f"참여 후보: {', '.join(role_sequence)}")
+    # A-M7.5b — append the tech-lead routing summary right after the
+    # plan so the operator sees who is participating, who is on
+    # standby, and how to extend the team in the same kickoff post.
+    summary = _build_kickoff_routing_summary(session)
+    if summary:
+        lines.append("")
+        lines.append(summary)
     lines.append("")
     lines.append("이 thread에서 각 멤버 봇의 조사, 실행 메모, 결과 회신을 이어 갑니다.")
     return "\n".join(lines)
+
+
+def _build_kickoff_routing_summary(session: Any) -> Optional[str]:
+    """Render the M7.5 routing summary for the kickoff message.
+
+    Returns ``None`` when the session has no role-selection metadata
+    so legacy kickoff messages stay byte-identical (existing
+    ``_format_engineering_kickoff_message`` callers keep their
+    rendered text).
+    """
+
+    if session is None:
+        return None
+    extra = dict(getattr(session, "extra", None) or {})
+    selected = extra.get("active_research_roles")
+    if not isinstance(selected, (list, tuple)) or not selected:
+        return None
+    try:
+        from ..agents.lifecycle.role_selection import (
+            ROLE_TECH_LEAD,
+            RoleSelection,
+            SOURCE_USER_ALL_TEAM,
+            format_routing_summary,
+        )
+    except Exception:  # noqa: BLE001 - role_selection import failure → no summary
+        return None
+
+    excluded = extra.get("excluded_research_roles") or []
+    primary = extra.get("role_selection_primary") or []
+    reviewer = extra.get("role_selection_reviewer") or []
+    optional = extra.get("role_selection_optional") or []
+    reasons = extra.get("role_selection_reasons") or {}
+    source = extra.get("role_selection_source") or "fallback"
+    fallback_policy = extra.get("role_selection_fallback_policy")
+    participation = extra.get("role_participation") or {}
+
+    selection = RoleSelection(
+        selected_roles=tuple(selected),
+        excluded_roles=tuple(excluded),
+        required_roles=(ROLE_TECH_LEAD,),
+        optional_roles=tuple(optional),
+        reason_by_role=dict(reasons) if isinstance(reasons, dict) else {},
+        selection_source=str(source),
+        participation_by_role=dict(participation)
+        if isinstance(participation, dict)
+        else {},
+        primary_roles=tuple(primary),
+        reviewer_roles=tuple(reviewer),
+        optional_roles_v2=tuple(optional),
+        matched_keywords_by_role={},
+        fallback_policy=str(fallback_policy) if fallback_policy else None,
+    )
+    label = (extra.get("role_selection_request_label") or "").strip() or None
+    return format_routing_summary(selection, request_label=label)
 
 
 def _checkpoint_window_minutes(window_start: datetime, window_end: datetime) -> int:
