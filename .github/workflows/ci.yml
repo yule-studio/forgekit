@@ -1,0 +1,104 @@
+name : CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: "CI for PR #${{ github.event.pull_request.number }}"
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+  
+  steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e .
+
+      - name: Run tests
+        run: |
+          python3 -m unittest discover -s tests -t .
+
+  notify:
+    if: always()
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Notify success
+        if: needs.test.result == 'success'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
+          IMAGE_URL: ${{ vars.DISCORD_CI_SUCCESS_IMAGE_URL }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload=$(jq -n \
+            --arg repo "$REPO" \
+            --arg pr "#$PR_NUMBER $PR_TITLE" \
+            --arg actor "$ACTOR" \
+            --arg url "$RUN_URL" \
+            --arg image "$IMAGE_URL" \
+            '{
+              content: "✅ CI Success",
+              embeds: [{
+                title: "Python CI 성공",
+                color: 3066993,
+                image: { url: $image },
+                fields: [
+                  {name: "Repository", value: $repo, inline: true},
+                  {name: "PR", value: $pr, inline: false},
+                  {name: "Triggered by", value: $actor, inline: true},
+                  {name: "Workflow", value: "[실행 보기](" + $url + ")", inline: false}
+                ]
+              }]
+            }')
+          curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+
+      - name: Notify failure
+        if: needs.test.result == 'failure'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
+          IMAGE_URL: ${{ vars.DISCORD_CI_FAIL_IMAGE_URL }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          payload=$(jq -n \
+            --arg repo "$REPO" \
+            --arg pr "#$PR_NUMBER $PR_TITLE" \
+            --arg actor "$ACTOR" \
+            --arg url "$RUN_URL" \
+            --arg image "$IMAGE_URL" \
+            '{
+              content: "❌ CI Failure",
+              embeds: [{
+                title: "Python CI 실패",
+                color: 15158332,
+                image: { url: $image },
+                fields: [
+                  {name: "Repository", value: $repo, inline: true},
+                  {name: "PR", value: $pr, inline: false},
+                  {name: "Triggered by", value: $actor, inline: true},
+                  {name: "Workflow", value: "[실행 보기](" + $url + ")", inline: false}
+                ]
+              }]
+            }')
+          curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+
