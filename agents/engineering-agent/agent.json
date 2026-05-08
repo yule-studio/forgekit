@@ -30,7 +30,12 @@
     "policies/runtime/agents/engineering-agent/message-protocol.md",
     "policies/runtime/agents/engineering-agent/version-control.md",
     "policies/runtime/agents/engineering-agent/workflow.md",
-    "policies/runtime/agents/engineering-agent/testing.md"
+    "policies/runtime/agents/engineering-agent/testing.md",
+    "policies/runtime/agents/engineering-agent/memory-policy.md",
+    "policies/runtime/agents/engineering-agent/recall-policy.md",
+    "policies/runtime/agents/engineering-agent/context-compression.md",
+    "policies/runtime/agents/engineering-agent/self-improvement-flow.md",
+    "policies/runtime/agents/engineering-agent/scheduled-automation.md"
   ],
   "write_policy": {
     "max_write_executors_per_run": 1,
