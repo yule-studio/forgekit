@@ -283,5 +283,221 @@ class RoleTakeRunnerTests(unittest.TestCase):
             runner(_job({"kind": "open"}, role=None))
 
 
+# ---------------------------------------------------------------------------
+# A-M11 — role_runner_dispatch wiring inside build_role_take_runner
+# ---------------------------------------------------------------------------
+
+
+class _DispatchOutput:
+    """Minimal stand-in for :class:`RoleRunnerOutput`."""
+
+    def __init__(
+        self, *, provider: str, status: str, text: str = "", used_fallback: bool = False
+    ) -> None:
+        self.provider = provider
+        self.status = status
+        self.text = text
+        self.used_fallback = used_fallback
+        self.detail = None
+
+
+class RoleRunnerWiringTests(unittest.TestCase):
+    def test_configured_runner_replaces_message_for_open_kind(self) -> None:
+        # Open-call body produces the deterministic outcome; the
+        # role_runner_dispatch returns ok → adapter swaps the message
+        # for the configured provider's text and stamps the provider
+        # tag.
+        session = _StubSession()
+
+        def open_call_fn(*, role, session_id, session, pack_loader):
+            return SimpleNamespace(
+                role=role,
+                session_id=session_id,
+                message="deterministic open-call body",
+                next_directive=None,
+                is_synthesis=False,
+            )
+
+        seen_inputs: List[Any] = []
+
+        def dispatch(_session, runner_input):
+            seen_inputs.append(runner_input)
+            return _DispatchOutput(
+                provider="claude",
+                status="ok",
+                text="LLM-driven role take body",
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            open_call_fn=open_call_fn,
+            persist_outcome_fn=lambda **_: None,
+            role_runner_dispatch=dispatch,
+        )
+        outcome = runner(_job({"kind": "open"}, role="ai-engineer"))
+
+        self.assertIn("LLM-driven role take body", outcome.message)
+        self.assertIn("provider: claude", outcome.message)
+        # Dispatcher saw the role + session in its input.
+        self.assertEqual(len(seen_inputs), 1)
+        self.assertEqual(seen_inputs[0].role, "ai-engineer")
+        self.assertEqual(seen_inputs[0].session_id, "sess-runner-1")
+
+    def test_inactive_role_dispatch_keeps_deterministic_outcome(self) -> None:
+        # The dispatcher reports status="inactive_role" → the
+        # standalone runner must keep the deterministic outcome and
+        # NOT splice runner text in.
+        session = _StubSession()
+
+        def open_call_fn(**_kwargs):
+            return SimpleNamespace(
+                role="qa-engineer",
+                session_id="sess-runner-1",
+                message="deterministic body — fallback",
+                next_directive=None,
+                is_synthesis=False,
+            )
+
+        def dispatch(_session, _runner_input):
+            return _DispatchOutput(
+                provider="deterministic",
+                status="inactive_role",
+                text="",
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            open_call_fn=open_call_fn,
+            persist_outcome_fn=lambda **_: None,
+            role_runner_dispatch=dispatch,
+        )
+        outcome = runner(_job({"kind": "open"}, role="qa-engineer"))
+        self.assertEqual(outcome.message, "deterministic body — fallback")
+        self.assertNotIn("provider:", outcome.message)
+
+    def test_dispatch_failure_keeps_deterministic_outcome(self) -> None:
+        # Dispatcher raising must not propagate — deterministic body
+        # already produced a valid outcome and we don't want a runner
+        # bug to derail the role take.
+        session = _StubSession()
+
+        def open_call_fn(**_kwargs):
+            return SimpleNamespace(
+                role="ai-engineer",
+                session_id="sess-runner-1",
+                message="deterministic open body",
+                next_directive=None,
+                is_synthesis=False,
+            )
+
+        def dispatch(_session, _runner_input):
+            raise RuntimeError("dispatcher exploded")
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            open_call_fn=open_call_fn,
+            persist_outcome_fn=lambda **_: None,
+            role_runner_dispatch=dispatch,
+        )
+        outcome = runner(_job({"kind": "open"}, role="ai-engineer"))
+        self.assertEqual(outcome.message, "deterministic open body")
+
+    def test_dispatch_returning_fallback_keeps_deterministic_outcome(self) -> None:
+        # The deterministic runner inside the dispatcher might fire
+        # (status="fallback"), but for the standalone runner we keep
+        # the body's deterministic message — the dispatcher's fallback
+        # text already carries a placeholder, so swapping the message
+        # would be net-negative. The audit captures the fallback
+        # provenance via the dispatcher's audit_writer, which is
+        # tested at the dispatcher level.
+        session = _StubSession()
+
+        def turn_call_fn(*, role, session_id, session, pack_loader, payload):
+            return SimpleNamespace(
+                role=role,
+                session_id=session_id,
+                message="deterministic turn body",
+                next_directive="[research-turn:next]",
+                is_synthesis=False,
+            )
+
+        def dispatch(_session, _runner_input):
+            return _DispatchOutput(
+                provider="deterministic",
+                status="fallback",
+                text="deterministic placeholder",
+                used_fallback=True,
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            turn_call_fn=turn_call_fn,
+            persist_outcome_fn=lambda **_: None,
+            role_runner_dispatch=dispatch,
+        )
+        outcome = runner(
+            _job({"kind": "turn", "effective_role": "ai-engineer"}, role="ai-engineer")
+        )
+        self.assertEqual(outcome.message, "deterministic turn body")
+
+    def test_no_dispatch_means_legacy_behavior(self) -> None:
+        # Default: role_runner_dispatch=None → behavior identical to
+        # pre-M11 (no message rewrite, no extra audit).
+        session = _StubSession()
+        seen: List[dict] = []
+
+        def open_call_fn(*, role, session_id, session, pack_loader):
+            seen.append({"role": role})
+            return SimpleNamespace(
+                role=role,
+                session_id=session_id,
+                message="legacy deterministic body",
+                next_directive=None,
+                is_synthesis=False,
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            open_call_fn=open_call_fn,
+            persist_outcome_fn=lambda **_: None,
+        )
+        outcome = runner(_job({"kind": "open"}, role="ai-engineer"))
+        self.assertEqual(outcome.message, "legacy deterministic body")
+        self.assertEqual(seen[0]["role"], "ai-engineer")
+
+    def test_synthesis_kind_skips_dispatch(self) -> None:
+        # Synthesis path has its own M7 fallback automation; the
+        # role-runner dispatcher must NOT be applied to it (otherwise
+        # the synthesis text would be replaced with a per-role take).
+        session = _StubSession()
+        called: List[bool] = []
+
+        def synthesis_call_fn(*, role, session_id, session, pack_loader):
+            return SimpleNamespace(
+                role=role,
+                session_id=session_id,
+                message="synthesis body",
+                next_directive=None,
+                is_synthesis=True,
+            )
+
+        def dispatch(_session, _runner_input):
+            called.append(True)
+            return _DispatchOutput(
+                provider="claude", status="ok", text="should not be used"
+            )
+
+        runner = build_role_take_runner(
+            session_loader=lambda _sid: session,
+            synthesis_call_fn=synthesis_call_fn,
+            persist_outcome_fn=lambda **_: None,
+            role_runner_dispatch=dispatch,
+        )
+        outcome = runner(_job({"kind": "synthesis"}, role="tech-lead"))
+        self.assertEqual(outcome.message, "synthesis body")
+        # Dispatcher never invoked for synthesis.
+        self.assertFalse(called)
+
+
 if __name__ == "__main__":
     unittest.main()

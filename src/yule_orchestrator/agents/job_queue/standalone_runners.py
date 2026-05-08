@@ -1,5 +1,12 @@
 """Production runners for the standalone queue workers — A-M6.1a.
 
+A-M11 layers an optional :class:`RoleRunner` dispatcher on top of the
+open/turn paths so the role's Discord post can come from a real LLM
+backend (Claude / Codex / Ollama) when one is configured. The
+deterministic body still drives the outcome whenever the dispatcher
+returns an inactive-role / fallback / error status, so wiring the
+dispatcher in is purely additive.
+
 The in-process gateway path uses ``ResearchWorker.run_one`` /
 ``RoleTakeWorker.run_one`` with a closure that knows the request
 context (channel, message, session). The standalone worker process
@@ -31,6 +38,7 @@ gateway side until M6.2.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace as _dc_replace
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
 
@@ -40,6 +48,9 @@ logger = logging.getLogger(__name__)
 # Tests inject these to avoid touching the workflow store / collector.
 SessionLoader = Callable[[str], Optional[Any]]
 PackLoader = Callable[[Any], Any]
+# (session, RoleRunnerInput) → RoleRunnerOutput. Built by the caller
+# via :func:`agents.runners.build_role_runner_dispatcher`.
+RoleRunnerDispatch = Callable[[Any, Any], Any]
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +176,7 @@ def build_role_take_runner(
     persist_outcome_fn: Optional[Callable[..., Any]] = None,
     synthesis_queue_factory: Optional[Callable[[], Any]] = None,
     synthesis_audit_persist_fn: Optional[Callable[..., bool]] = None,
+    role_runner_dispatch: Optional[RoleRunnerDispatch] = None,
 ) -> Callable[[Any], Any]:
     """Return a sync runner for :meth:`RoleTakeWorker.process_job`.
 
@@ -185,6 +197,17 @@ def build_role_take_runner(
     closure for each kind. Tests inject ``open_call_fn`` /
     ``turn_call_fn`` / ``synthesis_call_fn`` to drive each branch
     without ``engineering_team_runtime`` imports.
+
+    A-M11: when *role_runner_dispatch* is supplied, the open and
+    turn bodies layer a configured-LLM take on top of the
+    deterministic outcome. The deterministic message is preserved
+    (``runner_role_take`` artifact) so the audit trail is intact —
+    the LLM text wins as the visible message only when the
+    dispatcher reports ``status="ok"``. Inactive roles, deterministic
+    fallback, and runner errors all keep the legacy message
+    untouched. Synthesis is never re-rendered through the dispatcher
+    because the synthesis path already has its own M7 fallback
+    automation.
 
     Sync (not async) because every underlying render function in
     ``engineering_team_runtime`` is sync.
@@ -219,6 +242,16 @@ def build_role_take_runner(
                 session=session,
                 pack_loader=pack_loader_fn,
             )
+            outcome = _maybe_apply_role_runner(
+                outcome=outcome,
+                dispatch=role_runner_dispatch,
+                role=role,
+                session_id=session_id,
+                session=session,
+                pack_loader=pack_loader_fn,
+                kind="open",
+                payload=payload,
+            )
         elif kind == "turn":
             turn_fn = turn_call_fn or _default_build_turn_outcome
             outcome = turn_fn(
@@ -226,6 +259,16 @@ def build_role_take_runner(
                 session_id=session_id,
                 session=session,
                 pack_loader=pack_loader_fn,
+                payload=payload,
+            )
+            outcome = _maybe_apply_role_runner(
+                outcome=outcome,
+                dispatch=role_runner_dispatch,
+                role=role,
+                session_id=session_id,
+                session=session,
+                pack_loader=pack_loader_fn,
+                kind="turn",
                 payload=payload,
             )
         elif kind == "synthesis":
@@ -575,7 +618,249 @@ def _default_persist_role_take(*, session: Any, outcome: Any, kind: str) -> None
         pass
 
 
+# ---------------------------------------------------------------------------
+# Role runner integration (A-M11)
+# ---------------------------------------------------------------------------
+
+
+def _maybe_apply_role_runner(
+    *,
+    outcome: Any,
+    dispatch: Optional[RoleRunnerDispatch],
+    role: str,
+    session_id: str,
+    session: Any,
+    pack_loader: Callable[[Any], Any],
+    kind: str,
+    payload: Mapping[str, Any],
+) -> Any:
+    """Layer a configured-runner take on top of the deterministic outcome.
+
+    Returns *outcome* unchanged when:
+
+      * ``dispatch`` is None (no runner wired — production CLI path).
+      * The dispatcher's gate excludes the role (inactive role).
+      * The dispatcher returns ``status`` other than ``"ok"``.
+      * The outcome is None (legacy producer signaled "skip").
+      * Any unexpected failure inside the runner integration —
+        deterministic fallback must never be derailed by a runner
+        misconfiguration.
+
+    On a successful runner take, returns a copy of the outcome with
+    ``message`` swapped for the runner text and ``runner_provenance``
+    metadata stamped onto :class:`ResearchTurnOutcome` when the
+    dataclass supports it. Older outcome shapes (which lack the
+    field) keep flowing through with the message swap only — the
+    audit trail still names the provider via the dispatcher's
+    audit_writer.
+    """
+
+    if dispatch is None or outcome is None:
+        return outcome
+
+    try:
+        input_ = _build_role_runner_input(
+            role=role,
+            session_id=session_id,
+            session=session,
+            pack_loader=pack_loader,
+            kind=kind,
+            payload=payload,
+        )
+    except Exception:  # noqa: BLE001 - input prep must not break body
+        logger.warning(
+            "role_take runner: building RoleRunnerInput raised; "
+            "deterministic outcome preserved",
+            exc_info=True,
+        )
+        return outcome
+
+    try:
+        runner_output = dispatch(session, input_)
+    except Exception:  # noqa: BLE001 - dispatcher must not raise
+        logger.warning(
+            "role_take runner: role-runner dispatch raised; "
+            "deterministic outcome preserved",
+            exc_info=True,
+        )
+        return outcome
+
+    status = getattr(runner_output, "status", None)
+    text = getattr(runner_output, "text", "") or ""
+    if status != "ok" or not text.strip():
+        # Inactive role / fallback / error → leave deterministic
+        # outcome untouched. The dispatcher already audited the
+        # decision.
+        return outcome
+
+    provider = getattr(runner_output, "provider", None) or "?"
+    new_message = (
+        f"{text.rstrip()}\n\n"
+        f"_provider: {provider}_"
+    )
+    try:
+        return _dc_replace(outcome, message=new_message)
+    except TypeError:
+        # Outcome is not a dataclass — fall back to mutating a copy
+        # via attribute setattr where possible. If even that fails,
+        # surrender to the legacy outcome to avoid silent breakage.
+        try:
+            setattr(outcome, "message", new_message)
+        except Exception:  # noqa: BLE001
+            return outcome
+        return outcome
+
+
+def _build_role_runner_input(
+    *,
+    role: str,
+    session_id: str,
+    session: Any,
+    pack_loader: Callable[[Any], Any],
+    kind: str,
+    payload: Mapping[str, Any],
+) -> Any:
+    """Translate session + pack into a :class:`RoleRunnerInput`.
+
+    Imports the runner module lazily so installs without the runners
+    package available (early bootstrap, partial deploy) do not fail
+    just because the import chain loads ``standalone_runners``.
+    """
+
+    from ..runners.role_runner import RoleRunnerInput
+
+    prompt = (getattr(session, "prompt", "") or "").strip()
+    role_profile = _safe_role_profile(role)
+    topic_memory = _safe_topic_memory(session)
+    source_context = _safe_source_context(session=session, pack_loader=pack_loader)
+    previous_decisions = _safe_previous_decisions(session)
+
+    metadata = {
+        "kind": kind,
+        "task_type": getattr(session, "task_type", None),
+        "effective_role": payload.get("effective_role") if payload else None,
+    }
+
+    return RoleRunnerInput(
+        role=role,
+        session_id=session_id,
+        prompt=prompt,
+        role_profile=role_profile,
+        topic_memory=topic_memory,
+        source_context=source_context,
+        previous_decisions=previous_decisions,
+        metadata=metadata,
+    )
+
+
+def _safe_role_profile(role: str) -> Mapping[str, Any]:
+    try:
+        from ..runtime.policies import role_policy_for
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return {"role": role}
+    try:
+        # Roles arrive in short form ("ai-engineer"). The policy
+        # registry keys long form ("engineering-agent/ai-engineer")
+        # too, so we try both.
+        candidates = [role, f"engineering-agent/{role}"]
+        for candidate in candidates:
+            policy = role_policy_for(candidate)
+            if policy is not None:
+                return {
+                    "role": role,
+                    "role_id": getattr(policy, "role_id", candidate),
+                    "short_name": getattr(policy, "short_name", role),
+                    "memory_role_filter": getattr(
+                        policy, "memory_role_filter", None
+                    ),
+                    "preferred_source_kinds": list(
+                        getattr(policy, "preferred_source_kinds", ()) or ()
+                    ),
+                    "preferred_note_kinds": list(
+                        getattr(policy, "preferred_note_kinds", ()) or ()
+                    ),
+                    "description": getattr(policy, "description", ""),
+                }
+    except Exception:  # noqa: BLE001 - registry optional
+        pass
+    return {"role": role}
+
+
+def _safe_topic_memory(session: Any) -> Mapping[str, Any]:
+    try:
+        from ..lifecycle.research_topic import read_topic_ledger
+    except Exception:  # noqa: BLE001
+        return {}
+    try:
+        record = read_topic_ledger(session)
+    except Exception:  # noqa: BLE001
+        return {}
+    if record is None:
+        return {}
+    try:
+        payload = record.to_payload()  # type: ignore[attr-defined]
+        return dict(payload or {})
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _safe_source_context(
+    *, session: Any, pack_loader: Callable[[Any], Any]
+) -> Mapping[str, Any]:
+    pack: Any = None
+    try:
+        pack = pack_loader(session)
+    except Exception:  # noqa: BLE001
+        pack = None
+    if pack is None:
+        return {}
+    title = (getattr(pack, "title", "") or "").strip()
+    summary = (getattr(pack, "summary", "") or "").strip()
+    sources = getattr(pack, "sources", None) or ()
+    excerpts: list = []
+    if isinstance(sources, (list, tuple)):
+        for item in list(sources)[:5]:
+            label = (
+                getattr(item, "title", None)
+                or getattr(item, "url", None)
+                or str(item)
+            )
+            text = str(label).strip()
+            if text:
+                excerpts.append(text)
+    out = {}
+    if title:
+        out["title"] = title
+    if summary:
+        out["summary"] = summary
+    if excerpts:
+        out["sources"] = excerpts
+    return out
+
+
+def _safe_previous_decisions(session: Any) -> tuple:
+    extra = getattr(session, "extra", None)
+    if not isinstance(extra, Mapping):
+        return ()
+    bucket = extra.get("role_takes")
+    if not isinstance(bucket, Mapping):
+        return ()
+    out: list = []
+    for role_key, take in bucket.items():
+        if not isinstance(take, Mapping):
+            continue
+        out.append({
+            "role": str(role_key),
+            "summary": str(take.get("summary") or take.get("message") or ""),
+        })
+    return tuple(out)
+
+
+apply_role_runner_to_outcome = _maybe_apply_role_runner
+
+
 __all__ = (
+    "apply_role_runner_to_outcome",
     "build_research_runner",
     "build_role_take_runner",
 )

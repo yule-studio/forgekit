@@ -652,12 +652,21 @@ def handle_research_turn_message(
         message = rendered
         if next_directive:
             message = f"{rendered}\n\n{next_directive}"
-        return ResearchTurnOutcome(
+        outcome = ResearchTurnOutcome(
             role=role,
             session_id=session_id,
             message=message,
             next_directive=next_directive,
             is_synthesis=False,
+        )
+        return _apply_role_runner_for_open_or_turn(
+            outcome=outcome,
+            role=role,
+            session_id=session_id,
+            session=session,
+            pack_loader=pack_loader,
+            kind=ROLE_TURN_KIND_TURN,
+            payload={"effective_role": str(effective_role)},
         )
 
     outcome = _run_role_take_via_queue(
@@ -700,11 +709,20 @@ def _handle_research_open_call(
     # open-call path is precisely the one that *creates* a fresh
     # pack — gating on its prior existence would deadlock the kickoff.
     def _open_runner() -> Optional[ResearchTurnOutcome]:
-        return _build_open_call_outcome(
+        outcome = _build_open_call_outcome(
             role=role,
             session_id=session_id,
             session=session,
             pack_loader=pack_loader,
+        )
+        return _apply_role_runner_for_open_or_turn(
+            outcome=outcome,
+            role=role,
+            session_id=session_id,
+            session=session,
+            pack_loader=pack_loader,
+            kind=ROLE_TURN_KIND_OPEN,
+            payload={"trigger": "research_open"},
         )
 
     return _run_role_take_via_queue(
@@ -1168,6 +1186,79 @@ def _maybe_load_pack(
         return pack_loader(session)
     except Exception:  # noqa: BLE001 - never crash the chain
         return _load_pack_from_session_extra(session)
+
+
+# ---------------------------------------------------------------------------
+# A-M11 — runner-injection hook for the open / turn runner bodies.
+# ---------------------------------------------------------------------------
+#
+# When a configured role-runner dispatcher is registered here, the open
+# and turn runner-body closures pass their deterministic outcome through
+# :func:`agents.job_queue.standalone_runners.apply_role_runner_to_outcome`
+# so the message can come from a real LLM backend (Claude / Codex /
+# Ollama). Failure / inactive role / unconfigured runner all keep the
+# deterministic outcome intact.
+
+_ROLE_RUNNER_DISPATCH: Optional[Callable[[Any, Any], Any]] = None
+
+
+def set_role_runner_dispatch(
+    dispatch: Optional[Callable[[Any, Any], Any]],
+) -> None:
+    """Register the gateway-level role-runner dispatcher.
+
+    Called once by the engineering runtime bootstrap (or a test
+    fixture) so the open / turn runner bodies can invoke a configured
+    LLM backend on top of their deterministic outcome. Pass ``None`` to
+    clear (used between tests).
+    """
+
+    global _ROLE_RUNNER_DISPATCH
+    _ROLE_RUNNER_DISPATCH = dispatch
+
+
+def get_role_runner_dispatch() -> Optional[Callable[[Any, Any], Any]]:
+    return _ROLE_RUNNER_DISPATCH
+
+
+def _apply_role_runner_for_open_or_turn(
+    *,
+    outcome: Optional["ResearchTurnOutcome"],
+    role: str,
+    session_id: str,
+    session: Any,
+    pack_loader: Optional[Callable[[Any], Any]],
+    kind: str,
+    payload: Optional[Mapping[str, Any]] = None,
+) -> Optional["ResearchTurnOutcome"]:
+    """Thin wrapper so the open / turn closures stay readable.
+
+    Returns *outcome* unchanged when no dispatcher is registered or
+    the dispatcher's gate excludes the role / runner errors. The
+    helper imports the standalone-runner integration lazily to keep
+    this module decoupled from the job_queue subpackage at import
+    time.
+    """
+
+    dispatch = _ROLE_RUNNER_DISPATCH
+    if dispatch is None or outcome is None:
+        return outcome
+    try:
+        from ..agents.job_queue.standalone_runners import (
+            apply_role_runner_to_outcome,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return outcome
+    return apply_role_runner_to_outcome(
+        outcome=outcome,
+        dispatch=dispatch,
+        role=role,
+        session_id=session_id,
+        session=session,
+        pack_loader=pack_loader or (lambda _s: None),
+        kind=kind,
+        payload=dict(payload or {}),
+    )
 
 
 # ---------------------------------------------------------------------------
