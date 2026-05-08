@@ -673,5 +673,252 @@ class ResearchLogAutoSaveTests(_HandoffFixture):
         self.assertEqual(write_rows, [])
 
 
+# ---------------------------------------------------------------------------
+# A-M10b — extracted_links + supersedes_revision hydration markers
+# ---------------------------------------------------------------------------
+
+
+class HydrationMarkerTests(_HandoffFixture):
+    """Pin two M10b hydration contracts the source-side edits introduce:
+
+      * The forum producer lifts ``extracted_links`` to the top level
+        of ``ApprovalRequest.extra`` so dedup / search / converters
+        can grep without unpacking ``thread_snapshot``. The
+        approval→write converter then carries the same key onto
+        ``ObsidianWriteRequest.metadata``.
+      * When the topic ledger has been bumped to a revision > 1
+        (operator opted into "다시 저장"), the rendered knowledge note
+        stamps ``ledger_revision`` + ``supersedes_revision`` onto its
+        frontmatter so a vault scan can identify earlier hollow
+        copies as superseded candidates without auto-deleting them.
+    """
+
+    def _stub_history(self):
+        async def fetcher(_msg):
+            return [
+                SimpleNamespace(
+                    id=70001,
+                    content=(
+                        "k8s rolling update 자료: "
+                        "https://kubernetes.io/docs/concepts/workloads/"
+                    ),
+                    author=SimpleNamespace(
+                        id=7,
+                        name="masterway",
+                        global_name="masterway",
+                        bot=False,
+                    ),
+                    created_at=None,
+                ),
+            ]
+
+        return fetcher
+
+    def test_extracted_links_lifted_onto_approval_extra(self) -> None:
+        # Producer must surface extracted_links AT the top of extra,
+        # not only inside thread_snapshot. Downstream readers that
+        # don't know the snapshot shape can grep the URL list directly.
+        session = _open_session()
+        message = _forum_thread_message()
+        outcome = _run(
+            route_forum_obsidian_save_request(
+                message=message,
+                text=message.content,
+                queue=self.queue,
+                approval_worker=self.approval_worker,
+                session_lister=lambda **_: [session],
+                thread_history_fetcher=self._stub_history(),
+            )
+        )
+        self.assertIsNone(outcome.skipped_reason)
+        request, _rendered = self.posted_cards[0]
+        self.assertIn(
+            "https://kubernetes.io/docs/concepts/workloads/",
+            list(request.extra.get("extracted_links") or ()),
+        )
+        snapshot = request.extra.get("thread_snapshot") or {}
+        self.assertIn(
+            "https://kubernetes.io/docs/concepts/workloads/",
+            list(snapshot.get("extracted_links") or ()),
+        )
+
+    def test_extracted_links_round_trip_into_write_request_metadata(
+        self,
+    ) -> None:
+        # extra → ObsidianWriteRequest.metadata via
+        # approval_to_obsidian_write_request. M10b regression guard
+        # for the converter's key-preservation loop.
+        from yule_orchestrator.agents.job_queue.approval_reply import (
+            approval_to_obsidian_write_request,
+        )
+        from yule_orchestrator.agents.job_queue.approval_worker import (
+            ApprovalRequest,
+        )
+
+        approval = ApprovalRequest(
+            session_id="sess-extracted",
+            approval_kind=APPROVAL_KIND_OBSIDIAN_WRITE,
+            title="links",
+            summary="-",
+            requested_action="vault 저장",
+            created_by="masterway",
+            extra={
+                "extracted_links": [
+                    "https://kubernetes.io/docs/concepts/workloads/",
+                ],
+                "thread_snapshot": {
+                    "messages": [],
+                    "extracted_links": [
+                        "https://kubernetes.io/docs/concepts/workloads/",
+                    ],
+                    "role_summaries": {},
+                },
+            },
+        )
+        write_request = approval_to_obsidian_write_request(
+            approval_request=approval,
+            approval_id="apv-1",
+            approved_by="masterway",
+        )
+        self.assertIn(
+            "https://kubernetes.io/docs/concepts/workloads/",
+            list(write_request.metadata.get("extracted_links") or ()),
+        )
+
+    def test_supersedes_revision_frontmatter_on_revision_bump(self) -> None:
+        # When ledger_revision > 1, the rendered knowledge note
+        # carries both the current revision and the prior one it
+        # supersedes — anchors the "don't auto-delete; mark superseded
+        # candidate" contract from the M10b spec.
+        import os
+        import tempfile
+        from unittest import mock
+
+        from yule_orchestrator.agents.job_queue.approval_reply import (
+            approval_to_obsidian_write_request,
+        )
+        from yule_orchestrator.agents.job_queue.approval_worker import (
+            ApprovalRequest,
+        )
+        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+            default_render_fn,
+        )
+        from yule_orchestrator.agents.workflow_state import (
+            WorkflowSession,
+            WorkflowState,
+            save_session,
+        )
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        env = mock.patch.dict(
+            os.environ,
+            {
+                "YULE_CACHE_DB_PATH": str(Path(tmp.name) / "cache.sqlite3"),
+                "YULE_REPO_ROOT": tmp.name,
+                "OBSIDIAN_VAULT_PATH": str(Path(tmp.name) / "vault"),
+            },
+        )
+        env.start()
+        self.addCleanup(env.stop)
+
+        sid = "sess-revision-bump"
+        when = datetime.now(tz=timezone.utc)
+        save_session(
+            WorkflowSession(
+                session_id=sid,
+                prompt="개정본 정리",
+                task_type="research",
+                state=WorkflowState.IN_PROGRESS,
+                created_at=when,
+                updated_at=when,
+                role_sequence=("tech-lead",),
+                extra={"research_forum_thread_id": 50001},
+            )
+        )
+
+        approval = ApprovalRequest(
+            session_id=sid,
+            approval_kind=APPROVAL_KIND_OBSIDIAN_WRITE,
+            title="개정본",
+            summary="-",
+            requested_action="vault 저장",
+            created_by="masterway",
+            source_thread_id=50001,
+            extra={
+                "ledger_revision": 2,
+                "topic_key": "k8s-operations-12345",
+                "thread_snapshot": {
+                    "messages": [
+                        {
+                            "author": "masterway",
+                            "content": "개정본 메모.",
+                            "role": None,
+                            "posted_at": None,
+                        }
+                    ],
+                    "extracted_links": [],
+                    "role_summaries": {},
+                },
+            },
+        )
+        write_request = approval_to_obsidian_write_request(
+            approval_request=approval,
+            approval_id="apv-rev-2",
+            approved_by="masterway",
+            approved_at=when.replace(microsecond=0).isoformat(),
+        )
+        note = default_render_fn(write_request)
+        self.assertEqual(note.frontmatter.get("ledger_revision"), 2)
+        self.assertEqual(note.frontmatter.get("supersedes_revision"), 1)
+
+    def test_writer_summary_records_superseded_candidate_path(self) -> None:
+        # When the writer auto-suffixed (a previous note already sat
+        # at the recommended target path), the saved row's result
+        # summary surfaces ``superseded_candidate_path`` so the
+        # operator can decide whether to retire the prior file. The
+        # agent never deletes; it only marks the candidate.
+        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+            NOTE_KIND_KNOWLEDGE,
+            ObsidianWriteRequest,
+            ObsidianWriterWorker,
+        )
+
+        worker = ObsidianWriterWorker(
+            queue=self.queue,
+            heartbeats=self.heartbeats,
+            render_fn=lambda _r: SimpleNamespace(title="t"),
+            write_fn=lambda *a, **k: None,
+            vault_root_resolver=lambda _r: Path(self._tmp.name),
+        )
+        request = ObsidianWriteRequest(
+            session_id="sess-marker",
+            note_kind=NOTE_KIND_KNOWLEDGE,
+            title="결정 노트",
+            approval_id="apv-1",
+            approved_by="masterway",
+            approved_at="2026-05-08T10:00:00+00:00",
+        )
+        original_path = Path(self._tmp.name) / "knowledge" / "결정 노트.md"
+        new_path = Path(self._tmp.name) / "knowledge" / "결정 노트_2.md"
+        write_result = SimpleNamespace(
+            target_path=new_path,
+            original_target_path=original_path,
+            written=True,
+            dry_run=False,
+            suffix_applied=True,
+        )
+        summary = worker._summarize_write_result(  # noqa: SLF001 - test surface
+            request=request,
+            write_result=write_result,
+            vault_root=Path(self._tmp.name),
+        )
+        self.assertTrue(summary["suffix_applied"])
+        self.assertEqual(
+            summary["superseded_candidate_path"], str(original_path)
+        )
+        self.assertEqual(summary["target_path"], str(new_path))
+
+
 if __name__ == "__main__":
     unittest.main()

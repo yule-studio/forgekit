@@ -81,6 +81,13 @@ NOTE_KIND_AGENT_OPS: str = "agent-ops"
 NOTE_KIND_FAILURE_POSTMORTEM: str = "failure-postmortem"
 NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL: str = "self-improvement-proposal"
 NOTE_KIND_BLOG_DRAFT: str = "blog-draft"
+# A-M10a — canonical Knowledge Ops kind names. Long-form aliases for
+# the legacy ``knowledge`` / ``decision`` short names; producers opting
+# into the M10a top-level vault layout (``20-knowledge/`` /
+# ``30-decisions/``) emit these. Both share the approval guard with
+# their legacy short forms so an unauthorised write never lands.
+NOTE_KIND_KNOWLEDGE_NOTE: str = "knowledge-note"
+NOTE_KIND_DECISION_RECORD: str = "decision-record"
 
 
 # Skipped reasons surfaced via :class:`ObsidianWriteJobOutcome`.
@@ -104,8 +111,15 @@ _ACTIVE_STATES: Tuple[JobState, ...] = (
 # Note kinds that require explicit human approval. ``knowledge`` is
 # the canonical "long-term decision record" — losing one to a stale
 # overwrite is the regression M5b's guard exists to prevent.
+# A-M10a extends the set with the canonical M10a names
+# ``knowledge-note`` / ``decision-record`` so producers using the new
+# layout get the same guard.
 _APPROVAL_REQUIRED_KINDS: frozenset[str] = frozenset(
-    {NOTE_KIND_KNOWLEDGE}
+    {
+        NOTE_KIND_KNOWLEDGE,
+        NOTE_KIND_KNOWLEDGE_NOTE,
+        NOTE_KIND_DECISION_RECORD,
+    }
 )
 
 
@@ -577,7 +591,13 @@ class ObsidianWriterWorker:
         suffix_applied = bool(
             getattr(write_result, "suffix_applied", False)
         )
-        return {
+        original_target = getattr(write_result, "original_target_path", None)
+        # M10b — when the writer auto-suffixed (suffix_applied=True),
+        # the original recommendation already had a file on disk.
+        # Surface its path as a superseded candidate so the operator
+        # can decide whether to retire the old (possibly empty) note,
+        # rather than the agent silently overwriting / deleting it.
+        summary: dict[str, Any] = {
             "completed": True,
             "note_kind": request.note_kind,
             "title": request.title,
@@ -590,6 +610,9 @@ class ObsidianWriterWorker:
             "approval_id": request.approval_id,
             "approved_by": request.approved_by,
         }
+        if suffix_applied and original_target is not None:
+            summary["superseded_candidate_path"] = str(original_target)
+        return summary
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +634,13 @@ _DEFAULT_RENDER_KINDS: frozenset[str] = frozenset(
         # ``has_full_approval``) still runs first so an unauthorised
         # knowledge write never reaches this renderer.
         NOTE_KIND_KNOWLEDGE,
+        # A-M10a — canonical Knowledge Ops names. ``knowledge-note``
+        # shares the knowledge body renderer but routes to
+        # ``20-knowledge/`` via the path resolver; ``decision-record``
+        # falls into the research/decision branch with kind="decision-
+        # record" and lands in ``30-decisions/``.
+        NOTE_KIND_KNOWLEDGE_NOTE,
+        NOTE_KIND_DECISION_RECORD,
         # A-M10b — autonomous-execution kinds. No approval guard
         # because they map to L1/L2 in the autonomy ladder. The
         # producer is responsible for stuffing the relevant payload
@@ -735,7 +765,7 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
         else None
     )
 
-    if request.note_kind == NOTE_KIND_KNOWLEDGE:
+    if request.note_kind in (NOTE_KIND_KNOWLEDGE, NOTE_KIND_KNOWLEDGE_NOTE):
         # A-M7.5f no-pack fallback + A-M7.6 thread-snapshot
         # hydration. The forum handoff producer stuffs a
         # ``thread_snapshot`` payload into request.metadata so the
@@ -755,6 +785,26 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
         snapshot = ThreadSnapshot.from_payload(
             metadata.get("thread_snapshot")
         )
+
+        # M10b — top-level metadata.extracted_links is a producer-
+        # promoted view of the snapshot's link bucket. If the
+        # snapshot itself is missing them (older payload, or a
+        # non-forum producer that only stamps the top-level field),
+        # merge them so the renderer still quotes every URL the
+        # operator collected.
+        meta_links_raw = metadata.get("extracted_links") or ()
+        if isinstance(meta_links_raw, (list, tuple)):
+            meta_links = tuple(
+                str(u) for u in meta_links_raw if isinstance(u, str) and u
+            )
+            if meta_links and not snapshot.extracted_links:
+                snapshot = ThreadSnapshot(
+                    messages=snapshot.messages,
+                    extracted_links=meta_links,
+                    role_summaries=snapshot.role_summaries,
+                    captured_at=snapshot.captured_at,
+                )
+
         synthesis_text = (
             (session.extra or {}).get("research_synthesis_text")
             if isinstance(getattr(session, "extra", None), Mapping)
@@ -780,6 +830,7 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
             title=request.title or None,
             project=request.project,
             layout=request.layout,
+            kind=request.note_kind,
         )
 
         # Splice the snapshot block into the rendered note so the
@@ -819,6 +870,26 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
             new_frontmatter.setdefault("source_thread_url", thread_url)
         if approval_job_id:
             new_frontmatter.setdefault("approval_job_id", approval_job_id)
+        # M10b — hydrated revision marker. The producer bumps
+        # ``ledger_revision`` when the operator opts into "다시 저장 /
+        # 개정본". Stamping the revision (and the prior revision the
+        # new note supersedes) lets a vault scan find earlier hollow
+        # copies as superseded candidates without auto-deleting them.
+        ledger_revision_raw = metadata.get("ledger_revision")
+        try:
+            ledger_revision = (
+                int(ledger_revision_raw)
+                if ledger_revision_raw is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            ledger_revision = None
+        if ledger_revision is not None and ledger_revision >= 1:
+            new_frontmatter.setdefault("ledger_revision", ledger_revision)
+            if ledger_revision > 1:
+                new_frontmatter.setdefault(
+                    "supersedes_revision", ledger_revision - 1
+                )
 
         from ..obsidian.export import ObsidianNote
 

@@ -295,6 +295,14 @@ def _build_approval_request(
     canonical_title = getattr(ledger_record, "canonical_title", "") or ""
     topic_key = getattr(ledger_record, "topic_key", "") or ""
 
+    # Lift links to the top level so downstream search / dedup can
+    # grep without parsing the full snapshot payload. Snapshot still
+    # carries the canonical list inside ``thread_snapshot``.
+    snapshot_links_raw = (snapshot_payload or {}).get("extracted_links") or ()
+    extracted_links: list[str] = [
+        str(u) for u in snapshot_links_raw if isinstance(u, str) and u
+    ]
+
     extra_meta: dict[str, Any] = {
         "decision_id": f"forum-save:{topic_key or 'no-topic'}:"
         f"{source_message_id or ''}",
@@ -304,11 +312,14 @@ def _build_approval_request(
         "requested_by": requested_by,
         "requested_at": requested_at,
         "origin": "research_forum_save_request",
-        # A-M7.6 hydration payload — ObsidianWriteRequest.metadata
-        # picks these up via approval_to_obsidian_write_request.
+        # A-M7.6 / M10b hydration payload — preserved through
+        # approval_to_obsidian_write_request into
+        # ObsidianWriteRequest.metadata so the renderer can quote
+        # the operator's reasoning trail in the saved note.
         "topic_key": topic_key,
         "canonical_title": canonical_title,
         "thread_snapshot": dict(snapshot_payload or {}),
+        "extracted_links": extracted_links,
         "selected_roles": list(selected_roles),
         "ledger_revision": getattr(ledger_record, "revision", 1),
     }

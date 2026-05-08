@@ -303,12 +303,17 @@ def approval_to_obsidian_write_request(
         "approval_kind": approval_request.approval_kind,
         "approval_job_id": approval_id,
     }
+    # M10b — every hydration field that survived the approval card
+    # round-trip must land on ObsidianWriteRequest.metadata so the
+    # renderer can compose a hydrated knowledge note. Order is
+    # alphabetical-ish for grep stability, not load-order sensitive.
     for key in (
         "topic_key",
         "canonical_title",
         "source_thread_url",
         "source_thread_title",
         "thread_snapshot",
+        "extracted_links",
         "selected_roles",
         "research_pack_title",
         "ledger_revision",
