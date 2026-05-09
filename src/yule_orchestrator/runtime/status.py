@@ -5,8 +5,9 @@ operator can see "is everything alive?" with one CLI invocation:
 
   yule runtime status --profile engineering [--json]
 
-Reports three things, each derivable from the heartbeat store +
-job queue without touching Discord or restart parents:
+Reports four things, each derivable from the heartbeat store +
+job queue + autonomy journal without touching Discord or restart
+parents:
 
   * Per-service health — heartbeat age vs. deadline, with the
     inventory entries (``ENGINEERING_PROFILE``) annotated as
@@ -16,6 +17,12 @@ job queue without touching Discord or restart parents:
   * Recent failures — the most recent ``FAILED_RETRYABLE`` /
     ``FAILED_TERMINAL`` rows with their one-line error string so
     the operator can decide whether to requeue or escalate.
+  * Autonomy producer/funnel surface — last few autonomy ticks +
+    completion-funnel decisions so operators understand what the
+    runtime *just decided to do next* (Round 4 of #73). The data
+    flows from the in-process :class:`RuntimeAutonomyJournal` that
+    the supervisor populates after every producer tick / funnel
+    completion.
 
 Out of scope (per A-M6.3 spec): supervisor restart counters
 (in-process only, not persisted), ``#봇-상태`` Discord broadcast,
@@ -25,9 +32,11 @@ M7 fallback / circuit-break / degrade.
 from __future__ import annotations
 
 import json
+import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Deque, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from ..agents.job_queue.heartbeat import (
     DEFAULT_HEARTBEAT_DEADLINE_SECONDS,
@@ -108,6 +117,114 @@ class FailedJobSummary:
     error: Optional[str]
 
 
+# ---------------------------------------------------------------------------
+# Autonomy producer / completion funnel surface — Round 4 of #73.
+# ---------------------------------------------------------------------------
+#
+# The runtime can now generate its own follow-up work (autonomy
+# producer) and decide whether to advance the queue after every
+# completion (completion funnel). Operators must see those decisions
+# alongside the heartbeat / queue snapshot, otherwise "the agent did
+# nothing" and "the agent decided to wait for approval" look identical
+# from the outside.
+#
+# These dataclasses are intentionally narrow projections of the full
+# producer/funnel objects — only the fields an operator needs in a
+# Discord post / `yule runtime status` line. Full reports stay in
+# memory for diagnostics; the journal trims to a small ring buffer so
+# a long-running supervisor never grows unbounded.
+
+# Outcome strings the autonomy producer emits per dispatch. Mirrored
+# here so the renderer can ladder them into operator-friendly labels
+# (and tests don't import :mod:`agents.job_queue.autonomy_producer`).
+AUTONOMY_OUTCOME_DISPATCHED: str = "dispatched"
+AUTONOMY_OUTCOME_DEDUPED: str = "deduped"
+AUTONOMY_OUTCOME_LOCKED: str = "locked_by_other"
+AUTONOMY_OUTCOME_SKIPPED: str = "skipped"
+AUTONOMY_OUTCOME_ERROR: str = "error"
+
+
+@dataclass(frozen=True)
+class AutonomyDispatchSummary:
+    """One scheduling decision projected for the status surface.
+
+    Mirrors the operator-relevant subset of
+    :class:`agents.job_queue.autonomy_producer.AutonomyDispatch` so
+    the status report stays usable without importing the producer.
+    """
+
+    source: str
+    outcome: str
+    session_id: str = ""
+    executor_role: str = ""
+    job_id: Optional[str] = None
+    branch_hint: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class AutonomyTickSummary:
+    """One autonomy producer tick condensed for the status report."""
+
+    tick_id: str
+    started_at: str
+    finished_at: str
+    next_task_source: Optional[str]
+    summary_line: str
+    dispatches: Tuple[AutonomyDispatchSummary, ...] = ()
+    locks_held: Tuple[str, ...] = ()
+    error: Optional[str] = None
+
+    def has_actionable_signal(self) -> bool:
+        """True when the operator should pay attention to this tick.
+
+        Either the tick errored, an individual dispatch errored / was
+        locked-by-other (a sign the lock-holder may have crashed), or
+        the tick reported a CI-failed source the funnel could not
+        advance.
+        """
+
+        if self.error:
+            return True
+        for d in self.dispatches:
+            if d.outcome in {AUTONOMY_OUTCOME_ERROR, AUTONOMY_OUTCOME_LOCKED}:
+                return True
+        return False
+
+
+@dataclass(frozen=True)
+class CompletionFunnelSummary:
+    """One completion-funnel decision lifted off ``session.extra``.
+
+    Populated by :func:`runtime.status_poster.collect_recent_completion_funnel`
+    (read-only walk of recent sessions) and surfaced in the report so
+    operators can see "last X jobs ended in needs_approval" without
+    cracking open SQLite.
+    """
+
+    session_id: str
+    job_id: str
+    job_type: str
+    completion_status: str  # done / blocked / needs_approval / retry_ready
+    ticked: bool
+    reason: str = ""
+    recommended_source: Optional[str] = None
+    producer_summary: Optional[str] = None
+    at: str = ""
+
+    def is_actionable(self) -> bool:
+        """True when this funnel row demands operator attention.
+
+        ``blocked`` and ``needs_approval`` deliberately don't tick the
+        producer — but the operator must know the runtime is parked.
+        """
+
+        return self.completion_status in (
+            "blocked",
+            "needs_approval",
+        )
+
+
 @dataclass(frozen=True)
 class RuntimeStatusReport:
     """Top-level snapshot returned by :func:`build_runtime_status`."""
@@ -119,6 +236,9 @@ class RuntimeStatusReport:
     job_types: Tuple[JobTypeSummary, ...]
     failed_recent: Tuple[FailedJobSummary, ...]
     warnings: Tuple[str, ...]
+    autonomy_recent: Tuple[AutonomyTickSummary, ...] = ()
+    completion_funnel_recent: Tuple[CompletionFunnelSummary, ...] = ()
+    autonomy_locks_held: Tuple[str, ...] = ()
 
 
 # States the renderer treats as "in flight" (worker has the row but
@@ -134,6 +254,171 @@ _IN_PROGRESS_STATES: Tuple[JobState, ...] = (
 )
 
 
+# ---------------------------------------------------------------------------
+# RuntimeAutonomyJournal — process-local ring buffer the supervisor
+# populates after every autonomy producer tick. The status builder
+# reads it back when rendering the report.
+# ---------------------------------------------------------------------------
+
+
+# Default ring depth — small on purpose: the operator surface only
+# needs "what happened in the last few ticks", not a full audit log
+# (the agent_ops audit log + SQLite job_queue rows are the system of
+# record). 16 entries comfortably covers a few minutes of producer
+# activity at the default 30 s tick interval.
+_AUTONOMY_JOURNAL_MAX_ENTRIES: int = 16
+
+
+class RuntimeAutonomyJournal:
+    """In-memory ring buffer of recent autonomy producer ticks.
+
+    Process-local, thread-safe (the supervisor's autonomy hook may
+    fire from a different task than the status post hook). Designed
+    so callers can record full :class:`AutonomyProducerReport`-like
+    objects and the journal projects each into a status-friendly
+    :class:`AutonomyTickSummary`.
+
+    The journal does NOT persist — supervisor restarts naturally
+    drop the in-memory ticks. The agent_ops audit log on
+    ``session.extra`` is the durable record; this layer only
+    answers "what is the runtime doing right now?".
+    """
+
+    def __init__(self, *, max_entries: int = _AUTONOMY_JOURNAL_MAX_ENTRIES) -> None:
+        self._lock = threading.Lock()
+        self._max = max(1, int(max_entries))
+        self._entries: Deque[AutonomyTickSummary] = deque(maxlen=self._max)
+        self._locks_held: Tuple[str, ...] = ()
+
+    @property
+    def max_entries(self) -> int:
+        return self._max
+
+    def record_report(self, report: Any) -> Optional[AutonomyTickSummary]:
+        """Project *report* into a summary and append to the journal.
+
+        Returns the projection (or ``None`` if *report* couldn't be
+        projected — e.g. a stub object missing the expected fields).
+        Never raises: the caller is the supervisor's last-resort hook
+        and a bad projection must not derail the loop.
+        """
+
+        try:
+            summary = _project_autonomy_tick(report)
+        except Exception:  # noqa: BLE001 - never crash supervisor on a bad shape
+            return None
+        if summary is None:
+            return None
+        with self._lock:
+            self._entries.append(summary)
+            self._locks_held = tuple(summary.locks_held)
+        return summary
+
+    def recent(self, *, limit: Optional[int] = None) -> Tuple[AutonomyTickSummary, ...]:
+        """Return up to *limit* ticks, newest first."""
+
+        with self._lock:
+            entries = list(self._entries)
+        entries.reverse()
+        if limit is not None and limit >= 0:
+            entries = entries[: int(limit)]
+        return tuple(entries)
+
+    def locks_held(self) -> Tuple[str, ...]:
+        """Snapshot of locks held at the most recent tick."""
+
+        with self._lock:
+            return tuple(self._locks_held)
+
+    def reset(self) -> None:
+        """Drop every recorded tick. Used by tests."""
+
+        with self._lock:
+            self._entries.clear()
+            self._locks_held = ()
+
+
+def _project_autonomy_tick(report: Any) -> Optional[AutonomyTickSummary]:
+    """Liberal projection from any "report-like" object → summary.
+
+    Accepts both the real :class:`AutonomyProducerReport` and any
+    duck-typed object exposing the same field names (used by tests).
+    """
+
+    if report is None:
+        return None
+    tick_id = str(getattr(report, "tick_id", "") or "")
+    started = str(getattr(report, "started_at", "") or "")
+    finished = str(getattr(report, "finished_at", "") or "")
+    candidate = getattr(report, "next_task_candidate", None)
+    next_source: Optional[str] = None
+    if candidate is not None:
+        raw = getattr(candidate, "source", None)
+        if raw:
+            next_source = str(raw)
+    summary_fn = getattr(report, "summary_line", None)
+    if callable(summary_fn):
+        try:
+            summary_line = str(summary_fn() or "")
+        except Exception:  # noqa: BLE001
+            summary_line = ""
+    else:
+        summary_line = ""
+    dispatches_raw = getattr(report, "dispatches", ()) or ()
+    dispatches: List[AutonomyDispatchSummary] = []
+    for entry in dispatches_raw:
+        try:
+            dispatches.append(
+                AutonomyDispatchSummary(
+                    source=str(getattr(entry, "source", "") or ""),
+                    outcome=str(getattr(entry, "outcome", "") or ""),
+                    session_id=str(getattr(entry, "session_id", "") or ""),
+                    executor_role=str(getattr(entry, "executor_role", "") or ""),
+                    job_id=getattr(entry, "job_id", None),
+                    branch_hint=str(getattr(entry, "branch_hint", "") or ""),
+                    reason=str(getattr(entry, "reason", "") or ""),
+                )
+            )
+        except Exception:  # noqa: BLE001 - skip malformed dispatches
+            continue
+    locks_held_raw = getattr(report, "locks_held", ()) or ()
+    locks_held = tuple(str(s) for s in locks_held_raw)
+    error = getattr(report, "error", None)
+    return AutonomyTickSummary(
+        tick_id=tick_id,
+        started_at=started,
+        finished_at=finished,
+        next_task_source=next_source,
+        summary_line=summary_line,
+        dispatches=tuple(dispatches),
+        locks_held=locks_held,
+        error=str(error) if error else None,
+    )
+
+
+# Module-level default journal — the supervisor's autonomy hook
+# writes to it, and :func:`build_runtime_status` reads from it. Tests
+# can pass an explicit instance to keep state isolated.
+_DEFAULT_JOURNAL: RuntimeAutonomyJournal = RuntimeAutonomyJournal()
+
+
+def get_default_autonomy_journal() -> RuntimeAutonomyJournal:
+    """Return the process-local default journal singleton."""
+
+    return _DEFAULT_JOURNAL
+
+
+def record_autonomy_report(report: Any) -> Optional[AutonomyTickSummary]:
+    """Record *report* into the default journal — supervisor hook.
+
+    Returns the projected summary (or ``None`` if the projection
+    failed). Never raises — calling this from the supervisor's
+    on-report callback must be safe regardless of report shape.
+    """
+
+    return _DEFAULT_JOURNAL.record_report(report)
+
+
 def build_runtime_status(
     *,
     profile: str = "engineering",
@@ -143,12 +428,25 @@ def build_runtime_status(
     failed_limit: int = 10,
     now: Optional[float] = None,
     circuit_snapshots: Optional[Mapping[str, Any]] = None,
+    autonomy_journal: Optional[RuntimeAutonomyJournal] = None,
+    autonomy_recent_limit: int = 5,
+    completion_funnel_recent: Sequence[CompletionFunnelSummary] = (),
 ) -> RuntimeStatusReport:
     """Snapshot the runtime into a :class:`RuntimeStatusReport`.
 
     Pure read — no SQL writes, no state transitions. The function
-    consults the inventory + heartbeat store + queue read APIs and
-    returns a frozen report the renderer can stringify.
+    consults the inventory + heartbeat store + queue read APIs +
+    autonomy journal and returns a frozen report the renderer can
+    stringify.
+
+    *autonomy_journal* defaults to :func:`get_default_autonomy_journal`
+    so the supervisor's tick-recorded data appears automatically.
+    Tests pass an isolated journal to avoid cross-test leakage.
+    *completion_funnel_recent* is a caller-prepared list of recent
+    funnel decisions (typically built by
+    :func:`runtime.status_poster.collect_recent_completion_funnel`)
+    so the status builder doesn't need to import the workflow cache
+    layer directly.
     """
 
     now_ts = now if now is not None else time.time()
@@ -191,10 +489,18 @@ def build_runtime_status(
     failed_recent = _build_failed_recent(
         queue=queue, limit=failed_limit, now_ts=now_ts
     )
+
+    journal = autonomy_journal if autonomy_journal is not None else _DEFAULT_JOURNAL
+    autonomy_recent = journal.recent(limit=max(0, int(autonomy_recent_limit)))
+    locks_held = journal.locks_held()
+    funnel_recent = tuple(completion_funnel_recent)
+
     warnings = _build_warnings(
         services=services,
         job_types=job_types,
         failed_recent=failed_recent,
+        autonomy_recent=autonomy_recent,
+        completion_funnel_recent=funnel_recent,
     )
 
     return RuntimeStatusReport(
@@ -205,6 +511,9 @@ def build_runtime_status(
         job_types=tuple(job_types),
         failed_recent=tuple(failed_recent),
         warnings=tuple(warnings),
+        autonomy_recent=autonomy_recent,
+        completion_funnel_recent=funnel_recent,
+        autonomy_locks_held=locks_held,
     )
 
 
@@ -350,6 +659,8 @@ def _build_warnings(
     services: Sequence[ServiceStatus],
     job_types: Sequence[JobTypeSummary],
     failed_recent: Sequence[FailedJobSummary],
+    autonomy_recent: Sequence[AutonomyTickSummary] = (),
+    completion_funnel_recent: Sequence[CompletionFunnelSummary] = (),
 ) -> list[str]:
     """Surface conditions an operator should act on.
 
@@ -359,6 +670,11 @@ def _build_warnings(
     and UNKNOWN warnings now include the exact command(s) the
     operator should run to recover (`yule runtime up`,
     `yule run-service`, or systemd unit names).
+
+    Round 4 of #73 added autonomy-driven warnings: an autonomy tick
+    that errored, persistent ``locked_by_other`` rows (often a sign
+    a producer crashed mid-tick), and recent completion-funnel rows
+    parked on ``blocked`` / ``needs_approval``.
     """
 
     warnings: list[str] = []
@@ -405,6 +721,66 @@ def _build_warnings(
             "operator review required (no automatic retry). Use "
             "`yule runtime status --json` or query the SQLite "
             "`job_queue` table for full result_json."
+        )
+
+    # Autonomy / completion-funnel warnings — surface what the runtime
+    # has decided it cannot do without operator intervention.
+    autonomy_errors = [
+        t for t in autonomy_recent if t.error
+    ]
+    if autonomy_errors:
+        ids = ", ".join(t.tick_id for t in autonomy_errors[:3])
+        warnings.append(
+            f"autonomy producer errored on {len(autonomy_errors)} recent "
+            f"tick(s) ({ids}) — runtime may be falling behind. Inspect "
+            "supervisor logs (`journalctl -u yule.target` or the "
+            "`yule run-service eng-supervisor-watch` stdout) for the "
+            "stack trace."
+        )
+
+    locked_dispatches: list[AutonomyDispatchSummary] = []
+    for tick in autonomy_recent:
+        for d in tick.dispatches:
+            if d.outcome == AUTONOMY_OUTCOME_LOCKED:
+                locked_dispatches.append(d)
+    if locked_dispatches:
+        sample = ", ".join(
+            f"{d.source}:{d.session_id or d.executor_role or d.branch_hint}"
+            for d in locked_dispatches[:3]
+        )
+        warnings.append(
+            f"autonomy producer skipped {len(locked_dispatches)} "
+            f"dispatch(es) due to held locks ({sample}) — usually transient, "
+            "but if it persists across many ticks the lock holder may have "
+            "crashed mid-tick. Restart the supervisor "
+            "(`systemctl restart yule-run-service@eng-supervisor-watch.service`) "
+            "to drop the in-memory registry."
+        )
+
+    blocked_funnel = [
+        c for c in completion_funnel_recent if c.completion_status == "blocked"
+    ]
+    if blocked_funnel:
+        ids = ", ".join(c.session_id or c.job_id for c in blocked_funnel[:3])
+        warnings.append(
+            f"{len(blocked_funnel)} session(s) parked on completion=blocked "
+            f"({ids}) — runtime is NOT auto-advancing these. Inspect the "
+            "session's last failure reason (look for `coding_execute_progress` "
+            "in `session.extra`) and either requeue manually or close the "
+            "session."
+        )
+
+    needs_approval = [
+        c
+        for c in completion_funnel_recent
+        if c.completion_status == "needs_approval"
+    ]
+    if needs_approval:
+        ids = ", ".join(c.session_id or c.job_id for c in needs_approval[:3])
+        warnings.append(
+            f"{len(needs_approval)} session(s) waiting on human approval "
+            f"({ids}) — approval card lives in `#승인-대기`; reply "
+            "`이대로 저장` (or the relevant approval action) to advance."
         )
     return warnings
 
@@ -514,6 +890,28 @@ def render_runtime_status_text(report: RuntimeStatusReport) -> str:
         for fj in report.failed_recent:
             lines.append("  " + _format_failed_line(fj))
 
+    lines.append("")
+    lines.append("autonomy producer:")
+    if not report.autonomy_recent:
+        lines.append("  (no recent ticks recorded)")
+    else:
+        for tick in report.autonomy_recent:
+            lines.append("  " + _format_autonomy_tick_line(tick))
+            for d in tick.dispatches:
+                lines.append("    " + _format_dispatch_line(d))
+    if report.autonomy_locks_held:
+        lines.append(
+            "  locks held: " + ", ".join(report.autonomy_locks_held)
+        )
+
+    lines.append("")
+    lines.append("completion funnel:")
+    if not report.completion_funnel_recent:
+        lines.append("  (no recent completions)")
+    else:
+        for c in report.completion_funnel_recent:
+            lines.append("  " + _format_funnel_line(c))
+
     if report.warnings:
         lines.append("")
         lines.append("warnings:")
@@ -579,6 +977,45 @@ def render_runtime_status_json(report: RuntimeStatusReport) -> str:
             }
             for f in report.failed_recent
         ],
+        "autonomy_recent": [
+            {
+                "tick_id": t.tick_id,
+                "started_at": t.started_at,
+                "finished_at": t.finished_at,
+                "next_task_source": t.next_task_source,
+                "summary_line": t.summary_line,
+                "error": t.error,
+                "dispatches": [
+                    {
+                        "source": d.source,
+                        "outcome": d.outcome,
+                        "session_id": d.session_id,
+                        "executor_role": d.executor_role,
+                        "job_id": d.job_id,
+                        "branch_hint": d.branch_hint,
+                        "reason": d.reason,
+                    }
+                    for d in t.dispatches
+                ],
+                "locks_held": list(t.locks_held),
+            }
+            for t in report.autonomy_recent
+        ],
+        "completion_funnel_recent": [
+            {
+                "session_id": c.session_id,
+                "job_id": c.job_id,
+                "job_type": c.job_type,
+                "completion_status": c.completion_status,
+                "ticked": c.ticked,
+                "reason": c.reason,
+                "recommended_source": c.recommended_source,
+                "producer_summary": c.producer_summary,
+                "at": c.at,
+            }
+            for c in report.completion_funnel_recent
+        ],
+        "autonomy_locks_held": list(report.autonomy_locks_held),
         "warnings": list(report.warnings),
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)
@@ -628,6 +1065,196 @@ def _format_failed_line(fj: FailedJobSummary) -> str:
     )
 
 
+def _format_autonomy_tick_line(tick: AutonomyTickSummary) -> str:
+    error_part = f" ERROR={tick.error}" if tick.error else ""
+    next_part = f" next={tick.next_task_source}" if tick.next_task_source else ""
+    summary = f" — {tick.summary_line}" if tick.summary_line else ""
+    return f"[{tick.tick_id}]{next_part}{error_part}{summary}"
+
+
+def _format_dispatch_line(d: AutonomyDispatchSummary) -> str:
+    parts: list[str] = [f"{d.source}={d.outcome}"]
+    if d.executor_role:
+        parts.append(f"role={d.executor_role}")
+    if d.session_id:
+        parts.append(f"session={d.session_id}")
+    if d.job_id:
+        parts.append(f"job={d.job_id}")
+    if d.branch_hint:
+        parts.append(f"branch={d.branch_hint}")
+    if d.reason:
+        parts.append(f"why={d.reason}")
+    return " ".join(parts)
+
+
+def _format_funnel_line(c: CompletionFunnelSummary) -> str:
+    tick_part = "ticked" if c.ticked else "no_tick"
+    rec_part = (
+        f" rec={c.recommended_source}" if c.recommended_source else ""
+    )
+    reason_part = f" — {c.reason}" if c.reason else ""
+    return (
+        f"[{c.completion_status}] session={c.session_id or '—'} "
+        f"job={c.job_id} job_type={c.job_type} {tick_part}{rec_part}"
+        f"{reason_part}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Markdown renderer for the autonomy / funnel sections of the
+# ``#봇-상태`` post. The base ``runtime.status_summary`` module owns
+# the heartbeat / circuit / failed_terminal / fallback sections; this
+# helper appends Round 4's autonomy + funnel rows so the operator
+# sees what the runtime decided to do next inside the same post.
+# ---------------------------------------------------------------------------
+
+
+_AUTONOMY_OUTCOME_ICON: Mapping[str, str] = {
+    AUTONOMY_OUTCOME_DISPATCHED: "✅",
+    AUTONOMY_OUTCOME_DEDUPED: "♻️",
+    AUTONOMY_OUTCOME_LOCKED: "🔒",
+    AUTONOMY_OUTCOME_SKIPPED: "⏭",
+    AUTONOMY_OUTCOME_ERROR: "⚠️",
+}
+
+
+_FUNNEL_STATUS_ICON: Mapping[str, str] = {
+    "done": "✅",
+    "retry_ready": "🔁",
+    "needs_approval": "🙋",
+    "blocked": "⛔",
+}
+
+
+_FUNNEL_STATUS_HINT: Mapping[str, str] = {
+    "done": "completed → producer ticked",
+    "retry_ready": "transient failure → producer ticked (retry path)",
+    "needs_approval": "waiting on `#승인-대기` reply",
+    "blocked": "blocked — operator review required",
+}
+
+
+def render_autonomy_summary_markdown(
+    report: RuntimeStatusReport,
+    *,
+    max_ticks: int = 3,
+    max_funnel: int = 5,
+) -> str:
+    """Return the autonomy / funnel markdown sections for ``#봇-상태``.
+
+    Returns the empty string when nothing operator-actionable is
+    showing — the caller (status_poster) appends the result to the
+    base markdown output, so an "all clear" snapshot doesn't grow
+    the post.
+    """
+
+    sections: list[str] = []
+    autonomy_section = _render_autonomy_section(
+        report.autonomy_recent[:max_ticks],
+        locks_held=report.autonomy_locks_held,
+    )
+    if autonomy_section:
+        sections.append(autonomy_section)
+
+    funnel_section = _render_funnel_section(
+        report.completion_funnel_recent[:max_funnel]
+    )
+    if funnel_section:
+        sections.append(funnel_section)
+
+    if not sections:
+        return ""
+    return "\n\n".join(sections)
+
+
+def _render_autonomy_section(
+    ticks: Sequence[AutonomyTickSummary],
+    *,
+    locks_held: Sequence[str],
+) -> Optional[str]:
+    """Render the autonomy producer section, or ``None`` if quiet.
+
+    Quiet = no ticks recorded at all. We DO render when the most recent
+    tick was idle so an operator can confirm "the producer ran and
+    found nothing", which is different from "the producer never ran".
+    """
+
+    if not ticks and not locks_held:
+        return None
+    lines = ["### Autonomy producer"]
+    if not ticks:
+        lines.append("- _no ticks recorded yet_")
+    else:
+        for tick in ticks:
+            head = _format_tick_markdown_head(tick)
+            lines.append(head)
+            for dispatch in tick.dispatches:
+                lines.append(
+                    "  - " + _format_dispatch_markdown(dispatch)
+                )
+            if tick.error:
+                lines.append(f"  - ⚠️ tick error: `{tick.error}`")
+    if locks_held:
+        joined = ", ".join(f"`{s}`" for s in locks_held)
+        lines.append(f"- 🔒 locks held: {joined}")
+    return "\n".join(lines)
+
+
+def _format_tick_markdown_head(tick: AutonomyTickSummary) -> str:
+    next_part = (
+        f" next=`{tick.next_task_source}`"
+        if tick.next_task_source
+        else ""
+    )
+    summary = f" — {tick.summary_line}" if tick.summary_line else ""
+    icon = "⚠️" if tick.error else "🛞"
+    return f"- {icon} `{tick.tick_id}`{next_part}{summary}"
+
+
+def _format_dispatch_markdown(d: AutonomyDispatchSummary) -> str:
+    icon = _AUTONOMY_OUTCOME_ICON.get(d.outcome, "•")
+    parts: list[str] = [f"{icon} `{d.source}` → **{d.outcome}**"]
+    if d.executor_role:
+        parts.append(f"role=`{d.executor_role}`")
+    if d.session_id:
+        parts.append(f"session=`{d.session_id}`")
+    if d.job_id:
+        parts.append(f"job=`{d.job_id}`")
+    if d.branch_hint:
+        parts.append(f"branch=`{d.branch_hint}`")
+    line = " · ".join(parts)
+    if d.reason:
+        line += f" — {d.reason}"
+    return line
+
+
+def _render_funnel_section(
+    funnel: Sequence[CompletionFunnelSummary],
+) -> Optional[str]:
+    if not funnel:
+        return None
+    lines = ["### Completion funnel"]
+    for c in funnel:
+        icon = _FUNNEL_STATUS_ICON.get(c.completion_status, "•")
+        hint = _FUNNEL_STATUS_HINT.get(
+            c.completion_status, c.reason or "(no reason)"
+        )
+        rec_part = (
+            f" → producer source `{c.recommended_source}`"
+            if c.recommended_source
+            else ""
+        )
+        ticked_part = " (ticked)" if c.ticked else ""
+        sess = c.session_id or "—"
+        lines.append(
+            f"- {icon} **{c.completion_status}** session=`{sess}` "
+            f"job_type=`{c.job_type}`{rec_part}{ticked_part} — {hint}"
+        )
+        if c.reason and c.reason != hint:
+            lines.append(f"  · 사유: {c.reason}")
+    return "\n".join(lines)
+
+
 def _fmt_seconds(value: Optional[float]) -> str:
     if value is None:
         return "—"
@@ -659,6 +1286,14 @@ def _fmt_unix(value: float) -> str:
 
 
 __all__ = (
+    "AUTONOMY_OUTCOME_DEDUPED",
+    "AUTONOMY_OUTCOME_DISPATCHED",
+    "AUTONOMY_OUTCOME_ERROR",
+    "AUTONOMY_OUTCOME_LOCKED",
+    "AUTONOMY_OUTCOME_SKIPPED",
+    "AutonomyDispatchSummary",
+    "AutonomyTickSummary",
+    "CompletionFunnelSummary",
     "FailedJobSummary",
     "HEALTH_ALIVE",
     "HEALTH_CIRCUIT_OPEN",
@@ -666,9 +1301,13 @@ __all__ = (
     "HEALTH_STALE",
     "HEALTH_UNKNOWN",
     "JobTypeSummary",
+    "RuntimeAutonomyJournal",
     "RuntimeStatusReport",
     "ServiceStatus",
     "build_runtime_status",
+    "get_default_autonomy_journal",
+    "record_autonomy_report",
+    "render_autonomy_summary_markdown",
     "render_live_smoke_checklist",
     "render_runtime_status_json",
     "render_runtime_status_text",

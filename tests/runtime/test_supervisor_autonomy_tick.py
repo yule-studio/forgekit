@@ -199,6 +199,88 @@ class SupervisorAutonomyTickEnabledTests(_Fixture):
         self.assertEqual(captured[0].summary_line(), "summary-A")
 
 
+class SupervisorOnReportRecordsToJournalTests(_Fixture):
+    """Round 4 surface — the supervisor's on_report hook funnels every
+    autonomy producer report into the process-local journal so the
+    next status post sees what the runtime just decided to do."""
+
+    def test_on_report_appends_summary_to_default_journal(self) -> None:
+        from yule_orchestrator.runtime.run_service import (
+            _supervisor_autonomy_on_report,
+        )
+        from yule_orchestrator.runtime.status import (
+            AUTONOMY_OUTCOME_DISPATCHED,
+            get_default_autonomy_journal,
+        )
+
+        journal = get_default_autonomy_journal()
+        journal.reset()
+        self.addCleanup(journal.reset)
+
+        # Build a producer-report-shaped object the on_report hook
+        # accepts — duck-typed against AutonomyProducerReport.
+        class _Candidate:
+            source = "approved_coding_job"
+
+        class _Dispatch:
+            source = "approved_coding_job"
+            outcome = AUTONOMY_OUTCOME_DISPATCHED
+            session_id = "sess-Z"
+            executor_role = "backend-engineer"
+            job_id = "job-1"
+            branch_hint = "agent/backend/issue-1"
+            reason = ""
+
+        class _Report:
+            tick_id = "tick-9"
+            started_at = "2026-05-10T00:00:00+00:00"
+            finished_at = "2026-05-10T00:00:01+00:00"
+            next_task_candidate = _Candidate()
+            dispatches = (_Dispatch(),)
+            locks_held = ()
+            error = None
+
+            def summary_line(self):
+                return "autonomy producer tick tick-9 dispatched"
+
+        _supervisor_autonomy_on_report(_Report())
+        recent = journal.recent()
+        self.assertEqual(len(recent), 1)
+        self.assertEqual(recent[0].tick_id, "tick-9")
+        self.assertEqual(
+            recent[0].dispatches[0].outcome, AUTONOMY_OUTCOME_DISPATCHED
+        )
+
+    def test_on_report_swallows_journal_failures(self) -> None:
+        # Even if record_autonomy_report somehow raises, the supervisor
+        # callback must NOT propagate — the supervisor's last-resort
+        # wrapper already catches exceptions from on_report, but the
+        # callback itself takes a defensive try/except.
+        import yule_orchestrator.runtime.run_service as run_service_mod
+
+        called: list = []
+
+        def boom(_report):
+            called.append("attempted")
+            raise RuntimeError("journal boom")
+
+        original = run_service_mod.__dict__
+        # Patch the import lookup inside the function — the function
+        # imports lazily so we need to swap status.record_autonomy_report.
+        import yule_orchestrator.runtime.status as status_mod
+
+        prior = status_mod.record_autonomy_report
+        status_mod.record_autonomy_report = boom
+        try:
+            # Should not raise.
+            run_service_mod._supervisor_autonomy_on_report(
+                type("R", (), {"summary_line": lambda self: "x"})()
+            )
+            self.assertEqual(called, ["attempted"])
+        finally:
+            status_mod.record_autonomy_report = prior
+
+
 class SupervisorAutonomyTickBuilderTests(_Fixture):
     def test_builder_returns_dormant_when_env_unset(self) -> None:
         import os
