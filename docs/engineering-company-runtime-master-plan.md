@@ -283,10 +283,17 @@ Round 4 에서 추가된 구현:
 - [retrieval.py](../src/yule_orchestrator/agents/engineering_intelligence/retrieval.py) — `KnowledgeRecord` (lightweight projection), `score_knowledge_record` (role × axis × topic × importance × freshness), `KnowledgeRetriever` (`with_signals` 로 score 노출).
 - [discussion/context_pack.py](../src/yule_orchestrator/agents/discussion/context_pack.py) — `EngineeringKnowledgeRef` slot + `knowledge_loader` / `knowledge_retriever` seam 추가. ContextPack.relevant_knowledge 가 자동으로 채워진다.
 
+Round 4-bis 에서 추가된 구현 (provider 측 강화):
+
+- [provider_registry.py](../src/yule_orchestrator/agents/engineering_intelligence/provider_registry.py) — 8 transport (rss / atom / sitemap / html_list / html_detail / github_releases_atom / github_api_repo_activity / manual) 각각에 한 줄씩 등록되는 `KnowledgeProviderRegistration` (provider_id / auth / fake_fetcher / live_factory / manual flag). `ProviderAuthRequirement` 가 decision classifier 와 동일한 dual gate (env_keys + enable_flag) 를 쓴다. `ProviderAvailability` 5 상태 (available / disabled_by_flag / missing_env / no_live_impl / manual_only) 가 운영자 대시보드에 그대로 노출. `default_registry()` 가 시드한 8 row 의 .env contract 가 `.env.example` 에 명시되어 있다.
+- [providers.py — FakeKnowledgeProvider](../src/yule_orchestrator/agents/engineering_intelligence/providers.py) — `StubLiveSourceFetcher` (records, returns empty) 와 별도로 `source_id → items` fixture 기반의 결정적 fake. 라이브 PR 이 들어오기 전까지 모든 transport 의 fallback fetcher 로 사용된다.
+- [provider_routing.py](../src/yule_orchestrator/agents/engineering_intelligence/provider_routing.py) — `route_refresh_plan(plan, *, role_id, registry, env)` 가 `RefreshPlan` 의 due/skipped 각 entry 에 transport / provider_id / availability / axes 를 붙여 `RoutedRefreshCandidate` 로 변환. `axis_priority_order(...)` 가 `overdue_axes_for_role` 결과를 받아 SECURITY 같이 비어 있는 axis 를 가진 candidate 를 우선 큐 앞으로 보낸다 (tier / availability / source_id 가 tie-breaker). `select_routed_due(...)` 한 번 호출로 plan→route→axis priority→tick quota 까지 처리.
+- [.env.example #73 — Engineering knowledge provider env](../.env.example) — `YULE_KNOWLEDGE_<TRANSPORT>_LIVE_ENABLED` 8개와 `YULE_GITHUB_APP_*` 재사용 정책 명시. 모든 플래그 기본값은 false (cost-budget 검토 후 운영자가 켠다).
+
 남은 일 (별도 worktree / PR):
 
-- live source fetcher 구현 (urllib 기반 RSS / Atom / Sitemap / HTML_LIST / GitHub Releases / GitHub API).
-- runtime service spawn (`eng-research-collector`) — scheduler tick → fetcher → adapter → vault writer.
+- live source fetcher 구현 (urllib 기반 RSS / Atom / Sitemap / HTML_LIST / GitHub Releases / GitHub API). `KnowledgeProviderRegistry.register_live(transport, live_factory=...)` 한 번 호출로 활성화된다.
+- runtime service spawn (`eng-research-collector`) — scheduler tick → `select_routed_due` → registry fetcher → adapter → vault writer.
 - `SourceRefreshState` persistence (sqlite or vault sidecar).
 - discussion synthesizer 가 `relevant_knowledge` slot 을 prompt 에 어떻게 짜 넣을지.
 

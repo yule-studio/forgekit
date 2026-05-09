@@ -59,6 +59,12 @@ from .provider_registry import (
     ProviderAvailability,
     default_registry,
 )
+from .provider_routing import (
+    RoutedRefreshCandidate,
+    axis_priority_order,
+    route_refresh_plan,
+    select_routed_due,
+)
 from .retrieval import (
     KnowledgeMatch,
     KnowledgeRecord,
@@ -158,6 +164,11 @@ __all__ = [
     "ProviderAuthRequirement",
     "ProviderAvailability",
     "default_registry",
+    # provider routing (refresh-plan → registry → fetch decision)
+    "RoutedRefreshCandidate",
+    "axis_priority_order",
+    "route_refresh_plan",
+    "select_routed_due",
     # retrieval
     "KnowledgeMatch",
     "KnowledgeRecord",
