@@ -153,3 +153,87 @@ API 응답을 ResearchSource로 변환하는 `_result_dict_to_source`는 다음 
 3. Tavily/Brave 실 호출 검증 — 실제 API key 환경에서 응답 shape이 `_result_dict_to_source`와 일치하는지 확인.
 4. provider별 rate limit / 비용 관리 정책.
 5. 자동 수집 결과의 `confidence` 보강 — provider score / domain trust / role profile 일치도를 합쳐 high/medium/low 결정.
+
+## 12. Background ingestion scheduler (engineering_intelligence)
+
+본 §1~§11은 **요청이 들어왔을 때** intake 가 부르는 collector를 다룬다. master plan §6.1의 background knowledge loop는 별개 모듈이며, 코드 진실 소스는 `src/yule_orchestrator/agents/engineering_intelligence/scheduler.py`.
+
+### 12.1 흐름
+
+```
+runtime tick (every N minutes)
+   │
+   ▼
+compute_refresh_plan(role_id, now, states, tick_quota)
+   │
+   ├── never attempted        → due (reason=never_attempted)
+   ├── interval 경과           → due (reason=due 혹은 retry_after_X_failures)
+   ├── interval 미경과         → skipped_fresh (next_eligible_at 명시)
+   ├── failure backoff 미경과  → skipped_backoff (×1 / ×2 / ×4 / ×8, 24h cap)
+   ├── review_required=True   → skipped_review_required
+   ├── auto_collect=False     → skipped_auto_collect_disabled
+   └── tick quota 초과        → skipped_quota
+   ▼
+RefreshPlan(role, due, skipped, tick_quota)
+   │
+   ▼
+collect_for_role_with_schedule(role_id, adapter, states, now)
+   │
+   ├── plan.due_source_ids() 만 adapter 호출
+   ├── adapter 실패 → record_refresh_outcome(success=False, notes=...)
+   ├── adapter 성공 → record_refresh_outcome(success=True, items_collected)
+   └── returns (CollectionRunResult, updated_states)
+```
+
+### 12.2 운영 의도
+
+- **per-tick quota = role daily limit (5)** 가 기본. 한 번의 tick이 한 역할의 모든 source를 동시에 때리지 않게 하려는 가드.
+- **exponential backoff**는 source 자체 interval에 anchor 한다. 6h 주기 RSS는 두 번 실패하면 12h를 기다리고, 30분 주기 보안 advisory는 1h 만 기다린다 — 신선도 우선순위가 작동한다.
+- **state persistence는 본 모듈 책임이 아니다.** `SourceRefreshState` 가 caller가 sqlite/vault 사이드카에 직렬화해 보관하고 다음 tick에 다시 넣어준다. 본 모듈은 pure function.
+- `overdue_axes_for_role(role, states, grace_factor=2.0)` 는 "이 역할의 어떤 axis가 통째로 새 자료가 안 들어오고 있는가" 를 surface한다. 운영자 dashboard에 그대로 노출하면 되고, alert 임계값은 운영자가 결정.
+
+### 12.3 운영 환경변수 (Round 4 예약)
+
+scheduler 자체는 env를 읽지 않는다. 다만 **runtime 가 본 모듈을 부를 때** 다음 env가 의미를 가지게 될 예정이다 (현 commit 시점에는 wiring 부재).
+
+| 키 | 의미 |
+| --- | --- |
+| `YULE_ENG_INTEL_REFRESH_TICK_INTERVAL_MINUTES` | scheduler tick 간격. 기본 15분 권장. |
+| `YULE_ENG_INTEL_REFRESH_GLOBAL_QUOTA` | 한 tick에서 모든 역할 합쳐 호출할 수 있는 source 상한. dispatcher 부하 방지용. |
+| `YULE_ENG_INTEL_REFRESH_DRY_RUN` | true면 plan만 계산하고 adapter 호출은 하지 않는다. 운영자가 cadence를 검증할 때 사용. |
+
+이 env는 후속 PR에서 runtime side에 wire한다 — 본 PR scope에는 포함되지 않는다.
+
+## 13. Live provider seam (engineering_intelligence)
+
+코드 진실 소스: `src/yule_orchestrator/agents/engineering_intelligence/providers.py`.
+
+### 13.1 디스패치
+
+`provider_spec_for(SourceEntry) -> LiveProviderSpec` 가 단일 진입점이다. `SourceEntry.collection_mode` + base_url heuristic으로 transport를 결정한다.
+
+| CollectionMode | URL hint | ProviderTransport | parser | rate_limit_per_minute |
+| --- | --- | --- | --- | --- |
+| `MANUAL` | 무관 | `manual` | `manual` | 0 (호출 안 함) |
+| `GITHUB_API` | `github.com/...` | `github_api_repo_activity` | `github_api` | 30 |
+| `RSS` | `github.com/.../releases` | `github_releases_atom` | `atom` | 20 |
+| `RSS` | `*.atom` | `atom` | `atom` | 30 |
+| `RSS` | 그 외 | `rss` | `rss` | 30 |
+| `SITEMAP` | — | `sitemap` | `sitemap` | 10 |
+| `HTML_LIST` | — | `html_list` | `html_list` | 15 |
+| `HTML_DETAIL` | — | `html_detail` | `html_detail` | 5 |
+
+### 13.2 보안/secret 정책
+
+- `LiveProviderSpec.requires_auth_env` 는 **env key 이름**만 든다 — 실제 토큰 값은 절대 들어가지 않는다.
+- GitHub API spec의 `requires_auth_env=("YULE_GITHUB_APP_ID",)` 는 "App env 3종 중 하나라도 비어 있으면 fetch 시도 자체를 차단해야 한다" 는 신호다. fetcher impl 가 아직 land 하지 않았으므로, 본 PR scope 에서는 `StubLiveSourceFetcher` 만 제공한다.
+- request_headers_seed에는 token 헤더가 없다. fetcher impl 가 env를 읽어 별도로 합성해야 한다.
+
+### 13.3 후속 wiring (별도 PR)
+
+1. `providers_live.py` — urllib 기반 fetcher 구현 (RSS / Atom / Sitemap / HTML_LIST / GitHub Releases / GitHub API).
+2. fetcher rate limiter — `LiveProviderSpec.rate_limit_per_minute` 를 token bucket으로 강제.
+3. fetcher → adapter 어댑터 — `SourceCollectorAdapter` Protocol 에 fit하도록 (spec, source) → items 형태를 (source) → items 로 변환.
+4. runtime service 등록 — `eng-research-collector` 서비스가 본 PR 의 scheduler + 별도 fetcher 를 합쳐 tick 마다 돌도록.
+
+위 4번의 runtime wiring 은 본 worktree 의 write scope 밖이다. 본 PR 는 데이터 모델 + 정책 + 스케줄러 + 어댑터 seam 까지만 land 한다.

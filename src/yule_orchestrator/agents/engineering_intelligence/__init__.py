@@ -39,7 +39,24 @@ from .collector import (
     FakeSourceCollectorAdapter,
     SourceCollectorAdapter,
     collect_for_role,
+    collect_for_role_with_schedule,
     utc_now_iso,
+)
+from .providers import (
+    LiveProviderSpec,
+    LiveSourceFetcher,
+    ProviderTransport,
+    StubLiveSourceFetcher,
+    provider_spec_for,
+    specs_for_role,
+)
+from .scheduler import (
+    RefreshPlan,
+    RefreshPlanEntry,
+    SourceRefreshState,
+    compute_refresh_plan,
+    overdue_axes_for_role,
+    record_refresh_outcome,
 )
 from .dedup import (
     compute_dedup_key,
@@ -109,7 +126,22 @@ __all__ = [
     "FakeSourceCollectorAdapter",
     "SourceCollectorAdapter",
     "collect_for_role",
+    "collect_for_role_with_schedule",
     "utc_now_iso",
+    # providers
+    "LiveProviderSpec",
+    "LiveSourceFetcher",
+    "ProviderTransport",
+    "StubLiveSourceFetcher",
+    "provider_spec_for",
+    "specs_for_role",
+    # scheduler
+    "RefreshPlan",
+    "RefreshPlanEntry",
+    "SourceRefreshState",
+    "compute_refresh_plan",
+    "overdue_axes_for_role",
+    "record_refresh_outcome",
     # dedup
     "compute_dedup_key",
     "dedup_items",
