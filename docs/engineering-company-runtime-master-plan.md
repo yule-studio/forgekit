@@ -1,0 +1,470 @@
+# Engineering Company Runtime Master Plan
+
+> 목적: Yule Studio Agent를 단순한 업무 접수 봇이 아니라, Discord에서 기술 토의와 구현을 이어가고, GitHub/CI/Obsidian을 통해 계속 일하는 `tech-lead` 중심 개발 회사형 runtime으로 완성하기 위한 기준 문서.
+>
+> 이 문서는 "다음에 무엇을 만들지"보다 먼저 "무엇을 어떤 순서로, 어디까지 완성해야 하는지"를 고정한다.
+
+## 1. 최종 목표
+
+Yule가 도달해야 하는 최종 상태는 아래와 같다.
+
+1. Discord에서 업무 접수뿐 아니라 기술 토의가 가능하다.
+2. `tech-lead`가 긴 문맥을 유지하며 설계/조사/구현/질문 필요 여부를 판단한다.
+3. 구현이 필요하면 승인 후 실제 코드 수정, 테스트, push, draft PR까지 이어진다.
+4. CI 결과를 다시 읽고 retry / clarification / done / blocked 로 이어진다.
+5. 모든 과정은 Obsidian에 운영 메모리로 기록된다.
+6. 작업이 하나 끝나면 runtime이 다음 작업을 자동으로 선택한다.
+7. 역할별 자료 수집/정형화 루프가 상시 돌아서, 요청이 오기 전에도 지식이 축적된다.
+
+핵심 원칙: **Claude는 이 시스템을 만드는 도구이고, 완성 후에는 runtime이 Claude를 필요할 때 호출하며 계속 돌아야 한다.**
+
+## 2. 현재 기준선
+
+현재 레포는 아래 기초를 이미 갖고 있다.
+
+- Discord intake / gateway 흐름
+- research / role deliberation / approval 뼈대
+- Obsidian export / note 정책의 일부
+- GitHub App 기반 issue / draft PR 흐름 일부
+- always-on runtime skeleton
+- queue worker 구조
+- CI 기초 설정
+
+하지만 아직 아래는 미완성이다.
+
+- 자유로운 기술 토의 모드
+- 실제 live code editing executor
+- CI failure → retry / re-plan 루프
+- 상시 role-based research ingestion live wiring
+- 작업 완료 후 next-task auto handoff
+
+## 3. 현재 완성도 평가
+
+이 수치는 운영 판단 기준으로 유지한다.
+
+| 영역 | 현재 추정 |
+| --- | --- |
+| 운영 골격 | 65~75% |
+| Discord 기술 토의 능력 | 40~50% |
+| 완전 자율 코딩 루프 | 45~55% |
+| 역할별 자료 수집/정형화 루프 | 25~35% |
+| 실제 회사처럼 굴러가는 종합 수준 | 45~55% |
+
+이 문서의 목표는 위 4개 축이 서로 충돌하지 않게 나누어 100%에 수렴하도록 만드는 것이다.
+
+## 4. `gateway` 와 `tech-lead` 경계
+
+이 경계를 분명히 하지 않으면 외부 surface와 내부 조율이 섞여 시스템이 불안정해진다.
+
+### 4.1 gateway 책임
+
+`gateway`는 외부 surface 담당이다.
+
+- Discord `#업무-접수` 첫 응답
+- thread / session 생성
+- intake metadata 정리
+- `#봇-상태` / kickoff / closure 같은 운영 surface
+- 외부 사용자에게 보이는 상태 전달
+- 내부 runtime으로 job enqueue
+
+정리하면: **gateway는 받는 입구와 바깥쪽 상태판이다.**
+
+### 4.2 tech-lead 책임
+
+`tech-lead`는 coordinator이자 부서장이다.
+
+- 긴 문맥 유지
+- 토의 진행
+- role 관점 종합
+- 설계/조사/구현 여부 판단
+- 승인 요청과 handoff
+- 구현 이후 결과 해석
+- 다음 작업 선택
+
+정리하면: **tech-lead는 생각하고 조율하고 이어가는 두뇌다.**
+
+### 4.3 경계 규칙
+
+1. 외부 사용자의 첫 접점은 gateway다.
+2. 기술 토의가 시작되면 주체는 tech-lead다.
+3. status/post/kickoff/closure는 gateway-mediated가 우선이다.
+4. cross-role decision / 합의 / conflict resolution 은 tech-lead-mediated다.
+5. 다른 role bot 확장 전까지는 실제 구현 실행도 tech-lead가 대표 주체다.
+
+## 5. 운영 구조의 5개 레이어
+
+### 5.1 Surface Layer
+
+- Discord
+- GitHub Issue / PR
+- CI 알림
+- Obsidian 기록
+
+### 5.2 Coordination Layer
+
+- gateway
+- tech-lead runtime
+- approval gate
+- completion hook
+- next-task selector
+
+### 5.3 Intelligence Layer
+
+- deterministic fast-path
+- Claude classifier
+- Claude discussion synthesizer
+- Claude executor
+- context pack builder
+- relevant memory selector
+
+### 5.4 Execution Layer
+
+- worktree
+- shell / git / gh
+- test runner
+- draft PR generation
+- CI result consumption
+
+### 5.5 Memory Layer
+
+- research note
+- decision note
+- task-log
+- report / retrospective
+- role knowledge / collected references
+
+## 6. 전체 루프 구조
+
+이 시스템은 4개의 루프가 합쳐져야 한다.
+
+### 6.1 Background Knowledge Loop
+
+상시 돌아야 하는 루프.
+
+- 역할별 자료 수집
+- dedup / importance score
+- source registry 기반 분류
+- Obsidian / role knowledge 저장
+- 요청 시 retrieval 가능한 상태로 유지
+
+### 6.2 Discussion Loop
+
+Discord thread 안에서 도는 루프.
+
+- 사용자의 질문 이해
+- context pack 구성
+- 관련 note / issue / PR / code / sources retrieval
+- 설계/조사/구현 여부 판단
+- 필요하면 clarification
+
+### 6.3 Execution Loop
+
+구현이 필요할 때 도는 루프.
+
+- approval
+- worktree
+- code edit
+- tests
+- commit / push
+- draft PR
+
+### 6.4 Improvement Loop
+
+끝난 뒤 돌아야 하는 루프.
+
+- CI success/failure 해석
+- blocked reason 정리
+- retry / re-plan
+- retrospective
+- next action 생성
+
+## 7. 기술 토의 모드의 필수 요구사항
+
+이 시스템은 단순 업무 접수로 끝나면 안 된다. 아래 같은 대화가 가능해야 한다.
+
+- "이 구조 맞아?"
+- "이건 devops 관점에서 어떻게 풀지?"
+- "일단 조사만 할까?"
+- "구현 전에 리스크부터 정리하자"
+
+이를 위해 `discussion_mode` 가 필요하다.
+
+### 7.1 discussion mode의 최소 상태
+
+- `discussion`
+- `research_only`
+- `implementation_candidate`
+- `clarification_needed`
+
+### 7.2 discussion mode의 최소 입력
+
+- 최근 Discord thread 요약
+- session state
+- 관련 Obsidian notes
+- 관련 issue / PR
+- 관련 코드 힌트
+- role profile
+- role research profile
+
+### 7.3 discussion mode의 최소 출력
+
+- 현재 판단 모드
+- 왜 그렇게 판단했는지
+- 구현 필요 여부
+- 추가 질문이 필요한지
+- next action
+
+## 8. 문맥을 넓게 이해하게 만드는 핵심
+
+문맥 이해는 모델 자체보다 입력 구조가 더 중요하다.
+
+### 8.1 Context Pack Builder
+
+각 요청마다 아래를 묶는다.
+
+- current user message
+- recent thread summary
+- session.extra summary
+- linked issue / PR summary
+- relevant Obsidian notes
+- related file hints
+- role profile
+- role research profile
+
+### 8.2 Relevant Memory Selector
+
+모든 note를 넣지 않는다. 요청과 관련된 note만 뽑는다.
+
+- 동일 topic
+- 같은 부서/역할
+- 최근 실패/회고
+- 관련 PR / issue
+- 같은 domain / 같은 task_type
+
+### 8.3 Fast-path + LLM 조합
+
+- 명확한 요청은 deterministic path
+- 애매한 요청만 Claude classifier
+- 토의 중 ambiguity가 커지면 재분류
+
+## 9. 자료 수집/정형화 루프는 필수
+
+이 항목은 선택이 아니다. 회사처럼 굴러가려면 요청 전부터 지식이 쌓여야 한다.
+
+### 9.1 역할별 상시 수집 대상
+
+- backend: official docs, API, schema, auth 흐름, migration 패턴
+- frontend: MDN, framework docs, accessibility, design system, browser compatibility
+- qa: regression, test plan, bug pattern, edge case, acceptance criteria
+- devops: CI/CD, infra, observability, rollout, rollback, runtime 운영 패턴
+- tech-lead: architecture, ADR, tradeoff, dependency, risk, rollout plan
+
+### 9.2 수집 루프의 두 단계
+
+1. 요청 이전의 background ingestion
+2. 요청 이후의 request-time retrieval
+
+즉 "계속 수집"과 "요청 맞춤 retrieval"은 둘 다 필요하다.
+
+### 9.3 구현 기준선
+
+이미 존재하는 정책/코드:
+
+- [research-collector.md](../policies/runtime/agents/engineering-agent/research-collector.md)
+- [research-profiles.md](../policies/runtime/agents/engineering-agent/research-profiles.md)
+- [collector.py](../src/yule_orchestrator/agents/engineering_intelligence/collector.py)
+
+남은 일:
+
+- live source adapters
+- schedule / interval
+- 저장 루프
+- retrieval 통합
+
+## 10. CI와 CD의 관계
+
+현재는 PR CI가 1순위고, CD는 후순위다.
+
+### 10.1 지금 꼭 할 것
+
+- PR에서 테스트
+- package smoke
+- Discord success/failure 알림
+- CI 결과를 runtime 상태로 반영
+
+### 10.2 지금 하지 않을 것
+
+- production deploy
+- auto merge
+- main push 배포
+- 완전한 zero-downtime CD
+
+### 10.3 왜 분리하나
+
+CI는 품질 게이트고, CD는 운영 위험과 직결된다. 지금은 runtime이 로컬에서 완결 루프를 먼저 완성해야 한다.
+
+## 11. Obsidian 운영 메모리 정책
+
+Obsidian은 로그 저장소가 아니라 운영 메모리다.
+
+### 11.1 note 종류
+
+- research
+- decision
+- task-log
+- report / retrospective
+
+### 11.2 note 규칙
+
+- `## 관련 문서` 필수
+- wikilink 이름은 실제 basename과 일치
+- 민감정보/secret/실제 key는 저장 금지
+- 공유 가능한 것과 로컬 전용 것을 분리
+
+### 11.3 저장해야 할 내용
+
+- 어떤 자료를 참고했는지
+- 어떤 판단을 했는지
+- 어떤 구현이 진행됐는지
+- 실패 원인이 무엇인지
+- 다음 액션이 무엇인지
+
+## 12. PR를 나누는 원칙
+
+하나의 PR에서 모든 걸 끝내려 하지 않는다. 섹션과 milestone을 나눠서 간다.
+
+### 12.1 PR 분리 원칙
+
+1. 운영 골격
+2. Discord 기술 토의
+3. 완전 자율 코딩 루프
+4. 자료 수집/정형화 루프
+
+한 PR 안에서는 하나의 중심 목표만 다룬다. foundation PR이 크더라도 "하나의 단계 완료" 단위여야 한다.
+
+### 12.2 worktree 원칙
+
+하나의 initiative 아래에서도 worktree는 나눈다.
+
+예시:
+
+- `feature/company-runtime-discussion`
+- `feature/company-runtime-execution`
+- `feature/company-runtime-research-loop`
+- `feature/company-runtime-autonomy`
+
+## 13. 다음 구현 우선순위
+
+지금부터의 실제 순서는 아래가 맞다.
+
+### Phase 1. Discussion Mode
+
+완료 기준:
+
+- Discord에서 기술 토의 가능
+- context pack 구성
+- implementation 여부 판단
+
+### Phase 2. Claude Decision Layer
+
+완료 기준:
+
+- ambiguous request만 `claude` 호출
+- deterministic fast-path 유지
+- discussion / research / implementation / clarification 분류
+
+### Phase 3. Coding Executor Live Wiring
+
+완료 기준:
+
+- 승인 후 실제 code edit
+- test
+- commit/push/draft PR
+
+### Phase 4. CI Failure → Retry Loop
+
+완료 기준:
+
+- CI 실패 읽기
+- retry guard
+- blocked / retry_ready / done 반영
+
+### Phase 5. Background Research Ingestion
+
+완료 기준:
+
+- 역할별 수집이 background로 동작
+- 정형화된 자료가 role knowledge로 저장
+
+### Phase 6. Next Task Auto-Handoff
+
+완료 기준:
+
+- 작업 하나 끝나면 selector가 다음 작업 선택
+- runtime이 계속 이어서 일함
+
+## 14. 완료 조건
+
+아래 시나리오가 end-to-end로 가능해야 "회사형 runtime" 완성으로 본다.
+
+1. Discord에서 요청 또는 기술 토의 시작
+2. tech-lead가 긴 문맥으로 대화
+3. 관련 자료와 note를 자동 retrieval
+4. 조사/구현/질문 필요 여부 판단
+5. 구현이면 승인 요청
+6. 승인 후 실제 코드 수정과 draft PR 생성
+7. PR CI 결과 수신
+8. 실패면 retry / clarification / blocked 처리
+9. 성공/실패/차단 상태를 Obsidian + GitHub에 기록
+10. 다음 작업을 자동 선택
+
+## 15. Claude 실행 프로토콜
+
+Claude는 UI 자동조작 대상으로 쓰지 않는다. runtime이 `claude` 명령을 호출하는 도구로 쓴다.
+
+### 15.1 역할
+
+- classifier
+- discussion synthesizer
+- executor
+
+### 15.2 원칙
+
+- 작은 단위로 호출
+- structured output 우선
+- fast-path가 애매할 때만 호출
+- 실패하면 blocked reason 남기고 deterministic fallback
+
+### 15.3 handoff 규칙
+
+세션이 끊겨도 다음 세션이 이어갈 수 있어야 한다.
+
+반드시 남길 것:
+
+- 현재 phase
+- 현재 branch / worktree / PR / issue
+- 현재 blocker
+- 남은 next actions
+- 관련 note 링크
+
+## 16. 운영 가드
+
+아래는 영구 hard rail이다.
+
+- protected branch 직접 push 금지
+- force push 금지
+- auto merge 금지
+- production deploy 자동화 금지
+- secret / token / pem 출력 금지
+- 기존 사용자 변경 덮어쓰기 금지
+
+## 17. 최종 판단
+
+지금의 1순위는 `tech-lead` 완성이다.
+
+- multi-bot 확장은 후순위
+- CI는 이미 1차 기반이므로 유지
+- CD는 로컬 완결 루프 후 검토
+- discussion + research + execution + retry를 한 흐름으로 묶는 것이 핵심
+
+이 문서를 기준으로 앞으로의 구현 판단을 고정한다.
