@@ -129,6 +129,39 @@ class DryRunPlanTests(unittest.TestCase):
         # No reserved block now that gateway is implemented.
         self.assertNotIn("reserved (not started)", rendered)
 
+    def test_env_flag_flips_coding_executor_into_spawn_set(self) -> None:
+        # #73 Round 2 — when the operator sets
+        # ``YULE_CODING_EXECUTOR_AUTOSPAWN=true`` in their .env.local,
+        # the dry-run plan must list eng-coding-executor in the
+        # services-to-start block (and remove it from the opt-in
+        # block). Verified by reloading services.py + supervisor under
+        # a patched env so the import-time evaluation picks up the flag.
+        import importlib
+        import os
+
+        from yule_orchestrator.runtime import (
+            services as services_mod,
+            subprocess_supervisor as supervisor_mod,
+        )
+
+        original = os.environ.get("YULE_CODING_EXECUTOR_AUTOSPAWN")
+        os.environ["YULE_CODING_EXECUTOR_AUTOSPAWN"] = "true"
+        try:
+            importlib.reload(services_mod)
+            importlib.reload(supervisor_mod)
+            plan = supervisor_mod.build_dry_run_plan(profile="engineering")
+            spawned_ids = {sid for sid, _, _ in plan.services}
+            self.assertIn("eng-coding-executor", spawned_ids)
+            opt_in_ids = {sid for sid, _ in plan.skipped}
+            self.assertNotIn("eng-coding-executor", opt_in_ids)
+        finally:
+            if original is None:
+                del os.environ["YULE_CODING_EXECUTOR_AUTOSPAWN"]
+            else:
+                os.environ["YULE_CODING_EXECUTOR_AUTOSPAWN"] = original
+            importlib.reload(services_mod)
+            importlib.reload(supervisor_mod)
+
 
 # ---------------------------------------------------------------------------
 # Spawn + supervise
