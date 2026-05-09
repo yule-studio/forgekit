@@ -250,6 +250,70 @@ def stamp_selection_to_session_extra(
     return new_extra
 
 
+def select_next_task_with_ci_retry_guard(
+    *,
+    github_state: GithubStateLike,
+    session_state: SessionStateLike,
+    retry_lookup,
+    policy=None,
+    now: Optional[datetime] = None,
+):
+    """CI-aware variant — filters out PRs whose retry budget is exhausted.
+
+    Round 2 of #73. When a coding_execute attempt fails CI, the
+    selector should re-pick the PR up to ``policy.max_attempts``
+    times. Past that, the PR escalates to ``blocked`` and the selector
+    must NOT keep re-picking — otherwise we get an infinite retry
+    loop on a permanently-broken commit.
+
+    Contract:
+
+      * *retry_lookup* takes a ``pr_number`` (int) and returns a
+        :class:`RetryAttemptLog`. Production wires this through
+        ``workflow_state.get_session(pr_session_id).extra``.
+      * Returns a :class:`NextTaskCandidate`. When all failed PRs are
+        escalated, falls through to the standard 4-priority chain
+        (approved coding job → unresolved discussion → orphan issue
+        → idle).
+
+    Implementation: replaces ``github_state.list_failed_ci_active_prs``
+    with a partitioned shim, then delegates to :func:`select_next_task`.
+    The escalated rows are surfaced on the returned candidate's
+    ``payload['ci_retry_escalated']`` for the caller to log / notify.
+    """
+
+    from .ci_status import partition_failed_prs_by_retry  # local to dodge cycle
+
+    failed = list(github_state.list_failed_ci_active_prs() or ())
+    retryable, escalated = partition_failed_prs_by_retry(
+        failed, retry_lookup=retry_lookup, policy=policy
+    )
+
+    class _FilteredGithubState:
+        def list_failed_ci_active_prs(_self):
+            return retryable
+
+        def list_open_issues_without_session(_self):
+            return github_state.list_open_issues_without_session()
+
+    candidate = select_next_task(
+        github_state=_FilteredGithubState(),
+        session_state=session_state,
+        now=now,
+    )
+    if escalated:
+        new_payload = dict(candidate.payload)
+        new_payload["ci_retry_escalated"] = list(escalated)
+        candidate = NextTaskCandidate(
+            source=candidate.source,
+            priority=candidate.priority,
+            reason=candidate.reason,
+            payload=new_payload,
+            selected_at=candidate.selected_at,
+        )
+    return candidate
+
+
 __all__ = (
     "GithubStateLike",
     "NextTaskCandidate",
@@ -261,5 +325,6 @@ __all__ = (
     "SOURCE_UNRESOLVED_DISCUSSION",
     "SessionStateLike",
     "select_next_task",
+    "select_next_task_with_ci_retry_guard",
     "stamp_selection_to_session_extra",
 )
