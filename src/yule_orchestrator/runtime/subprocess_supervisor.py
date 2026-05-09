@@ -174,6 +174,14 @@ async def run_runtime_up(
                 "runtime up: skipping reserved service %s", spec.service_id
             )
             continue
+        if not spec.auto_spawn:
+            logger.info(
+                "runtime up: skipping opt-in service %s "
+                "(auto_spawn=False — set explicit `--include %s` to spawn)",
+                spec.service_id,
+                spec.service_id,
+            )
+            continue
         cmd = list(base_cmd) + [spec.service_id]
         managed.append(ManagedProcess(spec=spec, cmd=cmd, env=base_env))
 
@@ -450,6 +458,16 @@ def build_dry_run_plan(
         if not spec.is_implemented():
             skipped.append((spec.service_id, spec.description))
             continue
+        if not spec.auto_spawn:
+            # opt-in service — show in skipped list with the auto_spawn
+            # marker so operators know why it's not in the spawn set.
+            skipped.append(
+                (
+                    spec.service_id,
+                    f"[opt-in / auto_spawn=False] {spec.description}",
+                )
+            )
+            continue
         cmd = tuple(list(base_cmd) + [spec.service_id])
         services.append((spec.service_id, spec.description, cmd))
     return DryRunPlan(
@@ -468,10 +486,24 @@ def render_dry_run_plan(plan: DryRunPlan) -> str:
         lines.append(f"  - {service_id}  # {description}")
         lines.append("    cmd: " + " ".join(cmd))
     if plan.skipped:
-        lines.append("")
-        lines.append(f"reserved (not started): {len(plan.skipped)}")
-        for service_id, description in plan.skipped:
-            lines.append(f"  - {service_id}  # {description}")
+        # #73 — distinguish RESERVED_* placeholders from opt-in services
+        # (auto_spawn=False) so the operator sees what they could turn on.
+        opt_in = [
+            (sid, desc) for sid, desc in plan.skipped if "auto_spawn=False" in desc
+        ]
+        reserved = [
+            (sid, desc) for sid, desc in plan.skipped if "auto_spawn=False" not in desc
+        ]
+        if opt_in:
+            lines.append("")
+            lines.append(f"opt-in (not started — auto_spawn=False): {len(opt_in)}")
+            for service_id, description in opt_in:
+                lines.append(f"  - {service_id}  # {description}")
+        if reserved:
+            lines.append("")
+            lines.append(f"reserved (not started): {len(reserved)}")
+            for service_id, description in reserved:
+                lines.append(f"  - {service_id}  # {description}")
     return "\n".join(lines)
 
 

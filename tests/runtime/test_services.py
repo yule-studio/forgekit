@@ -27,7 +27,10 @@ from yule_orchestrator.runtime.services import (
 class EngineeringProfileTests(unittest.TestCase):
     def test_engineering_profile_lists_all_required_services(self) -> None:
         ids = {spec.service_id for spec in ENGINEERING_PROFILE}
-        # Spec: 11 implemented + 1 reserved gateway placeholder.
+        # Spec: 11 always-on workers + 1 opt-in coding executor (#73)
+        # + 1 discord gateway = 13 total. ``eng-coding-executor`` is
+        # ``auto_spawn=False`` so ``yule runtime up`` skips it without
+        # explicit operator opt-in (live executor wiring + push creds).
         required = {
             "eng-supervisor-watch",
             "eng-research-worker",
@@ -40,6 +43,7 @@ class EngineeringProfileTests(unittest.TestCase):
             "eng-role-product-designer",
             "eng-approval-worker",
             "eng-obsidian-writer",
+            "eng-coding-executor",
             "eng-discord-gateway",
         }
         self.assertEqual(ids, required)

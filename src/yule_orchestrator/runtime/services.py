@@ -35,6 +35,11 @@ class ServiceKind(str, Enum):
     ROLE_WORKER = "role_worker"
     APPROVAL_WORKER = "approval_worker"
     OBSIDIAN_WRITER = "obsidian_writer"
+    # #73 Phase 1 — coding executor worker. Registered as a service kind
+    # so ``runtime up`` *can* spawn it, but the engineering profile keeps
+    # it OFF by default (opt-in flag in the service spec). Production
+    # spawn after live-executor wiring lands in a follow-up PR.
+    CODING_EXECUTOR = "coding_executor"
     SUPERVISOR = "supervisor"
     DISCORD_GATEWAY = "discord_gateway"
     # Kept for backward compatibility — older inventory dumps may
@@ -57,6 +62,10 @@ class ServiceSpec:
     kind: ServiceKind
     description: str
     role: Optional[str] = None
+    # #73 — when False, ``runtime up`` lists the service in the inventory
+    # but does not spawn it automatically. Used for the coding executor
+    # which needs explicit operator opt-in (live executor calls + git push).
+    auto_spawn: bool = True
 
     def is_implemented(self) -> bool:
         """Whether ``run_service`` has a real worker for this row.
@@ -140,6 +149,19 @@ def _build_engineering_profile() -> Tuple[ServiceSpec, ...]:
                 "obsidian_write queue consumer — writes approved knowledge "
                 "/ research notes into OBSIDIAN_VAULT_PATH (approval guard)"
             ),
+        )
+    )
+    rows.append(
+        ServiceSpec(
+            service_id="eng-coding-executor",
+            kind=ServiceKind.CODING_EXECUTOR,
+            description=(
+                "coding_execute queue consumer (#73) — drives worktree → edit → "
+                "test → commit → push → draft PR for approved coding_jobs. "
+                "Registered but NOT auto-spawned: live executor wiring + push "
+                "credentials require explicit operator opt-in (auto_spawn=False)."
+            ),
+            auto_spawn=False,
         )
     )
     rows.append(
