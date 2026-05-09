@@ -54,6 +54,7 @@ from .retrieval import (
     KnowledgeMatch,
     KnowledgeRecord,
     KnowledgeRetriever,
+    label_for_signal,
     score_knowledge_record,
 )
 from .scheduler import (
@@ -87,6 +88,7 @@ from .models import (
     ENGINEERING_KNOWLEDGE_CONTRACT,
     EngineeringKnowledgeItem,
     Importance,
+    KnowledgeShareScope,
     KnowledgeStatus,
     LearningLevel,
     NOTE_KIND_ENGINEERING_KNOWLEDGE,
@@ -103,6 +105,8 @@ from .obsidian import (
     build_engineering_knowledge_write_request,
     build_rejected_quality_gate_audit,
     evaluate_quality_gate,
+    shareable_external_payload,
+    vault_only_metadata,
 )
 from .renderer import (
     RendererError,
@@ -145,6 +149,7 @@ __all__ = [
     "KnowledgeMatch",
     "KnowledgeRecord",
     "KnowledgeRetriever",
+    "label_for_signal",
     "score_knowledge_record",
     # scheduler
     "RefreshPlan",
@@ -173,6 +178,7 @@ __all__ = [
     "ENGINEERING_KNOWLEDGE_CONTRACT",
     "EngineeringKnowledgeItem",
     "Importance",
+    "KnowledgeShareScope",
     "KnowledgeStatus",
     "LearningLevel",
     "NOTE_KIND_ENGINEERING_KNOWLEDGE",
@@ -188,6 +194,8 @@ __all__ = [
     "build_engineering_knowledge_write_request",
     "build_rejected_quality_gate_audit",
     "evaluate_quality_gate",
+    "shareable_external_payload",
+    "vault_only_metadata",
     # renderer
     "RendererError",
     "render_engineering_knowledge_note",

@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Sequence
 
-from .models import EngineeringKnowledgeItem, Importance
+from .models import EngineeringKnowledgeItem, Importance, KnowledgeShareScope
 
 
 _IMPORTANCE_BADGES = {
@@ -29,11 +29,36 @@ _IMPORTANCE_BADGES = {
 _MAX_PER_ROLE = 5
 
 
+_SHARE_SCOPE_TAGS = {
+    KnowledgeShareScope.PUBLIC: "",
+    KnowledgeShareScope.TEAM_INTERNAL: " · 🔒 team-internal",
+    KnowledgeShareScope.RESTRICTED: " · 🔒 공개 제한",
+}
+
+
 def _format_line(index: int, item: EngineeringKnowledgeItem) -> str:
+    """Format a single digest line, honouring ``share_scope``.
+
+    - ``PUBLIC``: title + badge + source link, identical to the v0
+      output so existing assertions continue to pass.
+    - ``TEAM_INTERNAL``: same surface, plus a ``team-internal`` tag so
+      downstream readers know the body is Obsidian-only.
+    - ``RESTRICTED``: title and source replaced by an opaque
+      ``topic_key`` reference + the share-scope tag — no title, no
+      source URL, no body. The Obsidian footer line still tells the
+      reader where to look up the full record.
+    """
+
     badge = _IMPORTANCE_BADGES.get(item.importance, item.importance.value)
+    scope_tag = _SHARE_SCOPE_TAGS.get(item.share_scope, "")
+    if item.share_scope == KnowledgeShareScope.RESTRICTED:
+        return (
+            f"{index}. **🔒 공개 제한된 자료** "
+            f"(`{item.topic_key}`) — {badge}{scope_tag}"
+        )
     return (
         f"{index}. **{item.title}** — {badge} · "
-        f"[{item.source_name}]({item.source_url})"
+        f"[{item.source_name}]({item.source_url}){scope_tag}"
     )
 
 

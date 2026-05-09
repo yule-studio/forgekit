@@ -31,6 +31,7 @@ from typing import Any, List, Mapping, Optional, Tuple
 from .models import (
     NOTE_KIND_ENGINEERING_KNOWLEDGE,
     EngineeringKnowledgeItem,
+    KnowledgeShareScope,
 )
 from .renderer import RendererError, render_engineering_knowledge_note
 
@@ -97,8 +98,106 @@ def evaluate_quality_gate(item: EngineeringKnowledgeItem) -> QualityGateResult:
         reasons.append("missing:practice_verification.expected_result")
     if item.review_after_days is None or int(item.review_after_days) <= 0:
         reasons.append("missing:review_after_days")
+    # Share boundary: scope is mandatory (default PUBLIC at the model
+    # layer is acceptable, but it must be a member of the enum). When
+    # an operator scopes an item down to RESTRICTED they must also
+    # explain why, so the operator-facing audit can pin the call.
+    if not isinstance(item.share_scope, KnowledgeShareScope):
+        reasons.append("missing:share_scope")
+    elif (
+        item.share_scope == KnowledgeShareScope.RESTRICTED
+        and not item.share_scope_reason.strip()
+    ):
+        reasons.append("missing:share_scope_reason_for_restricted")
 
     return QualityGateResult(passed=not reasons, reasons=tuple(reasons))
+
+
+# ---------------------------------------------------------------------------
+# Share boundary helpers
+# ---------------------------------------------------------------------------
+
+
+def shareable_external_payload(
+    item: EngineeringKnowledgeItem,
+) -> Mapping[str, Any]:
+    """Return the dict of fields safe to ship to an external surface.
+
+    External surfaces here = Discord digest, PR body, gateway response
+    text — anything that leaves the Obsidian vault. The payload is
+    intentionally minimal:
+
+    - ``PUBLIC``: title + summary + source name/url + topic_key +
+      share_scope (so consumers can label the citation).
+    - ``TEAM_INTERNAL``: title + source name/url + topic_key only —
+      summary deliberately omitted so a downstream copy-paste loop
+      can't accidentally leak the synthesised body to a public channel.
+    - ``RESTRICTED``: only the topic_key + share_scope marker. No
+      title, no source, no summary. Lets external surfaces show
+      "🔒 공개 제한된 자료 1건" without disclosing what topic.
+
+    The mapping is always a fresh dict (caller can mutate without
+    affecting the item). Missing optional fields stay absent rather
+    than carrying empty strings, so consumers can ``if "summary" in
+    payload`` rather than ``if payload["summary"]``.
+    """
+
+    scope = item.share_scope
+    base: dict[str, Any] = {
+        "topic_key": item.topic_key,
+        "share_scope": scope.value,
+    }
+    if scope == KnowledgeShareScope.PUBLIC:
+        base.update(
+            {
+                "title": item.title,
+                "summary": item.summary,
+                "source_name": item.source_name,
+                "source_url": item.source_url,
+            }
+        )
+    elif scope == KnowledgeShareScope.TEAM_INTERNAL:
+        base.update(
+            {
+                "title": item.title,
+                "source_name": item.source_name,
+                "source_url": item.source_url,
+                "internal_only": True,
+            }
+        )
+    else:  # RESTRICTED
+        base["restricted_marker"] = "🔒 공개 제한된 자료"
+        if item.share_scope_reason:
+            base["share_scope_reason"] = item.share_scope_reason
+    return base
+
+
+def vault_only_metadata(
+    item: EngineeringKnowledgeItem,
+) -> Mapping[str, Any]:
+    """Return the dict of fields that should stay inside Obsidian.
+
+    These are the body sections — practice steps, common mistakes,
+    learning extras, project applicability — plus the share_scope so
+    a vault tool can audit "this is internal even though it landed".
+    Used by callers that want to deposit *only* the vault-private
+    chunk into long-term storage without re-exporting body text.
+    """
+
+    return {
+        "share_scope": item.share_scope.value,
+        "share_scope_reason": item.share_scope_reason,
+        "summary": item.summary,
+        "why_it_matters": item.why_it_matters,
+        "what_changed": item.what_changed,
+        "practical_impact": item.practical_impact,
+        "recommended_action": item.recommended_action,
+        "practice_topic": item.practice_topic,
+        "practice_steps": list(item.practice_steps),
+        "practice_checklist": list(item.practice_checklist),
+        "common_mistakes": list(item.common_mistakes),
+        "expected_output": item.expected_output,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -153,8 +252,11 @@ def build_engineering_knowledge_write_request(
             "dedup_key": item.dedup_key,
             "importance": item.importance.value,
             "audience": item.audience.value,
+            "share_scope": item.share_scope.value,
+            "share_scope_reason": item.share_scope_reason,
         },
         "engineering_knowledge_item": dict(item.to_payload()),
+        "shareable_external_payload": dict(shareable_external_payload(item)),
     }
 
     return ObsidianWriteRequest(
@@ -197,4 +299,6 @@ __all__ = [
     "build_engineering_knowledge_write_request",
     "build_rejected_quality_gate_audit",
     "evaluate_quality_gate",
+    "shareable_external_payload",
+    "vault_only_metadata",
 ]
