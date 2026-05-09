@@ -84,13 +84,16 @@ class _FakeProcess:
 
 
 class DryRunPlanTests(unittest.TestCase):
-    def test_dry_run_lists_every_implemented_service(self) -> None:
+    def test_dry_run_lists_every_auto_spawn_service(self) -> None:
         plan = build_dry_run_plan(profile="engineering")
-        # Every implemented engineering service is in the plan. M6.1b-2
-        # flipped the gateway to implemented so the count is now 12
-        # (gateway joins research/supervisor/role × 7/approval/obsidian).
+        # Every auto_spawn engineering service is in the plan. M6.1b-2
+        # flipped the gateway to implemented (12 services). #73 added
+        # eng-coding-executor as opt-in (auto_spawn=False) — so it is
+        # NOT in the spawn plan even though it is implemented. Total
+        # auto-spawn count remains 12.
         ids = {entry[0] for entry in plan.services}
         self.assertEqual(len(plan.services), 12)
+        self.assertNotIn("eng-coding-executor", ids)
         self.assertIn("eng-research-worker", ids)
         self.assertIn("eng-role-tech-lead", ids)
         self.assertIn("eng-supervisor-watch", ids)
@@ -100,24 +103,64 @@ class DryRunPlanTests(unittest.TestCase):
             self.assertEqual(cmd[:2], ("yule", "run-service"))
             self.assertEqual(cmd[2], service_id)
 
-    def test_dry_run_has_no_skipped_services(self) -> None:
-        # M6.1b-2 promoted the last reserved service (gateway) to
-        # implemented, so the engineering profile carries no
-        # placeholders. New profiles or new reserved services will
-        # cause this list to grow again — the assertion is a
-        # tripwire for that.
+    def test_dry_run_lists_opt_in_coding_executor_as_skipped(self) -> None:
+        # #73 — eng-coding-executor is opt-in (auto_spawn=False) so
+        # ``yule runtime up`` skips it without operator opt-in. The
+        # dry-run plan still surfaces it in the skipped list with the
+        # ``[opt-in / auto_spawn=False]`` marker so the operator sees
+        # what's available.
         plan = build_dry_run_plan(profile="engineering")
-        self.assertEqual(plan.skipped, ())
+        skipped_ids = {sid for sid, _ in plan.skipped}
+        self.assertIn("eng-coding-executor", skipped_ids)
+        marker = next(
+            desc for sid, desc in plan.skipped if sid == "eng-coding-executor"
+        )
+        self.assertIn("opt-in", marker)
+        self.assertIn("auto_spawn=False", marker)
 
     def test_render_includes_profile_and_counts(self) -> None:
         plan = build_dry_run_plan(profile="engineering")
         rendered = render_dry_run_plan(plan)
         self.assertIn("profile: engineering", rendered)
+        # 13 specs total; 1 opt-in (coding executor) → 12 spawned.
         self.assertIn("services to start: 12", rendered)
         self.assertIn("eng-research-worker", rendered)
         self.assertIn("eng-discord-gateway", rendered)
         # No reserved block now that gateway is implemented.
         self.assertNotIn("reserved (not started)", rendered)
+
+    def test_env_flag_flips_coding_executor_into_spawn_set(self) -> None:
+        # #73 Round 2 — when the operator sets
+        # ``YULE_CODING_EXECUTOR_AUTOSPAWN=true`` in their .env.local,
+        # the dry-run plan must list eng-coding-executor in the
+        # services-to-start block (and remove it from the opt-in
+        # block). Verified by reloading services.py + supervisor under
+        # a patched env so the import-time evaluation picks up the flag.
+        import importlib
+        import os
+
+        from yule_orchestrator.runtime import (
+            services as services_mod,
+            subprocess_supervisor as supervisor_mod,
+        )
+
+        original = os.environ.get("YULE_CODING_EXECUTOR_AUTOSPAWN")
+        os.environ["YULE_CODING_EXECUTOR_AUTOSPAWN"] = "true"
+        try:
+            importlib.reload(services_mod)
+            importlib.reload(supervisor_mod)
+            plan = supervisor_mod.build_dry_run_plan(profile="engineering")
+            spawned_ids = {sid for sid, _, _ in plan.services}
+            self.assertIn("eng-coding-executor", spawned_ids)
+            opt_in_ids = {sid for sid, _ in plan.skipped}
+            self.assertNotIn("eng-coding-executor", opt_in_ids)
+        finally:
+            if original is None:
+                del os.environ["YULE_CODING_EXECUTOR_AUTOSPAWN"]
+            else:
+                os.environ["YULE_CODING_EXECUTOR_AUTOSPAWN"] = original
+            importlib.reload(services_mod)
+            importlib.reload(supervisor_mod)
 
 
 # ---------------------------------------------------------------------------
@@ -160,12 +203,14 @@ class SpawnAndSuperviseTests(unittest.TestCase):
 
         rc = _run(driver())
         self.assertEqual(rc, 0)
-        # 12 implemented services spawned exactly once each (M6.1b-2
-        # flipped the gateway from reserved to implemented so it now
-        # joins the spawn list).
+        # 12 auto-spawn services exactly once each. M6.1b-2 flipped the
+        # gateway to implemented (12 total). #73 added eng-coding-executor
+        # as opt-in (auto_spawn=False) so it is NOT spawned by default —
+        # spawn count remains 12.
         spawned_ids = [cmd[-1] for cmd in spawned]
         self.assertEqual(len(spawned_ids), 12)
         self.assertIn("eng-discord-gateway", spawned_ids)
+        self.assertNotIn("eng-coding-executor", spawned_ids)
         # Every fake process received terminate() during drain.
         self.assertTrue(all(evt.is_set() for evt in terminate_events))
 

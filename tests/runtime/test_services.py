@@ -17,8 +17,11 @@ except ModuleNotFoundError:
 
 from yule_orchestrator.runtime.services import (
     ENGINEERING_PROFILE,
+    ENV_CODING_EXECUTOR_AUTOSPAWN,
     PROFILES,
     ServiceKind,
+    build_engineering_profile,
+    is_coding_executor_autospawn_enabled,
     list_services,
     resolve_service,
 )
@@ -27,7 +30,10 @@ from yule_orchestrator.runtime.services import (
 class EngineeringProfileTests(unittest.TestCase):
     def test_engineering_profile_lists_all_required_services(self) -> None:
         ids = {spec.service_id for spec in ENGINEERING_PROFILE}
-        # Spec: 11 implemented + 1 reserved gateway placeholder.
+        # Spec: 11 always-on workers + 1 opt-in coding executor (#73)
+        # + 1 discord gateway = 13 total. ``eng-coding-executor`` is
+        # ``auto_spawn=False`` so ``yule runtime up`` skips it without
+        # explicit operator opt-in (live executor wiring + push creds).
         required = {
             "eng-supervisor-watch",
             "eng-research-worker",
@@ -40,6 +46,7 @@ class EngineeringProfileTests(unittest.TestCase):
             "eng-role-product-designer",
             "eng-approval-worker",
             "eng-obsidian-writer",
+            "eng-coding-executor",
             "eng-discord-gateway",
         }
         self.assertEqual(ids, required)
@@ -80,6 +87,71 @@ class EngineeringProfileTests(unittest.TestCase):
                 spec.is_implemented(),
                 f"{spec.service_id} should be implemented after M6.1b-2",
             )
+
+
+class CodingExecutorAutoSpawnTests(unittest.TestCase):
+    """#73 Round 2 — env-driven opt-in for ``eng-coding-executor``.
+
+    Default (env unset / falsey) → ``auto_spawn=False`` so ``runtime up``
+    skips the executor. Truthy ``YULE_CODING_EXECUTOR_AUTOSPAWN`` flips
+    the spec to ``auto_spawn=True``.
+    """
+
+    def _coding_executor_spec(self, profile):
+        return next(
+            spec for spec in profile if spec.service_id == "eng-coding-executor"
+        )
+
+    def test_default_when_env_unset(self) -> None:
+        profile = build_engineering_profile(env={})
+        self.assertFalse(self._coding_executor_spec(profile).auto_spawn)
+
+    def test_default_when_env_falsey(self) -> None:
+        for value in ("", "false", "no", "off", "0", "  False  "):
+            with self.subTest(value=value):
+                profile = build_engineering_profile(
+                    env={ENV_CODING_EXECUTOR_AUTOSPAWN: value}
+                )
+                self.assertFalse(self._coding_executor_spec(profile).auto_spawn)
+
+    def test_truthy_env_flips_to_auto_spawn(self) -> None:
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            with self.subTest(value=value):
+                profile = build_engineering_profile(
+                    env={ENV_CODING_EXECUTOR_AUTOSPAWN: value}
+                )
+                self.assertTrue(self._coding_executor_spec(profile).auto_spawn)
+
+    def test_other_specs_unaffected_when_env_set(self) -> None:
+        # Flipping the executor flag must not change auto_spawn on
+        # any other service. Hard rail: opt-in is scoped to one row.
+        profile = build_engineering_profile(
+            env={ENV_CODING_EXECUTOR_AUTOSPAWN: "true"}
+        )
+        for spec in profile:
+            if spec.service_id == "eng-coding-executor":
+                self.assertTrue(spec.auto_spawn)
+            else:
+                self.assertTrue(spec.auto_spawn)
+
+    def test_helper_returns_truthy_state(self) -> None:
+        self.assertTrue(
+            is_coding_executor_autospawn_enabled(
+                env={ENV_CODING_EXECUTOR_AUTOSPAWN: "true"}
+            )
+        )
+        self.assertFalse(is_coding_executor_autospawn_enabled(env={}))
+
+    def test_unrelated_env_var_does_not_enable(self) -> None:
+        # Detecting GitHub App env / push creds does NOT enable auto-spawn.
+        # Operator must set the exact flag.
+        profile = build_engineering_profile(
+            env={
+                "YULE_GITHUB_APP_ID": "123456",
+                "YULE_GITHUB_APP_INSTALLATION_ID": "789",
+            }
+        )
+        self.assertFalse(self._coding_executor_spec(profile).auto_spawn)
 
 
 class ProfileLookupTests(unittest.TestCase):
