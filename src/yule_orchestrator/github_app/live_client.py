@@ -300,6 +300,50 @@ class LiveGithubAppClient:
             body["base_tree"] = str(base_tree)
         return self._post(f"{self._api_base}/repos/{repo}/git/trees", body=body)
 
+    def list_check_runs(
+        self, *, repo: str, head_sha: str
+    ) -> Sequence[Mapping[str, Any]]:
+        """List GitHub Check Runs for a commit SHA.
+
+        Used by the CI retry orchestrator to decide whether the latest
+        executor commit passed / failed / is still pending. The endpoint
+        already returns the per-run conclusion the
+        :func:`agents.job_queue.ci_status.from_check_runs` aggregator
+        consumes; we only need to project to a list of ``{name, status,
+        conclusion}`` dicts so the caller doesn't ship a GitHub-API
+        coupling beyond the adapter boundary.
+        """
+
+        if not head_sha:
+            return ()
+        url = f"{self._api_base}/repos/{repo}/commits/{head_sha}/check-runs"
+        payload = self._get(url)
+        runs = payload.get("check_runs") if isinstance(payload, Mapping) else None
+        if not runs:
+            return ()
+        out: list[dict[str, Any]] = []
+        for run in runs:
+            if not isinstance(run, Mapping):
+                continue
+            out.append(
+                {
+                    "name": str(run.get("name") or ""),
+                    "status": str(run.get("status") or ""),
+                    "conclusion": str(run.get("conclusion") or ""),
+                    "html_url": str(run.get("html_url") or ""),
+                }
+            )
+        return tuple(out)
+
+    def get_pull_request(
+        self, *, repo: str, pr_number: int
+    ) -> Mapping[str, Any]:
+        """Fetch a PR by number — head SHA + state used by the orchestrator."""
+
+        return self._get(
+            f"{self._api_base}/repos/{repo}/pulls/{int(pr_number)}"
+        )
+
     # ------------------------------------------------------------------
     # HTTP helpers — every call funnels through a single token-headers
     # path so the Authorization redaction stays in one place.
