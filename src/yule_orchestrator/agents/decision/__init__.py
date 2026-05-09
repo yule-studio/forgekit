@@ -19,6 +19,15 @@ threads, related issues / PRs, code hints — all from injectable
 sources.
 """
 
+from .classifier_factory import (
+    AnthropicClassifier,
+    BlockedClassifierError,
+    ClassifierResolution,
+    OllamaClassifier,
+    OllamaClassifierConfig,
+    OpenAIClassifier,
+    build_classifier_from_env,
+)
 from .context_pack import (
     CodeHintProvider,
     ContextPack,
@@ -66,4 +75,12 @@ __all__ = (
     "NoteProvider",
     "ThreadProvider",
     "build_context_pack",
+    # classifier factory
+    "AnthropicClassifier",
+    "BlockedClassifierError",
+    "ClassifierResolution",
+    "OllamaClassifier",
+    "OllamaClassifierConfig",
+    "OpenAIClassifier",
+    "build_classifier_from_env",
 )
