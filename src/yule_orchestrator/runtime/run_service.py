@@ -26,12 +26,17 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ..agents.job_queue import (
     ApprovalWorker,
+    AutonomyLockRegistry,
+    AutonomyProducer,
     CodingExecutorWorker,
     HeartbeatStore,
     JobQueue,
     ObsidianWriterWorker,
     ResearchWorker,
     RoleTakeWorker,
+    WorkflowSessionState,
+    build_completion_funnel,
+    build_discussion_followup_dispatcher,
     default_render_fn,
     default_vault_root_resolver,
     default_write_fn,
@@ -126,12 +131,17 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
         post_fn, post_interval = _build_supervisor_status_post(
             queue=queue, heartbeats=heartbeats
         )
+        autonomy_tick_fn, autonomy_interval = _build_autonomy_producer_tick(
+            queue=queue, heartbeats=heartbeats
+        )
         await run_supervisor_watch_loop(
             heartbeat_store=heartbeats,
             job_queue=queue,
             shutdown_event=shutdown_event,
             status_post_fn=post_fn,
             status_post_interval_seconds=post_interval,
+            autonomy_producer_tick_fn=autonomy_tick_fn,
+            autonomy_producer_interval_seconds=autonomy_interval,
         )
         return EXIT_OK
 
@@ -666,6 +676,89 @@ def _build_supervisor_status_post(
 
 
 # ---------------------------------------------------------------------------
+# Round 4 of #73 — autonomy producer tick wiring
+# ---------------------------------------------------------------------------
+#
+# The supervisor watchdog runs the autonomy producer on its own
+# interval so the runtime auto-generates the next coding_execute /
+# discussion follow-up after every completion. The interval is
+# operator-tunable; ``None`` (default) keeps the producer dormant
+# so this PR doesn't change supervisor behaviour for installations
+# that haven't opted in yet.
+
+ENV_AUTONOMY_PRODUCER_ENABLED: str = "YULE_AUTONOMY_PRODUCER_ENABLED"
+ENV_AUTONOMY_PRODUCER_INTERVAL: str = "YULE_AUTONOMY_PRODUCER_INTERVAL_SECONDS"
+DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS: float = 30.0
+
+
+def _build_autonomy_producer_tick(
+    *,
+    queue: JobQueue,
+    heartbeats: HeartbeatStore,
+):
+    """Return ``(tick_fn, interval)`` for the supervisor's autonomy hook.
+
+    Returns ``(None, None)`` unless
+    ``YULE_AUTONOMY_PRODUCER_ENABLED`` is truthy. The producer wires
+    to a single ``CodingExecutorWorker`` instance + the production
+    follow-up dispatcher; the lock registry is process-local so two
+    supervisor restarts naturally start with a clean slate.
+
+    Failures during construction (e.g. missing executor bundle env)
+    log a warning + return the dormant pair — the supervisor still
+    runs sweep / status post, just without the producer tick.
+    """
+
+    import os as _os
+
+    raw_enabled = (_os.environ.get(ENV_AUTONOMY_PRODUCER_ENABLED) or "").strip().lower()
+    if raw_enabled not in {"1", "true", "yes", "on"}:
+        return None, None
+
+    raw_interval = (_os.environ.get(ENV_AUTONOMY_PRODUCER_INTERVAL) or "").strip()
+    interval: float
+    if raw_interval:
+        try:
+            interval = max(5.0, float(raw_interval))
+        except ValueError:
+            interval = DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS
+    else:
+        interval = DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS
+
+    try:
+        coding_bundle = build_coding_executor_bundle()
+        coding_worker = CodingExecutorWorker(
+            queue=queue, heartbeats=heartbeats, **coding_bundle
+        )
+        role_worker = RoleTakeWorker(queue=queue, heartbeats=heartbeats)
+        research_worker = ResearchWorker(queue=queue, heartbeats=heartbeats)
+        followup = build_discussion_followup_dispatcher(
+            role_take_worker=role_worker,
+            research_worker=research_worker,
+        )
+        session_state = WorkflowSessionState()
+        registry = AutonomyLockRegistry()
+        producer = AutonomyProducer(
+            session_state=session_state,
+            coding_executor=coding_worker,
+            lock_registry=registry,
+            followup_dispatch=followup,
+        )
+    except Exception:  # noqa: BLE001 - never crash supervisor startup
+        logger.warning(
+            "autonomy producer construction failed — supervisor will tick "
+            "without producer hook",
+            exc_info=True,
+        )
+        return None, None
+
+    def _tick():
+        return producer.tick()
+
+    return _tick, interval
+
+
+# ---------------------------------------------------------------------------
 # Signal handling
 # ---------------------------------------------------------------------------
 
@@ -711,6 +804,9 @@ def parse_args_and_run(argv: Optional[Iterable[str]] = None) -> int:
 
 
 __all__ = (
+    "DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS",
+    "ENV_AUTONOMY_PRODUCER_ENABLED",
+    "ENV_AUTONOMY_PRODUCER_INTERVAL",
     "ENV_CODING_EXECUTOR_REPO_ROOT",
     "ENV_CODING_EXECUTOR_WORKTREE_ROOT",
     "EXIT_INTERNAL_ERROR",

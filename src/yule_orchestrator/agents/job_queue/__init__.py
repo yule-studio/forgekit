@@ -60,6 +60,16 @@ from .approval_worker import (
     env_approval_channel_resolver,
     render_approval_request,
 )
+from .claude_decision_seam import (
+    ClaudeDecisionPort,
+    DECISION_KIND_DISCUSSION_FOLLOWUP,
+    DECISION_KIND_NEXT_TASK,
+    DECISION_KIND_RETRY_GUARD,
+    DecisionRequest,
+    DecisionResponse,
+    DeterministicDecisionPort,
+    compose_decision_port,
+)
 from .completion_funnel import (
     COMPLETION_FUNNEL_EXTRA_KEY,
     CompletionFunnelOutcome,
@@ -196,6 +206,14 @@ __all__ = (
     "AutonomyTickContext",
     "DispatchOutcome",
     "PRODUCER_TICK_LOCK_TTL_SECONDS",
+    "ClaudeDecisionPort",
+    "DECISION_KIND_DISCUSSION_FOLLOWUP",
+    "DECISION_KIND_NEXT_TASK",
+    "DECISION_KIND_RETRY_GUARD",
+    "DecisionRequest",
+    "DecisionResponse",
+    "DeterministicDecisionPort",
+    "compose_decision_port",
     "COMPLETION_FUNNEL_EXTRA_KEY",
     "CompletionFunnelOutcome",
     "DISCUSSION_FOLLOWUP_EXTRA_KEY",
