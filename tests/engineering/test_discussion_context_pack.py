@@ -317,5 +317,146 @@ class ContextPackKnowledgeIntegrationTestCase(unittest.TestCase):
         )
 
 
+class ContextPackEvidenceSurfaceTestCase(unittest.TestCase):
+    """``relevant_knowledge`` → 사람이 읽을 수 있는 evidence 블록."""
+
+    def _public_ref(self, **overrides) -> EngineeringKnowledgeRef:
+        base = dict(
+            title="Spring Security 인증 흐름",
+            role="backend-engineer",
+            topic_key="spring-auth",
+            source_url="https://example.com/spring-auth",
+            source_name="Spring Docs",
+            summary="OAuth2 + Filter chain 정리",
+            score=8.0,
+            signals=("role_primary_match", "axis_overlap:api_schema_auth"),
+            evidence_labels=(
+                "요청 역할과 정확히 일치",
+                "task_type 축 일치 (api_schema_auth)",
+            ),
+            share_scope="public",
+        )
+        base.update(overrides)
+        return EngineeringKnowledgeRef(**base)
+
+    def test_empty_relevant_knowledge_returns_empty_string(self) -> None:
+        pack = ContextPack(current_message="hi")
+        self.assertEqual(pack.format_knowledge_evidence_block(), "")
+
+    def test_public_evidence_includes_summary_and_signals(self) -> None:
+        pack = ContextPack(
+            current_message="auth",
+            relevant_knowledge=(self._public_ref(),),
+        )
+        block = pack.format_knowledge_evidence_block()
+        self.assertIn("근거 자료", block)
+        self.assertIn("Spring Security 인증 흐름", block)
+        self.assertIn("OAuth2 + Filter chain 정리", block)
+        # 사람이 읽는 evidence 라벨이 그대로 노출된다.
+        self.assertIn("요청 역할과 정확히 일치", block)
+        self.assertIn("task_type 축 일치", block)
+        self.assertIn("score=8.0", block)
+
+    def test_team_internal_evidence_drops_summary(self) -> None:
+        pack = ContextPack(
+            current_message="auth",
+            relevant_knowledge=(
+                self._public_ref(
+                    share_scope="team_internal",
+                    summary="이 요약은 외부 surface 에 노출되면 안 된다",
+                ),
+            ),
+        )
+        block = pack.format_knowledge_evidence_block()
+        self.assertIn("Spring Security 인증 흐름", block)
+        self.assertIn("team-internal", block)
+        self.assertNotIn("외부 surface 에 노출되면 안 된다", block)
+
+    def test_restricted_evidence_redacts_title_and_url(self) -> None:
+        pack = ContextPack(
+            current_message="incident",
+            relevant_knowledge=(
+                self._public_ref(
+                    share_scope="restricted",
+                    share_scope_reason="customer PII",
+                    title="2026-04-29 customer data leak",
+                    source_url="https://internal.example.com/incidents/2026-04-29",
+                    summary="민감 본문",
+                ),
+            ),
+        )
+        block = pack.format_knowledge_evidence_block()
+        # 제목/URL/요약 어떤 것도 외부에 옮겨지지 않는다.
+        self.assertNotIn("customer data leak", block)
+        self.assertNotIn("internal.example.com/incidents", block)
+        self.assertNotIn("민감 본문", block)
+        self.assertIn("공개 제한된 자료", block)
+        self.assertIn("customer PII", block)
+
+    def test_max_items_caps_block_length(self) -> None:
+        refs = tuple(
+            self._public_ref(topic_key=f"k{i}", title=f"item {i}")
+            for i in range(8)
+        )
+        pack = ContextPack(current_message="x", relevant_knowledge=refs)
+        block = pack.format_knowledge_evidence_block(max_items=3)
+        for visible in ("item 0", "item 1", "item 2"):
+            self.assertIn(visible, block)
+        self.assertNotIn("item 5", block)
+
+    def test_as_dict_carries_share_scope_and_evidence_labels(self) -> None:
+        pack = ContextPack(
+            current_message="auth",
+            relevant_knowledge=(self._public_ref(share_scope="team_internal"),),
+        )
+        payload = pack.as_dict()
+        knowledge = payload["relevant_knowledge"][0]
+        self.assertEqual(knowledge["share_scope"], "team_internal")
+        self.assertEqual(knowledge["score"], 8.0)
+        self.assertIn("요청 역할과 정확히 일치", knowledge["evidence_labels"])
+
+
+class ContextPackKnowledgeMatchUnwrapTestCase(unittest.TestCase):
+    """``KnowledgeRetriever.with_signals`` 가 ContextPack 까지 흘러들어와야 한다."""
+
+    def test_with_signals_path_carries_score_and_labels(self) -> None:
+        candidates = [
+            KnowledgeRecord(
+                topic_key="spring-auth",
+                title="Spring 인증",
+                role="backend-engineer",
+                source_url="https://example.com/spring-auth",
+                source_name="Spring Docs",
+                summary="OAuth2 흐름",
+                axes=(SourceAxis.API_SCHEMA_AUTH,),
+                rag_tags=("auth",),
+                collected_at="2026-05-08T00:00:00Z",
+            ),
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+            knowledge_retriever=KnowledgeRetriever(min_score=0.0),
+        )
+        pack = builder.build(
+            message_text="spring auth 흐름이 어떻게 되지",
+            session=SimpleNamespace(
+                session_id="abc",
+                task_type="backend-feature",
+                write_requested=False,
+                write_blocked_reason=None,
+                extra={},
+            ),
+            role_for_research="engineering-agent/backend-engineer",
+        )
+        self.assertEqual(len(pack.relevant_knowledge), 1)
+        ref = pack.relevant_knowledge[0]
+        # score 와 signals 가 ContextPack 으로 전달되어 surface 가 가능
+        self.assertIsNotNone(ref.score)
+        self.assertGreater(ref.score, 0.0)
+        self.assertTrue(ref.signals, msg="signals were not propagated")
+        # evidence_labels 도 ContextPack 까지 살아 들어온다 (한국어 라벨).
+        self.assertTrue(ref.evidence_labels)
+
+
 if __name__ == "__main__":
     unittest.main()
