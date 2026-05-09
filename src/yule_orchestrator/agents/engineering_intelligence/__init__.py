@@ -43,12 +43,21 @@ from .collector import (
     utc_now_iso,
 )
 from .providers import (
+    FakeKnowledgeProvider,
     LiveProviderSpec,
     LiveSourceFetcher,
     ProviderTransport,
     StubLiveSourceFetcher,
     provider_spec_for,
     specs_for_role,
+)
+from .provider_registry import (
+    KnowledgeProviderRegistration,
+    KnowledgeProviderRegistry,
+    LiveFetcherFactory,
+    ProviderAuthRequirement,
+    ProviderAvailability,
+    default_registry,
 )
 from .retrieval import (
     KnowledgeMatch,
@@ -135,12 +144,20 @@ __all__ = [
     "collect_for_role_with_schedule",
     "utc_now_iso",
     # providers
+    "FakeKnowledgeProvider",
     "LiveProviderSpec",
     "LiveSourceFetcher",
     "ProviderTransport",
     "StubLiveSourceFetcher",
     "provider_spec_for",
     "specs_for_role",
+    # provider registry / auth contract
+    "KnowledgeProviderRegistration",
+    "KnowledgeProviderRegistry",
+    "LiveFetcherFactory",
+    "ProviderAuthRequirement",
+    "ProviderAvailability",
+    "default_registry",
     # retrieval
     "KnowledgeMatch",
     "KnowledgeRecord",
