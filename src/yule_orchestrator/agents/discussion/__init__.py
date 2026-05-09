@@ -32,6 +32,7 @@ from .mode import (
 from .context_pack import (
     ContextPack,
     ContextPackBuilder,
+    EngineeringKnowledgeRef,
     ObsidianNoteRef,
     GithubIssueRef,
     GithubPRRef,
@@ -61,6 +62,7 @@ __all__ = (
     "classify_discussion_mode",
     "ContextPack",
     "ContextPackBuilder",
+    "EngineeringKnowledgeRef",
     "ObsidianNoteRef",
     "GithubIssueRef",
     "GithubPRRef",

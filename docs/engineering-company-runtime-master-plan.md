@@ -274,12 +274,21 @@ Discord thread 안에서 도는 루프.
 - [research-profiles.md](../policies/runtime/agents/engineering-agent/research-profiles.md)
 - [collector.py](../src/yule_orchestrator/agents/engineering_intelligence/collector.py)
 
-남은 일:
+Round 4 에서 추가된 구현:
 
-- live source adapters
-- schedule / interval
-- 저장 루프
-- retrieval 통합
+- [models.SourceAxis](../src/yule_orchestrator/agents/engineering_intelligence/models.py) — 10종 axis enum (official_docs / api_schema_auth / web_platform_framework / regression_test_plan / ci_cd_infra_observability / architecture_adr_tradeoff / ai_framework / design_system / security / release_notes_changelog).
+- [source_registry](../src/yule_orchestrator/agents/engineering_intelligence/source_registry.py) — 모든 seed 가 `axes` tag 부여, `required_axes_for_role` / `axes_for_role` / `sources_for_axis` / `axis_hints_for_task_type` helper 추가.
+- [scheduler.py](../src/yule_orchestrator/agents/engineering_intelligence/scheduler.py) — `compute_refresh_plan` (never / due / fresh / backoff / quota / review_required / auto_collect_disabled 7-state classifier), exponential backoff (×1/×2/×4/×8, 24h cap), `record_refresh_outcome`, `overdue_axes_for_role`.
+- [providers.py](../src/yule_orchestrator/agents/engineering_intelligence/providers.py) — `LiveProviderSpec` (transport / endpoint / parser / rate_limit / requires_auth_env), `provider_spec_for(SourceEntry)` 디스패치, `LiveSourceFetcher` Protocol + `StubLiveSourceFetcher` 결정적 fake.
+- [retrieval.py](../src/yule_orchestrator/agents/engineering_intelligence/retrieval.py) — `KnowledgeRecord` (lightweight projection), `score_knowledge_record` (role × axis × topic × importance × freshness), `KnowledgeRetriever` (`with_signals` 로 score 노출).
+- [discussion/context_pack.py](../src/yule_orchestrator/agents/discussion/context_pack.py) — `EngineeringKnowledgeRef` slot + `knowledge_loader` / `knowledge_retriever` seam 추가. ContextPack.relevant_knowledge 가 자동으로 채워진다.
+
+남은 일 (별도 worktree / PR):
+
+- live source fetcher 구현 (urllib 기반 RSS / Atom / Sitemap / HTML_LIST / GitHub Releases / GitHub API).
+- runtime service spawn (`eng-research-collector`) — scheduler tick → fetcher → adapter → vault writer.
+- `SourceRefreshState` persistence (sqlite or vault sidecar).
+- discussion synthesizer 가 `relevant_knowledge` slot 을 prompt 에 어떻게 짜 넣을지.
 
 ## 10. CI와 CD의 관계
 

@@ -16,6 +16,12 @@
 
 I/O 없음. note retrieval(외부 source 호출)은 builder의 ``note_loader``가
 하고, 본 모듈은 그 결과만 정렬한다.
+
+본 모듈은 **Obsidian note** 만 다룬다. engineering_intelligence 가 vault 에
+쌓아둔 ``EngineeringKnowledgeItem`` (= 역할별 학습 자료) 의 retrieval 은
+:mod:`yule_orchestrator.agents.engineering_intelligence.retrieval` 의
+``KnowledgeRetriever`` 가 책임지고, ContextPackBuilder 는 두 selector
+를 별개 슬롯 (``relevant_notes`` / ``relevant_knowledge``) 에 채운다.
 """
 
 from __future__ import annotations

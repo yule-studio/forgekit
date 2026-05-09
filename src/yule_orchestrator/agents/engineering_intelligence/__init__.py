@@ -50,6 +50,12 @@ from .providers import (
     provider_spec_for,
     specs_for_role,
 )
+from .retrieval import (
+    KnowledgeMatch,
+    KnowledgeRecord,
+    KnowledgeRetriever,
+    score_knowledge_record,
+)
 from .scheduler import (
     RefreshPlan,
     RefreshPlanEntry,
@@ -135,6 +141,11 @@ __all__ = [
     "StubLiveSourceFetcher",
     "provider_spec_for",
     "specs_for_role",
+    # retrieval
+    "KnowledgeMatch",
+    "KnowledgeRecord",
+    "KnowledgeRetriever",
+    "score_knowledge_record",
     # scheduler
     "RefreshPlan",
     "RefreshPlanEntry",

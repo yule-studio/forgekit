@@ -94,6 +94,36 @@ class CodeHint:
     line: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class EngineeringKnowledgeRef:
+    """`engineering_intelligence` 가 vault 에 쌓아둔 knowledge 한 건.
+
+    ContextPackBuilder 가 retrieval seam 으로 받아서 ``ContextPack``의
+    ``relevant_knowledge`` 슬롯에 그대로 끼워 넣는다. 외부 fetch는
+    호출자(주로 vault index loader)가 책임지고, 본 dataclass 는 뷰
+    전용 — 합성기/디버그 dump 가 사용한다.
+
+    필드 의미는 :class:`engineering_intelligence.KnowledgeRecord` 와
+    동일하지만, 본 모듈은 engineering_intelligence 를 import 하지 않는다
+    (서로 독립적으로 import-able 해야 한다는 운영 원칙). 합성 어댑터는
+    ``ContextPackBuilder._coerce_knowledge_ref`` 가 담당.
+    """
+
+    title: str
+    role: str
+    topic_key: str = ""
+    source_url: str = ""
+    source_name: str = ""
+    summary: Optional[str] = None
+    axes: Sequence[str] = field(default_factory=tuple)
+    rag_tags: Sequence[str] = field(default_factory=tuple)
+    importance: Optional[str] = None
+    collected_at: Optional[str] = None
+    note_path: Optional[str] = None
+    score: Optional[float] = None
+    signals: Sequence[str] = field(default_factory=tuple)
+
+
 # ---------------------------------------------------------------------------
 # ContextPack
 # ---------------------------------------------------------------------------
@@ -119,6 +149,9 @@ class ContextPack:
     related_issues: Sequence[GithubIssueRef] = field(default_factory=tuple)
     related_prs: Sequence[GithubPRRef] = field(default_factory=tuple)
     relevant_notes: Sequence[ObsidianNoteRef] = field(default_factory=tuple)
+    relevant_knowledge: Sequence[EngineeringKnowledgeRef] = field(
+        default_factory=tuple
+    )
     code_hints: Sequence[CodeHint] = field(default_factory=tuple)
     role_profile_summary: Optional[str] = None
     role_research_profile_summary: Optional[str] = None
@@ -182,6 +215,24 @@ class ContextPack:
                 }
                 for n in self.relevant_notes
             ],
+            "relevant_knowledge": [
+                {
+                    "title": k.title,
+                    "role": k.role,
+                    "topic_key": k.topic_key,
+                    "source_url": k.source_url,
+                    "source_name": k.source_name,
+                    "summary": k.summary,
+                    "axes": list(k.axes),
+                    "rag_tags": list(k.rag_tags),
+                    "importance": k.importance,
+                    "collected_at": k.collected_at,
+                    "note_path": k.note_path,
+                    "score": k.score,
+                    "signals": list(k.signals),
+                }
+                for k in self.relevant_knowledge
+            ],
             "code_hints": [
                 {
                     "path": h.path,
@@ -235,10 +286,13 @@ class ContextPackBuilder:
     role_profile_loader: Optional[Any] = None
     role_research_profile_loader: Optional[Any] = None
     memory_selector: Optional[Any] = None
+    knowledge_loader: Optional[Any] = None
+    knowledge_retriever: Optional[Any] = None
     max_thread_messages: int = 12
     max_issues: int = 5
     max_prs: int = 5
     max_notes: int = 5
+    max_knowledge: int = 5
     max_code_hints: int = 6
     max_thread_message_chars: int = 280
 
@@ -309,6 +363,22 @@ class ContextPackBuilder:
         if code_blocker:
             blockers.append(code_blocker)
 
+        # 5b. engineering_intelligence knowledge loader + retriever.
+        raw_knowledge, knowledge_blocker = self._collect_with_seam(
+            self.knowledge_loader,
+            query,
+            self.max_knowledge * 5,
+            "knowledge_loader",
+        )
+        if knowledge_blocker:
+            blockers.append(knowledge_blocker)
+        relevant_knowledge = self._select_relevant_knowledge(
+            raw_knowledge,
+            query=query,
+            task_type=task_type or suggested_task_type,
+            role=role_for_research,
+        )
+
         # 6. role profile + research profile
         role_profile_summary = self._safe_call(
             self.role_profile_loader, role_for_research, "role_profile_loader", blockers
@@ -332,6 +402,7 @@ class ContextPackBuilder:
             related_issues=tuple(related_issues),
             related_prs=tuple(related_prs),
             relevant_notes=tuple(relevant_notes),
+            relevant_knowledge=tuple(relevant_knowledge),
             code_hints=tuple(code_hints),
             role_profile_summary=role_profile_summary,
             role_research_profile_summary=role_research_profile_summary,
@@ -447,6 +518,126 @@ class ContextPackBuilder:
         except Exception:  # noqa: BLE001
             picked = notes[: self.max_notes]
         return tuple(picked)[: self.max_notes]
+
+    def _select_relevant_knowledge(
+        self,
+        raw: Sequence[Any],
+        *,
+        query: str,
+        task_type: Optional[str],
+        role: Optional[str],
+    ) -> Sequence[EngineeringKnowledgeRef]:
+        """Score + truncate engineering knowledge candidates.
+
+        Two paths:
+
+        1. ``knowledge_retriever`` is provided — call it with the
+           coerced :class:`EngineeringKnowledgeRef` candidates so the
+           caller's deterministic scoring (typically
+           :class:`engineering_intelligence.KnowledgeRetriever`) drives
+           ordering. We forward ``KnowledgeRecord`` style objects when
+           we have them so the retriever can use its own score
+           signals.
+        2. No retriever — fall back to "first ``max_knowledge`` items
+           after coercion / role match filter".
+        """
+
+        coerced = [self._coerce_knowledge_ref(item) for item in raw]
+        coerced = [ref for ref in coerced if ref is not None]
+        if not coerced:
+            return ()
+        if self.knowledge_retriever is None:
+            # Lightweight fallback: prefer same-role refs, then keep
+            # registry order, capped by ``max_knowledge``.
+            normalized_role = (role or "").strip().lower().split("/")[-1]
+            same_role = [
+                r for r in coerced if r.role.lower() == normalized_role
+            ]
+            other = [
+                r for r in coerced if r.role.lower() != normalized_role
+            ]
+            picked = (same_role + other)[: self.max_knowledge]
+            return tuple(picked)
+
+        try:
+            picked = self.knowledge_retriever(
+                candidates=raw,
+                query=query,
+                role=role,
+                task_type=task_type,
+                limit=self.max_knowledge,
+            )
+        except TypeError:
+            try:
+                picked = self.knowledge_retriever(raw)
+            except Exception:  # noqa: BLE001
+                picked = coerced[: self.max_knowledge]
+        except Exception:  # noqa: BLE001
+            picked = coerced[: self.max_knowledge]
+        normalized: list[EngineeringKnowledgeRef] = []
+        for item in picked:
+            ref = self._coerce_knowledge_ref(item)
+            if ref is not None:
+                normalized.append(ref)
+        return tuple(normalized[: self.max_knowledge])
+
+    @staticmethod
+    def _coerce_knowledge_ref(value: Any) -> Optional[EngineeringKnowledgeRef]:
+        """Best-effort projection of vault row / KnowledgeRecord / dict."""
+
+        if value is None:
+            return None
+        if isinstance(value, EngineeringKnowledgeRef):
+            return value
+        # KnowledgeRecord 와 EngineeringKnowledgeItem (engineering_intelligence
+        # 패키지) 둘 다 있으면 직접 import 하지 않고 duck typing 으로 처리.
+        title = getattr(value, "title", None)
+        role = getattr(value, "role", None)
+        if title and role and not isinstance(value, Mapping):
+            axes_attr = getattr(value, "axes", ())
+            axes_seq: list[str] = []
+            for axis in axes_attr or ():
+                axis_value = getattr(axis, "value", axis)
+                if axis_value:
+                    axes_seq.append(str(axis_value))
+            importance_attr = getattr(value, "importance", None)
+            importance_value = getattr(importance_attr, "value", importance_attr)
+            return EngineeringKnowledgeRef(
+                title=str(title),
+                role=str(role),
+                topic_key=str(getattr(value, "topic_key", "") or ""),
+                source_url=str(getattr(value, "source_url", "") or ""),
+                source_name=str(getattr(value, "source_name", "") or ""),
+                summary=getattr(value, "summary", None) or None,
+                axes=tuple(axes_seq),
+                rag_tags=tuple(getattr(value, "rag_tags", ()) or ()),
+                importance=str(importance_value) if importance_value else None,
+                collected_at=getattr(value, "collected_at", None) or None,
+                note_path=getattr(value, "note_path", None),
+            )
+        if isinstance(value, Mapping):
+            title_v = str(value.get("title") or "").strip()
+            role_v = str(value.get("role") or "").strip()
+            if not (title_v and role_v):
+                return None
+            axes_raw = value.get("axes") or ()
+            axes_seq = [str(a) for a in axes_raw if a]
+            return EngineeringKnowledgeRef(
+                title=title_v,
+                role=role_v,
+                topic_key=str(value.get("topic_key") or ""),
+                source_url=str(value.get("source_url") or ""),
+                source_name=str(value.get("source_name") or ""),
+                summary=value.get("summary") or None,
+                axes=tuple(axes_seq),
+                rag_tags=tuple(value.get("rag_tags") or ()),
+                importance=value.get("importance"),
+                collected_at=value.get("collected_at"),
+                note_path=value.get("note_path"),
+                score=value.get("score"),
+                signals=tuple(value.get("signals") or ()),
+            )
+        return None
 
     def _safe_call(
         self,

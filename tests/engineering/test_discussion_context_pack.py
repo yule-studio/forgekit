@@ -15,11 +15,17 @@ from yule_orchestrator.agents.discussion import (
     CodeHint,
     ContextPack,
     ContextPackBuilder,
+    EngineeringKnowledgeRef,
     GithubIssueRef,
     GithubPRRef,
     ObsidianNoteRef,
     RelevantMemorySelector,
     ThreadMessage,
+)
+from yule_orchestrator.agents.engineering_intelligence import (
+    KnowledgeRecord,
+    KnowledgeRetriever,
+    SourceAxis,
 )
 
 
@@ -163,6 +169,15 @@ class ContextPackBuilderTestCase(unittest.TestCase):
             related_issues=(GithubIssueRef(number=1, title="x"),),
             related_prs=(GithubPRRef(number=2, title="y"),),
             relevant_notes=(ObsidianNoteRef(title="n"),),
+            relevant_knowledge=(
+                EngineeringKnowledgeRef(
+                    title="Spring auth",
+                    role="backend-engineer",
+                    topic_key="spring-auth",
+                    axes=("api_schema_auth",),
+                    rag_tags=("auth",),
+                ),
+            ),
             code_hints=(CodeHint(path="src/a.py"),),
         )
         payload = pack.as_dict()
@@ -171,6 +186,135 @@ class ContextPackBuilderTestCase(unittest.TestCase):
         self.assertEqual(payload["related_prs"][0]["number"], 2)
         self.assertEqual(payload["relevant_notes"][0]["title"], "n")
         self.assertEqual(payload["code_hints"][0]["path"], "src/a.py")
+        self.assertEqual(payload["relevant_knowledge"][0]["topic_key"], "spring-auth")
+        self.assertEqual(payload["relevant_knowledge"][0]["axes"], ["api_schema_auth"])
+
+
+class ContextPackKnowledgeIntegrationTestCase(unittest.TestCase):
+    """`engineering_intelligence` retrieval ↔ ContextPackBuilder wiring."""
+
+    def _record(
+        self,
+        topic_key: str,
+        title: str,
+        role: str = "backend-engineer",
+        axes: tuple = (SourceAxis.API_SCHEMA_AUTH,),
+    ) -> KnowledgeRecord:
+        return KnowledgeRecord(
+            topic_key=topic_key,
+            title=title,
+            role=role,
+            source_url=f"https://example.com/{topic_key}",
+            source_name="Spring Docs",
+            summary=f"summary for {topic_key}",
+            axes=axes,
+            rag_tags=("spring", "auth"),
+            collected_at="2026-05-08T00:00:00Z",
+        )
+
+    def test_knowledge_loader_results_appear_in_pack(self) -> None:
+        candidates = [
+            self._record("spring-auth", "Spring 인증"),
+            self._record(
+                "qa-cypress",
+                "Cypress 회귀",
+                role="qa-engineer",
+                axes=(SourceAxis.REGRESSION_TEST_PLAN,),
+            ),
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+            knowledge_retriever=KnowledgeRetriever(min_score=0.5),
+            max_knowledge=5,
+        )
+        pack = builder.build(
+            message_text="spring auth 흐름이 어떻게 되지",
+            session=SimpleNamespace(
+                session_id="abc",
+                task_type="backend-feature",
+                write_requested=False,
+                write_blocked_reason=None,
+                extra={},
+            ),
+            role_for_research="engineering-agent/backend-engineer",
+        )
+        self.assertGreater(len(pack.relevant_knowledge), 0)
+        # Backend-feature task + backend-engineer role → spring-auth
+        # should outscore the qa-engineer record.
+        self.assertEqual(pack.relevant_knowledge[0].topic_key, "spring-auth")
+
+    def test_knowledge_retriever_omitted_uses_role_first_fallback(self) -> None:
+        candidates = [
+            self._record("qa-cypress", "Cypress", role="qa-engineer"),
+            self._record("spring-auth", "Spring 인증"),
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+            max_knowledge=5,
+        )
+        pack = builder.build(
+            message_text="auth",
+            role_for_research="backend-engineer",
+        )
+        # Same-role record (spring-auth) should land before the
+        # qa-engineer one even without a retriever.
+        self.assertEqual(pack.relevant_knowledge[0].topic_key, "spring-auth")
+        self.assertEqual(pack.relevant_knowledge[1].topic_key, "qa-cypress")
+
+    def test_knowledge_loader_failure_records_blocker(self) -> None:
+        def boom(query: str):
+            raise RuntimeError("vault offline")
+
+        builder = ContextPackBuilder(knowledge_loader=boom)
+        pack = builder.build(message_text="hi")
+        self.assertEqual(pack.relevant_knowledge, ())
+        self.assertTrue(
+            any("knowledge_loader" in b for b in pack.blockers),
+            f"expected knowledge_loader blocker; got {pack.blockers}",
+        )
+
+    def test_knowledge_loader_capped_by_max_knowledge(self) -> None:
+        candidates = [
+            self._record(f"k{i}", f"item {i}") for i in range(10)
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+            knowledge_retriever=KnowledgeRetriever(min_score=0.0),
+            max_knowledge=3,
+        )
+        pack = builder.build(
+            message_text="hi",
+            role_for_research="backend-engineer",
+        )
+        self.assertEqual(len(pack.relevant_knowledge), 3)
+
+    def test_dict_candidates_coerce(self) -> None:
+        candidates = [
+            {
+                "topic_key": "spring-auth",
+                "title": "Spring 인증",
+                "role": "backend-engineer",
+                "summary": "OAuth2 정리",
+                "axes": ["api_schema_auth"],
+                "rag_tags": ["auth"],
+                "collected_at": "2026-05-08T00:00:00Z",
+                "importance": "high",
+            }
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+            knowledge_retriever=KnowledgeRetriever(min_score=0.0),
+        )
+        pack = builder.build(
+            message_text="spring",
+            role_for_research="backend-engineer",
+        )
+        self.assertEqual(len(pack.relevant_knowledge), 1)
+        self.assertEqual(pack.relevant_knowledge[0].topic_key, "spring-auth")
+        self.assertEqual(
+            pack.relevant_knowledge[0].axes,
+            ("api_schema_auth",),
+        )
 
 
 if __name__ == "__main__":
