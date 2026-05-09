@@ -458,6 +458,52 @@ Claude는 UI 자동조작 대상으로 쓰지 않는다. runtime이 `claude` 명
 - secret / token / pem 출력 금지
 - 기존 사용자 변경 덮어쓰기 금지
 
+## 16-bis. Coding executor 라이브 와이어링 (Round 3)
+
+Phase 3 ~ 4 의 실제 코드 경로는 다음과 같이 land 했다 — 어느 모듈이 어느 책임을 가지는지 한눈에 보이게 둔다.
+
+### 16-bis.1 producer (gateway 승인 → coding_execute 큐)
+
+- `agents/coding/authorization.py` — 사용자 요청 → `CodingAuthorizationProposal`.
+- `agents/coding/job.py` + Discord 라우터 — 승인 phrase 도착 시 `CodingJob(status=ready)` 를 `session.extra["coding_job"]` 에 영속.
+- `agents/job_queue/coding_execute_dispatcher.py` (Round 3 신규) — `iter_ready_coding_jobs` / `dispatch_ready_coding_jobs` 가 `coding_job=ready` 세션을 스캔해 `coding_execute` 행을 큐에 enqueue, `session.extra["coding_execute_dispatch"]` marker 로 dedup.
+- `agents/job_queue/coding_execute_dispatcher.WorkflowSessionState` — `next_task_selector` 의 `SessionStateLike` 구현. selector 의 우선순위 체인에 production 세션 데이터를 연결.
+
+### 16-bis.2 executor (worktree → tests → commit → push → draft PR)
+
+- `agents/job_queue/coding_executor_worker.py` — Protocol seam 6 종 (worktree / editor / tests / committer / pusher / draft PR). protected branch / force push 가드.
+- `agents/job_queue/coding_executor_live.py` — `build_live_executor`: 로컬 worktree + RecordOnly editor + subprocess 테스트 + LocalGitCommitter + GithubAppPusher + GithubAppDraftPRCreator. LLM editor 는 여전히 명시적 blocker.
+- `runtime/run_service.py::build_coding_executor_bundle` (Round 3 신규) — env 매트릭스 평가, GitHub App env 3종 모두 갖춰진 경우에만 LiveGithubAppClient 시도. 부분 설정으로는 절대 활성화되지 않음.
+- `runtime/run_service.py::_build_process_job(CODING_EXECUTOR)` (Round 3 신규) — 서비스 등록, dispatcher 틱 → consumer pick → process_job → progress recorder 순서.
+
+### 16-bis.3 CI 결과 → 4-state 표준화 + retry 가드
+
+- `agents/job_queue/ci_status.py` (Round 2) — `CIStatus` / `decide_retry` / `CIRetryPolicy` (max_attempts=3 기본, ×2 backoff, 30 분 cap). pure decider.
+- `agents/job_queue/ci_retry_orchestrator.py` (Round 3 신규) — `orchestrate_ci_retry` 가 GithubAppCheckRunFetcher 로 CI 조회 → `decide_retry` → retry 시 새 `coding_execute` 행 enqueue (branch_hint 에 `-attemptN` suffix 로 dedup 회피) → terminal 시 `completion_hook.record_completion` 호출 → `session.extra` 갱신.
+- `github_app/live_client.py::list_check_runs` / `get_pull_request` (Round 3 신규) — orchestrator 가 의존하는 GitHub Checks API 어댑터.
+- `agents/job_queue/next_task_selector.py::select_next_task_with_ci_retry_guard` (Round 2) — selector 가 max_attempts 초과 PR 을 자동으로 skip + `payload['ci_retry_escalated']` 로 surface.
+
+### 16-bis.4 결과 surface (Obsidian + GitHub PR)
+
+- `agents/job_queue/coding_execute_progress.py` (Round 3 신규) — `record_coding_execute_progress` 가 (1) `session.extra["coding_execute_progress"]` 50 행 capped history 에 entry 추가, (2) `obsidian_write` 큐에 `task-log` 노트 enqueue (approval 게이트 없는 kind), (3) GitHub PR comment 발사 (poster 부재 시 silent skip).
+- `runtime/run_service.py::_record_coding_progress_after_outcome` — coding_execute 종료 outcome 마다 자동 호출. workflow_state 로드 실패 / GitHub 502 모두 swallow.
+
+### 16-bis.5 환경 contract
+
+- `YULE_CODING_EXECUTOR_AUTOSPAWN=true` — `runtime up` 이 `eng-coding-executor` 를 자동 spawn 할지 결정. 기본값은 opt-in 비활성.
+- `YULE_CODING_EXECUTOR_DRY_RUN={true|false}` — dispatcher 가 만드는 request 의 dry_run override. 기본값은 metadata > env > true. `false` 명시 + GitHub App env 갖춤 = 실제 push 까지 진행.
+- `YULE_CODING_EXECUTOR_REPO` / `YULE_CODING_EXECUTOR_BASE_BRANCH` — repo / base branch 기본값.
+- `YULE_GITHUB_APP_ID` + `YULE_GITHUB_APP_INSTALLATION_ID` + `YULE_GITHUB_APP_PRIVATE_KEY_PATH` — 모두 갖춰져야 LiveGithubAppClient 시도.
+- `YULE_CODING_EXECUTOR_REPO_ROOT` / `YULE_CODING_EXECUTOR_WORKTREE_ROOT` — worktree 위치 override (기본 `YULE_REPO_ROOT` + `/tmp/yule-coding-executor-worktrees`).
+
+### 16-bis.6 운영 hard rails (Round 3 시점 재확인)
+
+- protected branch (main / master / develop / dev / prod / release / release\\* / hotfix\\*) 직접 push 차단 — `coding_executor_worker.is_protected_branch`.
+- force push 차단 — Pusher Protocol 에 force flag 자체가 존재하지 않음.
+- LLM editor 비활성 — `RecordOnlyCodeEditor` 가 plan markdown 만 작성, 실제 source 변경 없음. 활성화는 별도 PR + 운영자 승인.
+- 무한 retry 차단 — `decide_retry` 가 max_attempts 초과 시 즉시 `blocked` 로 escalate, orchestrator 는 그 verdict 그대로 신뢰.
+- 부분 GitHub App env → 절대 LiveGithubAppClient 시도 안 함 (3 키 중 하나라도 비면 dry-run blocker 로 degrade).
+
 ## 17. 최종 판단
 
 지금의 1순위는 `tech-lead` 완성이다.
