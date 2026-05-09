@@ -26,6 +26,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 from yule_orchestrator.agents.job_queue.coding_execute_progress import (
+    PROGRESS_STATUS_LABELS,
     SESSION_EXTRA_PROGRESS_KEY,
     TASK_LOG_NOTE_KIND,
     ProgressEntry,
@@ -34,6 +35,7 @@ from yule_orchestrator.agents.job_queue.coding_execute_progress import (
     make_github_pr_comment_fn,
     record_coding_execute_progress,
     render_progress_markdown,
+    render_progress_summary_line,
     status_from_outcome,
 )
 from yule_orchestrator.agents.job_queue.coding_executor_worker import (
@@ -164,6 +166,105 @@ class RenderMarkdownTests(unittest.TestCase):
         )
         body = render_progress_markdown(entry)
         self.assertNotIn("PR:", body)
+
+
+# ---------------------------------------------------------------------------
+# Round 4: per-status operator hints + summary line for the status surface
+# ---------------------------------------------------------------------------
+
+
+class StatusHintsTests(unittest.TestCase):
+    def test_done_includes_completion_label(self) -> None:
+        entry = build_progress_entry(_outcome(), request=_request())
+        body = render_progress_markdown(entry)
+        self.assertIn("✅", body)
+        self.assertIn("완료", body)
+        self.assertIn("`done`", body)
+        # Operator hint mentions producer follow-up.
+        self.assertIn("autonomy producer", body)
+
+    def test_blocked_emits_operator_review_hint(self) -> None:
+        entry = build_progress_entry(
+            _outcome(
+                terminal_state=JobState.FAILED_TERMINAL.value,
+                failure_reason="protected_branch_blocked",
+            ),
+            request=_request(),
+        )
+        body = render_progress_markdown(entry)
+        self.assertIn("⛔", body)
+        self.assertIn("차단됨", body)
+        # Operator hint must spell out "no auto-retry".
+        self.assertIn("재시도하지 않습니다", body)
+        self.assertIn("protected_branch_blocked", body)
+
+    def test_retry_ready_emits_transient_hint(self) -> None:
+        entry = build_progress_entry(
+            _outcome(
+                terminal_state=JobState.FAILED_RETRYABLE.value,
+                failure_reason="test_failed",
+            ),
+            request=_request(),
+        )
+        body = render_progress_markdown(entry)
+        self.assertIn("🔁", body)
+        self.assertIn("재시도 대기", body)
+        self.assertIn("transient", body)
+
+    def test_needs_approval_uses_explicit_completion_status_override(self) -> None:
+        entry = build_progress_entry(
+            _outcome(
+                terminal_state=JobState.SAVED.value,
+            ),
+            request=_request(),
+            completion_status="needs_approval",
+        )
+        body = render_progress_markdown(entry)
+        self.assertIn("🙋", body)
+        self.assertIn("승인 대기", body)
+        self.assertIn("승인-대기", body)
+
+    def test_locked_status_renders_lock_icon_and_hint(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="locked",
+        )
+        body = render_progress_markdown(entry)
+        self.assertIn("🔒", body)
+        self.assertIn("점유 중", body)
+        self.assertIn("lock", body)
+
+    def test_unknown_status_falls_back_to_blocked_label(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="something-weird",
+        )
+        body = render_progress_markdown(entry)
+        # Falls back to blocked palette without crashing.
+        self.assertIn("⛔", body)
+        self.assertIn("차단됨", body)
+
+    def test_summary_line_shape(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="needs_approval",
+        )
+        line = render_progress_summary_line(entry)
+        self.assertIn("🙋", line)
+        self.assertIn("backend-engineer", line)
+        self.assertIn("sess-X", line)
+        self.assertIn("pr=#999", line)
+
+    def test_label_table_carries_all_four_states_plus_locked(self) -> None:
+        for key in ("done", "retry_ready", "needs_approval", "blocked", "locked"):
+            self.assertIn(key, PROGRESS_STATUS_LABELS)
+            label = PROGRESS_STATUS_LABELS[key]
+            self.assertIn("icon", label)
+            self.assertIn("headline", label)
+            self.assertIn("operator_hint", label)
 
 
 # ---------------------------------------------------------------------------
