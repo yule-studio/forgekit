@@ -69,9 +69,11 @@ from .models import (
     NOTE_KIND_ENGINEERING_KNOWLEDGE,
     PracticeVerification,
     ProjectApplicability,
+    SourceAxis,
     SourceEntry,
     SourceKind,
     SourceTier,
+    default_refresh_interval_for_kind,
 )
 from .obsidian import (
     QualityGateResult,
@@ -89,10 +91,15 @@ from .source_registry import (
     COMMON_CORE_SOURCES,
     SUPPORTED_ROLES,
     auto_collectable_sources,
+    axes_for_role,
+    axis_hints_for_task_type,
     daily_limit_for_role,
     find_source,
     prioritise_sources,
+    required_axes_for_role,
+    role_axis_coverage_report,
     role_sources,
+    sources_for_axis,
 )
 
 
@@ -128,9 +135,11 @@ __all__ = [
     "NOTE_KIND_ENGINEERING_KNOWLEDGE",
     "PracticeVerification",
     "ProjectApplicability",
+    "SourceAxis",
     "SourceEntry",
     "SourceKind",
     "SourceTier",
+    "default_refresh_interval_for_kind",
     # obsidian
     "QualityGateResult",
     "build_engineering_knowledge_write_request",
@@ -145,8 +154,13 @@ __all__ = [
     "COMMON_CORE_SOURCES",
     "SUPPORTED_ROLES",
     "auto_collectable_sources",
+    "axes_for_role",
+    "axis_hints_for_task_type",
     "daily_limit_for_role",
     "find_source",
     "prioritise_sources",
+    "required_axes_for_role",
+    "role_axis_coverage_report",
     "role_sources",
+    "sources_for_axis",
 ]

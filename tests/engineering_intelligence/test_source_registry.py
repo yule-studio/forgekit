@@ -10,17 +10,24 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 from yule_orchestrator.agents.engineering_intelligence.models import (
+    SourceAxis,
     SourceKind,
     SourceTier,
+    default_refresh_interval_for_kind,
 )
 from yule_orchestrator.agents.engineering_intelligence.source_registry import (
     COMMON_CORE_SOURCES,
     SUPPORTED_ROLES,
     auto_collectable_sources,
+    axes_for_role,
+    axis_hints_for_task_type,
     daily_limit_for_role,
     find_source,
     prioritise_sources,
+    required_axes_for_role,
+    role_axis_coverage_report,
     role_sources,
+    sources_for_axis,
 )
 
 
@@ -140,6 +147,127 @@ class DailyLimitTests(unittest.TestCase):
     def test_daily_limit_unknown_role_raises(self) -> None:
         with self.assertRaises(KeyError):
             daily_limit_for_role("not-a-role")
+
+
+class AxisCoverageTests(unittest.TestCase):
+    """Each role must cover the axes named by master plan §9.1."""
+
+    def test_every_role_meets_required_axes(self) -> None:
+        for role in SUPPORTED_ROLES:
+            covered = set(axes_for_role(role))
+            for axis in required_axes_for_role(role):
+                self.assertIn(
+                    axis,
+                    covered,
+                    msg=f"role={role} missing required axis={axis.value}",
+                )
+
+    def test_axis_coverage_report_counts_match(self) -> None:
+        # Report must list every axis a role's entries mention, with at
+        # least 1 source per axis (we only seed used axes).
+        for role in SUPPORTED_ROLES:
+            report = role_axis_coverage_report(role)
+            for axis, count in report.items():
+                self.assertGreater(count, 0, msg=f"role={role} axis={axis} count")
+            self.assertEqual(set(report.keys()), set(axes_for_role(role)))
+
+    def test_required_axes_unknown_role_raises(self) -> None:
+        with self.assertRaises(KeyError):
+            required_axes_for_role("data-engineer")
+
+    def test_security_axis_present_via_common_core(self) -> None:
+        # NIST CVE seed (security_advisory) tags SECURITY axis and
+        # merges into every role — every role must therefore cover
+        # SECURITY through that route.
+        for role in SUPPORTED_ROLES:
+            self.assertIn(
+                SourceAxis.SECURITY,
+                axes_for_role(role),
+                msg=f"role={role} missing SECURITY axis",
+            )
+
+    def test_design_system_axis_for_designer_only_among_design_seeds(self) -> None:
+        # Sanity: ai-engineer / qa-engineer should NOT have DESIGN_SYSTEM
+        # in their axis surface (no seeded design source).
+        self.assertNotIn(SourceAxis.DESIGN_SYSTEM, axes_for_role("ai-engineer"))
+        self.assertNotIn(SourceAxis.DESIGN_SYSTEM, axes_for_role("qa-engineer"))
+        self.assertIn(SourceAxis.DESIGN_SYSTEM, axes_for_role("product-designer"))
+
+    def test_sources_for_axis_returns_only_matching(self) -> None:
+        for source in sources_for_axis(
+            "backend-engineer", SourceAxis.API_SCHEMA_AUTH
+        ):
+            self.assertIn(SourceAxis.API_SCHEMA_AUTH, source.axes)
+        # Empty list when role registry has no source for the axis.
+        self.assertEqual(
+            sources_for_axis("ai-engineer", SourceAxis.DESIGN_SYSTEM),
+            (),
+        )
+
+
+class RefreshIntervalTests(unittest.TestCase):
+    def test_default_intervals_per_source_kind(self) -> None:
+        # Spot-check: security advisories are most aggressive; standards
+        # the slowest. These are operational defaults — if you change
+        # them, update the policy doc too.
+        self.assertEqual(
+            default_refresh_interval_for_kind(SourceKind.SECURITY_ADVISORY),
+            30,
+        )
+        self.assertEqual(
+            default_refresh_interval_for_kind(SourceKind.RELEASE_NOTES),
+            60,
+        )
+        self.assertEqual(
+            default_refresh_interval_for_kind(SourceKind.DOCS),
+            1440,
+        )
+        self.assertEqual(
+            default_refresh_interval_for_kind(SourceKind.STANDARD),
+            10080,
+        )
+
+    def test_effective_interval_uses_entry_override_when_set(self) -> None:
+        # Pick any seeded source — it currently has interval=0 so we
+        # exercise the kind fallback.
+        s = find_source("backend-engineer", "spring-blog")
+        assert s is not None
+        # default — interval not overridden, falls back to kind default
+        self.assertEqual(
+            s.effective_refresh_interval_minutes(),
+            default_refresh_interval_for_kind(s.source_kind),
+        )
+
+    def test_to_payload_includes_axes_and_interval(self) -> None:
+        s = find_source("backend-engineer", "spring-blog")
+        assert s is not None
+        payload = s.to_payload()
+        self.assertIn("axes", payload)
+        self.assertIn("refresh_interval_minutes", payload)
+        # Override-less entry surfaces the resolved (effective) interval.
+        self.assertEqual(
+            payload["refresh_interval_minutes"],
+            s.effective_refresh_interval_minutes(),
+        )
+
+
+class TaskTypeAxisHintsTests(unittest.TestCase):
+    def test_backend_feature_hints_api_schema_axis(self) -> None:
+        hints = axis_hints_for_task_type("backend-feature")
+        self.assertIn(SourceAxis.API_SCHEMA_AUTH, hints)
+        self.assertIn(SourceAxis.OFFICIAL_DOCS, hints)
+
+    def test_qa_test_hints_regression_axis(self) -> None:
+        hints = axis_hints_for_task_type("qa-test")
+        self.assertIn(SourceAxis.REGRESSION_TEST_PLAN, hints)
+
+    def test_unknown_task_type_returns_empty_tuple(self) -> None:
+        self.assertEqual(axis_hints_for_task_type("mystery"), ())
+        self.assertEqual(axis_hints_for_task_type(None), ())
+
+    def test_landing_page_hints_design_axis(self) -> None:
+        hints = axis_hints_for_task_type("landing-page")
+        self.assertIn(SourceAxis.DESIGN_SYSTEM, hints)
 
 
 if __name__ == "__main__":

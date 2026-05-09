@@ -125,3 +125,37 @@ RoleQueryHints(
 - ResearchPack과 본 프로필의 연결: 자료가 들어올 때 `collected_by_role`과 `source_type`을 보고 본 프로필 가중치로 자동 정렬.
 - 사용자 task 신호(예: prompt에 "moodboard", "API reference" 같은 단어)가 있을 때 task_type 분류 외에 추가 가중치를 주는 보정.
 - 가중치를 외부 정책 JSON으로 빼서 운영자가 코드 수정 없이 조정 가능하게.
+
+## 부록 A — 역할별 SourceAxis 매트릭스 (engineering_intelligence)
+
+`engineering_intelligence.SourceAxis`는 master plan §9.1에서 명시한 역할별 상시 수집 대상을 enum으로 굳힌 것이다. 위 §역할별 기본 프로필은 사용자 발화 직후 retrieval에서 `source_type` 가중치를 결정하지만, 본 부록은 background ingestion이 어떤 axis를 항상 채워두어야 하는지를 결정한다. 코드 진실 소스는 `source_registry.required_axes_for_role(role_id)` + `axes_for_role(role_id)`.
+
+| 역할 | 필수 SourceAxis (operational seed) | 핵심 source 종류 |
+| --- | --- | --- |
+| tech-lead | `architecture_adr_tradeoff`, `official_docs` | RFC editor, ISO/IEC 25010, ADR repo, Cloudflare/Stripe engineering blog |
+| backend-engineer | `official_docs`, `api_schema_auth`, `release_notes_changelog`, `security` | Spring docs/blog, FastAPI/PostgreSQL/Redis release, OWASP Top 10, NIST CVE |
+| frontend-engineer | `web_platform_framework`, `official_docs`, `release_notes_changelog` | React blog, Next.js releases, TypeScript what's new, web.dev, MDN, WCAG |
+| devops-engineer | `ci_cd_infra_observability`, `release_notes_changelog`, `security` | Docker/Kubernetes/Argo CD/Terraform release, GitHub Actions changelog, NIST CVE |
+| qa-engineer | `regression_test_plan`, `security` | Playwright/Testing Library/Cypress, ISO 29119, Google Testing Blog, NIST CVE |
+| ai-engineer | `ai_framework` | OpenAI/Anthropic news, Hugging Face blog, LangChain blog, pgvector, Ragas |
+| product-designer | `design_system` | Apple HIG, Material Design, Fluent, Atlassian, Carbon, GOV.UK Patterns |
+
+축가 하나라도 빠지면 `tests/engineering_intelligence/test_source_registry.py::AxisCoverageTests::test_every_role_meets_required_axes` 가 실패한다. 새 source seed를 추가하거나 기존 seed에서 axis tag를 빼면 본 표와 `_ROLE_REQUIRED_AXES` 둘 다 같이 갱신할 것.
+
+## 부록 B — task_type → axis hint matrix
+
+discussion request-time retrieval은 위의 `_ROLE_RESEARCH_PROFILES` 가중치 외에 task_type에서 유도한 axis hint를 추가 보너스로 사용한다. 코드 진실 소스는 `source_registry.axis_hints_for_task_type(task_type)`.
+
+| task_type | 부스트되는 axis |
+| --- | --- |
+| `backend-feature` | `api_schema_auth`, `official_docs`, `security` |
+| `frontend-feature` | `web_platform_framework`, `official_docs` |
+| `landing-page` | `design_system`, `web_platform_framework` |
+| `onboarding-flow` | `design_system`, `web_platform_framework` |
+| `visual-polish` | `design_system` |
+| `email-campaign` | `design_system` |
+| `qa-test` | `regression_test_plan`, `security` |
+| `platform-infra` | `ci_cd_infra_observability`, `architecture_adr_tradeoff` |
+| (그 외 / `unknown` / `None`) | (없음 — 기본 role 가중치만 사용) |
+
+이 표를 변경하면 해당 매트릭스를 코드(`_TASK_TYPE_AXIS_HINTS`)와 함께 업데이트해야 한다 — 두 위치가 따로 놀면 retrieval에서 생기는 미스매치를 디버그하기가 까다로워진다.

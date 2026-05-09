@@ -32,6 +32,7 @@ from typing import Mapping, Optional, Tuple
 
 from .models import (
     CollectionMode,
+    SourceAxis,
     SourceEntry,
     SourceKind,
     SourceTier,
@@ -65,6 +66,7 @@ COMMON_CORE_SOURCES: Tuple[SourceEntry, ...] = (
         freshness_weight=0.9,
         auto_collect=True,
         review_required=False,
+        axes=(SourceAxis.SECURITY,),
     ),
     SourceEntry(
         source_id="mdn-web-platform",
@@ -83,6 +85,7 @@ COMMON_CORE_SOURCES: Tuple[SourceEntry, ...] = (
         trust_weight=0.9,
         freshness_weight=0.85,
         auto_collect=True,
+        axes=(SourceAxis.WEB_PLATFORM_FRAMEWORK, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="github-engineering",
@@ -101,6 +104,10 @@ COMMON_CORE_SOURCES: Tuple[SourceEntry, ...] = (
         trust_weight=0.8,
         freshness_weight=0.8,
         auto_collect=True,
+        axes=(
+            SourceAxis.ARCHITECTURE_ADR_TRADEOFF,
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+        ),
     ),
 )
 
@@ -129,6 +136,7 @@ _TECH_LEAD_SOURCES: Tuple[SourceEntry, ...] = (
         freshness_weight=0.3,
         auto_collect=False,
         review_required=True,
+        axes=(SourceAxis.ARCHITECTURE_ADR_TRADEOFF,),
     ),
     SourceEntry(
         source_id="adr-github",
@@ -143,6 +151,7 @@ _TECH_LEAD_SOURCES: Tuple[SourceEntry, ...] = (
         freshness_weight=0.5,
         auto_collect=False,
         review_required=True,
+        axes=(SourceAxis.ARCHITECTURE_ADR_TRADEOFF,),
     ),
     SourceEntry(
         source_id="cloudflare-engineering",
@@ -155,6 +164,10 @@ _TECH_LEAD_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.ARCHITECTURE_ADR_TRADEOFF,
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+        ),
     ),
     SourceEntry(
         source_id="stripe-engineering",
@@ -167,6 +180,10 @@ _TECH_LEAD_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.8,
+        axes=(
+            SourceAxis.ARCHITECTURE_ADR_TRADEOFF,
+            SourceAxis.API_SCHEMA_AUTH,
+        ),
     ),
     SourceEntry(
         source_id="ietf-rfc-editor",
@@ -179,6 +196,10 @@ _TECH_LEAD_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.7,
+        axes=(
+            SourceAxis.ARCHITECTURE_ADR_TRADEOFF,
+            SourceAxis.OFFICIAL_DOCS,
+        ),
     ),
 )
 
@@ -195,6 +216,7 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.7,
+        axes=(SourceAxis.OFFICIAL_DOCS, SourceAxis.API_SCHEMA_AUTH),
     ),
     SourceEntry(
         source_id="spring-blog",
@@ -207,6 +229,7 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(SourceAxis.OFFICIAL_DOCS, SourceAxis.RELEASE_NOTES_CHANGELOG),
     ),
     SourceEntry(
         source_id="fastapi-changelog",
@@ -219,6 +242,10 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+            SourceAxis.API_SCHEMA_AUTH,
+        ),
     ),
     SourceEntry(
         source_id="postgresql-release-notes",
@@ -231,6 +258,10 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.8,
+        axes=(
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+            SourceAxis.API_SCHEMA_AUTH,
+        ),
     ),
     SourceEntry(
         source_id="redis-release-notes",
@@ -243,6 +274,7 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(SourceAxis.RELEASE_NOTES_CHANGELOG,),
     ),
     SourceEntry(
         source_id="owasp-top-10",
@@ -257,6 +289,7 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         freshness_weight=0.4,
         auto_collect=False,
         review_required=True,
+        axes=(SourceAxis.SECURITY, SourceAxis.API_SCHEMA_AUTH),
     ),
     SourceEntry(
         source_id="nestjs-blog",
@@ -269,6 +302,7 @@ _BACKEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.8,
+        axes=(SourceAxis.OFFICIAL_DOCS, SourceAxis.API_SCHEMA_AUTH),
     ),
 )
 
@@ -285,6 +319,7 @@ _FRONTEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.85,
+        axes=(SourceAxis.OFFICIAL_DOCS, SourceAxis.WEB_PLATFORM_FRAMEWORK),
     ),
     SourceEntry(
         source_id="nextjs-changelog",
@@ -297,6 +332,10 @@ _FRONTEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.9,
+        axes=(
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+            SourceAxis.WEB_PLATFORM_FRAMEWORK,
+        ),
     ),
     SourceEntry(
         source_id="typescript-changelog",
@@ -309,6 +348,10 @@ _FRONTEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+            SourceAxis.WEB_PLATFORM_FRAMEWORK,
+        ),
     ),
     SourceEntry(
         source_id="web-dev-articles",
@@ -321,6 +364,7 @@ _FRONTEND_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.85,
+        axes=(SourceAxis.WEB_PLATFORM_FRAMEWORK, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="wcag-spec",
@@ -335,6 +379,7 @@ _FRONTEND_SOURCES: Tuple[SourceEntry, ...] = (
         freshness_weight=0.3,
         auto_collect=False,
         review_required=True,
+        axes=(SourceAxis.WEB_PLATFORM_FRAMEWORK, SourceAxis.OFFICIAL_DOCS),
     ),
 )
 
@@ -351,6 +396,10 @@ _DEVOPS_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="kubernetes-release-notes",
@@ -363,6 +412,10 @@ _DEVOPS_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.9,
+        axes=(
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="argo-cd-changelog",
@@ -375,6 +428,10 @@ _DEVOPS_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="github-actions-changelog",
@@ -387,6 +444,10 @@ _DEVOPS_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.9,
+        axes=(
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="terraform-changelog",
@@ -399,6 +460,10 @@ _DEVOPS_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
 )
 
@@ -415,6 +480,10 @@ _QA_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.9,
+        axes=(
+            SourceAxis.REGRESSION_TEST_PLAN,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="testing-library-blog",
@@ -427,6 +496,10 @@ _QA_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.8,
+        axes=(
+            SourceAxis.REGRESSION_TEST_PLAN,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="cypress-changelog",
@@ -439,6 +512,10 @@ _QA_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.REGRESSION_TEST_PLAN,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="iso-29119",
@@ -453,6 +530,7 @@ _QA_SOURCES: Tuple[SourceEntry, ...] = (
         freshness_weight=0.3,
         auto_collect=False,
         review_required=True,
+        axes=(SourceAxis.REGRESSION_TEST_PLAN, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="google-testing-blog",
@@ -465,6 +543,7 @@ _QA_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.7,
+        axes=(SourceAxis.REGRESSION_TEST_PLAN,),
     ),
 )
 
@@ -481,6 +560,7 @@ _AI_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.95,
+        axes=(SourceAxis.AI_FRAMEWORK, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="anthropic-news",
@@ -493,6 +573,7 @@ _AI_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.95,
+        axes=(SourceAxis.AI_FRAMEWORK, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="huggingface-blog",
@@ -505,6 +586,7 @@ _AI_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.9,
+        axes=(SourceAxis.AI_FRAMEWORK,),
     ),
     SourceEntry(
         source_id="langchain-blog",
@@ -518,6 +600,7 @@ _AI_SOURCES: Tuple[SourceEntry, ...] = (
         trust_weight=0.7,
         freshness_weight=0.85,
         review_required=True,
+        axes=(SourceAxis.AI_FRAMEWORK,),
     ),
     SourceEntry(
         source_id="pgvector-releases",
@@ -530,6 +613,10 @@ _AI_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.9,
         freshness_weight=0.85,
+        axes=(
+            SourceAxis.AI_FRAMEWORK,
+            SourceAxis.RELEASE_NOTES_CHANGELOG,
+        ),
     ),
     SourceEntry(
         source_id="ragas-eval-docs",
@@ -542,6 +629,10 @@ _AI_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.8,
         freshness_weight=0.8,
+        axes=(
+            SourceAxis.AI_FRAMEWORK,
+            SourceAxis.REGRESSION_TEST_PLAN,
+        ),
     ),
 )
 
@@ -558,6 +649,7 @@ _PRODUCT_DESIGN_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.6,
+        axes=(SourceAxis.DESIGN_SYSTEM, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="material-design",
@@ -570,6 +662,7 @@ _PRODUCT_DESIGN_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.6,
+        axes=(SourceAxis.DESIGN_SYSTEM, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="fluent-design",
@@ -582,6 +675,7 @@ _PRODUCT_DESIGN_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.9,
         freshness_weight=0.6,
+        axes=(SourceAxis.DESIGN_SYSTEM, SourceAxis.OFFICIAL_DOCS),
     ),
     SourceEntry(
         source_id="atlassian-design",
@@ -594,6 +688,7 @@ _PRODUCT_DESIGN_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.7,
+        axes=(SourceAxis.DESIGN_SYSTEM,),
     ),
     SourceEntry(
         source_id="carbon-design",
@@ -606,6 +701,7 @@ _PRODUCT_DESIGN_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_2,
         trust_weight=0.85,
         freshness_weight=0.7,
+        axes=(SourceAxis.DESIGN_SYSTEM,),
     ),
     SourceEntry(
         source_id="govuk-design",
@@ -618,6 +714,7 @@ _PRODUCT_DESIGN_SOURCES: Tuple[SourceEntry, ...] = (
         tier=SourceTier.TIER_1,
         trust_weight=0.95,
         freshness_weight=0.7,
+        axes=(SourceAxis.DESIGN_SYSTEM, SourceAxis.OFFICIAL_DOCS),
     ),
 )
 
@@ -730,12 +827,154 @@ def daily_limit_for_role(role_id: str) -> int:
     return 5
 
 
+# ---------------------------------------------------------------------------
+# Axis-aware helpers
+# ---------------------------------------------------------------------------
+
+
+def axes_for_role(role_id: str) -> Tuple[SourceAxis, ...]:
+    """Union of axes covered by *role_id*'s registry (sorted, deduped)."""
+
+    seen: set[SourceAxis] = set()
+    for entry in role_sources(role_id):
+        for axis in entry.axes:
+            seen.add(axis)
+    return tuple(sorted(seen, key=lambda a: a.value))
+
+
+def sources_for_axis(
+    role_id: str, axis: SourceAxis
+) -> Tuple[SourceEntry, ...]:
+    """Entries belonging to *role_id* that mention *axis*.
+
+    Used by retrieval-side filtering when the request hints a specific
+    axis (e.g. backend-feature task → API_SCHEMA_AUTH preference).
+    Returns the prioritised order so Tier 1 sits first.
+    """
+
+    matching = tuple(
+        entry for entry in role_sources(role_id) if axis in entry.axes
+    )
+    return prioritise_sources(matching)
+
+
+def role_axis_coverage_report(role_id: str) -> Mapping[SourceAxis, int]:
+    """Per-axis source count for *role_id* — used by audit + tests.
+
+    The map is total-coverage focused: it counts every entry whether
+    auto-collectable or review-required. Operators look at this to
+    spot a bare axis (count == 0) before adding new seeds.
+    """
+
+    counts: dict[SourceAxis, int] = {}
+    for entry in role_sources(role_id):
+        for axis in entry.axes:
+            counts[axis] = counts.get(axis, 0) + 1
+    return counts
+
+
+# Per-role minimum axes contract. A role must cover at least these axes
+# for the registry to be considered "operationally seeded". Tests pin
+# this so that adding a role without seeding the right kinds of sources
+# fails loudly instead of silently producing skinny digests.
+_ROLE_REQUIRED_AXES: Mapping[str, Tuple[SourceAxis, ...]] = {
+    "tech-lead": (
+        SourceAxis.ARCHITECTURE_ADR_TRADEOFF,
+        SourceAxis.OFFICIAL_DOCS,
+    ),
+    "backend-engineer": (
+        SourceAxis.OFFICIAL_DOCS,
+        SourceAxis.API_SCHEMA_AUTH,
+        SourceAxis.RELEASE_NOTES_CHANGELOG,
+        SourceAxis.SECURITY,
+    ),
+    "frontend-engineer": (
+        SourceAxis.WEB_PLATFORM_FRAMEWORK,
+        SourceAxis.OFFICIAL_DOCS,
+        SourceAxis.RELEASE_NOTES_CHANGELOG,
+    ),
+    "devops-engineer": (
+        SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+        SourceAxis.RELEASE_NOTES_CHANGELOG,
+        SourceAxis.SECURITY,
+    ),
+    "qa-engineer": (
+        SourceAxis.REGRESSION_TEST_PLAN,
+        SourceAxis.SECURITY,
+    ),
+    "ai-engineer": (SourceAxis.AI_FRAMEWORK,),
+    "product-designer": (SourceAxis.DESIGN_SYSTEM,),
+}
+
+
+def required_axes_for_role(role_id: str) -> Tuple[SourceAxis, ...]:
+    """Hard-coded "must-cover" axis list for *role_id*."""
+
+    if role_id not in _ROLE_REQUIRED_AXES:
+        raise KeyError(f"unknown role for required axes: {role_id!r}")
+    return _ROLE_REQUIRED_AXES[role_id]
+
+
+# ---------------------------------------------------------------------------
+# task_type → axis hint matrix (used by retrieval to weight)
+# ---------------------------------------------------------------------------
+
+
+_TASK_TYPE_AXIS_HINTS: Mapping[str, Tuple[SourceAxis, ...]] = {
+    "backend-feature": (
+        SourceAxis.API_SCHEMA_AUTH,
+        SourceAxis.OFFICIAL_DOCS,
+        SourceAxis.SECURITY,
+    ),
+    "frontend-feature": (
+        SourceAxis.WEB_PLATFORM_FRAMEWORK,
+        SourceAxis.OFFICIAL_DOCS,
+    ),
+    "landing-page": (
+        SourceAxis.DESIGN_SYSTEM,
+        SourceAxis.WEB_PLATFORM_FRAMEWORK,
+    ),
+    "onboarding-flow": (
+        SourceAxis.DESIGN_SYSTEM,
+        SourceAxis.WEB_PLATFORM_FRAMEWORK,
+    ),
+    "visual-polish": (SourceAxis.DESIGN_SYSTEM,),
+    "email-campaign": (SourceAxis.DESIGN_SYSTEM,),
+    "qa-test": (
+        SourceAxis.REGRESSION_TEST_PLAN,
+        SourceAxis.SECURITY,
+    ),
+    "platform-infra": (
+        SourceAxis.CI_CD_INFRA_OBSERVABILITY,
+        SourceAxis.ARCHITECTURE_ADR_TRADEOFF,
+    ),
+}
+
+
+def axis_hints_for_task_type(task_type: Optional[str]) -> Tuple[SourceAxis, ...]:
+    """Axes that retrieval should weight up for *task_type*.
+
+    Unknown / None task types return an empty tuple — retrieval falls
+    back to role + topic match alone. Kept tiny on purpose: the
+    weighting math should not branch on a long taxonomy.
+    """
+
+    if not task_type:
+        return ()
+    return _TASK_TYPE_AXIS_HINTS.get(str(task_type).strip().lower(), ())
+
+
 __all__ = [
     "COMMON_CORE_SOURCES",
     "SUPPORTED_ROLES",
     "auto_collectable_sources",
+    "axes_for_role",
+    "axis_hints_for_task_type",
     "daily_limit_for_role",
     "find_source",
     "prioritise_sources",
+    "required_axes_for_role",
+    "role_axis_coverage_report",
     "role_sources",
+    "sources_for_axis",
 ]

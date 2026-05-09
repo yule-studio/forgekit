@@ -91,6 +91,56 @@ class SourceTier(str, Enum):
     TIER_4 = "tier_4_community"
 
 
+class SourceAxis(str, Enum):
+    """역할별 자료 축. 한 source는 여러 axis에 속할 수 있다.
+
+    이 enum은 master plan §9.1의 "역할별 상시 수집 대상" 항목들을
+    1:1로 흡수한다. 각 source가 어떤 axis를 cover하는지 태깅해두면
+    request-time retrieval에서 task_type → axes hint matrix로 정렬할
+    수 있고, scheduler는 한 axis가 누락되지 않도록 감시할 수 있다.
+    """
+
+    OFFICIAL_DOCS = "official_docs"
+    API_SCHEMA_AUTH = "api_schema_auth"
+    WEB_PLATFORM_FRAMEWORK = "web_platform_framework"
+    REGRESSION_TEST_PLAN = "regression_test_plan"
+    CI_CD_INFRA_OBSERVABILITY = "ci_cd_infra_observability"
+    ARCHITECTURE_ADR_TRADEOFF = "architecture_adr_tradeoff"
+    AI_FRAMEWORK = "ai_framework"
+    DESIGN_SYSTEM = "design_system"
+    SECURITY = "security"
+    RELEASE_NOTES_CHANGELOG = "release_notes_changelog"
+
+
+# 기본 refresh 주기 (분 단위). source_kind를 보고 상식적인 값을 박는다.
+# scheduler가 SourceEntry.refresh_interval_minutes 미설정인 경우의
+# fallback으로 사용한다.
+_DEFAULT_REFRESH_INTERVAL_MINUTES_BY_KIND: "Mapping[SourceKind, int]" = {
+    # 보안 권고는 신선도가 핵심 — 30분 cadence
+    SourceKind.SECURITY_ADVISORY: 30,
+    # 릴리스/체인지로그는 시간 단위
+    SourceKind.RELEASE_NOTES: 60,
+    SourceKind.CHANGELOG: 60,
+    # 엔지니어링 블로그는 6시간
+    SourceKind.ENGINEERING_BLOG: 360,
+    # 공식 문서는 사이트맵을 자주 돌릴 필요가 없다 — 24시간
+    SourceKind.DOCS: 1440,
+    SourceKind.DESIGN_SYSTEM: 1440,
+    # 깃허브 레포 watch는 1시간
+    SourceKind.REPO: 60,
+    SourceKind.ISSUE_TRACKER: 60,
+    # 표준 / 매뉴얼 검토 대상은 주 단위
+    SourceKind.STANDARD: 10080,
+    SourceKind.COMMUNITY: 720,
+}
+
+
+def default_refresh_interval_for_kind(kind: "SourceKind") -> int:
+    """``SourceKind`` 기준 기본 refresh interval (분)."""
+
+    return _DEFAULT_REFRESH_INTERVAL_MINUTES_BY_KIND.get(kind, 1440)
+
+
 # Note kind for vault writes — distinct from canonical "knowledge"
 # (which is the L3-approval long-term record). The L1 auto-saved
 # "collected & learning" note kind is "engineering-knowledge".
@@ -134,6 +184,11 @@ class SourceEntry:
         "link + short summary + light quotation only — no full-text reproduction"
     )
     max_items_per_day: int = 5
+    # 한 source가 여러 axis에 속할 수 있다. 비어 있으면 collector는 axis 정렬에서
+    # "not classified" bucket으로 본다 — retrieval에서는 보너스 점수 없음.
+    axes: Tuple["SourceAxis", ...] = ()
+    # 기본은 SourceKind 기반 fallback. 0/None은 fallback 사용 의도.
+    refresh_interval_minutes: int = 0
 
     def is_official(self) -> bool:
         return self.tier in (
@@ -141,6 +196,13 @@ class SourceEntry:
             SourceTier.TIER_2,
             SourceTier.TIER_3,
         )
+
+    def effective_refresh_interval_minutes(self) -> int:
+        """SourceEntry-level override가 있으면 그 값, 없으면 kind 기본값."""
+
+        if self.refresh_interval_minutes and self.refresh_interval_minutes > 0:
+            return self.refresh_interval_minutes
+        return default_refresh_interval_for_kind(self.source_kind)
 
     def to_payload(self) -> Mapping[str, Any]:
         return {
@@ -158,6 +220,8 @@ class SourceEntry:
             "review_required": self.review_required,
             "content_policy": self.content_policy,
             "max_items_per_day": self.max_items_per_day,
+            "axes": [axis.value for axis in self.axes],
+            "refresh_interval_minutes": self.effective_refresh_interval_minutes(),
         }
 
 
@@ -378,7 +442,9 @@ __all__ = [
     "NOTE_KIND_ENGINEERING_KNOWLEDGE",
     "PracticeVerification",
     "ProjectApplicability",
+    "SourceAxis",
     "SourceEntry",
     "SourceKind",
     "SourceTier",
+    "default_refresh_interval_for_kind",
 ]
