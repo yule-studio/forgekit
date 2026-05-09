@@ -29,6 +29,7 @@ from ..agents.job_queue import (
     AutonomyLockRegistry,
     AutonomyProducer,
     CodingExecutorWorker,
+    DecisionPortBuildTrace,
     HeartbeatStore,
     JobQueue,
     ObsidianWriterWorker,
@@ -36,6 +37,7 @@ from ..agents.job_queue import (
     RoleTakeWorker,
     WorkflowSessionState,
     build_completion_funnel,
+    build_decision_port_from_env,
     build_discussion_followup_dispatcher,
     default_render_fn,
     default_vault_root_resolver,
@@ -738,11 +740,16 @@ def _build_autonomy_producer_tick(
         )
         session_state = WorkflowSessionState()
         registry = AutonomyLockRegistry()
+        decision_port, decision_trace = build_decision_port_from_env(
+            external_callable_factory=_resolve_external_decision_callable_factory(),
+        )
+        _log_decision_port_trace(decision_trace)
         producer = AutonomyProducer(
             session_state=session_state,
             coding_executor=coding_worker,
             lock_registry=registry,
             followup_dispatch=followup,
+            decision_port=decision_port,
         )
     except Exception:  # noqa: BLE001 - never crash supervisor startup
         logger.warning(
@@ -756,6 +763,63 @@ def _build_autonomy_producer_tick(
         return producer.tick()
 
     return _tick, interval
+
+
+# ---------------------------------------------------------------------------
+# Decision port wiring helpers (env-driven, deterministic-by-default)
+# ---------------------------------------------------------------------------
+#
+# The Claude decision seam is plugged into the autonomy producer by
+# composing a port chain from env. ``build_decision_port_from_env``
+# always returns a port that terminates in the deterministic fallback,
+# so the supervisor's behaviour is unchanged for installations that
+# haven't opted into a record / external tier.
+#
+# The external tier is wired through a factory hook so a follow-up PR
+# can drop a live Claude API client / hosted decision sidecar in
+# without touching this module. The hook is intentionally a no-op in
+# this PR — the operator opting in via env still ends up with a
+# deterministic chain because the factory returns ``None``.
+
+
+def _resolve_external_decision_callable_factory():
+    """Return the factory the seam uses to materialise the live tier.
+
+    Kept as a function (not a constant) so a test or follow-up PR can
+    monkeypatch it without re-importing the module. The default
+    implementation returns ``None`` — i.e. the live tier stays
+    inactive — so an operator who sets
+    ``YULE_CLAUDE_DECISION_PROVIDER=external,deterministic`` still
+    runs on the deterministic fallback until a live callable is
+    explicitly installed by a follow-up PR.
+    """
+
+    def _factory(_env: Mapping[str, str]):
+        return None
+
+    return _factory
+
+
+def _log_decision_port_trace(trace: DecisionPortBuildTrace) -> None:
+    """Surface the env-derived port composition on supervisor stdout.
+
+    Keeps the operator briefing tight: one line that names the
+    enabled tiers + any tokens the env factory had to skip + the
+    deterministic fallback at the bottom.
+    """
+
+    enabled = ",".join(trace.enabled) or trace.fallback
+    skipped = (
+        " skipped=" + ",".join(f"{tok}({why})" for tok, why in trace.skipped)
+        if trace.skipped
+        else ""
+    )
+    logger.info(
+        "claude decision port composed: enabled=%s fallback=%s%s",
+        enabled,
+        trace.fallback,
+        skipped,
+    )
 
 
 # ---------------------------------------------------------------------------

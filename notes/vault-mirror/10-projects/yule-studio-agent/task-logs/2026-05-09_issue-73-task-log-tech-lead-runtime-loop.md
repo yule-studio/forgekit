@@ -46,6 +46,9 @@ tags: [task-log, tech-lead-runtime, foundation]
 | 2026-05-09 commit-15 | Round 4 — A. autonomy_producer + autonomy_lock + tests | 완료, producer/scheduler core land |
 | 2026-05-09 commit-16 | Round 4 — B. discussion_followup + completion_funnel + tests | 완료, discussion → 큐 / completion → tick funnel |
 | 2026-05-09 commit-17 | Round 4 — C. claude_decision_seam + supervisor watch loop tick + 마스터 플랜 16-ter | 완료, runtime 자율 tick + 외부 결정 layer seam |
+| 2026-05-10 round-4-bis kickoff | decision provider 강화 — 별도 worktree `feature/company-runtime-autonomy-decision` 위에서 commit 18~19 | |
+| 2026-05-10 commit-18 | Round 4-bis — A. RecordOnly/External port + env contract factory + DecisionRequest 정착 | 완료, deterministic / record-only / live-ready 3-tier 명확화 |
+| 2026-05-10 commit-19 | Round 4-bis — B. autonomy producer retry-guard 호출 경로 + run_service env-driven 합성 + 본 task-log 갱신 | 완료, autonomy loop 가 실제 decision port 를 호출하는 첫 경로 |
 
 # 변경 / 산출물 (계획)
 
@@ -247,3 +250,52 @@ tags: [task-log, tech-lead-runtime, foundation]
 ## 외부 blocker
 
 - 없음. Round 4 3 영역 모두 hard-rail 안에서 land. supervisor 자율 tick 도 opt-in env 로 운영자 승인 게이트 유지.
+
+# Round 4-bis — 종료 시점 갱신 (2026-05-10)
+
+## 결과 요약
+
+별도 worktree `feature/company-runtime-autonomy-decision` 위에서 commit 18~19 추가. Round 4 가 land 한 `claude_decision_seam.py` 의 단일 `DeterministicDecisionPort` 위에 (a) `RecordOnlyDecisionPort` (shadow-mode 캡처) + (b) `ExternalDecisionPort` (외부 호출 가능 객체 어댑터) + (c) env-driven `build_decision_port_from_env` 합성기 를 얹어 — 짧은 Claude invocation seam 이 deterministic / record-only / live-ready 3 tier 로 명확하게 갈라졌다. 동시에 autonomy producer 의 CI retry 서브-producer 가 실제로 decision port 를 호출하는 첫 경로를 land.
+
+## 산출물 (Round 4-bis)
+
+| 영역 | 위치 | 비고 |
+| --- | --- | --- |
+| A. seam 강화 | `src/yule_orchestrator/agents/job_queue/claude_decision_seam.py` | RecordOnlyDecisionPort (ring buffer + JSONL append, 비-actionable so chain falls through) / ExternalDecisionPort (외부 callable 어댑터, raise → fallback / Mapping → DecisionResponse 정규화) / build_decision_port_from_env (env contract: `YULE_CLAUDE_DECISION_PROVIDER` 우선순위 토큰화 + record path / buffer / external timeout) / DecisionPortBuildTrace / coerce_decision_request 헬퍼. 라이브 HTTP 클라이언트 import 절대 없음 — 외부 callable 은 `external_callable_factory` 로 주입. |
+| A. discussion follow-up DecisionRequest 정착 | `src/yule_orchestrator/agents/job_queue/discussion_followup.py` | `_build_decision_request` 가 typed `DecisionRequest` 를 반환 (기존: 느슨한 dict). external port 가 `request.kind` / `request.facts` 의존 가능. |
+| A. tests | `tests/job_queue/test_claude_decision_seam.py` (+19 cases), `tests/job_queue/test_discussion_followup.py` (1 stub 검증 갱신) | RecordOnly ring buffer / JSONL append / chain fall-through, ExternalDecisionPort 6 path (no callable / response passthrough / mapping normalise / no-timeout signature / raise → fallback / unsupported return), env factory 9 path (default / record / external skip / external active / unknown token / record path / buffer clamp / factory raise / trace shape), coerce_decision_request 4 path. |
+| B. autonomy producer retry-guard | `src/yule_orchestrator/agents/job_queue/autonomy_producer.py` | `_produce_ci_retry_followup` 가 dispatcher 호출 *전에* `decision_port.decide(kind=retry_guard, facts={pr_number, attempt, escalated})` 를 호출. skip → SKIPPED dispatch + branch lock 미획득 (port 가 위임을 거부했으면 lock 도 안 잡음). raise / non-actionable → 기존 fast-path. |
+| B. run_service env 합성 | `src/yule_orchestrator/runtime/run_service.py` | `_build_autonomy_producer_tick` 가 `build_decision_port_from_env(external_callable_factory=_resolve_external_decision_callable_factory())` 호출 후 `AutonomyProducer(decision_port=...)` 로 주입. `_resolve_external_decision_callable_factory` 는 본 PR 에서 `None` 반환 (= deterministic-only) — 후속 PR 에서 monkeypatch 한 줄로 라이브 callable 활성화. `_log_decision_port_trace` 가 supervisor 시작 시 enabled / fallback / skipped 토큰 한 줄 로그. |
+| B. tests | `tests/job_queue/test_autonomy_producer.py` (+4 cases), `tests/job_queue/test_decision_port_run_service_wiring.py` (3 cases) | retry-guard skip 시 dispatcher 미호출 / advance 시 dispatcher 호출 / raise 시 fast-path / port 미연결 시 legacy / run_service env 미설정 → deterministic-only / external factory monkeypatch → live skip / record token → record-only 합성. |
+
+## 회귀 검증
+
+- `python3 -m unittest discover -s tests -t . -p 'test_*.py'` → **3196/3196 OK** (skip 5).
+- 신규 테스트 26 케이스 (seam +19 / autonomy +4 / wiring +3).
+- Round 4 의 supervisor autonomy tick 회귀 (`tests.runtime.test_supervisor_autonomy_tick`) 6 cases 그대로 통과.
+
+## Hard rails 보존 확인 (Round 4-bis)
+
+- 라이브 HTTP / API 클라이언트 import 절대 없음 — `ExternalDecisionPort` 는 외부 callable 어댑터일 뿐.
+- 운영자가 `YULE_CLAUDE_DECISION_PROVIDER=external,deterministic` 을 켜도 callable factory 가 `None` 을 반환하면 external tier 는 skipped 로 trace 에 기록되고 deterministic 만 유효 — 명시적 라이브 callable 주입 없이는 행동 변화 0.
+- record-only 는 *비-actionable* — chain 의 verdict 를 절대 가로채지 않음. shadow mode 정의 그대로.
+- decision port 가 raise 하거나 잘못된 타입을 반환하면 모든 callsite 가 fast-path 로 떨어짐 — runtime 정지 불가.
+- 큐 dedup / branch lock / session marker 3 중 가드는 Round 4 그대로 유지.
+
+## autonomy loop 가 외부 결정 layer 를 실제로 어떻게 부르는가
+
+1. supervisor 가 `YULE_AUTONOMY_PRODUCER_ENABLED=true` 로 부팅하면 `_build_autonomy_producer_tick` 이 env 기반 decision port 를 합성한다 (`YULE_CLAUDE_DECISION_PROVIDER` 미설정 → deterministic-only).
+2. 매 30 s tick 마다 `AutonomyProducer.tick()` 이 4 sub-producer 를 돈다. CI failed PR 후보가 잡히면 `_consult_retry_guard` 가 `DecisionRequest(kind=retry_guard, facts={pr_number, attempt, escalated})` 로 port 를 호출.
+3. port chain: `external (있으면) → record (있으면) → deterministic`. external 이 skip 을 반환하면 producer 는 dispatcher 를 부르지 않고 SKIPPED dispatch 로 surface — 즉 라이브 결정 layer 가 *실제로* runtime 동작을 바꾸는 첫 경로.
+4. record-only 는 verdict 를 가로채지 않으므로 운영자는 "라이브가 *무엇* 을 묻는지" 를 JSONL audit 으로 먼저 본 뒤 외부 callable 을 켜는 단계적 ramp 가 가능.
+5. discussion follow-up 도 동일한 typed `DecisionRequest` 로 port 를 호출하므로 두 callsite 의 외부 prompt 템플릿이 일치.
+
+## 본 PR 비범위 → 후속 PR 매핑 (Round 4-bis 갱신)
+
+- 라이브 Claude API / 호스팅 결정 sidecar 의 실제 callable 구현 → 별도 PR. `_resolve_external_decision_callable_factory` 한 곳만 monkeypatch.
+- next-task selector 단계의 decision port 호출 (DECISION_KIND_NEXT_TASK) → 별도 PR.
+- record-only audit JSONL 의 회수 / 운영 대시보드 → 별도 PR (Discord 알림은 본 PR scope 밖).
+
+## 외부 blocker
+
+- 없음. 본 PR 도 hard-rail 안에서 land — deterministic-only 가 default 이므로 운영자가 명시 opt-in 하지 않는 한 supervisor 동작은 Round 4 와 동일.
