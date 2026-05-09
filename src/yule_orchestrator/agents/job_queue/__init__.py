@@ -44,6 +44,13 @@ from .approval_worker import (
     env_approval_channel_resolver,
     render_approval_request,
 )
+from .ci_retry_orchestrator import (
+    CIRetryDecision,
+    CIStatusFetcher,
+    GithubAppCheckRunFetcher,
+    SESSION_EXTRA_PROGRESS_KEY as CODING_EXECUTOR_PROGRESS_EXTRA_KEY,
+    orchestrate_ci_retry,
+)
 from .coding_execute_dispatcher import (
     DispatchedCodingJob,
     ENV_DEFAULT_BASE_BRANCH as ENV_CODING_EXECUTOR_DEFAULT_BASE_BRANCH,
@@ -55,6 +62,14 @@ from .coding_execute_dispatcher import (
     build_coding_execute_request,
     dispatch_ready_coding_jobs,
     iter_ready_coding_jobs,
+)
+from .coding_execute_progress import (
+    ProgressEntry,
+    ProgressOutcome,
+    TASK_LOG_NOTE_KIND,
+    make_github_pr_comment_fn,
+    record_coding_execute_progress,
+    render_progress_markdown,
 )
 from .coding_executor_worker import (
     CodingExecuteOutcome,
@@ -139,7 +154,10 @@ from .store import (
 
 __all__ = (
     "APPROVAL_KIND_ENGINEERING_WRITE",
+    "CIRetryDecision",
+    "CIStatusFetcher",
     "CODING_EXECUTOR_DISPATCH_EXTRA_KEY",
+    "CODING_EXECUTOR_PROGRESS_EXTRA_KEY",
     "CodingExecuteOutcome",
     "CodingExecuteRequest",
     "CodingExecutorWorker",
@@ -147,13 +165,21 @@ __all__ = (
     "ENV_CODING_EXECUTOR_DEFAULT_BASE_BRANCH",
     "ENV_CODING_EXECUTOR_DEFAULT_REPO",
     "ENV_CODING_EXECUTOR_DRY_RUN",
+    "GithubAppCheckRunFetcher",
     "JOB_TYPE_CODING_EXECUTE",
+    "ProgressEntry",
+    "ProgressOutcome",
     "ReadyCodingJob",
     "SERVICE_ID_CODING_EXECUTOR",
+    "TASK_LOG_NOTE_KIND",
     "WorkflowSessionState",
     "build_coding_execute_request",
     "dispatch_ready_coding_jobs",
     "iter_ready_coding_jobs",
+    "make_github_pr_comment_fn",
+    "orchestrate_ci_retry",
+    "record_coding_execute_progress",
+    "render_progress_markdown",
     "APPROVAL_KIND_GITHUB_WORK_ORDER",
     "APPROVAL_KIND_OBSIDIAN_WRITE",
     "APPROVAL_KIND_RESEARCH_PROMOTION",

@@ -41,9 +41,17 @@ from ..agents.job_queue.approval_discord_poster import (
     build_approval_channel_resolver,
     build_production_post_fn,
 )
+from ..agents.job_queue.coding_execute_progress import (
+    make_github_pr_comment_fn,
+    record_coding_execute_progress,
+)
 from ..agents.job_queue.coding_executor_live import (
     build_live_executor,
     detect_live_executor_availability,
+)
+from ..agents.job_queue.coding_executor_worker import (
+    CodingExecuteOutcome,
+    CodingExecuteRequest,
 )
 from ..agents.job_queue.standalone_runners import (
     build_research_runner,
@@ -350,6 +358,15 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
             heartbeats=heartbeats,
             **bundle,
         )
+        obsidian_progress_writer = ObsidianWriterWorker(
+            queue=queue,
+            heartbeats=heartbeats,
+            render_fn=default_render_fn,
+            write_fn=default_write_fn,
+            vault_root_resolver=default_vault_root_resolver,
+        )
+        progress_post_fn = _build_coding_progress_post_fn()
+
         # Producer side runs once per consumer tick — picks up any
         # ``coding_job=ready`` session the gateway approved between
         # iterations and stamps the dispatch marker on the session.
@@ -363,7 +380,12 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
                 logger.warning(
                     "coding_execute dispatcher tick raised", exc_info=True
                 )
-            worker.process_job(job)
+            outcome = worker.process_job(job)
+            _record_coding_progress_after_outcome(
+                outcome=outcome,
+                obsidian_writer=obsidian_progress_writer,
+                progress_post_fn=progress_post_fn,
+            )
 
         return _process
 
@@ -443,6 +465,75 @@ def build_coding_executor_bundle(
         availability.code_editor,
     )
     return bundle
+
+
+def _build_coding_progress_post_fn() -> Optional[Any]:
+    """Construct the GitHub PR comment poster wired around the live client.
+
+    Returns None when the GitHub App env is absent so the runtime
+    happily writes only the Obsidian task-log + in-memory progress
+    history. The poster is shared across all coding_execute outcomes
+    in this process — tokens are minted lazily inside the live client.
+    """
+
+    import os as _os
+
+    live_client = _maybe_build_live_github_client(env=_os.environ)
+    if live_client is None:
+        return None
+    return make_github_pr_comment_fn(live_client)
+
+
+def _record_coding_progress_after_outcome(
+    *,
+    outcome: CodingExecuteOutcome,
+    obsidian_writer: Any,
+    progress_post_fn: Optional[Any],
+) -> None:
+    """Wrap :func:`record_coding_execute_progress` for the run-service path.
+
+    Loads the originating session via the workflow store (best effort —
+    when the cache row is gone the recorder still creates the in-memory
+    entry but the persisted history isn't updated). All exceptions are
+    swallowed so a progress recorder bug never derails the consumer.
+    """
+
+    if outcome is None or outcome.job is None:
+        return
+    payload = outcome.job.payload or {}
+    session_id = str(payload.get("session_id") or outcome.job.session_id or "")
+    if not session_id:
+        return
+
+    try:
+        from ..agents.workflow_state import load_session
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        session = load_session(session_id)
+    except Exception:  # noqa: BLE001
+        session = None
+    if session is None:
+        return
+
+    try:
+        request = CodingExecuteRequest.from_payload(payload)
+    except Exception:  # noqa: BLE001
+        request = None
+
+    try:
+        record_coding_execute_progress(
+            session=session,
+            outcome=outcome,
+            request=request,
+            obsidian_writer=obsidian_writer,
+            github_comment_fn=progress_post_fn,
+            repo_full_name=request.repo_full_name if request else None,
+        )
+    except Exception:  # noqa: BLE001 - never crash consumer on progress bug
+        logger.warning(
+            "coding_execute progress recorder raised", exc_info=True
+        )
 
 
 def _maybe_build_live_github_client(*, env: Mapping[str, str]) -> Optional[Any]:
