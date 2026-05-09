@@ -27,6 +27,22 @@ from .approval_reply import (
     handle_approval_reply,
     parse_approval_intent,
 )
+from .autonomy_lock import (
+    AutonomyLock,
+    AutonomyLockRegistry,
+    branch_scope,
+    coding_job_scope,
+    session_scope,
+)
+from .autonomy_producer import (
+    AUTONOMY_PRODUCER_HOLDER,
+    AutonomyDispatch,
+    AutonomyProducer,
+    AutonomyProducerReport,
+    AutonomyTickContext,
+    DispatchOutcome,
+    PRODUCER_TICK_LOCK_TTL_SECONDS,
+)
 from .approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     APPROVAL_KIND_OBSIDIAN_WRITE,
@@ -153,7 +169,19 @@ from .store import (
 
 
 __all__ = (
+    "AUTONOMY_PRODUCER_HOLDER",
     "APPROVAL_KIND_ENGINEERING_WRITE",
+    "AutonomyDispatch",
+    "AutonomyLock",
+    "AutonomyLockRegistry",
+    "AutonomyProducer",
+    "AutonomyProducerReport",
+    "AutonomyTickContext",
+    "DispatchOutcome",
+    "PRODUCER_TICK_LOCK_TTL_SECONDS",
+    "branch_scope",
+    "coding_job_scope",
+    "session_scope",
     "CIRetryDecision",
     "CIStatusFetcher",
     "CODING_EXECUTOR_DISPATCH_EXTRA_KEY",
