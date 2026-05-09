@@ -609,22 +609,41 @@ def _build_decision_request(
     *,
     session_id: str,
     discussion_row: Mapping[str, Any],
-) -> Mapping[str, Any]:
+) -> Any:
     """Lift the discussion row into a decision-port request.
 
-    Lazy import keeps the dispatcher importable without the seam
-    package; the request shape is documented on
-    :mod:`claude_decision_seam.DecisionRequest`.
+    Returns a :class:`DecisionRequest` so a live external port wired
+    via :func:`build_decision_port_from_env` can rely on the typed
+    shape (``request.kind``, ``request.facts``, …) instead of having
+    to duck-type a Mapping. Falls back to the legacy plain-dict shape
+    if the seam module fails to import — the dispatcher is supposed
+    to be cheap and never block on import errors.
     """
 
-    return {
-        "kind": "discussion_followup",
-        "session_id": session_id,
+    facts = {
         "mode": discussion_row.get("mode"),
         "turn_id": discussion_row.get("turn_id"),
         "missing_roles": list(discussion_row.get("missing_roles") or ()),
-        "summary": discussion_row.get("summary") or "",
     }
+    summary = str(discussion_row.get("summary") or "")
+    try:
+        from .claude_decision_seam import (
+            DECISION_KIND_DISCUSSION_FOLLOWUP,
+            DecisionRequest,
+        )
+    except Exception:  # noqa: BLE001 - dispatcher must keep working
+        return {
+            "kind": "discussion_followup",
+            "session_id": session_id,
+            "summary": summary,
+            **facts,
+        }
+    return DecisionRequest(
+        kind=DECISION_KIND_DISCUSSION_FOLLOWUP,
+        summary=summary,
+        facts=facts,
+        session_id=session_id,
+    )
 
 
 # ---------------------------------------------------------------------------
