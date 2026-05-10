@@ -146,6 +146,7 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
             status_post_interval_seconds=post_interval,
             autonomy_producer_tick_fn=autonomy_tick_fn,
             autonomy_producer_interval_seconds=autonomy_interval,
+            autonomy_producer_on_report=_supervisor_autonomy_on_report,
         )
         return EXIT_OK
 
@@ -647,19 +648,32 @@ def _build_supervisor_status_post(
         # Lazy imports keep the supervisor branch importable when
         # status posting is off (no Discord deps loaded).
         from .circuit_breaker import load_persisted_circuit_snapshots
-        from .status import build_runtime_status
+        from .status import build_runtime_status, render_runtime_status_compact
         from .status_poster import (
+            collect_recent_completion_funnel,
             collect_recent_fallback_audits,
             post_runtime_status_summary,
         )
 
         circuits = load_persisted_circuit_snapshots()
+        funnel_recent = collect_recent_completion_funnel()
         report = build_runtime_status(
             queue=queue,
             heartbeats=heartbeats,
             circuit_snapshots=circuits,
+            completion_funnel_recent=funnel_recent,
         )
         fallbacks = collect_recent_fallback_audits()
+        # Always emit the compact digest to journalctl so an operator
+        # without Discord access can still read "what's the runtime
+        # doing right now?" even when the dedup gate skips the post.
+        try:
+            for line in render_runtime_status_compact(report).splitlines():
+                logger.info("supervisor status: %s", line)
+        except Exception:  # noqa: BLE001 - never crash status post on render
+            logger.warning(
+                "supervisor compact status render raised", exc_info=True
+            )
         outcome = await post_runtime_status_summary(
             report=report,
             circuits=circuits,
@@ -677,6 +691,35 @@ def _build_supervisor_status_post(
             )
 
     return _post_once, interval
+
+
+def _supervisor_autonomy_on_report(report: Any) -> None:
+    """Hook the supervisor watch loop calls after every autonomy tick.
+
+    Pipes the producer report into the process-local
+    :class:`RuntimeAutonomyJournal` so the next status post sees it,
+    and emits a one-line structured log for ``journalctl`` operators
+    who don't have Discord access. Best-effort: any failure is
+    logged-and-swallowed so a journal hiccup never crashes the
+    supervisor.
+    """
+
+    try:
+        from .status import record_autonomy_report
+
+        record_autonomy_report(report)
+    except Exception:  # noqa: BLE001 - never crash supervisor
+        logger.warning(
+            "supervisor autonomy on_report: journal record raised",
+            exc_info=True,
+        )
+
+    summary_fn = getattr(report, "summary_line", None)
+    if callable(summary_fn):
+        try:
+            logger.info("autonomy producer: %s", summary_fn())
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # ---------------------------------------------------------------------------

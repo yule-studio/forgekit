@@ -357,3 +357,104 @@ tags: [task-log, tech-lead-runtime, foundation]
 ## 외부 blocker
 
 - 없음. Round 4-ter 도 hard-rail 안에서 land — 운영자가 두 env 키를 모두 명시 opt-in 하지 않는 한 deterministic-only 동작 유지.
+
+# Round 4 후속 — autonomy surface / observability (2026-05-10)
+
+## 결과 요약
+
+별도 worktree `feature/company-runtime-autonomy-surface` 위에서 Round 4 producer 의 결과가 사람에게 보이도록 status surface 를 보강. runtime 이 다음 작업을 만들더라도 운영자가 Discord `#봇-상태` / `yule runtime status` / Obsidian task-log / GitHub PR comment 어디에서든 동일한 4-state (`done` / `retry_ready` / `needs_approval` / `blocked`) + 보조 상태 (`locked`) 로 상황을 읽을 수 있도록 정렬.
+
+## 산출물 (Round 4 후속)
+
+| 영역 | 위치 | 비고 |
+| --- | --- | --- |
+| A. autonomy journal + 새 dataclass | `src/yule_orchestrator/runtime/status.py` | `RuntimeAutonomyJournal` (process-local ring buffer, 16 entry 기본) + `AutonomyTickSummary` / `AutonomyDispatchSummary` / `CompletionFunnelSummary` projection. `RuntimeStatusReport` 에 `autonomy_recent` / `completion_funnel_recent` / `autonomy_locks_held` 필드 + 텍스트 / JSON 렌더 + 4-state warning. `record_autonomy_report()` / `get_default_autonomy_journal()` / `render_autonomy_summary_markdown()` export. |
+| A. status_poster autonomy 통합 | `src/yule_orchestrator/runtime/status_poster.py` | `compute_status_dedup_key` 가 errored tick / locked dispatch / 파킹된 funnel 세션을 dedup 키에 포함 → 상태 전이 시점에만 다시 post. `is_clean_state` 도 같은 신호 반영. `post_runtime_status_summary` 가 base summary 뒤에 `render_autonomy_summary_markdown` 결과 append. `collect_recent_completion_funnel(session_lister=...)` 추가 — `collect_recent_fallback_audits` 와 동일 형태. |
+| A. supervisor wiring | `src/yule_orchestrator/runtime/run_service.py` | `run_supervisor_watch_loop` 호출에 `autonomy_producer_on_report=_supervisor_autonomy_on_report` 추가 — producer report 가 자동으로 journal 에 들어감. `_build_supervisor_status_post` 가 `collect_recent_completion_funnel()` 결과를 `build_runtime_status` 에 주입. journal 실패 / summary_line 실패 모두 swallow — 슈퍼바이저가 절대 죽지 않음. |
+| B. coding_execute progress markdown | `src/yule_orchestrator/agents/job_queue/coding_execute_progress.py` | `PROGRESS_STATUS_LABELS` (`done` / `retry_ready` / `needs_approval` / `blocked` / `locked`) 한국어 헤드라인 + 운영자 hint. `render_progress_markdown` 헤딩이 4-state 라벨 + 아이콘 + operator quote 로 출력. `render_progress_summary_line` — Discord 1줄 footer / 로그 grep 용. 알 수 없는 status 는 `blocked` 로 fallback. |
+| C. tests | `tests/runtime/test_status_autonomy_surface.py` (19 케이스), `tests/runtime/test_status_poster_autonomy.py` (13 케이스), `tests/runtime/test_supervisor_autonomy_tick.py` (+2 케이스), `tests/job_queue/test_coding_execute_progress.py` (+8 케이스) | journal projection + ring 캡 / build_runtime_status 가 journal+funnel 노출 / 4-state warning / 마크다운 섹션 생성 / dedup 키 sensitivity / dispatched-only 는 dedup 안 깨뜨림 / collect_recent_completion_funnel 가 lister 실패 / malformed history 모두 견딤 / supervisor on_report 가 journal 에 적재 / 4-state 라벨 + locked 라벨 + summary line shape. |
+
+## 회귀 검증
+
+- `tests.runtime` 312 cases — 전부 통과 (Round 4 대비 +34 신규).
+- `tests.job_queue` 295 cases — 전부 통과 (+8 신규).
+- `tests.discord` 335 cases — 전부 통과 (변경 없음).
+- 전체 `python3 -m unittest discover -s tests` 3208 cases 중 Round 4 와 동일하게 단일 pre-existing 잡음 (`test_login_failure_translates_to_value_error`) 만 잔존 — 본 후속 무관, isolation 시 통과 확인.
+
+## Hard rails 보존 확인 (Round 4 후속)
+
+- producer 핵심 로직 변경 없음 (`autonomy_producer.py` / `autonomy_lock.py` 미수정). 본 PR 은 read-only projection 만 추가.
+- knowledge loop 파일 미수정.
+- live code editor / live decision provider: 변경 없음.
+- 슈퍼바이저 안정성: journal 적재 / funnel collection / status post 실패 모두 try/except 로 swallow — supervisor 는 절대 안 죽음.
+- Discord 채널 신설 없음: 모든 surface 가 기존 `#봇-상태` post + `#승인-대기` reply path 위에 얹힘.
+
+## 운영자가 보는 그림
+
+- `#봇-상태` Discord post: M7 base summary + (필요 시) `### Autonomy producer` / `### Completion funnel` 섹션. `dispatched`(✅) / `deduped`(♻️) / `locked_by_other`(🔒) / `error`(⚠️) 아이콘 + 마지막 producer tick 의 next_task_source. 파킹된 세션 (`needs_approval`(🙋) / `blocked`(⛔)) 은 별도 줄로 등장.
+- `yule runtime status`: `services` / `queue` / `recent failures` 뒤로 `autonomy producer` (최근 5 tick) + `completion funnel` (최근 5 결정) 섹션 추가, JSON 모드도 동일한 키 (`autonomy_recent`, `completion_funnel_recent`, `autonomy_locks_held`).
+- `yule runtime status` warnings: errored tick / 지속 lock / blocked / needs_approval 각각에 `journalctl` / 슈퍼바이저 재시작 / `#승인-대기` reply 같은 구체 명령을 그대로 노출.
+- Obsidian task-log / GitHub PR comment: 동일한 4-state 라벨 + 한국어 운영자 hint. PR 댓글만 보고도 "이 PR 은 차단됐는가 / 승인 대기인가 / autonomy 가 자동으로 다음 tick 에 가져갈 것인가" 가 1초 안에 결정 가능.
+
+## 본 PR 비범위 → 후속 PR 매핑 (Round 4 후속 갱신)
+
+- live Claude / external decision provider 활성화 → 별도 PR (Round 4 와 동일).
+- live LLM 코드 편집기 활성화 → 별도 PR.
+- Discord escalation alert (예: blocked 가 N 분 이상 지속될 때 직접 운영자 멘션) → 별도 PR. 본 PR 은 `#봇-상태` 같은 dedup 게이트만 강화.
+- 역할별 자료 수집 background ingestion live wiring (Phase 5) → 별도 worktree.
+
+## 외부 blocker
+
+- 없음. autonomy surface 강화 4 영역 모두 hard-rail 안에서 land. live decision / live editor 는 여전히 별도 PR.
+
+
+# Round 4 마무리 — operator actionability + compact view (2026-05-10)
+
+## 결과 요약
+
+같은 worktree `feature/company-runtime-autonomy-surface` (#80) 위에서 Round 4 후속의 status surface 를 운영자 행동 (operator action) 기준으로 한 번 더 정렬. 운영자가 `yule runtime status` / Discord `#봇-상태` post / Obsidian task-log / GitHub PR 댓글 어디에서 보든 "지금 내가 다음에 무엇을 해야 하는지" 가 high/medium/low 우선순위 + 복붙 가능한 next_step 명령으로 즉시 보이도록 정렬. 또한 supervisor / journalctl / Slack 처럼 좁은 surface 에서도 한 줄로 상태를 읽을 수 있는 compact 뷰가 신설.
+
+## 산출물 (Round 4 마무리)
+
+| 영역 | 위치 | 비고 |
+| --- | --- | --- |
+| A. operator action surface | `src/yule_orchestrator/runtime/status.py` | `OperatorAction` dataclass + `summarize_operator_actions(report) -> Tuple[OperatorAction, ...]` 신설. 9 종 액션 (`needs_approval` / `blocked` / `retry_ready_backlog` / `lock_contention` / `autonomy_error` / `stale_service` / `unknown_service` / `circuit_open` / `failed_terminal_jobs`) 을 high/medium/low 로 정렬. 각 항목에 affected sessions/services + 복붙 가능한 `next_step` (e.g. `yule runtime circuit reset <id>`, `이대로 저장`, `systemctl restart yule-run-service@...service`) 노출. `ACTION_KIND_*` 상수로 다운스트림 routing key 안정화. |
+| A. compact view | `src/yule_orchestrator/runtime/status.py` | `CompactStatusSummary` + `build_compact_status_summary(report)` + `render_runtime_status_compact(report)` 추가. 6 줄 이하 디지스트 — alive/stale/unknown/circuit_open · in_progress/failed_terminal/failed_retryable · ticks/errored/locked · funnel done/retry_ready/needs_approval/blocked · top action 한 줄. JSON 모드도 `compact` / `operator_actions` 키 추가. |
+| A. 텍스트/마크다운 통합 | `src/yule_orchestrator/runtime/status.py` | `render_runtime_status_text` 에 "operator actions:" 섹션 (각 액션을 severity + next_step 으로 노출), `render_autonomy_summary_markdown` 에 `### Operator actions` 섹션을 producer/funnel 위에 노출 (가장 위에 운영자 액션이 보이도록). |
+| B. status_poster top-banner | `src/yule_orchestrator/runtime/status_poster.py` | `_render_top_action_banner(report)` — top action 을 quoted block 으로 base summary 위에 prepend. Discord 알림 미리보기에서 next-step 이 곧장 노출. clean snapshot 에서는 빈 문자열 → 포스트 비대화 방지. |
+| B. supervisor compact log | `src/yule_orchestrator/runtime/run_service.py` | `_build_supervisor_status_post` 의 `_post_once` 가 매 tick 마다 compact 6 줄을 `logger.info("supervisor status: ...")` 로 emit — Discord dedup 으로 post 가 skip 되더라도 journalctl 에서는 항상 현재 상태/top action 을 읽을 수 있음. 실패는 swallow. |
+| C. coding_execute_progress 강화 | `src/yule_orchestrator/agents/job_queue/coding_execute_progress.py` | `PROGRESS_STATUS_LABELS` 5 종에 `operator_action` + `severity` (high/medium/low) 필드 추가. `render_progress_markdown` 본문에 "**운영자 액션 [severity]:** ..." 블록 출력 — `이대로 저장` (needs_approval), `yule runtime status --json ...` (blocked), `systemctl restart yule-run-service@eng-supervisor-watch.service` (locked) 같은 구체 명령. `render_progress_action_line(entry)` 신설 — `runtime.status.OperatorAction` 과 동일 shape 의 1 라인 helper. |
+| D. tests | `tests/runtime/test_status_operator_actions.py` (21 케이스), `tests/runtime/test_status_poster_autonomy.py` (+2 케이스 — top-banner ordering / clean 시 미출현), `tests/job_queue/test_coding_execute_progress.py` (+8 케이스 — 라벨 5 종 severity/operator_action 검증, action_line shape, 4 액션 텍스트 회귀, blocked PR 없을 때 PR 줄 omit, unknown status fallback) | needs_approval/blocked/retry_ready/locked 4-state 분류, 우선순위 정렬, retry_ready 3 임계, lock affected 중복 제거, top-action banner 가 Discord post 헤드보다 먼저 등장, clean 일 때 banner 비출력, JSON 의 `operator_actions` / `compact.is_clean` 노출. |
+
+## 회귀 검증
+
+- `tests.runtime` 335 cases — 전부 통과 (Round 4 후속 312 → +23: 21 신규 + 2 banner).
+- `tests.job_queue` 302 cases — 전부 통과 (Round 4 후속 295 → +7).
+- 기존 status / status_poster / status_summary / status_cli / supervisor 테스트 회귀 0건.
+
+## Hard rails 보존 확인 (Round 4 마무리)
+
+- producer 핵심 로직 변경 없음: `autonomy_producer.py` / `autonomy_lock.py` / `completion_funnel.py` 미수정. `claude_decision_seam.py` (decision seam) 미수정. knowledge loop 파일 미수정.
+- 본 라운드는 read-only projection / 렌더 / 텍스트 라벨 + 텍스트 변경만 포함. session.extra schema 변경 없음, 큐 dedup / 실행 게이트 미변경.
+- 슈퍼바이저 안정성: compact render 실패는 try/except 로 swallow. status post / banner / journal 실패도 모두 기존과 동일하게 swallow.
+- Discord 채널 신설 없음, 새 stacked PR 없음. #80 위에 두 커밋 (status surface / poster + progress strengthen) 으로 land.
+- producer 활성화 게이트 (`YULE_AUTONOMY_PRODUCER_ENABLED=true`) / status post 게이트 (`ENGINEERING_STATUS_POST_ENABLED=true`) 정책 그대로.
+
+## 운영자가 보는 그림 (Round 4 마무리)
+
+- Discord `#봇-상태` post: 본문 맨 위에 `> 🚨 [high] N session(s) waiting on #승인-대기 reply` 같은 quoted banner 가 추가됨. 알림 미리보기만 봐도 다음 단계가 보인다. base summary 다음에 `### Operator actions` 섹션이 9 종 분류 + severity 정렬로 한 번 더 등장.
+- `yule runtime status`: `services` / `queue` / `recent failures` / `autonomy producer` / `completion funnel` 다음에 `operator actions:` 섹션이 추가. clean 일 때는 `✅ no operator action required` 한 줄.
+- `yule runtime status --json`: 기존 키 위에 `operator_actions: [...]`, `compact: {services_alive, ..., top_action, is_clean}` 두 키가 추가. Slack/대시보드/외부 alert 가 `compact.top_action.kind` 만 routing key 로 써도 충분.
+- supervisor journalctl: 매 status post 주기마다 `[run_service] INFO supervisor status: 🛰 runtime[engineering] @ ...` ~ `supervisor status: next: 🙋 [high] ... → reply ...` 6 줄이 떨어짐. Discord 가 dedup 으로 skip 해도 supervisor 옆에서 운영자가 상태를 잃지 않는다.
+- Obsidian task-log / GitHub PR 댓글: 기존 4-state 라벨 + 한국어 hint 아래에 `**운영자 액션 [severity]:** <next_step>` 블록 등장. PR 댓글만 보고도 "지금 어떤 명령을 쳐야 하는지" 가 1초 안에 결정.
+
+## 본 PR 비범위 → 후속 PR 매핑 (Round 4 마무리 갱신)
+
+- live Claude / external decision provider 활성화 → 별도 PR (Round 4 와 동일).
+- live LLM 코드 편집기 활성화 → 별도 PR.
+- Discord escalation alert (예: blocked 가 N 분 이상 지속될 때 직접 운영자 멘션) → 별도 PR. 본 PR 은 banner + journalctl 만 강화, 멘션은 별도 흐름으로 분리.
+- 역할별 자료 수집 background ingestion live wiring (Phase 5) → 별도 worktree.
+
+## 외부 blocker
+
+- 없음. operator actionability 4 영역 모두 hard-rail 안에서 land. 본 라운드로 #80 surface 강화는 정리 단계 (merge readiness) 로 진입.
