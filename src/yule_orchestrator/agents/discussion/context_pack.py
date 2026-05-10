@@ -122,6 +122,10 @@ class EngineeringKnowledgeRef:
     note_path: Optional[str] = None
     score: Optional[float] = None
     signals: Sequence[str] = field(default_factory=tuple)
+    # Role-feed provenance — which role-axis feed surfaced the row, and a
+    # one-line "why relevant" sentence the synthesizer can paste verbatim.
+    matched_axes: Sequence[str] = field(default_factory=tuple)
+    relevance_reason: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +234,8 @@ class ContextPack:
                     "note_path": k.note_path,
                     "score": k.score,
                     "signals": list(k.signals),
+                    "matched_axes": list(k.matched_axes),
+                    "relevance_reason": k.relevance_reason,
                 }
                 for k in self.relevant_knowledge
             ],
@@ -531,13 +537,14 @@ class ContextPackBuilder:
 
         Two paths:
 
-        1. ``knowledge_retriever`` is provided — call it with the
-           coerced :class:`EngineeringKnowledgeRef` candidates so the
-           caller's deterministic scoring (typically
+        1. ``knowledge_retriever`` is provided — call its
+           ``with_signals`` method (or fall back to plain ``__call__``)
+           so the deterministic scoring (typically
            :class:`engineering_intelligence.KnowledgeRetriever`) drives
-           ordering. We forward ``KnowledgeRecord`` style objects when
-           we have them so the retriever can use its own score
-           signals.
+           ordering. ``with_signals`` matches are unpacked so the role-
+           feed provenance (``matched_axes``, ``relevance_reason``,
+           ``signals``, ``score``) lands on the
+           :class:`EngineeringKnowledgeRef`.
         2. No retriever — fall back to "first ``max_knowledge`` items
            after coercion / role match filter".
         """
@@ -559,21 +566,49 @@ class ContextPackBuilder:
             picked = (same_role + other)[: self.max_knowledge]
             return tuple(picked)
 
-        try:
-            picked = self.knowledge_retriever(
-                candidates=raw,
-                query=query,
-                role=role,
-                task_type=task_type,
-                limit=self.max_knowledge,
-            )
-        except TypeError:
+        # Prefer with_signals when the retriever exposes it — matches
+        # carry score / signals / matched_axes / relevance_reason that
+        # the synthesizer surfaces back to the operator.
+        with_signals = getattr(self.knowledge_retriever, "with_signals", None)
+        picked: Any
+        if callable(with_signals):
             try:
-                picked = self.knowledge_retriever(raw)
+                picked = with_signals(
+                    candidates=raw,
+                    query=query,
+                    role=role,
+                    task_type=task_type,
+                    limit=self.max_knowledge,
+                )
+            except TypeError:
+                try:
+                    picked = self.knowledge_retriever(
+                        candidates=raw,
+                        query=query,
+                        role=role,
+                        task_type=task_type,
+                        limit=self.max_knowledge,
+                    )
+                except Exception:  # noqa: BLE001
+                    picked = coerced[: self.max_knowledge]
             except Exception:  # noqa: BLE001
                 picked = coerced[: self.max_knowledge]
-        except Exception:  # noqa: BLE001
-            picked = coerced[: self.max_knowledge]
+        else:
+            try:
+                picked = self.knowledge_retriever(
+                    candidates=raw,
+                    query=query,
+                    role=role,
+                    task_type=task_type,
+                    limit=self.max_knowledge,
+                )
+            except TypeError:
+                try:
+                    picked = self.knowledge_retriever(raw)
+                except Exception:  # noqa: BLE001
+                    picked = coerced[: self.max_knowledge]
+            except Exception:  # noqa: BLE001
+                picked = coerced[: self.max_knowledge]
         normalized: list[EngineeringKnowledgeRef] = []
         for item in picked:
             ref = self._coerce_knowledge_ref(item)
@@ -583,12 +618,39 @@ class ContextPackBuilder:
 
     @staticmethod
     def _coerce_knowledge_ref(value: Any) -> Optional[EngineeringKnowledgeRef]:
-        """Best-effort projection of vault row / KnowledgeRecord / dict."""
+        """Best-effort projection of vault row / KnowledgeRecord /
+        KnowledgeMatch / dict.
+
+        Carries score / signals / matched_axes / relevance_reason
+        through whenever they are present so the role-feed provenance
+        survives the round trip from retriever to ContextPack.
+        """
 
         if value is None:
             return None
         if isinstance(value, EngineeringKnowledgeRef):
             return value
+        # KnowledgeMatch 호환: ``record`` 속성을 가진 envelope 면 record 를
+        # 안쪽으로 풀고 score/signals/matched_axes/relevance_reason 를
+        # 위로 끌어올린다. engineering_intelligence 를 직접 import 하지
+        # 않으려고 duck typing 으로만 검사.
+        match_score = None
+        match_signals: tuple = ()
+        match_matched_axes: tuple = ()
+        match_reason: Optional[str] = None
+        record_attr = getattr(value, "record", None)
+        if record_attr is not None and not isinstance(value, Mapping):
+            inner_title = getattr(record_attr, "title", None)
+            inner_role = getattr(record_attr, "role", None)
+            if inner_title and inner_role:
+                match_score = getattr(value, "score", None)
+                match_signals = tuple(getattr(value, "signals", ()) or ())
+                axes_raw = getattr(value, "matched_axes", ()) or ()
+                match_matched_axes = tuple(
+                    str(getattr(a, "value", a)) for a in axes_raw if a
+                )
+                match_reason = getattr(value, "relevance_reason", None) or None
+                value = record_attr
         # KnowledgeRecord 와 EngineeringKnowledgeItem (engineering_intelligence
         # 패키지) 둘 다 있으면 직접 import 하지 않고 duck typing 으로 처리.
         title = getattr(value, "title", None)
@@ -602,6 +664,21 @@ class ContextPackBuilder:
                     axes_seq.append(str(axis_value))
             importance_attr = getattr(value, "importance", None)
             importance_value = getattr(importance_attr, "value", importance_attr)
+            score_value = match_score
+            if score_value is None:
+                raw_score = getattr(value, "score", None)
+                score_value = raw_score if raw_score is not None else None
+            signals_value = match_signals or tuple(
+                getattr(value, "signals", ()) or ()
+            )
+            matched_axes_value = match_matched_axes or tuple(
+                str(getattr(a, "value", a))
+                for a in (getattr(value, "matched_axes", ()) or ())
+                if a
+            )
+            reason_value = match_reason or (
+                getattr(value, "relevance_reason", None) or None
+            )
             return EngineeringKnowledgeRef(
                 title=str(title),
                 role=str(role),
@@ -614,6 +691,10 @@ class ContextPackBuilder:
                 importance=str(importance_value) if importance_value else None,
                 collected_at=getattr(value, "collected_at", None) or None,
                 note_path=getattr(value, "note_path", None),
+                score=score_value,
+                signals=signals_value,
+                matched_axes=matched_axes_value,
+                relevance_reason=reason_value,
             )
         if isinstance(value, Mapping):
             title_v = str(value.get("title") or "").strip()
@@ -622,6 +703,10 @@ class ContextPackBuilder:
                 return None
             axes_raw = value.get("axes") or ()
             axes_seq = [str(a) for a in axes_raw if a]
+            matched_raw = value.get("matched_axes") or ()
+            matched_seq = tuple(
+                str(getattr(a, "value", a)) for a in matched_raw if a
+            )
             return EngineeringKnowledgeRef(
                 title=title_v,
                 role=role_v,
@@ -636,6 +721,8 @@ class ContextPackBuilder:
                 note_path=value.get("note_path"),
                 score=value.get("score"),
                 signals=tuple(value.get("signals") or ()),
+                matched_axes=matched_seq,
+                relevance_reason=value.get("relevance_reason") or None,
             )
         return None
 

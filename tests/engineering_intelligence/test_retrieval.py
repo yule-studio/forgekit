@@ -220,6 +220,82 @@ class KnowledgeRetrieverTests(unittest.TestCase):
         self.assertTrue(matches[0].signals)
 
 
+class RoleFeedProvenanceTests(unittest.TestCase):
+    """matched_axes + relevance_reason explain *why* the row came back."""
+
+    def test_matched_axes_carries_axis_overlap(self) -> None:
+        match = score_knowledge_record(
+            _record(),
+            query=None,
+            role="backend-engineer",
+            task_type="backend-feature",
+            now=_now(),
+        )
+        # backend-feature hint = (API_SCHEMA_AUTH, OFFICIAL_DOCS, SECURITY)
+        # Record covers API_SCHEMA_AUTH + OFFICIAL_DOCS — both should
+        # appear on matched_axes (sorted by axis value).
+        self.assertEqual(
+            match.matched_axes,
+            (SourceAxis.API_SCHEMA_AUTH, SourceAxis.OFFICIAL_DOCS),
+        )
+
+    def test_matched_axes_empty_when_no_hint(self) -> None:
+        match = score_knowledge_record(
+            _record(),
+            query="auth",
+            role="backend-engineer",
+            task_type=None,
+            now=_now(),
+        )
+        self.assertEqual(match.matched_axes, ())
+
+    def test_relevance_reason_summarises_role_and_axis(self) -> None:
+        match = score_knowledge_record(
+            _record(),
+            query="auth",
+            role="backend-engineer",
+            task_type="backend-feature",
+            now=_now(),
+        )
+        # The reason is a one-liner; must mention the role and the
+        # axes that drove the score so a synthesizer can paste it.
+        self.assertIn("role=backend-engineer", match.relevance_reason)
+        self.assertIn("axes=", match.relevance_reason)
+        self.assertIn("api_schema_auth", match.relevance_reason)
+
+    def test_relevance_reason_empty_signals_falls_back_to_default(self) -> None:
+        # An off-role record with no axis hint and no query → no
+        # signals fired. The reason should collapse to a default
+        # sentence rather than empty string so the dashboard always
+        # has something to print.
+        match = score_knowledge_record(
+            _record(role="ai-engineer", axes=()),
+            query=None,
+            role=None,
+            task_type=None,
+            now=_now(),
+        )
+        # MEDIUM importance + freshness 1d ago = freshness hits → reason
+        # carries that signal. Use a record with an old date + no
+        # importance bonus to reach the truly empty path.
+        bare = score_knowledge_record(
+            _record(
+                role="ai-engineer",
+                axes=(),
+                rag_tags=(),
+                summary="something",
+                importance=Importance.MEDIUM,
+                collected_at="2024-01-01T00:00:00Z",
+            ),
+            query=None,
+            role=None,
+            task_type=None,
+            now=_now(),
+        )
+        self.assertEqual(bare.relevance_reason, "no signal match")
+        self.assertEqual(bare.matched_axes, ())
+
+
 class CoercionTests(unittest.TestCase):
     def test_engineering_knowledge_item_coerces_to_record(self) -> None:
         item = EngineeringKnowledgeItem(

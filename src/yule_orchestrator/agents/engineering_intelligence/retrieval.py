@@ -134,16 +134,28 @@ class KnowledgeRecord:
 
 @dataclass(frozen=True)
 class KnowledgeMatch:
-    """Scored row — record + score + signals.
+    """Scored row — record + score + signals + role-feed provenance.
 
     Used for tests and for surfacing "why this knowledge item was
     picked" on the operator dashboard. The synthesizer can drop the
     score / signals if it only needs the record.
+
+    Two extra slots make the role-feed provenance explicit so a
+    consumer does not have to re-parse the ``signals`` tuple:
+
+      * :attr:`matched_axes` — the :class:`SourceAxis` overlap between
+        the record's axes and the request's axis hint set. Tells the
+        operator *which* role-axis feed surfaced this item.
+      * :attr:`relevance_reason` — one short, human-readable sentence
+        summarising the signals (role match, axis overlap, freshness)
+        in a form fit for a dashboard cell or a forum post.
     """
 
     record: KnowledgeRecord
     score: float
     signals: Tuple[str, ...]
+    matched_axes: Tuple[SourceAxis, ...] = ()
+    relevance_reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -222,6 +234,8 @@ def score_knowledge_record(
 
     score = 0.0
     signals: List[str] = []
+    reason_parts: List[str] = []
+    matched_axes: Tuple[SourceAxis, ...] = ()
 
     # Role match
     requested_role = _normalize_role(role)
@@ -230,9 +244,13 @@ def score_knowledge_record(
         if requested_role == record_role:
             score += 3.0
             signals.append("role_primary_match")
+            reason_parts.append(f"role={record_role} (primary)")
         elif requested_role in {_normalize_role(r) for r in record.secondary_roles}:
             score += 1.0
             signals.append("role_secondary_match")
+            reason_parts.append(
+                f"role={requested_role} via secondary on {record_role}"
+            )
 
     # Axis hint match
     if not axis_hints and task_type:
@@ -242,9 +260,13 @@ def score_knowledge_record(
         overlap = record_axes & set(axis_hints)
         if overlap:
             score += 2.0 * len(overlap)
-            signals.append(
-                "axis_overlap:" + ",".join(sorted(a.value for a in overlap))
+            ordered_overlap = tuple(
+                sorted(overlap, key=lambda a: a.value)
             )
+            matched_axes = ordered_overlap
+            axes_list = ",".join(a.value for a in ordered_overlap)
+            signals.append("axis_overlap:" + axes_list)
+            reason_parts.append(f"axes={axes_list}")
 
     # Topic / rag tag overlap
     query_tokens = _tokens(query)
@@ -255,11 +277,12 @@ def score_knowledge_record(
             | _tokens(record.topic_key)
             | {t.lower() for t in record.rag_tags if t}
         )
-        overlap = query_tokens & haystack_tokens
-        if overlap:
-            bonus = min(len(overlap), 3)
+        overlap_tokens = query_tokens & haystack_tokens
+        if overlap_tokens:
+            bonus = min(len(overlap_tokens), 3)
             score += float(bonus)
             signals.append(f"topic_overlap:{bonus}")
+            reason_parts.append(f"topic_overlap={bonus}")
 
     # Importance bonus
     importance_bonus, importance_signal = _IMPORTANCE_BONUS.get(
@@ -269,6 +292,7 @@ def score_knowledge_record(
         score += importance_bonus
         if importance_signal:
             signals.append(importance_signal)
+            reason_parts.append(f"importance={record.importance.value}")
 
     # Freshness bonus
     fresh_bonus, fresh_signal = _freshness_bonus(record.collected_at, now=now)
@@ -276,13 +300,23 @@ def score_knowledge_record(
         score += fresh_bonus
         if fresh_signal:
             signals.append(fresh_signal)
+            reason_parts.append(f"freshness={fresh_signal}")
 
     # Empty body penalty (signal-light record)
     if not record.summary and not record.rag_tags:
         score -= 1.0
         signals.append("empty_body_penalty")
+        reason_parts.append("empty_body_penalty")
 
-    return KnowledgeMatch(record=record, score=score, signals=tuple(signals))
+    relevance_reason = "; ".join(reason_parts) if reason_parts else "no signal match"
+
+    return KnowledgeMatch(
+        record=record,
+        score=score,
+        signals=tuple(signals),
+        matched_axes=matched_axes,
+        relevance_reason=relevance_reason,
+    )
 
 
 # ---------------------------------------------------------------------------
