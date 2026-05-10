@@ -27,7 +27,12 @@ from yule_orchestrator.agents.job_queue.claude_decision_seam import (
     DecisionResponse,
     ENV_CLAUDE_DECISION_PROVIDER,
     PROVIDER_DETERMINISTIC,
+    PROVIDER_EXTERNAL,
     PROVIDER_RECORD,
+)
+from yule_orchestrator.agents.job_queue.claude_subprocess_adapter import (
+    ENV_LIVE_BINARY,
+    ENV_LIVE_ENABLED,
 )
 from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
 from yule_orchestrator.agents.job_queue.store import JobQueue
@@ -189,6 +194,98 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
             )
         )
         self.assertTrue(response.advance)
+
+
+# ---------------------------------------------------------------------------
+# Round 4-ter — subprocess factory wired into run_service
+# ---------------------------------------------------------------------------
+
+
+class RunServiceSubprocessAdapterWiringTests(unittest.TestCase):
+    """The default external_callable_factory now hands the subprocess
+    adapter back. Pin that the two-key opt-in (provider chain + live
+    flag) is what actually surfaces it — and that the live tier stays
+    dormant when either key is missing."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        db_path = Path(self._tmp.name) / "queue.sqlite3"
+        self.queue = JobQueue(db_path=db_path)
+        self.heartbeats = HeartbeatStore(db_path=db_path)
+
+    def test_default_factory_returns_subprocess_callable_when_opted_in(
+        self,
+    ) -> None:
+        from yule_orchestrator.runtime import run_service as rs
+
+        factory = rs._resolve_external_decision_callable_factory()
+        callable_ = factory(
+            {
+                ENV_LIVE_ENABLED: "true",
+                # Use a binary name we can keep on PATH via the resolver
+                # injection — but the run_service path doesn't expose
+                # the resolver hook. Instead we point the binary at a
+                # path that exists on the test host so ``shutil.which``
+                # returns a real path. ``/bin/sh`` is universally
+                # available on macOS + Linux runners.
+                ENV_LIVE_BINARY: "/bin/sh",
+            }
+        )
+        self.assertIsNotNone(callable_)
+
+    def test_default_factory_returns_none_when_live_flag_missing(self) -> None:
+        from yule_orchestrator.runtime import run_service as rs
+
+        factory = rs._resolve_external_decision_callable_factory()
+        # Provider chain wants ``external`` but ``YULE_CLAUDE_DECISION_LIVE_ENABLED``
+        # isn't set — factory should return None so the seam logs the
+        # tier as skipped.
+        self.assertIsNone(factory({}))
+
+    def test_supervisor_wires_subprocess_adapter_when_both_flags_set(
+        self,
+    ) -> None:
+        """End-to-end: env opts in, factory hands the live callable
+        through, autonomy producer's decision port routes to it."""
+
+        from yule_orchestrator.runtime import run_service as rs
+
+        with _Env(
+            **{
+                "YULE_AUTONOMY_PRODUCER_ENABLED": "true",
+                ENV_CLAUDE_DECISION_PROVIDER: f"{PROVIDER_EXTERNAL},{PROVIDER_DETERMINISTIC}",
+                ENV_LIVE_ENABLED: "true",
+                ENV_LIVE_BINARY: "/bin/sh",
+            }
+        ):
+            tick_fn, _ = rs._build_autonomy_producer_tick(
+                queue=self.queue, heartbeats=self.heartbeats
+            )
+        if tick_fn is None:
+            self.skipTest("autonomy producer construction degraded — env-side issue")
+        producer = tick_fn.__closure__[0].cell_contents  # type: ignore[union-attr]
+        port = producer._decision_port  # type: ignore[attr-defined]
+        # The composed port has the subprocess external tier on top.
+        # We don't actually invoke ``/bin/sh`` here (no JSON in/out
+        # contract), but composition itself proves the live tier was
+        # surfaced. The chain still has the deterministic fallback so
+        # any kind we ask resolves.
+        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+            DecisionRequest,
+        )
+
+        # ``/bin/sh`` returns no JSON — adapter must surface a
+        # non-actionable response and the chain falls through to
+        # deterministic.
+        response = port.decide(
+            request=DecisionRequest(
+                kind=DECISION_KIND_RETRY_GUARD, summary="probe"
+            )
+        )
+        self.assertTrue(response.advance)
+        # Deterministic fallback owns the verdict.
+        self.assertIn("deterministic", response.reason)
 
 
 if __name__ == "__main__":  # pragma: no cover

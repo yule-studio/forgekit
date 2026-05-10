@@ -30,6 +30,7 @@ from ..agents.job_queue import (
     AutonomyProducer,
     CodingExecutorWorker,
     DecisionPortBuildTrace,
+    ENV_LIVE_ENABLED,
     HeartbeatStore,
     JobQueue,
     ObsidianWriterWorker,
@@ -39,6 +40,7 @@ from ..agents.job_queue import (
     build_completion_funnel,
     build_decision_port_from_env,
     build_discussion_followup_dispatcher,
+    claude_subprocess_factory_from_env,
     default_render_fn,
     default_vault_root_resolver,
     default_write_fn,
@@ -787,38 +789,56 @@ def _resolve_external_decision_callable_factory():
 
     Kept as a function (not a constant) so a test or follow-up PR can
     monkeypatch it without re-importing the module. The default
-    implementation returns ``None`` — i.e. the live tier stays
-    inactive — so an operator who sets
-    ``YULE_CLAUDE_DECISION_PROVIDER=external,deterministic`` still
-    runs on the deterministic fallback until a live callable is
-    explicitly installed by a follow-up PR.
+    implementation now hands :func:`claude_subprocess_factory_from_env`
+    back — that helper is itself env-gated (via
+    ``YULE_CLAUDE_DECISION_LIVE_ENABLED``), so an operator who hasn't
+    opted in continues to run on the deterministic fallback. Two-key
+    opt-in (provider chain *and* live flag) keeps a typo on either
+    side from surfacing a real shell call.
     """
 
-    def _factory(_env: Mapping[str, str]):
-        return None
+    def _factory(env: Mapping[str, str]):
+        return claude_subprocess_factory_from_env(env)
 
     return _factory
 
 
-def _log_decision_port_trace(trace: DecisionPortBuildTrace) -> None:
+def _log_decision_port_trace(
+    trace: DecisionPortBuildTrace,
+    *,
+    env: Optional[Mapping[str, str]] = None,
+) -> None:
     """Surface the env-derived port composition on supervisor stdout.
 
     Keeps the operator briefing tight: one line that names the
     enabled tiers + any tokens the env factory had to skip + the
-    deterministic fallback at the bottom.
+    deterministic fallback at the bottom + (when external is enabled)
+    whether the operator also opted in to the live subprocess
+    adapter so the line answers "is the runtime actually about to
+    spawn ``claude -p``?" without having to grep the seam.
     """
 
+    import os as _os
+
+    source: Mapping[str, str] = env if env is not None else _os.environ
     enabled = ",".join(trace.enabled) or trace.fallback
     skipped = (
         " skipped=" + ",".join(f"{tok}({why})" for tok, why in trace.skipped)
         if trace.skipped
         else ""
     )
+    live_flag = (source.get(ENV_LIVE_ENABLED) or "").strip().lower()
+    live_marker = (
+        " live=on"
+        if live_flag in {"1", "true", "yes", "on"}
+        else " live=off"
+    )
     logger.info(
-        "claude decision port composed: enabled=%s fallback=%s%s",
+        "claude decision port composed: enabled=%s fallback=%s%s%s",
         enabled,
         trace.fallback,
         skipped,
+        live_marker,
     )
 
 
