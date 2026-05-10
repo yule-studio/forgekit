@@ -48,6 +48,7 @@ from typing import Any, Iterable, List, Mapping, Optional, Sequence, Tuple
 from .models import (
     EngineeringKnowledgeItem,
     Importance,
+    KnowledgeShareScope,
     SourceAxis,
 )
 from .source_registry import axis_hints_for_task_type
@@ -81,6 +82,8 @@ class KnowledgeRecord:
     note_path: Optional[str] = None
     project: Optional[str] = None
     secondary_roles: Tuple[str, ...] = ()
+    share_scope: KnowledgeShareScope = KnowledgeShareScope.PUBLIC
+    share_scope_reason: str = ""
 
     @classmethod
     def from_item(
@@ -112,6 +115,8 @@ class KnowledgeRecord:
             collected_at=item.collected_at,
             note_path=note_path,
             secondary_roles=tuple(secondary_roles),
+            share_scope=item.share_scope,
+            share_scope_reason=item.share_scope_reason,
         )
 
     def to_payload(self) -> Mapping[str, Any]:
@@ -129,6 +134,8 @@ class KnowledgeRecord:
             "note_path": self.note_path,
             "project": self.project,
             "secondary_roles": list(self.secondary_roles),
+            "share_scope": self.share_scope.value,
+            "share_scope_reason": self.share_scope_reason,
         }
 
 
@@ -144,6 +151,52 @@ class KnowledgeMatch:
     record: KnowledgeRecord
     score: float
     signals: Tuple[str, ...]
+
+    def evidence_labels(self) -> Tuple[str, ...]:
+        """Return the score signals as human-readable Korean labels.
+
+        The raw signals are short tokens optimised for tests
+        (``role_primary_match``, ``axis_overlap:security,...``,
+        ``importance_critical``, ``fresh_7d``). For Obsidian /
+        Discord surfaces we want labels a human can read. This is a
+        deterministic projection — no I/O, no formatting beyond
+        ``label_for_signal``.
+        """
+
+        return tuple(label_for_signal(sig) for sig in self.signals if sig)
+
+
+def label_for_signal(signal: str) -> str:
+    """Map a retrieval signal token to a Korean label.
+
+    Unknown signals fall through with a leading "기타: " prefix so the
+    operator can still see the raw token without mistaking it for a
+    typo. Axis overlap signals carry a comma-separated list of axes;
+    we keep the axis names verbatim because they're structured tokens
+    the operator already understands.
+    """
+
+    if not signal:
+        return ""
+    if signal.startswith("axis_overlap:"):
+        axes = signal.split(":", 1)[1]
+        return f"task_type 축 일치 ({axes})"
+    if signal.startswith("topic_overlap:"):
+        count = signal.split(":", 1)[1]
+        return f"질문 토큰 겹침 (+{count})"
+    return _KNOWN_SIGNAL_LABELS.get(signal, f"기타: {signal}")
+
+
+_KNOWN_SIGNAL_LABELS: Mapping[str, str] = {
+    "role_primary_match": "요청 역할과 정확히 일치",
+    "role_secondary_match": "요청 역할이 보조 역할로 등록됨",
+    "importance_critical": "중요도 critical",
+    "importance_high": "중요도 high",
+    "importance_low": "중요도 low (감점)",
+    "fresh_7d": "최근 7일 이내 수집",
+    "fresh_30d": "최근 30일 이내 수집",
+    "empty_body_penalty": "본문/태그 비어 있음 (감점)",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +452,11 @@ def _coerce_record(candidate: Any) -> Optional[KnowledgeRecord]:
             importance = Importance(importance_raw)
         except ValueError:
             importance = Importance.MEDIUM
+        share_raw = candidate.get("share_scope") or "public"
+        try:
+            share_scope = KnowledgeShareScope(share_raw)
+        except ValueError:
+            share_scope = KnowledgeShareScope.PUBLIC
         return KnowledgeRecord(
             topic_key=topic_key,
             title=title,
@@ -413,6 +471,8 @@ def _coerce_record(candidate: Any) -> Optional[KnowledgeRecord]:
             note_path=candidate.get("note_path"),
             project=candidate.get("project"),
             secondary_roles=tuple(candidate.get("secondary_roles") or ()),
+            share_scope=share_scope,
+            share_scope_reason=str(candidate.get("share_scope_reason") or ""),
         )
     return None
 
@@ -421,5 +481,6 @@ __all__ = [
     "KnowledgeMatch",
     "KnowledgeRecord",
     "KnowledgeRetriever",
+    "label_for_signal",
     "score_knowledge_record",
 ]

@@ -19,7 +19,11 @@ from yule_orchestrator.agents.engineering_intelligence.models import (
 from yule_orchestrator.agents.engineering_intelligence.retrieval import (
     KnowledgeRecord,
     KnowledgeRetriever,
+    label_for_signal,
     score_knowledge_record,
+)
+from yule_orchestrator.agents.engineering_intelligence.models import (
+    KnowledgeShareScope,
 )
 
 
@@ -276,6 +280,92 @@ class CoercionTests(unittest.TestCase):
             role=None,
         )
         self.assertEqual(picked, ())
+
+
+class EvidenceLabelTests(unittest.TestCase):
+    def test_known_signals_have_korean_labels(self) -> None:
+        self.assertEqual(
+            label_for_signal("role_primary_match"), "요청 역할과 정확히 일치"
+        )
+        self.assertEqual(
+            label_for_signal("importance_critical"), "중요도 critical"
+        )
+        self.assertEqual(label_for_signal("fresh_7d"), "최근 7일 이내 수집")
+
+    def test_axis_overlap_keeps_axis_names(self) -> None:
+        label = label_for_signal("axis_overlap:api_schema_auth,official_docs")
+        self.assertEqual(
+            label, "task_type 축 일치 (api_schema_auth,official_docs)"
+        )
+
+    def test_topic_overlap_extracts_count(self) -> None:
+        self.assertEqual(label_for_signal("topic_overlap:2"), "질문 토큰 겹침 (+2)")
+
+    def test_unknown_signal_falls_through(self) -> None:
+        label = label_for_signal("future_signal_xyz")
+        self.assertTrue(label.startswith("기타: "))
+
+    def test_match_evidence_labels_uses_known_labels(self) -> None:
+        match = score_knowledge_record(
+            _record(),
+            query="auth",
+            role="backend-engineer",
+            task_type="backend-feature",
+            now=_now(),
+        )
+        labels = match.evidence_labels()
+        self.assertIn("요청 역할과 정확히 일치", labels)
+        # axis 매칭이 발생했으면 사람이 읽을 수 있는 라벨로 풀어진다.
+        self.assertTrue(
+            any("task_type 축 일치" in lbl for lbl in labels),
+            f"axis label missing in {labels}",
+        )
+
+
+class ShareScopePropagationTests(unittest.TestCase):
+    def test_share_scope_default_public(self) -> None:
+        rec = _record()
+        self.assertEqual(rec.share_scope, KnowledgeShareScope.PUBLIC)
+        payload = rec.to_payload()
+        self.assertEqual(payload["share_scope"], "public")
+
+    def test_mapping_share_scope_team_internal_coerces(self) -> None:
+        retriever = KnowledgeRetriever(min_score=0.0, now=_now())
+        picked = retriever(
+            candidates=[
+                {
+                    "topic_key": "k",
+                    "title": "T",
+                    "role": "backend-engineer",
+                    "share_scope": "team_internal",
+                    "share_scope_reason": "private repo",
+                }
+            ],
+            query=None,
+            role="backend-engineer",
+        )
+        self.assertEqual(len(picked), 1)
+        self.assertEqual(
+            picked[0].share_scope, KnowledgeShareScope.TEAM_INTERNAL
+        )
+        self.assertEqual(picked[0].share_scope_reason, "private repo")
+
+    def test_mapping_unknown_share_scope_falls_back_to_public(self) -> None:
+        retriever = KnowledgeRetriever(min_score=0.0, now=_now())
+        picked = retriever(
+            candidates=[
+                {
+                    "topic_key": "k",
+                    "title": "T",
+                    "role": "backend-engineer",
+                    "share_scope": "future_unknown_value",
+                }
+            ],
+            query=None,
+            role="backend-engineer",
+        )
+        self.assertEqual(len(picked), 1)
+        self.assertEqual(picked[0].share_scope, KnowledgeShareScope.PUBLIC)
 
 
 if __name__ == "__main__":

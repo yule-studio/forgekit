@@ -14,6 +14,7 @@ from yule_orchestrator.agents.engineering_intelligence.models import (
     CagContext,
     EngineeringKnowledgeItem,
     Importance,
+    KnowledgeShareScope,
     LearningLevel,
     NOTE_KIND_ENGINEERING_KNOWLEDGE,
     PracticeVerification,
@@ -23,6 +24,7 @@ from yule_orchestrator.agents.engineering_intelligence.obsidian import (
     build_engineering_knowledge_write_request,
     build_rejected_quality_gate_audit,
     evaluate_quality_gate,
+    summarize_share_boundary,
 )
 
 
@@ -180,6 +182,50 @@ class GateFailTests(unittest.TestCase):
         item = _good_item(review_after_days=0)
         gate = evaluate_quality_gate(item)
         self.assertIn("missing:review_after_days", gate.reasons)
+
+
+class SummarizeShareBoundaryTests(unittest.TestCase):
+    """`summarize_share_boundary` 가 운영자 한 줄 요약을 만든다."""
+
+    def test_empty_input_returns_zero_summary(self) -> None:
+        payload = summarize_share_boundary(())
+        self.assertEqual(payload["counts"]["total"], 0)
+        self.assertEqual(payload["summary"], "")
+
+    def test_public_only_summary_has_no_warning(self) -> None:
+        items = (_good_item(),)
+        payload = summarize_share_boundary(items)
+        self.assertEqual(payload["counts"]["public"], 1)
+        self.assertIn("public 1건", payload["summary"])
+        self.assertNotIn("vault link", payload["summary"])
+        self.assertNotIn("외부 채널", payload["summary"])
+
+    def test_team_internal_summary_warns(self) -> None:
+        items = (
+            _good_item(),
+            _good_item(
+                topic_key="company-oauth",
+                share_scope=KnowledgeShareScope.TEAM_INTERNAL,
+                share_scope_reason="사내 ADR",
+            ),
+        )
+        payload = summarize_share_boundary(items)
+        self.assertEqual(payload["counts"]["team_internal"], 1)
+        self.assertIn("team_internal 1건", payload["summary"])
+        self.assertIn("vault link", payload["summary"])
+
+    def test_restricted_summary_blocks_external_quotation(self) -> None:
+        items = (
+            _good_item(
+                topic_key="incident-2026-04-29",
+                share_scope=KnowledgeShareScope.RESTRICTED,
+                share_scope_reason="customer PII",
+            ),
+        )
+        payload = summarize_share_boundary(items)
+        self.assertEqual(payload["counts"]["restricted"], 1)
+        self.assertIn("restricted 1건", payload["summary"])
+        self.assertIn("외부 채널 인용 금지", payload["summary"])
 
 
 class RejectionAuditTests(unittest.TestCase):
