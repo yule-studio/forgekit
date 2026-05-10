@@ -540,6 +540,14 @@ class AutonomyProducer:
         autonomy producer's report still mentions the CI funnel so the
         operator sees the full picture; the retry orchestrator owns
         the actual side effects.
+
+        When a :class:`ClaudeDecisionPort` is wired, the producer
+        consults it with kind ``retry_guard`` *before* taking the
+        branch lock so the deterministic chain is the only path that
+        the live decision layer can short-circuit. A ``skip`` verdict
+        surfaces as ``SKIPPED`` with the port's reason on the
+        dispatch row; raise / non-actionable falls through to the
+        existing fast-path.
         """
 
         if candidate is None or candidate.source != SOURCE_CI_FAILED_PR:
@@ -554,6 +562,11 @@ class AutonomyProducer:
                     payload=dict(candidate.payload),
                 )
             )
+            return
+
+        guard = self._consult_retry_guard(candidate=candidate, ctx=ctx)
+        if guard is not None:
+            ctx.record(guard)
             return
 
         scope = branch_scope(
@@ -585,6 +598,74 @@ class AutonomyProducer:
 
         for entry in outcomes or ():
             ctx.record(_normalize_dispatch(entry, source=SOURCE_CI_FAILED_PR))
+
+    def _consult_retry_guard(
+        self,
+        *,
+        candidate: NextTaskCandidate,
+        ctx: AutonomyTickContext,
+    ) -> Optional[AutonomyDispatch]:
+        """Ask the wired decision port whether to proceed with retry.
+
+        Returns ``None`` when the port is unwired, raises, returns a
+        non-actionable verdict, or returns an ``advance`` verdict —
+        caller proceeds on the fast-path. Returns an
+        :class:`AutonomyDispatch` row when the port voted ``skip``;
+        the caller records it and bails out of the dispatcher call.
+
+        Uses the seam's :func:`consult_decision_port` helper so the
+        call → coerce → guard pattern is identical at every callsite.
+        The invocation trace is stamped on the dispatch payload's
+        ``decision_invocation`` field for audit.
+        """
+
+        if self._decision_port is None:
+            return None
+
+        try:
+            from .claude_decision_seam import (
+                DECISION_KIND_RETRY_GUARD,
+                DecisionRequest,
+                consult_decision_port,
+            )
+        except Exception:  # noqa: BLE001 - seam import must not break tick
+            return None
+
+        payload = dict(candidate.payload or {})
+        request = DecisionRequest(
+            kind=DECISION_KIND_RETRY_GUARD,
+            summary=(
+                f"CI failed PR retry guard for "
+                f"{payload.get('repo') or '<unknown-repo>'}"
+                f"#{payload.get('pr_number') or payload.get('issue_number') or '?'}"
+            ),
+            facts={
+                "repo": payload.get("repo"),
+                "branch": payload.get("branch"),
+                "pr_number": payload.get("pr_number"),
+                "attempt": payload.get("ci_retry_attempt") or payload.get("attempt"),
+                "escalated": payload.get("ci_retry_escalated"),
+            },
+            requested_at=_iso(ctx.started_at),
+        )
+
+        response, trace = consult_decision_port(
+            self._decision_port, request=request
+        )
+        if not response.skip:
+            return None
+
+        reason = response.reason or "decision_port_skip"
+        return AutonomyDispatch(
+            source=SOURCE_CI_FAILED_PR,
+            outcome=DispatchOutcome.SKIPPED,
+            reason=f"retry_guard skip: {reason}",
+            payload={
+                **payload,
+                "decision_metadata": dict(response.metadata or {}),
+                "decision_invocation": dict(trace.to_payload()),
+            },
+        )
 
 
 # ---------------------------------------------------------------------------

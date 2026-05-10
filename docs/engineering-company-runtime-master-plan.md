@@ -589,6 +589,63 @@ producer 계층과 충돌 가드, completion funnel, 외부 decision seam 을 la
 - producer 가 큐 직접 enqueue 를 하지 않는다는 원칙 — 큐 dedup 한 곳
   유지. 새 sub-producer 는 반드시 기존 dispatcher 한 개를 거쳐야 한다.
 
+## 16-quater. Live-ready Claude subprocess seam (Round 4-ter)
+
+Round 4-bis 가 deterministic / record-only / live-ready 3-tier 의 *형식* 을 land 하면서도 라이브 callable 자체는 None 으로 두었다. Round 4-ter 는 그 callable 자리에 실제 `claude -p` 서브프로세스 호출을 꽂고, 모든 콜사이트가 같은 헬퍼로 진입하도록 정리한다.
+
+### 16-quater.1 ``claude -p`` 어댑터
+
+- `agents/job_queue/claude_subprocess_adapter.py` — `ClaudeSubprocessConfig`,
+  `build_claude_subprocess_callable`, `claude_subprocess_factory_from_env`.
+  내부에서 라이브 HTTP/SDK import 0; `subprocess.run` 만 호출. 모든 실패
+  모드 (binary missing / timeout / non-zero exit / empty stdout / malformed
+  JSON / unsupported payload / runner raise) 가 *non-actionable* 응답으로
+  surface — 컴포저가 deterministic 으로 fall-through.
+- 응답 metadata 에는 `provider=claude_subprocess` + 안정된
+  `subprocess_outcome` 문자열을 박아 record-only / 운영자 대시보드가
+  "왜 fall-back 했는지" 를 한 줄로 grep 할 수 있게 만듦.
+- CLI 응답에 chatter 가 섞여 있어도 첫 `{...}` 블록을 잘라 파싱 — tip-of-day
+  / update notice 가 묻혀 있어도 결정만 통과.
+
+### 16-quater.2 두 단계 env opt-in
+
+- `YULE_CLAUDE_DECISION_PROVIDER=external,deterministic` 만 켜도 라이브 tier
+  는 surface 되지 않는다. `YULE_CLAUDE_DECISION_LIVE_ENABLED=true` 까지
+  켜야 어댑터의 callable 이 factory 에서 반환된다.
+- 두 키 어느 한 쪽만 설정해도 supervisor 의 trace 라인은
+  `live=off` 또는 `external (no callable factory or factory returned None)`
+  로 분명히 보고된다.
+- 어댑터는 추가로 binary 가 PATH 에 없으면 callable 을 surface 하지 않는다
+  — 운영자 typo 가 실 shell 호출로 새지 않는 3 중 가드.
+
+### 16-quater.3 콜사이트 통일 + 호출별 감사 트레이스
+
+- `claude_decision_seam.consult_decision_port` 헬퍼가 모든 콜사이트의
+  진입점이 된다. 입력은 (port, request), 출력은
+  `(DecisionResponse, DecisionInvocationTrace)`. None / raise / wrong-type
+  세 경우 모두 동일하게 non-actionable + trace.fell_through / trace.raised
+  surface — 콜사이트가 더 이상 try/except 를 직접 적지 않는다.
+- 감사 트레이스(`DecisionInvocationTrace`) 는 JSON-safe 한 평면 dict 로
+  직렬화 가능. autonomy producer 의 retry-guard 콜과 discussion follow-up
+  의 SKIPPED outcome 양쪽 모두 dispatch payload 의 `decision_invocation`
+  키에 trace 를 적재한다 — 운영자가 dashboard 에서 "이 skip 은 어떤
+  provider 가 결정했고 actionable 이었나" 를 쿼리 한 번으로 확인.
+- 새 `DECISION_KIND_IMPLEMENTATION_CANDIDATE` 토큰을 vocabulary 에 추가
+  해 후속 PR 에서 candidate gate 콜이 같은 헬퍼/트레이스 경로로 진입할
+  자리를 확보.
+
+### 16-quater.4 운영 surface
+
+- supervisor 부팅 시 한 줄: `claude decision port composed: enabled=...
+  fallback=deterministic skipped=... live=on/off`. 운영자가 라이브가
+  실제 켜졌는지 grep 한 번으로 확인.
+- 끄려면 `YULE_CLAUDE_DECISION_LIVE_ENABLED` 만 비우면 됨 — provider chain
+  은 그대로여도 어댑터가 None 반환 + trace 라인이 `live=off` 로 기록.
+- record-only 와 동시 활성 권장 ramp: `external,record,deterministic` +
+  `YULE_CLAUDE_DECISION_RECORD_PATH=/var/log/yule/decision-shadow.jsonl` —
+  external actionable 이면 그 verdict, 아니면 record 가 캡처 후
+  deterministic.
+
 ## 17. 최종 판단
 
 지금의 1순위는 `tech-lead` 완성이다.

@@ -381,5 +381,241 @@ class AutonomyProducerDiscussionPlumbingTests(unittest.TestCase):
         self.assertEqual(errors[0].source, SOURCE_UNRESOLVED_DISCUSSION)
 
 
+# ---------------------------------------------------------------------------
+# Round 4-bis — CI retry guard via the Claude decision seam
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _StubGithubState:
+    """Minimal GithubStateLike that surfaces one failed CI PR."""
+
+    failed_rows: Sequence[Mapping[str, Any]] = ()
+    orphan_rows: Sequence[Mapping[str, Any]] = ()
+
+    def list_failed_ci_active_prs(self) -> Sequence[Mapping[str, Any]]:
+        return list(self.failed_rows)
+
+    def list_open_issues_without_session(self) -> Sequence[Mapping[str, Any]]:
+        return list(self.orphan_rows)
+
+
+def _failed_pr_row(
+    *,
+    pr_number: int = 91,
+    repo: str = "yule/agent",
+    branch: str = "agent/backend/issue-91",
+    reason: str = "tests failed",
+    attempt: int = 2,
+) -> Mapping[str, Any]:
+    return {
+        "pr_number": pr_number,
+        "repo": repo,
+        "branch": branch,
+        "head_sha": "deadbeef",
+        "reason": reason,
+        "ci_retry_attempt": attempt,
+    }
+
+
+class _SkipPort:
+    """Decision port that always votes ``skip`` with a fixed reason."""
+
+    def __init__(self, *, reason: str = "rate limit hit") -> None:
+        self.calls: List[Any] = []
+        self.reason = reason
+
+    def decide(self, *, request):
+        self.calls.append(request)
+        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+            DecisionResponse,
+        )
+
+        return DecisionResponse(
+            skip=True, reason=self.reason, metadata={"port": "stub-skip"}
+        )
+
+
+class _AdvancePort:
+    """Decision port that always votes ``advance`` (= proceed)."""
+
+    def __init__(self) -> None:
+        self.calls: List[Any] = []
+
+    def decide(self, *, request):
+        self.calls.append(request)
+        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+            DecisionResponse,
+        )
+
+        return DecisionResponse(advance=True, reason="ok")
+
+
+class _RaisingPort:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def decide(self, *, request):
+        self.calls += 1
+        raise RuntimeError("port down")
+
+
+class AutonomyProducerCiRetryGuardTests(unittest.TestCase):
+    """Verify the autonomy loop actually calls the decision port.
+
+    Wires the producer with a CI-failed-PR github state, a stub
+    completion dispatcher, and a stub :class:`ClaudeDecisionPort`.
+    Confirms the producer asks the port *before* the dispatcher fires
+    and short-circuits on a ``skip`` verdict.
+    """
+
+    def _build_producer(
+        self,
+        *,
+        decision_port,
+        completion_dispatch,
+        github_state,
+    ) -> AutonomyProducer:
+        return AutonomyProducer(
+            session_state=_StubSessionState(),
+            coding_executor=_build_worker(Path(self._tmp.name)),
+            github_state=github_state,
+            completion_dispatch=completion_dispatch,
+            decision_port=decision_port,
+            clock=_fixed_clock(),
+        )
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_skip_verdict_short_circuits_before_dispatcher(self) -> None:
+        port = _SkipPort(reason="window suppressed")
+        calls: List[Any] = []
+
+        def _dispatch(*, candidate, now):
+            calls.append(candidate)
+            return ()
+
+        producer = self._build_producer(
+            decision_port=port,
+            completion_dispatch=_dispatch,
+            github_state=_StubGithubState(failed_rows=[_failed_pr_row()]),
+        )
+        report = producer.tick()
+        self.assertEqual(len(port.calls), 1)
+        # The port saw a typed DecisionRequest with kind=retry_guard.
+        seen = port.calls[0]
+        self.assertEqual(getattr(seen, "kind", ""), "retry_guard")
+        # PR fact made it onto the request so a live prompt has it.
+        facts = getattr(seen, "facts", {}) or {}
+        self.assertEqual(facts.get("pr_number"), 91)
+        self.assertEqual(facts.get("attempt"), 2)
+        # Dispatcher must NOT have been called.
+        self.assertEqual(calls, [])
+        # Producer surfaced one SKIPPED dispatch carrying the port's reason.
+        ci_dispatches = [
+            d for d in report.dispatches if d.source == "ci_failed_pr"
+        ]
+        self.assertEqual(len(ci_dispatches), 1)
+        self.assertEqual(ci_dispatches[0].outcome, DispatchOutcome.SKIPPED)
+        self.assertIn("window suppressed", ci_dispatches[0].reason)
+        # Branch lock was NOT held — guard rejected before lock acquire.
+        self.assertEqual(report.locks_held, ())
+        # Round 4-ter audit: the dispatch payload carries the
+        # invocation trace so the operator can answer "which provider
+        # answered, was it actionable, did it raise" without re-running
+        # the port.
+        invocation = ci_dispatches[0].payload.get("decision_invocation")
+        self.assertIsInstance(invocation, dict)
+        self.assertEqual(invocation.get("kind"), "retry_guard")
+        self.assertTrue(invocation.get("actionable"))
+        self.assertTrue(invocation.get("skip"))
+        self.assertFalse(invocation.get("fell_through"))
+        self.assertFalse(invocation.get("raised"))
+        self.assertEqual(invocation.get("provider"), "stub-skip")
+
+    def test_advance_verdict_lets_dispatcher_run(self) -> None:
+        port = _AdvancePort()
+        calls: List[Any] = []
+
+        def _dispatch(*, candidate, now):
+            calls.append(candidate)
+            return [
+                AutonomyDispatch(
+                    source="ci_failed_pr",
+                    outcome=DispatchOutcome.DISPATCHED,
+                    reason="retry enqueued",
+                )
+            ]
+
+        producer = self._build_producer(
+            decision_port=port,
+            completion_dispatch=_dispatch,
+            github_state=_StubGithubState(failed_rows=[_failed_pr_row()]),
+        )
+        report = producer.tick()
+        self.assertEqual(len(port.calls), 1)
+        self.assertEqual(len(calls), 1)
+        outcomes = [d.outcome for d in report.dispatches if d.source == "ci_failed_pr"]
+        self.assertIn(DispatchOutcome.DISPATCHED, outcomes)
+
+    def test_port_raise_falls_back_to_dispatcher(self) -> None:
+        import logging
+
+        port = _RaisingPort()
+        calls: List[Any] = []
+
+        def _dispatch(*, candidate, now):
+            calls.append(candidate)
+            return [
+                AutonomyDispatch(
+                    source="ci_failed_pr",
+                    outcome=DispatchOutcome.DISPATCHED,
+                )
+            ]
+
+        producer_logger = logging.getLogger(
+            "yule_orchestrator.agents.job_queue.autonomy_producer"
+        )
+        previous = producer_logger.level
+        producer_logger.setLevel(logging.CRITICAL)
+        try:
+            producer = self._build_producer(
+                decision_port=port,
+                completion_dispatch=_dispatch,
+                github_state=_StubGithubState(failed_rows=[_failed_pr_row()]),
+            )
+            report = producer.tick()
+        finally:
+            producer_logger.setLevel(previous)
+        # Port was called, raised — dispatcher still ran (fast-path).
+        self.assertEqual(port.calls, 1)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(report.has_work())
+
+    def test_no_port_means_legacy_fast_path(self) -> None:
+        calls: List[Any] = []
+
+        def _dispatch(*, candidate, now):
+            calls.append(candidate)
+            return [
+                AutonomyDispatch(
+                    source="ci_failed_pr",
+                    outcome=DispatchOutcome.DISPATCHED,
+                )
+            ]
+
+        producer = self._build_producer(
+            decision_port=None,
+            completion_dispatch=_dispatch,
+            github_state=_StubGithubState(failed_rows=[_failed_pr_row()]),
+        )
+        report = producer.tick()
+        # Dispatcher ran, no decision-port short-circuit anywhere.
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(report.has_work())
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
