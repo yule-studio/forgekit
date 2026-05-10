@@ -51,6 +51,16 @@ from .providers import (
     provider_spec_for,
     specs_for_role,
 )
+from .feed_parser import (
+    BytesFetcher,
+    FeedFetchOutcome,
+    FeedParserError,
+    make_feed_live_factory,
+    parse_atom_bytes,
+    parse_feed_bytes,
+    parse_rss_bytes,
+    register_safe_feed_providers,
+)
 from .provider_registry import (
     KnowledgeProviderRegistration,
     KnowledgeProviderRegistry,
@@ -157,6 +167,15 @@ __all__ = [
     "StubLiveSourceFetcher",
     "provider_spec_for",
     "specs_for_role",
+    # feed parser (live-ready RSS / Atom / GitHub releases atom)
+    "BytesFetcher",
+    "FeedFetchOutcome",
+    "FeedParserError",
+    "make_feed_live_factory",
+    "parse_atom_bytes",
+    "parse_feed_bytes",
+    "parse_rss_bytes",
+    "register_safe_feed_providers",
     # provider registry / auth contract
     "KnowledgeProviderRegistration",
     "KnowledgeProviderRegistry",
