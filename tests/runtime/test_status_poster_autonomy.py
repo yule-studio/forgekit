@@ -302,6 +302,68 @@ class PostMarkdownAppendsAutonomyTests(unittest.TestCase):
         # Funnel section differentiates needs_approval.
         self.assertIn("needs_approval", body)
 
+    def test_post_leads_with_top_action_banner_when_actionable(self) -> None:
+        # Round 4 마무리: the post body should lead with a one-line
+        # operator-action banner so the Discord notification preview
+        # carries the next-step before the operator opens the message.
+        captured: List[str] = []
+
+        async def post_fn(content: str):
+            captured.append(content)
+            return {"posted_message_id": 7}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = StatusPosterStateStore(path=Path(tmp) / "state.json")
+            funnel = (
+                CompletionFunnelSummary(
+                    session_id="sess-banner",
+                    job_id="j",
+                    job_type="coding_execute",
+                    completion_status="blocked",
+                    ticked=False,
+                    reason="protected_branch_blocked",
+                ),
+            )
+            report = _report(funnel=funnel)
+            outcome = _run(
+                post_runtime_status_summary(
+                    report=report,
+                    state_store=store,
+                    post_fn=post_fn,
+                )
+            )
+        self.assertTrue(outcome.did_post)
+        body = captured[0]
+        # Banner is a quoted block — must come before the base header.
+        banner_idx = body.find("[high]")
+        header_idx = body.find("runtime status")
+        self.assertGreaterEqual(banner_idx, 0)
+        self.assertGreaterEqual(header_idx, 0)
+        self.assertLess(banner_idx, header_idx)
+        self.assertIn("다음 단계:", body)
+
+    def test_post_skips_top_action_banner_when_clean(self) -> None:
+        # Healthy snapshot must not grow the post with an empty banner.
+        captured: List[str] = []
+
+        async def post_fn(content: str):
+            captured.append(content)
+            return {"posted_message_id": 8}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = StatusPosterStateStore(path=Path(tmp) / "state.json")
+            outcome = _run(
+                post_runtime_status_summary(
+                    report=_report(),
+                    state_store=store,
+                    post_fn=post_fn,
+                )
+            )
+        self.assertTrue(outcome.did_post)
+        body = captured[0]
+        # No operator-action quote line should appear at the top.
+        self.assertFalse(body.lstrip().startswith(">"))
+
     def test_post_skips_when_dedup_matches_with_only_dispatched_tick(self) -> None:
         # Successful dispatched ticks must not flap the post.
         async def post_fn(content: str):

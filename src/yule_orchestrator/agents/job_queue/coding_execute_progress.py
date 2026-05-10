@@ -69,6 +69,13 @@ TASK_LOG_NOTE_KIND: str = "task-log"
 # can't acquire a scope. Centralising the labels here keeps the
 # Obsidian task-log + the GitHub PR comment + the future Discord
 # escalation post in lockstep — change one, change all.
+#
+# Round 4 마무리 added the ``operator_action`` field — a one-line
+# "what should the operator do right now" string aligned with the
+# :func:`runtime.status.summarize_operator_actions` next_step shape.
+# The action string must be copy-pasteable (Discord reply text or a
+# shell command) so the operator does not need to read the full body
+# to act.
 PROGRESS_STATUS_LABELS: Mapping[str, Mapping[str, str]] = {
     "done": {
         "icon": "✅",
@@ -77,6 +84,8 @@ PROGRESS_STATUS_LABELS: Mapping[str, Mapping[str, str]] = {
             "정상 종료 — 후속 작업은 autonomy producer 가 다음 tick 에 "
             "선정합니다."
         ),
+        "operator_action": "별도 조치 불필요 — autonomy producer 가 다음 tick 을 처리합니다.",
+        "severity": "low",
     },
     "retry_ready": {
         "icon": "🔁",
@@ -86,6 +95,11 @@ PROGRESS_STATUS_LABELS: Mapping[str, Mapping[str, str]] = {
             "기다리되 30분 안에 동일 사유로 다시 retry_ready 가 되면 "
             "수동 점검이 필요합니다."
         ),
+        "operator_action": (
+            "30분 내 동일 사유 반복 시 `gh pr checks <pr>` 로 CI 상세 확인 — "
+            "그 외에는 대기."
+        ),
+        "severity": "low",
     },
     "needs_approval": {
         "icon": "🙋",
@@ -94,6 +108,11 @@ PROGRESS_STATUS_LABELS: Mapping[str, Mapping[str, str]] = {
             "`#승인-대기` 채널에 카드가 올라와 있습니다. 운영자가 reply "
             "하기 전까지 producer 가 다음 작업을 만들지 않습니다."
         ),
+        "operator_action": (
+            "`#승인-대기` 카드에 `이대로 저장` 또는 해당 승인/반려 reply 작성 — "
+            "producer 는 reply 까지 다음 tick 을 만들지 않습니다."
+        ),
+        "severity": "high",
     },
     "blocked": {
         "icon": "⛔",
@@ -103,6 +122,11 @@ PROGRESS_STATUS_LABELS: Mapping[str, Mapping[str, str]] = {
             "재시도하지 않습니다 — 사유를 확인하고 수동 재진입 또는 세션 "
             "종료를 결정하세요."
         ),
+        "operator_action": (
+            "`yule runtime status --json` 으로 session.extra.coding_execute_progress "
+            "확인 → 수동 재큐(이슈 댓글로 새 work_order) 또는 세션 종료 결정."
+        ),
+        "severity": "high",
     },
     "locked": {
         "icon": "🔒",
@@ -112,6 +136,12 @@ PROGRESS_STATUS_LABELS: Mapping[str, Mapping[str, str]] = {
             "tick 은 건너뛰었습니다. 일반적으로 한두 tick 안에 자동 해소 "
             "됩니다."
         ),
+        "operator_action": (
+            "1-2 tick 대기. 5 tick 이상 지속 시 `systemctl restart "
+            "yule-run-service@eng-supervisor-watch.service` 로 in-memory lock "
+            "registry 초기화."
+        ),
+        "severity": "medium",
     },
 }
 
@@ -258,12 +288,19 @@ def render_progress_markdown(entry: ProgressEntry) -> str:
     the outcome lands in (done / retry_ready / needs_approval /
     blocked / locked) and what an operator should expect next, so a
     Discord escalation post can be derived from the same body.
+
+    Round 4 마무리 added an explicit "운영자 액션" line right under
+    the operator hint so a reader that scans the comment in 1 second
+    can see exactly what command / Discord reply they need next
+    without re-reading the body.
     """
 
     label = _label_for(entry.completion_status)
     icon = label["icon"]
     headline = label["headline"]
     operator_hint = label["operator_hint"]
+    operator_action = label.get("operator_action") or ""
+    severity = label.get("severity") or "low"
 
     lines: list[str] = []
     lines.append(
@@ -293,9 +330,43 @@ def render_progress_markdown(entry: ProgressEntry) -> str:
                 lines.append(f"  - {key}: `{value}`")
     lines.append("")
     lines.append(f"> {operator_hint}")
+    if operator_action:
+        lines.append("")
+        lines.append(
+            f"**운영자 액션 [{severity}]:** {operator_action}"
+        )
     lines.append("")
     lines.append(f"_{entry.at}_")
     return "\n".join(lines)
+
+
+def render_progress_action_line(entry: ProgressEntry) -> str:
+    """Single-line operator-action surface aligned with status.OperatorAction.
+
+    Format: ``<icon> [<severity>] <headline> · session=<id> · 다음: <action>``
+
+    Used by the runtime status surface / Discord escalation post so
+    a downstream consumer can build a one-line "what should the
+    operator do now?" indicator per session without re-rendering the
+    full markdown body.
+    """
+
+    label = _label_for(entry.completion_status)
+    icon = label["icon"]
+    headline = label["headline"]
+    severity = label.get("severity") or "low"
+    operator_action = label.get("operator_action") or ""
+    parts: list[str] = [f"{icon} [{severity}] {headline}"]
+    if entry.session_id:
+        parts.append(f"session={entry.session_id}")
+    if entry.executor_role:
+        parts.append(f"role={entry.executor_role}")
+    if entry.pr_number is not None:
+        parts.append(f"pr=#{entry.pr_number}")
+    line = " · ".join(parts)
+    if operator_action:
+        line += f" · 다음: {operator_action}"
+    return line
 
 
 def render_progress_summary_line(entry: ProgressEntry) -> str:
@@ -530,6 +601,7 @@ __all__ = (
     "build_progress_entry",
     "make_github_pr_comment_fn",
     "record_coding_execute_progress",
+    "render_progress_action_line",
     "render_progress_markdown",
     "render_progress_summary_line",
     "status_from_outcome",

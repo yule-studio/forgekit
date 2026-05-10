@@ -644,7 +644,7 @@ def _build_supervisor_status_post(
         # Lazy imports keep the supervisor branch importable when
         # status posting is off (no Discord deps loaded).
         from .circuit_breaker import load_persisted_circuit_snapshots
-        from .status import build_runtime_status
+        from .status import build_runtime_status, render_runtime_status_compact
         from .status_poster import (
             collect_recent_completion_funnel,
             collect_recent_fallback_audits,
@@ -660,6 +660,16 @@ def _build_supervisor_status_post(
             completion_funnel_recent=funnel_recent,
         )
         fallbacks = collect_recent_fallback_audits()
+        # Always emit the compact digest to journalctl so an operator
+        # without Discord access can still read "what's the runtime
+        # doing right now?" even when the dedup gate skips the post.
+        try:
+            for line in render_runtime_status_compact(report).splitlines():
+                logger.info("supervisor status: %s", line)
+        except Exception:  # noqa: BLE001 - never crash status post on render
+            logger.warning(
+                "supervisor compact status render raised", exc_info=True
+            )
         outcome = await post_runtime_status_summary(
             report=report,
             circuits=circuits,

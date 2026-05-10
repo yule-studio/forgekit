@@ -61,8 +61,11 @@ from .status import (
     AUTONOMY_OUTCOME_ERROR,
     AUTONOMY_OUTCOME_LOCKED,
     CompletionFunnelSummary,
+    OperatorAction,
     RuntimeStatusReport,
     render_autonomy_summary_markdown,
+    render_runtime_status_compact,
+    summarize_operator_actions,
 )
 from .status_summary import render_status_summary_markdown
 
@@ -671,6 +674,29 @@ class StatusPostOutcome:
     posted_message_id: Optional[int] = None
 
 
+def _render_top_action_banner(report: RuntimeStatusReport) -> str:
+    """Return a one-line "🚨 do this first" banner or empty string.
+
+    Picks the highest-severity operator action and renders it as a
+    block-quote so the Discord notification preview surfaces the
+    next step. Returns ``""`` when nothing operator-actionable is
+    going on so a healthy snapshot stays compact.
+    """
+
+    actions = summarize_operator_actions(report)
+    if not actions:
+        return ""
+    top = actions[0]
+    icon = top.icon or "!"
+    extra = (
+        f" (+{len(actions) - 1} more action(s))" if len(actions) > 1 else ""
+    )
+    return (
+        f"> {icon} **[{top.severity}] {top.headline}**{extra}\n"
+        f"> 다음 단계: `{top.next_step}`"
+    )
+
+
 async def post_runtime_status_summary(
     *,
     report: RuntimeStatusReport,
@@ -712,6 +738,11 @@ async def post_runtime_status_summary(
         fallbacks=fallbacks,
         profile_label=profile_label,
     )
+    # Lead the post with the highest-severity operator action so a
+    # mobile reader sees the next step in the notification preview.
+    top_action_banner = _render_top_action_banner(report)
+    if top_action_banner:
+        markdown = top_action_banner + "\n\n" + markdown
     autonomy_markdown = render_autonomy_summary_markdown(report)
     if autonomy_markdown:
         markdown = markdown + "\n\n" + autonomy_markdown

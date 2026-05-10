@@ -34,6 +34,7 @@ from yule_orchestrator.agents.job_queue.coding_execute_progress import (
     build_progress_entry,
     make_github_pr_comment_fn,
     record_coding_execute_progress,
+    render_progress_action_line,
     render_progress_markdown,
     render_progress_summary_line,
     status_from_outcome,
@@ -265,6 +266,97 @@ class StatusHintsTests(unittest.TestCase):
             self.assertIn("icon", label)
             self.assertIn("headline", label)
             self.assertIn("operator_hint", label)
+            # Round 4 마무리: every label must carry an operator_action +
+            # severity so the action-line renderer never returns None.
+            self.assertIn("operator_action", label)
+            self.assertIn("severity", label)
+            self.assertIn(label["severity"], {"high", "medium", "low"})
+
+
+# ---------------------------------------------------------------------------
+# Round 4 마무리: operator action surface — explicit next-step lines
+# ---------------------------------------------------------------------------
+
+
+class OperatorActionSurfaceTests(unittest.TestCase):
+    def test_needs_approval_markdown_carries_operator_action_block(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="needs_approval",
+        )
+        body = render_progress_markdown(entry)
+        # Severity badge in the operator-action block.
+        self.assertIn("운영자 액션 [high]", body)
+        # Concrete reply phrase the operator should send.
+        self.assertIn("이대로 저장", body)
+
+    def test_blocked_markdown_includes_inspect_command(self) -> None:
+        entry = build_progress_entry(
+            _outcome(
+                terminal_state=JobState.FAILED_TERMINAL.value,
+                failure_reason="protected_branch_blocked",
+            ),
+            request=_request(),
+        )
+        body = render_progress_markdown(entry)
+        self.assertIn("운영자 액션 [high]", body)
+        self.assertIn("yule runtime status --json", body)
+
+    def test_locked_markdown_carries_supervisor_restart_hint(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="locked",
+        )
+        body = render_progress_markdown(entry)
+        self.assertIn("운영자 액션 [medium]", body)
+        self.assertIn("systemctl restart", body)
+        self.assertIn("yule-run-service@eng-supervisor-watch.service", body)
+
+    def test_done_markdown_marks_action_low_with_no_command(self) -> None:
+        entry = build_progress_entry(_outcome(), request=_request())
+        body = render_progress_markdown(entry)
+        self.assertIn("운영자 액션 [low]", body)
+        # `done` action should not direct the operator to run any
+        # command — it explicitly tells them to do nothing.
+        self.assertIn("별도 조치 불필요", body)
+
+    def test_action_line_includes_severity_session_pr_and_next_step(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="needs_approval",
+        )
+        line = render_progress_action_line(entry)
+        self.assertIn("[high]", line)
+        self.assertIn("session=sess-X", line)
+        self.assertIn("role=backend-engineer", line)
+        self.assertIn("pr=#999", line)
+        self.assertIn("다음:", line)
+        self.assertIn("이대로 저장", line)
+
+    def test_action_line_for_blocked_omits_pr_when_absent(self) -> None:
+        entry = build_progress_entry(
+            _outcome(pr_number=None, pr_url="", commit_sha=""),
+            request=_request(dry_run=True),
+            completion_status="blocked",
+        )
+        line = render_progress_action_line(entry)
+        self.assertIn("[high]", line)
+        self.assertIn("차단됨", line)
+        self.assertNotIn("pr=", line)
+
+    def test_action_line_unknown_status_falls_back_to_blocked_label(self) -> None:
+        entry = build_progress_entry(
+            _outcome(),
+            request=_request(),
+            completion_status="not-a-real-status",
+        )
+        line = render_progress_action_line(entry)
+        # Falls back to the blocked palette without crashing.
+        self.assertIn("⛔", line)
+        self.assertIn("[high]", line)
 
 
 # ---------------------------------------------------------------------------
