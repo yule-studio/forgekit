@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, List, Mapping, Optional, Protocol, Tuple
+from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from .models import (
     CollectionMode,
@@ -310,7 +310,57 @@ class StubLiveSourceFetcher:
         return ()
 
 
+# ---------------------------------------------------------------------------
+# Deterministic fixture-based fake — used by the provider registry seed
+# ---------------------------------------------------------------------------
+
+
+class FakeKnowledgeProvider:
+    """Fixture-based fake fetcher — returns items keyed on source_id.
+
+    Sits between :class:`StubLiveSourceFetcher` (records, returns empty)
+    and a real live provider (network). Tests / dev / cost-safe
+    operator runs use this so the registry resolves to a *fetcher
+    that produces predictable items* even when no live impl is
+    wired.
+
+    The contract intentionally matches :class:`LiveSourceFetcher`:
+    the orchestrator tick code calls one Protocol regardless of
+    whether bytes came from disk, fixture, or HTTP.
+    """
+
+    def __init__(
+        self,
+        payload: Optional[Mapping[str, Sequence[EngineeringKnowledgeItem]]] = None,
+    ) -> None:
+        self._payload: dict[str, Tuple[EngineeringKnowledgeItem, ...]] = {
+            source_id: tuple(items)
+            for source_id, items in (payload or {}).items()
+        }
+        self.calls: List[Tuple[str, ProviderTransport]] = []
+
+    def with_fixture(
+        self,
+        source_id: str,
+        items: Sequence[EngineeringKnowledgeItem],
+    ) -> "FakeKnowledgeProvider":
+        """Add / replace the fixture for *source_id*. Returns self."""
+
+        self._payload[source_id] = tuple(items)
+        return self
+
+    def __call__(
+        self,
+        spec: LiveProviderSpec,
+        *,
+        source: SourceEntry,
+    ) -> Tuple[EngineeringKnowledgeItem, ...]:
+        self.calls.append((source.source_id, spec.transport))
+        return self._payload.get(source.source_id, ())
+
+
 __all__ = [
+    "FakeKnowledgeProvider",
     "LiveProviderSpec",
     "LiveSourceFetcher",
     "ProviderTransport",

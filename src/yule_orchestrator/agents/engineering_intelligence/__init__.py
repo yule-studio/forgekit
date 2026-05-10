@@ -43,12 +43,41 @@ from .collector import (
     utc_now_iso,
 )
 from .providers import (
+    FakeKnowledgeProvider,
     LiveProviderSpec,
     LiveSourceFetcher,
     ProviderTransport,
     StubLiveSourceFetcher,
     provider_spec_for,
     specs_for_role,
+)
+from .feed_parser import (
+    BytesFetcher,
+    FeedFetchOutcome,
+    FeedParserError,
+    make_feed_live_factory,
+    parse_atom_bytes,
+    parse_feed_bytes,
+    parse_rss_bytes,
+    register_safe_feed_providers,
+)
+from .provider_registry import (
+    KnowledgeProviderRegistration,
+    KnowledgeProviderRegistry,
+    LiveFetcherFactory,
+    ProviderAuthRequirement,
+    ProviderAvailability,
+    ProviderAvailabilityRow,
+    ProviderAvailabilitySummary,
+    default_registry,
+)
+from .provider_routing import (
+    RefreshPlanStatus,
+    RoutedRefreshCandidate,
+    axis_priority_order,
+    refresh_plan_status,
+    route_refresh_plan,
+    select_routed_due,
 )
 from .retrieval import (
     KnowledgeMatch,
@@ -135,12 +164,38 @@ __all__ = [
     "collect_for_role_with_schedule",
     "utc_now_iso",
     # providers
+    "FakeKnowledgeProvider",
     "LiveProviderSpec",
     "LiveSourceFetcher",
     "ProviderTransport",
     "StubLiveSourceFetcher",
     "provider_spec_for",
     "specs_for_role",
+    # feed parser (live-ready RSS / Atom / GitHub releases atom)
+    "BytesFetcher",
+    "FeedFetchOutcome",
+    "FeedParserError",
+    "make_feed_live_factory",
+    "parse_atom_bytes",
+    "parse_feed_bytes",
+    "parse_rss_bytes",
+    "register_safe_feed_providers",
+    # provider registry / auth contract
+    "KnowledgeProviderRegistration",
+    "KnowledgeProviderRegistry",
+    "LiveFetcherFactory",
+    "ProviderAuthRequirement",
+    "ProviderAvailability",
+    "ProviderAvailabilityRow",
+    "ProviderAvailabilitySummary",
+    "default_registry",
+    # provider routing (refresh-plan → registry → fetch decision)
+    "RefreshPlanStatus",
+    "RoutedRefreshCandidate",
+    "axis_priority_order",
+    "refresh_plan_status",
+    "route_refresh_plan",
+    "select_routed_due",
     # retrieval
     "KnowledgeMatch",
     "KnowledgeRecord",
