@@ -290,10 +290,17 @@ Round 4-bis 에서 추가된 구현 (provider 측 강화):
 - [provider_routing.py](../src/yule_orchestrator/agents/engineering_intelligence/provider_routing.py) — `route_refresh_plan(plan, *, role_id, registry, env)` 가 `RefreshPlan` 의 due/skipped 각 entry 에 transport / provider_id / availability / axes 를 붙여 `RoutedRefreshCandidate` 로 변환. `axis_priority_order(...)` 가 `overdue_axes_for_role` 결과를 받아 SECURITY 같이 비어 있는 axis 를 가진 candidate 를 우선 큐 앞으로 보낸다 (tier / availability / source_id 가 tie-breaker). `select_routed_due(...)` 한 번 호출로 plan→route→axis priority→tick quota 까지 처리.
 - [.env.example #73 — Engineering knowledge provider env](../.env.example) — `YULE_KNOWLEDGE_<TRANSPORT>_LIVE_ENABLED` 8개와 `YULE_GITHUB_APP_*` 재사용 정책 명시. 모든 플래그 기본값은 false (cost-budget 검토 후 운영자가 켠다).
 
+Round 4-ter 에서 추가된 구현 (live-ready parser + 운영 가시성):
+
+- [feed_parser.py](../src/yule_orchestrator/agents/engineering_intelligence/feed_parser.py) — `parse_atom_bytes` / `parse_rss_bytes` / `parse_feed_bytes` 결정적 parser (xml.etree + email.utils 만 사용, urllib 무관). RSS-mode 소스가 실제로 Atom 페이로드를 내려주는 edge case 까지 sniff 로 dispatch. summary 는 `_SUMMARY_LIMIT=500` 자로 자동 truncate 되어 content_policy ("link + 짧은 인용") 자동 준수. `BytesFetcher` Protocol + `make_feed_live_factory` glue 가 별도 PR 에서 작성할 urllib 한 조각을 그대로 받아 `LiveFetcherFactory` 로 변환. `register_safe_feed_providers(registry, bytes_fetcher_factory=...)` 한 번 호출로 RSS / ATOM / GITHUB_RELEASES_ATOM 세 transport 가 동시에 라이브 전환된다.
+- [provider_registry.py — availability_summary](../src/yule_orchestrator/agents/engineering_intelligence/provider_registry.py) — `ProviderAvailabilityRow` (transport / provider_id / availability / has_live_impl / manual / env_keys / enable_flag / missing_env_keys / enable_flag_set / description / notes) + `ProviderAvailabilitySummary` (`by_state` / `states_count` / `needs_attention` / `to_payload`). 운영자 대시보드는 `registry.availability_summary(env).to_payload()` 한 번 호출로 "5 transports live, 2 missing_env, 1 disabled_by_flag" 를 그대로 그릴 수 있다.
+- [provider_routing.py — reasoning trail](../src/yule_orchestrator/agents/engineering_intelligence/provider_routing.py) — `RoutedRefreshCandidate` 가 `transport_reason` (왜 이 transport 가 선택됐는지: `rss + atom URL heuristic`, `manual (collection_mode=manual)` 등) 와 `availability_reason` (왜 이 availability state 가 됐는지: `missing env keys: YULE_GITHUB_APP_ID, ...`, `flag YULE_KNOWLEDGE_RSS_LIVE_ENABLED not truthy` 등) 두 필드를 추가로 가진다. `routing_reason` property 로 한 줄 요약 (`transport=…; availability=…`) 도 노출. `RefreshPlanStatus` 와 `refresh_plan_status(plan, *, role_id, registry, env)` 헬퍼는 routed candidates + registry availability_summary 를 한 번에 묶어서 background refresh planner 가 tick 마다 JSON 한 덩어리로 dump 할 수 있게 만든다.
+
 남은 일 (별도 worktree / PR):
 
-- live source fetcher 구현 (urllib 기반 RSS / Atom / Sitemap / HTML_LIST / GitHub Releases / GitHub API). `KnowledgeProviderRegistry.register_live(transport, live_factory=...)` 한 번 호출로 활성화된다.
-- runtime service spawn (`eng-research-collector`) — scheduler tick → `select_routed_due` → registry fetcher → adapter → vault writer.
+- urllib 기반 `BytesFetcher` 한 조각 (timeout / user-agent / 30x 처리). `register_safe_feed_providers(registry, bytes_fetcher_factory=...)` 한 번 호출로 RSS / Atom / GitHub releases atom 이 동시에 live 전환된다.
+- sitemap / html_list / html_detail / github_api_repo_activity 의 live fetcher (parser 까지 미구현; 본 PR 시점에서 NO_LIVE_IMPL).
+- runtime service spawn (`eng-research-collector`) — scheduler tick → `refresh_plan_status` 로 가시성 dump → `select_routed_due` → registry fetcher → adapter → vault writer.
 - `SourceRefreshState` persistence (sqlite or vault sidecar).
 - discussion synthesizer 가 `relevant_knowledge` slot 을 prompt 에 어떻게 짜 넣을지.
 

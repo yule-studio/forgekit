@@ -16,11 +16,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
-from .models import SourceAxis, SourceEntry, SourceTier
+from .models import CollectionMode, SourceAxis, SourceEntry, SourceTier
 from .provider_registry import (
     KnowledgeProviderRegistration,
     KnowledgeProviderRegistry,
     ProviderAvailability,
+    ProviderAvailabilitySummary,
     default_registry,
 )
 from .providers import (
@@ -52,6 +53,12 @@ class RoutedRefreshCandidate:
     Plus the original :class:`RefreshPlanEntry` decision so the
     caller can still distinguish ``due`` vs ``skipped_*`` without
     re-running the planner.
+
+    ``transport_reason`` and ``availability_reason`` are short human
+    sentences explaining *why* this transport / availability was
+    picked. They land here so the operator dashboard + tick log can
+    answer "why did the runner pick rss-feed over manual?" without
+    re-deriving the heuristic.
     """
 
     source: SourceEntry
@@ -61,6 +68,8 @@ class RoutedRefreshCandidate:
     decision: str
     reason: str
     next_eligible_at: Optional[str] = None
+    transport_reason: str = ""
+    availability_reason: str = ""
 
     @property
     def axes(self) -> Tuple[SourceAxis, ...]:
@@ -69,6 +78,17 @@ class RoutedRefreshCandidate:
     @property
     def transport(self) -> ProviderTransport:
         return self.spec.transport
+
+    @property
+    def routing_reason(self) -> str:
+        """One-line ``transport=… availability=…`` explanation."""
+
+        parts: list[str] = []
+        if self.transport_reason:
+            parts.append(f"transport={self.transport_reason}")
+        if self.availability_reason:
+            parts.append(f"availability={self.availability_reason}")
+        return "; ".join(parts)
 
     def to_payload(self) -> Mapping[str, Any]:
         return {
@@ -81,7 +101,82 @@ class RoutedRefreshCandidate:
             "next_eligible_at": self.next_eligible_at,
             "axes": [axis.value for axis in self.axes],
             "auth": self.provider.auth.to_payload(),
+            "transport_reason": self.transport_reason,
+            "availability_reason": self.availability_reason,
+            "routing_reason": self.routing_reason,
         }
+
+
+# ---------------------------------------------------------------------------
+# Reasoning helpers — explain transport + availability choices
+# ---------------------------------------------------------------------------
+
+
+def _explain_transport_choice(source: SourceEntry) -> str:
+    """One-line "why this transport" for *source*.
+
+    Mirrors the dispatch order inside :func:`provider_spec_for` so
+    operators can map a routed candidate back to the heuristic that
+    picked it without re-reading the dispatcher source.
+    """
+
+    mode = source.collection_mode
+    url = source.base_url
+    if mode is CollectionMode.MANUAL:
+        return "manual (collection_mode=manual)"
+    if mode is CollectionMode.GITHUB_API:
+        return "github_api_repo_activity (collection_mode=github_api)"
+    if mode is CollectionMode.RSS:
+        if "github.com/" in url and "/releases" in url:
+            return "github_releases_atom (rss + github releases URL)"
+        if ".atom" in url or url.endswith("/atom"):
+            return "atom (rss + atom URL heuristic)"
+        return "rss (collection_mode=rss)"
+    if mode is CollectionMode.SITEMAP:
+        return "sitemap (collection_mode=sitemap)"
+    if mode is CollectionMode.HTML_LIST:
+        return "html_list (collection_mode=html_list)"
+    return "html_detail (fallback transport)"
+
+
+def _explain_availability(
+    registration: KnowledgeProviderRegistration,
+    *,
+    env: Mapping[str, str],
+    state: ProviderAvailability,
+) -> str:
+    """One-line "why this availability state" for *registration*.
+
+    The reason mentions the actionable thing first — missing env
+    keys or the disabled flag name — so an operator scanning the
+    dashboard can fix the right knob without opening the registry.
+    """
+
+    if state is ProviderAvailability.MANUAL_ONLY:
+        return "manual (operator enters items by hand)"
+    if state is ProviderAvailability.NO_LIVE_IMPL:
+        return "no live impl (fake fallback)"
+    if state is ProviderAvailability.MISSING_ENV:
+        missing = tuple(
+            key
+            for key in registration.auth.env_keys
+            if not (env.get(key) or "").strip()
+        )
+        keys_repr = ", ".join(missing) if missing else "(none)"
+        return f"missing env keys: {keys_repr}"
+    if state is ProviderAvailability.DISABLED_BY_FLAG:
+        flag = registration.auth.enable_flag or "(no flag)"
+        return f"flag {flag} not truthy"
+    if state is ProviderAvailability.AVAILABLE:
+        bits = []
+        if registration.auth.env_keys:
+            bits.append("env keys present")
+        if registration.auth.enable_flag:
+            bits.append(f"{registration.auth.enable_flag}=true")
+        if not bits:
+            bits.append("no auth contract")
+        return "live (" + ", ".join(bits) + ")"
+    return state.value  # pragma: no cover — defensive
 
 
 # ---------------------------------------------------------------------------
@@ -136,11 +231,90 @@ def route_refresh_plan(
             decision=entry.decision,
             reason=entry.reason,
             next_eligible_at=getattr(entry, "next_eligible_at", None),
+            transport_reason=_explain_transport_choice(source),
+            availability_reason=_explain_availability(
+                registration, env=env_map, state=availability
+            ),
         )
 
     due_routed = tuple(c for c in (_build(e) for e in plan.due) if c)
     skipped_routed = tuple(c for c in (_build(e) for e in plan.skipped) if c)
     return due_routed, skipped_routed
+
+
+# ---------------------------------------------------------------------------
+# refresh_plan_status — operator-friendly bundle
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RefreshPlanStatus:
+    """One-shot bundle of "what's about to run + what's blocked" for a tick.
+
+    Threads three observables together:
+
+      * ``due`` / ``skipped`` — :class:`RoutedRefreshCandidate` lists
+        from :func:`route_refresh_plan`.
+      * ``availability`` — the registry's
+        :class:`ProviderAvailabilitySummary` so the dashboard can
+        show "5 transports live, 2 disabled by flag" alongside the
+        per-source decision.
+
+    The background refresh planner can dump this to JSON for the
+    operator log on every tick — one snapshot answers "will this
+    tick fetch anything? if not, what env is missing?".
+    """
+
+    role: str
+    now_iso: str
+    due: Tuple[RoutedRefreshCandidate, ...]
+    skipped: Tuple[RoutedRefreshCandidate, ...]
+    availability: ProviderAvailabilitySummary
+
+    @property
+    def transports_due(self) -> Tuple[str, ...]:
+        # Sorted unique transports the runner will actually call.
+        return tuple(
+            sorted({c.transport.value for c in self.due})
+        )
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "role": self.role,
+            "now": self.now_iso,
+            "transports_due": list(self.transports_due),
+            "due": [c.to_payload() for c in self.due],
+            "skipped": [c.to_payload() for c in self.skipped],
+            "availability": self.availability.to_payload(),
+        }
+
+
+def refresh_plan_status(
+    plan: Any,
+    *,
+    role_id: str,
+    registry: Optional[KnowledgeProviderRegistry] = None,
+    env: Mapping[str, str] = (),  # type: ignore[assignment]
+) -> RefreshPlanStatus:
+    """Pure helper: route *plan* and bundle the registry availability.
+
+    Single call point for the background refresh planner — it gets
+    routed candidates *and* the registry summary in one go without
+    having to thread the registry/env through twice.
+    """
+
+    reg = registry if registry is not None else default_registry()
+    env_map: Mapping[str, str] = dict(env or {})
+    due, skipped = route_refresh_plan(
+        plan, role_id=role_id, registry=reg, env=env_map
+    )
+    return RefreshPlanStatus(
+        role=role_id,
+        now_iso=getattr(plan, "now_iso", ""),
+        due=due,
+        skipped=skipped,
+        availability=reg.availability_summary(env_map),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +424,10 @@ def select_routed_due(
 
 
 __all__ = [
+    "RefreshPlanStatus",
     "RoutedRefreshCandidate",
     "axis_priority_order",
+    "refresh_plan_status",
     "route_refresh_plan",
     "select_routed_due",
 ]

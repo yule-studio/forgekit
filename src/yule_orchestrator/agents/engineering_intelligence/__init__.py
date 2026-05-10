@@ -67,11 +67,15 @@ from .provider_registry import (
     LiveFetcherFactory,
     ProviderAuthRequirement,
     ProviderAvailability,
+    ProviderAvailabilityRow,
+    ProviderAvailabilitySummary,
     default_registry,
 )
 from .provider_routing import (
+    RefreshPlanStatus,
     RoutedRefreshCandidate,
     axis_priority_order,
+    refresh_plan_status,
     route_refresh_plan,
     select_routed_due,
 )
@@ -182,10 +186,14 @@ __all__ = [
     "LiveFetcherFactory",
     "ProviderAuthRequirement",
     "ProviderAvailability",
+    "ProviderAvailabilityRow",
+    "ProviderAvailabilitySummary",
     "default_registry",
     # provider routing (refresh-plan → registry → fetch decision)
+    "RefreshPlanStatus",
     "RoutedRefreshCandidate",
     "axis_priority_order",
+    "refresh_plan_status",
     "route_refresh_plan",
     "select_routed_due",
     # retrieval

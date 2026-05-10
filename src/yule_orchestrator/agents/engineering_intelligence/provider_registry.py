@@ -340,6 +340,148 @@ class KnowledgeProviderRegistry:
             for reg in self.iter_registrations()
         }
 
+    def availability_summary(
+        self, env: Mapping[str, str]
+    ) -> "ProviderAvailabilitySummary":
+        """Structured ``transport → state + diagnostics`` summary.
+
+        Builds one :class:`ProviderAvailabilityRow` per registration —
+        the row includes the env contract (which keys, which flag),
+        which keys are still empty, and whether the flag is set.
+        Operators get a single object they can render as a table on
+        the dashboard or feed into the background refresh planner so
+        a tick log explains exactly *why* a transport fell back to
+        the fake.
+        """
+
+        rows = tuple(
+            ProviderAvailabilityRow.from_registration(reg, env=env)
+            for reg in self.iter_registrations()
+        )
+        return ProviderAvailabilitySummary(rows=rows)
+
+
+# ---------------------------------------------------------------------------
+# Operator-facing availability summary
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ProviderAvailabilityRow:
+    """One transport's resolved availability + the diagnostics behind it.
+
+    Designed for "render as a table on the operator dashboard"
+    rather than for the runner — the runner already calls
+    :meth:`KnowledgeProviderRegistry.select_fetcher_for`. This row
+    answers *why* a transport is in its current state so the
+    operator can fix exactly the missing piece (env key vs flag vs
+    live impl).
+    """
+
+    transport: str
+    provider_id: str
+    availability: str
+    has_live_impl: bool
+    manual: bool
+    env_keys: Tuple[str, ...]
+    enable_flag: Optional[str]
+    missing_env_keys: Tuple[str, ...]
+    enable_flag_set: bool
+    description: str
+    notes: str
+
+    @classmethod
+    def from_registration(
+        cls,
+        registration: "KnowledgeProviderRegistration",
+        *,
+        env: Mapping[str, str],
+    ) -> "ProviderAvailabilityRow":
+        missing = tuple(
+            key
+            for key in registration.auth.env_keys
+            if not (env.get(key) or "").strip()
+        )
+        return cls(
+            transport=registration.transport.value,
+            provider_id=registration.provider_id,
+            availability=registration.evaluate_availability(env).value,
+            has_live_impl=registration.has_live_impl(),
+            manual=registration.manual,
+            env_keys=tuple(registration.auth.env_keys),
+            enable_flag=registration.auth.enable_flag,
+            missing_env_keys=missing,
+            enable_flag_set=registration.auth.enable_flag_set(env),
+            description=registration.description,
+            notes=registration.auth.notes,
+        )
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "transport": self.transport,
+            "provider_id": self.provider_id,
+            "availability": self.availability,
+            "has_live_impl": bool(self.has_live_impl),
+            "manual": bool(self.manual),
+            "env_keys": list(self.env_keys),
+            "enable_flag": self.enable_flag,
+            "missing_env_keys": list(self.missing_env_keys),
+            "enable_flag_set": bool(self.enable_flag_set),
+            "description": self.description,
+            "notes": self.notes,
+        }
+
+
+@dataclass(frozen=True)
+class ProviderAvailabilitySummary:
+    """All :class:`ProviderAvailabilityRow` rows + small grouping helpers.
+
+    Pure data — no I/O. Three convenience views the dashboard /
+    background refresh planner reach for the most:
+
+      * :meth:`by_state` — ``state → rows`` for a "live / blocked /
+        manual" tabbed view.
+      * :meth:`states_count` — quick "5 available, 2 missing_env"
+        headline number.
+      * :meth:`needs_attention` — rows the operator can fix:
+        MISSING_ENV / DISABLED_BY_FLAG. NO_LIVE_IMPL is not in this
+        bucket (the operator can't write the live impl from the
+        dashboard).
+    """
+
+    rows: Tuple[ProviderAvailabilityRow, ...]
+
+    def by_state(self) -> Mapping[str, Tuple[ProviderAvailabilityRow, ...]]:
+        buckets: dict[str, list[ProviderAvailabilityRow]] = {}
+        for row in self.rows:
+            buckets.setdefault(row.availability, []).append(row)
+        return {
+            state: tuple(rows_in_state)
+            for state, rows_in_state in buckets.items()
+        }
+
+    def states_count(self) -> Mapping[str, int]:
+        counts: dict[str, int] = {}
+        for row in self.rows:
+            counts[row.availability] = counts.get(row.availability, 0) + 1
+        return counts
+
+    def needs_attention(self) -> Tuple[ProviderAvailabilityRow, ...]:
+        actionable = {
+            ProviderAvailability.MISSING_ENV.value,
+            ProviderAvailability.DISABLED_BY_FLAG.value,
+        }
+        return tuple(row for row in self.rows if row.availability in actionable)
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "rows": [row.to_payload() for row in self.rows],
+            "states_count": dict(self.states_count()),
+            "needs_attention": [
+                row.to_payload() for row in self.needs_attention()
+            ],
+        }
+
 
 # ---------------------------------------------------------------------------
 # Default registry seed
@@ -510,5 +652,7 @@ __all__ = [
     "LiveFetcherFactory",
     "ProviderAuthRequirement",
     "ProviderAvailability",
+    "ProviderAvailabilityRow",
+    "ProviderAvailabilitySummary",
     "default_registry",
 ]
