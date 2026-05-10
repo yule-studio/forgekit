@@ -304,28 +304,39 @@ class DiscussionFollowupDispatcher:
 
         # Optional Claude decision seam — when wired, the runtime can
         # ask "is this discussion truly unresolved?" before we burn
-        # role_take rows on a turn that's already settled. Failures
-        # fall back to the deterministic path.
+        # role_take rows on a turn that's already settled. Routes the
+        # call through the seam's :func:`consult_decision_port` helper
+        # so raise / wrong-type / unwired all degrade identically to
+        # the retry-guard callsite, and the invocation trace lands on
+        # the outcome's payload for audit.
         if decision_port is not None and mode == _MODE_DISCUSSION:
             try:
-                advice = decision_port.decide(
+                from .claude_decision_seam import consult_decision_port
+            except Exception:  # noqa: BLE001 - dispatcher must keep running
+                consult_decision_port = None  # type: ignore[assignment]
+            if consult_decision_port is not None:
+                advice, advice_trace = consult_decision_port(
+                    decision_port,
                     request=_build_decision_request(
                         session_id=session_id,
                         discussion_row=discussion_row,
-                    )
-                )
-            except Exception:  # noqa: BLE001
-                advice = None
-            if advice is not None and getattr(advice, "skip", False):
-                return (
-                    DiscussionFollowupOutcome(
-                        session_id=session_id,
-                        mode=mode,
-                        kind=DISCUSSION_FOLLOWUP_KIND_ROLE_TAKE,
-                        outcome=DispatchOutcome.SKIPPED,
-                        reason=getattr(advice, "reason", "decision_port_skip"),
                     ),
                 )
+                if advice.skip:
+                    return (
+                        DiscussionFollowupOutcome(
+                            session_id=session_id,
+                            mode=mode,
+                            kind=DISCUSSION_FOLLOWUP_KIND_ROLE_TAKE,
+                            outcome=DispatchOutcome.SKIPPED,
+                            reason=advice.reason or "decision_port_skip",
+                            payload={
+                                "decision_invocation": dict(
+                                    advice_trace.to_payload()
+                                ),
+                            },
+                        ),
+                    )
 
         session = self._resolve_session(session_id)
         extra = _normalise_extra(getattr(session, "extra", None))
@@ -609,22 +620,41 @@ def _build_decision_request(
     *,
     session_id: str,
     discussion_row: Mapping[str, Any],
-) -> Mapping[str, Any]:
+) -> Any:
     """Lift the discussion row into a decision-port request.
 
-    Lazy import keeps the dispatcher importable without the seam
-    package; the request shape is documented on
-    :mod:`claude_decision_seam.DecisionRequest`.
+    Returns a :class:`DecisionRequest` so a live external port wired
+    via :func:`build_decision_port_from_env` can rely on the typed
+    shape (``request.kind``, ``request.facts``, …) instead of having
+    to duck-type a Mapping. Falls back to the legacy plain-dict shape
+    if the seam module fails to import — the dispatcher is supposed
+    to be cheap and never block on import errors.
     """
 
-    return {
-        "kind": "discussion_followup",
-        "session_id": session_id,
+    facts = {
         "mode": discussion_row.get("mode"),
         "turn_id": discussion_row.get("turn_id"),
         "missing_roles": list(discussion_row.get("missing_roles") or ()),
-        "summary": discussion_row.get("summary") or "",
     }
+    summary = str(discussion_row.get("summary") or "")
+    try:
+        from .claude_decision_seam import (
+            DECISION_KIND_DISCUSSION_FOLLOWUP,
+            DecisionRequest,
+        )
+    except Exception:  # noqa: BLE001 - dispatcher must keep working
+        return {
+            "kind": "discussion_followup",
+            "session_id": session_id,
+            "summary": summary,
+            **facts,
+        }
+    return DecisionRequest(
+        kind=DECISION_KIND_DISCUSSION_FOLLOWUP,
+        summary=summary,
+        facts=facts,
+        session_id=session_id,
+    )
 
 
 # ---------------------------------------------------------------------------
