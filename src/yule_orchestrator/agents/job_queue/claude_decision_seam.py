@@ -89,11 +89,13 @@ logger = logging.getLogger(__name__)
 __all__ = (
     "ClaudeDecisionPort",
     "DECISION_KIND_DISCUSSION_FOLLOWUP",
+    "DECISION_KIND_IMPLEMENTATION_CANDIDATE",
     "DECISION_KIND_NEXT_TASK",
     "DECISION_KIND_RETRY_GUARD",
     "DEFAULT_EXTERNAL_TIMEOUT_SECONDS",
     "DEFAULT_RECORD_BUFFER_SIZE",
     "DEFAULT_PROVIDER_CHAIN",
+    "DecisionInvocationTrace",
     "DecisionPortBuildTrace",
     "DecisionRequest",
     "DecisionResponse",
@@ -110,6 +112,7 @@ __all__ = (
     "build_decision_port_from_env",
     "coerce_decision_request",
     "compose_decision_port",
+    "consult_decision_port",
 )
 
 
@@ -123,6 +126,7 @@ __all__ = (
 # deterministic port's branch table so a new kind never silently
 # returns ``advance=True`` without a thought-through default.
 DECISION_KIND_DISCUSSION_FOLLOWUP: str = "discussion_followup"
+DECISION_KIND_IMPLEMENTATION_CANDIDATE: str = "implementation_candidate"
 DECISION_KIND_NEXT_TASK: str = "next_task"
 DECISION_KIND_RETRY_GUARD: str = "retry_guard"
 
@@ -715,6 +719,192 @@ def _build_external_from_env(
         # for more than a handful of seconds.
         timeout = max(0.1, min(30.0, parsed_t))
     return ExternalDecisionPort(callable=callable_, timeout_seconds=timeout)
+
+
+# ---------------------------------------------------------------------------
+# Per-call invocation helpers
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DecisionInvocationTrace:
+    """Per-call audit trace returned by :func:`consult_decision_port`.
+
+    Where :class:`DecisionPortBuildTrace` answers "which tiers were
+    composed at startup", this answers "what happened on *this* call":
+    which port the runtime asked, what verdict came back, whether the
+    callsite is going to act on it, and the exact reason / metadata
+    surface the operator sees.
+
+    Callers stamp this onto :class:`AutonomyDispatch` payload (or the
+    discussion follow-up outcome) so a dashboard reading the dispatch
+    log can answer "why did the runtime skip this retry?" without
+    having to re-run the port.
+    """
+
+    kind: str
+    actionable: bool
+    skip: bool
+    advance: bool
+    reason: str
+    confidence: str
+    provider: str
+    fell_through: bool
+    raised: bool
+    raised_type: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    decided_at: str = ""
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "kind": self.kind,
+            "actionable": self.actionable,
+            "skip": self.skip,
+            "advance": self.advance,
+            "reason": self.reason,
+            "confidence": self.confidence,
+            "provider": self.provider,
+            "fell_through": self.fell_through,
+            "raised": self.raised,
+            "raised_type": self.raised_type,
+            "metadata": dict(self.metadata),
+            "decided_at": self.decided_at,
+        }
+
+
+def consult_decision_port(
+    port: Optional[ClaudeDecisionPort],
+    *,
+    request: DecisionRequest,
+) -> Tuple[DecisionResponse, DecisionInvocationTrace]:
+    """Single entry point every callsite uses to ask the seam.
+
+    Centralises the call → coerce → guard pattern so a callsite never
+    has to spell out "try / on raise warn / on non-DecisionResponse
+    fall through" by hand. Returns a *pair*:
+
+      * the :class:`DecisionResponse` the chain produced (always typed,
+        never None) — callers branch on ``.is_actionable()`` and
+        ``.skip`` / ``.advance``.
+      * a :class:`DecisionInvocationTrace` capturing what happened so
+        the callsite can stamp it on its outcome row for audit.
+
+    Hard guarantees:
+
+      * Never raises. A None port, a port that raises, and a port that
+        returns the wrong type all surface as a non-actionable
+        :class:`DecisionResponse` plus a trace with ``raised`` /
+        ``fell_through`` flagged.
+      * The trace's ``provider`` field comes from the response's
+        ``metadata['port']`` (or ``metadata['provider']``) so an
+        operator reading the audit log can tell which tier — the live
+        subprocess, the record-only shadow, or the deterministic
+        fallback — actually answered.
+
+    The seam composer (:func:`compose_decision_port`) is the right
+    place to assemble the chain; this helper is the right place to
+    *call* it.
+    """
+
+    coerced = coerce_decision_request(request)
+
+    if port is None:
+        response = DecisionResponse(
+            advance=False,
+            skip=False,
+            reason="decision_port_unwired",
+            confidence="none",
+            metadata={"port": "unwired", "fallback": True},
+            decided_at=_now_iso(),
+        )
+        return response, _build_trace(
+            response=response,
+            kind=coerced.kind,
+            fell_through=True,
+            raised=False,
+            raised_type="",
+        )
+
+    try:
+        response = port.decide(request=coerced)
+    except Exception as exc:  # noqa: BLE001 - never crash the callsite
+        logger.warning(
+            "consult_decision_port: port raised on kind=%s",
+            coerced.kind,
+            exc_info=True,
+        )
+        response = DecisionResponse(
+            advance=False,
+            skip=False,
+            reason=f"decision_port_raised:{type(exc).__name__}",
+            confidence="none",
+            metadata={"port": "raised", "fallback": True},
+            decided_at=_now_iso(),
+        )
+        return response, _build_trace(
+            response=response,
+            kind=coerced.kind,
+            fell_through=True,
+            raised=True,
+            raised_type=type(exc).__name__,
+        )
+
+    if not isinstance(response, DecisionResponse):
+        # Defensive: the Protocol promises a typed response but we
+        # never want to take an arbitrary object's word for it.
+        response = DecisionResponse(
+            advance=False,
+            skip=False,
+            reason="decision_port_bad_type",
+            confidence="none",
+            metadata={"port": "bad_type", "fallback": True},
+            decided_at=_now_iso(),
+        )
+        return response, _build_trace(
+            response=response,
+            kind=coerced.kind,
+            fell_through=True,
+            raised=False,
+            raised_type="",
+        )
+
+    return response, _build_trace(
+        response=response,
+        kind=coerced.kind,
+        fell_through=not response.is_actionable(),
+        raised=False,
+        raised_type="",
+    )
+
+
+def _build_trace(
+    *,
+    response: DecisionResponse,
+    kind: str,
+    fell_through: bool,
+    raised: bool,
+    raised_type: str,
+) -> DecisionInvocationTrace:
+    metadata = dict(response.metadata or {})
+    provider = str(
+        metadata.get("port")
+        or metadata.get("provider")
+        or "unknown"
+    )
+    return DecisionInvocationTrace(
+        kind=kind,
+        actionable=response.is_actionable(),
+        skip=bool(response.skip),
+        advance=bool(response.advance),
+        reason=str(response.reason or ""),
+        confidence=str(response.confidence or ""),
+        provider=provider,
+        fell_through=fell_through,
+        raised=raised,
+        raised_type=raised_type,
+        metadata=metadata,
+        decided_at=str(response.decided_at or _now_iso()),
+    )
 
 
 # ---------------------------------------------------------------------------

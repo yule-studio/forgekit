@@ -49,6 +49,8 @@ tags: [task-log, tech-lead-runtime, foundation]
 | 2026-05-10 round-4-bis kickoff | decision provider 강화 — 별도 worktree `feature/company-runtime-autonomy-decision` 위에서 commit 18~19 | |
 | 2026-05-10 commit-18 | Round 4-bis — A. RecordOnly/External port + env contract factory + DecisionRequest 정착 | 완료, deterministic / record-only / live-ready 3-tier 명확화 |
 | 2026-05-10 commit-19 | Round 4-bis — B. autonomy producer retry-guard 호출 경로 + run_service env-driven 합성 + 본 task-log 갱신 | 완료, autonomy loop 가 실제 decision port 를 호출하는 첫 경로 |
+| 2026-05-10 commit-20 | Round 4-ter — A. claude -p subprocess adapter (live-ready callable) + 어댑터 테스트 + run_service factory 연결 | 완료, 외부 callable 자리에 실제 ``claude -p`` 호출 경로 land — env 두 단계 opt-in 미설정 시 행동 변화 0 |
+| 2026-05-10 commit-21 | Round 4-ter — B. consult_decision_port + DecisionInvocationTrace + autonomy/discussion 콜사이트 통일 + 라이브 트레이스 audit + task-log/마스터 플랜 갱신 | 완료, decision seam 의 호출/감사 경로가 한 곳에 정착 |
 
 # 변경 / 산출물 (계획)
 
@@ -299,3 +301,59 @@ tags: [task-log, tech-lead-runtime, foundation]
 ## 외부 blocker
 
 - 없음. 본 PR 도 hard-rail 안에서 land — deterministic-only 가 default 이므로 운영자가 명시 opt-in 하지 않는 한 supervisor 동작은 Round 4 와 동일.
+
+# Round 4-ter — 종료 시점 갱신 (2026-05-10)
+
+## 결과 요약
+
+같은 worktree `feature/company-runtime-autonomy-decision` / 같은 PR(#78) 위에서 commit 20~21 추가. Round 4-bis 가 만들어 둔 `ExternalDecisionPort` 의 callable 자리에 (a) 실제 `claude -p` 를 호출하는 첫 어댑터, (b) 모든 콜사이트가 공유하는 `consult_decision_port` 헬퍼 + `DecisionInvocationTrace` 감사 트레이스, (c) `run_service` 의 두 단계 env opt-in 합성기 를 land. 결과: 운영자가 두 env 키를 모두 켰을 때만 supervisor 가 짧은 결정 호출을 실제 `claude` 서브프로세스로 시도하며, 그 외에는 deterministic-only 동작이 유지된다.
+
+## 산출물 (Round 4-ter)
+
+| 영역 | 위치 | 비고 |
+| --- | --- | --- |
+| A. live-ready 서브프로세스 어댑터 | `src/yule_orchestrator/agents/job_queue/claude_subprocess_adapter.py` | `ClaudeSubprocessConfig` / `build_claude_subprocess_callable` / `claude_subprocess_factory_from_env` / `render_subprocess_prompt`. 내부에서 라이브 HTTP/SDK import 절대 없음 — `subprocess.run` 만. timeout / 빈 stdout / non-zero exit / malformed JSON / unsupported payload / runner raise / binary missing 모두 `metadata['subprocess_outcome']` 에 stable 문자열로 surface 후 non-actionable 응답 → composer 가 deterministic 으로 fallthrough. CLI 응답 주위 chatter 가 있어도 첫 `{...}` 블록 파싱. |
+| A. 어댑터 테스트 | `tests/job_queue/test_claude_subprocess_adapter.py` (22 케이스) | 프롬프트 round-trip / skip+advance 정상 / extra args + model 전달 / per-call timeout / chatter 파싱 / 7 가지 실패 모드 / env 두 단계 opt-in 4 path / 타임아웃 클램프 / 컴포저 통합 (`build_decision_port_from_env` + 라이브 토큰). |
+| B. seam 콜 헬퍼 + 감사 트레이스 | `src/yule_orchestrator/agents/job_queue/claude_decision_seam.py` | `consult_decision_port(port, request) → (DecisionResponse, DecisionInvocationTrace)`. None / raise / wrong-type 모두 non-actionable + trace.fell_through / trace.raised 로 surface. `DecisionInvocationTrace` 는 JSON-safe 한 평면 dict 로 직렬화 가능 (`to_payload`). `DECISION_KIND_IMPLEMENTATION_CANDIDATE` 키 vocabulary 확장. |
+| B. 콜사이트 통일 | `autonomy_producer.py::_consult_retry_guard`, `discussion_followup.py::_compute_outcomes` | 둘 다 `consult_decision_port` 로 일원화. retry-guard 는 `AutonomyDispatch.payload['decision_invocation']` 에 trace 적재. discussion follow-up 의 SKIPPED outcome 도 `payload['decision_invocation']` 에 trace 적재. |
+| B. run_service 합성기 | `src/yule_orchestrator/runtime/run_service.py` | `_resolve_external_decision_callable_factory` 가 기본으로 `claude_subprocess_factory_from_env` 반환 (= 어댑터 자체가 env-gated 이므로 운영자가 opt-in 안 하면 None). `_log_decision_port_trace` 가 부팅 시 `live=on/off` 토큰을 trace 라인 끝에 출력 — 운영자가 한 줄로 "지금 진짜 claude 부를 거냐" 를 확인 가능. |
+| B. 추가 테스트 | `tests/job_queue/test_claude_decision_seam.py` (+7 cases), `tests/job_queue/test_decision_port_run_service_wiring.py` (+3 cases), `tests/job_queue/test_autonomy_producer.py` (+1 audit assertion) | consult 헬퍼 7 path / run_service 라이브 어댑터 wiring 3 path (default factory 라이브 활성 / live flag 미설정 → None / 두 키 전부 설정 → 슈퍼바이저가 라이브 callable 보유) / retry-guard dispatch 의 audit payload. |
+
+## 회귀 검증
+
+- `python3 -m unittest discover -s tests -t . -p 'test_*.py'` → **3228/3228 OK** (skip 5).
+- 신규 테스트 32 케이스 (subprocess +22 / consult helper +7 / run_service wiring +3).
+- Round 4-bis 의 26 케이스 회귀 그대로 통과 — 기존 duck-typed `_StubAdvice` 한 곳만 typed `DecisionResponse` 로 변경 (콘트랙트 강화).
+
+## Hard rails 보존 확인 (Round 4-ter)
+
+- 라이브 HTTP / SDK import 0 — 어댑터는 `subprocess.run` 한 함수만 호출. 활성화하더라도 `claude` CLI 자체가 외부 인증을 수행한다.
+- 두 단계 opt-in: `YULE_CLAUDE_DECISION_PROVIDER` 가 `external` 토큰을 포함하고 *동시에* `YULE_CLAUDE_DECISION_LIVE_ENABLED=true` 일 때만 라이브 callable 이 surface. 한 쪽만 켜져 있으면 trace 가 `external (no callable factory or factory returned None)` 로 skip 기록 + deterministic-only.
+- 어댑터 자체도 binary 가 PATH 에 없으면 callable 을 surface 하지 않음 — 운영자 typo 가 실제 shell 호출로 새지 않음.
+- 모든 실패 모드 (timeout / non-zero / empty / malformed / runner raise / unsupported) 가 *non-actionable* 로 surface → 컴포저가 deterministic 으로 fall-through. 라이브 tier 가 다운돼도 supervisor tick 정지 불가.
+- protected branch / force push / 큐 dedup / branch lock / session marker 가드는 Round 4 그대로.
+
+## 실제 라이브를 켜는 운영 절차 (요약)
+
+1. 호스트에 `claude` CLI 가 설치되어 있고 인증이 끝났는지 확인 (`claude -p "ping"` 으로 비공식 검증).
+2. supervisor 환경변수에 다음을 추가:
+   - `YULE_CLAUDE_DECISION_PROVIDER=external,deterministic`
+   - `YULE_CLAUDE_DECISION_LIVE_ENABLED=true`
+   - (선택) `YULE_CLAUDE_DECISION_LIVE_BINARY=/opt/anthropic/claude` — 비표준 경로일 때만.
+   - (선택) `YULE_CLAUDE_DECISION_LIVE_MODEL=claude-haiku-4-5-20251001` — 모델 핀.
+   - (선택) `YULE_CLAUDE_DECISION_LIVE_TIMEOUT_SECONDS=5.0` — clamped to `[0.5, 30.0]`.
+   - (선택) `YULE_CLAUDE_DECISION_LIVE_EXTRA_ARGS=--no-update,--allowedTools=none` — CLI 추가 인자.
+3. 슈퍼바이저 시작 시 stdout 의 `claude decision port composed: enabled=external,deterministic fallback=deterministic live=on` 한 줄로 라이브 활성 확인.
+4. record-only 와 동시에 켜고 싶으면 `YULE_CLAUDE_DECISION_PROVIDER=external,record,deterministic` + `YULE_CLAUDE_DECISION_RECORD_PATH=/var/log/yule/decision-shadow.jsonl` — external 이 actionable 응답을 주면 그 verdict 가, 아니면 record 가 캡처 후 deterministic 으로 fall-through.
+5. 끄려면 `YULE_CLAUDE_DECISION_LIVE_ENABLED` 만 비우면 됨 — provider chain 은 그대로 둬도 어댑터가 None 을 반환해 트레이스에 `live=off` 로 기록.
+
+## 본 PR 비범위 → 후속 PR 매핑 (Round 4-ter 갱신)
+
+- `claude -p` 외 다른 라이브 클라이언트 (Anthropic SDK / 호스팅 sidecar) 활성화 → 별도 PR. 같은 `external_callable_factory` hook 한 곳만 교체.
+- discussion follow-up 시 actionable advance 의 fast-path 통합 (현재는 skip 만 short-circuit) → 별도 PR.
+- `next_task_selector` 자체에서 `DECISION_KIND_NEXT_TASK` 호출 → 별도 PR.
+- Discord 라이브 결정 통지 / 운영자 대시보드 → 별도 PR.
+
+## 외부 blocker
+
+- 없음. Round 4-ter 도 hard-rail 안에서 land — 운영자가 두 env 키를 모두 명시 opt-in 하지 않는 한 deterministic-only 동작 유지.

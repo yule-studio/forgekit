@@ -227,15 +227,19 @@ class DiscussionFollowupDecisionPortTests(unittest.TestCase):
     def test_decision_port_skip_short_circuits(self) -> None:
         captured: List[Any] = []
 
-        class _StubAdvice:
-            def __init__(self, skip: bool, reason: str) -> None:
-                self.skip = skip
-                self.reason = reason
+        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+            DecisionResponse,
+        )
 
         class _Port:
             def decide(self, *, request):
                 captured.append(request)
-                return _StubAdvice(skip=True, reason="duplicate of prior turn")
+                return DecisionResponse(
+                    skip=True,
+                    reason="duplicate of prior turn",
+                    confidence="high",
+                    metadata={"port": "stub"},
+                )
 
         with tempfile.TemporaryDirectory() as tmp:
             _, role_worker, _ = _build_workers(Path(tmp))

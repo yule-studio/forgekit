@@ -41,6 +41,7 @@ from yule_orchestrator.agents.job_queue.claude_decision_seam import (
     DECISION_KIND_RETRY_GUARD,
     DEFAULT_EXTERNAL_TIMEOUT_SECONDS,
     DEFAULT_RECORD_BUFFER_SIZE,
+    DecisionInvocationTrace,
     DecisionPortBuildTrace,
     DecisionRequest,
     DecisionResponse,
@@ -57,6 +58,7 @@ from yule_orchestrator.agents.job_queue.claude_decision_seam import (
     build_decision_port_from_env,
     coerce_decision_request,
     compose_decision_port,
+    consult_decision_port,
 )
 
 
@@ -528,6 +530,136 @@ class BuildDecisionPortFromEnvTests(unittest.TestCase):
     def test_trace_is_dataclass(self) -> None:
         _, trace = build_decision_port_from_env(env={})
         self.assertIsInstance(trace, DecisionPortBuildTrace)
+
+
+# ---------------------------------------------------------------------------
+# Round 4-ter — consult_decision_port + DecisionInvocationTrace
+# ---------------------------------------------------------------------------
+
+
+class ConsultDecisionPortTests(unittest.TestCase):
+    """Pin the contract every callsite (autonomy producer / discussion
+    follow-up / future implementation-candidate gate) shares."""
+
+    def test_unwired_port_returns_non_actionable_with_trace(self) -> None:
+        response, trace = consult_decision_port(
+            None,
+            request=DecisionRequest(kind=DECISION_KIND_RETRY_GUARD, summary="x"),
+        )
+        self.assertFalse(response.is_actionable())
+        self.assertTrue(trace.fell_through)
+        self.assertFalse(trace.raised)
+        self.assertEqual(trace.provider, "unwired")
+        self.assertEqual(trace.kind, DECISION_KIND_RETRY_GUARD)
+
+    def test_skip_response_surfaces_through_trace(self) -> None:
+        verdict = DecisionResponse(
+            skip=True,
+            reason="duplicate",
+            confidence="high",
+            metadata={"port": "external", "extra": 1},
+        )
+
+        class _Port:
+            name = "external"
+
+            def decide(self, *, request):
+                return verdict
+
+        response, trace = consult_decision_port(
+            _Port(),
+            request=DecisionRequest(kind=DECISION_KIND_RETRY_GUARD, summary="y"),
+        )
+        self.assertTrue(response.skip)
+        self.assertTrue(trace.actionable)
+        self.assertFalse(trace.fell_through)
+        self.assertFalse(trace.raised)
+        self.assertEqual(trace.provider, "external")
+        self.assertEqual(trace.metadata.get("extra"), 1)
+
+    def test_raise_swallowed_into_trace(self) -> None:
+        class _Port:
+            def decide(self, *, request):
+                raise RuntimeError("upstream down")
+
+        import logging
+
+        seam_logger = logging.getLogger(
+            "yule_orchestrator.agents.job_queue.claude_decision_seam"
+        )
+        previous = seam_logger.level
+        seam_logger.setLevel(logging.CRITICAL)
+        try:
+            response, trace = consult_decision_port(
+                _Port(),
+                request=DecisionRequest(
+                    kind=DECISION_KIND_RETRY_GUARD, summary="y"
+                ),
+            )
+        finally:
+            seam_logger.setLevel(previous)
+        self.assertFalse(response.is_actionable())
+        self.assertTrue(trace.raised)
+        self.assertTrue(trace.fell_through)
+        self.assertEqual(trace.raised_type, "RuntimeError")
+        self.assertEqual(trace.provider, "raised")
+
+    def test_bad_type_return_swallowed_into_trace(self) -> None:
+        class _Port:
+            def decide(self, *, request):
+                return {"skip": True, "reason": "duck-typed"}
+
+        response, trace = consult_decision_port(
+            _Port(),
+            request=DecisionRequest(kind="x", summary="y"),
+        )
+        # Duck-typed return is rejected — typed contract enforced.
+        self.assertFalse(response.is_actionable())
+        self.assertEqual(trace.provider, "bad_type")
+        self.assertTrue(trace.fell_through)
+        self.assertFalse(trace.raised)
+
+    def test_advance_response_marked_actionable(self) -> None:
+        class _Port:
+            def decide(self, *, request):
+                return DecisionResponse(
+                    advance=True,
+                    reason="proceed",
+                    metadata={"port": "deterministic"},
+                )
+
+        response, trace = consult_decision_port(
+            _Port(),
+            request=DecisionRequest(kind="x", summary="y"),
+        )
+        self.assertTrue(response.advance)
+        self.assertTrue(trace.actionable)
+        self.assertFalse(trace.fell_through)
+        self.assertEqual(trace.provider, "deterministic")
+
+    def test_trace_payload_is_json_safe(self) -> None:
+        # The trace gets stamped on AutonomyDispatch.payload, which is
+        # eventually serialised to dashboards / audit JSONL. The
+        # ``to_payload`` shape must therefore be flat enough to JSON
+        # encode without a custom encoder.
+        import json as _json
+
+        response, trace = consult_decision_port(
+            None, request=DecisionRequest(kind="x", summary="y")
+        )
+        payload = trace.to_payload()
+        # round-trip round-trip
+        encoded = _json.dumps(payload, sort_keys=True)
+        decoded = _json.loads(encoded)
+        self.assertEqual(decoded["kind"], "x")
+        self.assertEqual(decoded["actionable"], False)
+        self.assertEqual(decoded["provider"], "unwired")
+
+    def test_trace_is_dataclass(self) -> None:
+        _, trace = consult_decision_port(
+            None, request=DecisionRequest(kind="x", summary="y")
+        )
+        self.assertIsInstance(trace, DecisionInvocationTrace)
 
 
 if __name__ == "__main__":  # pragma: no cover

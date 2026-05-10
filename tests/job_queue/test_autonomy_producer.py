@@ -522,6 +522,18 @@ class AutonomyProducerCiRetryGuardTests(unittest.TestCase):
         self.assertIn("window suppressed", ci_dispatches[0].reason)
         # Branch lock was NOT held — guard rejected before lock acquire.
         self.assertEqual(report.locks_held, ())
+        # Round 4-ter audit: the dispatch payload carries the
+        # invocation trace so the operator can answer "which provider
+        # answered, was it actionable, did it raise" without re-running
+        # the port.
+        invocation = ci_dispatches[0].payload.get("decision_invocation")
+        self.assertIsInstance(invocation, dict)
+        self.assertEqual(invocation.get("kind"), "retry_guard")
+        self.assertTrue(invocation.get("actionable"))
+        self.assertTrue(invocation.get("skip"))
+        self.assertFalse(invocation.get("fell_through"))
+        self.assertFalse(invocation.get("raised"))
+        self.assertEqual(invocation.get("provider"), "stub-skip")
 
     def test_advance_verdict_lets_dispatcher_run(self) -> None:
         port = _AdvancePort()

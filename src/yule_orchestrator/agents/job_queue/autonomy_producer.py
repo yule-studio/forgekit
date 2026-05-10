@@ -607,21 +607,26 @@ class AutonomyProducer:
     ) -> Optional[AutonomyDispatch]:
         """Ask the wired decision port whether to proceed with retry.
 
-        Returns ``None`` when the port is unwired, raises, or returns
-        a non-actionable verdict — caller proceeds on the fast-path.
-        Returns an :class:`AutonomyDispatch` row when the port voted
-        ``skip``; the caller records it and bails out of the
-        dispatcher call.
+        Returns ``None`` when the port is unwired, raises, returns a
+        non-actionable verdict, or returns an ``advance`` verdict —
+        caller proceeds on the fast-path. Returns an
+        :class:`AutonomyDispatch` row when the port voted ``skip``;
+        the caller records it and bails out of the dispatcher call.
+
+        Uses the seam's :func:`consult_decision_port` helper so the
+        call → coerce → guard pattern is identical at every callsite.
+        The invocation trace is stamped on the dispatch payload's
+        ``decision_invocation`` field for audit.
         """
 
-        port = self._decision_port
-        if port is None:
+        if self._decision_port is None:
             return None
 
         try:
             from .claude_decision_seam import (
                 DECISION_KIND_RETRY_GUARD,
                 DecisionRequest,
+                consult_decision_port,
             )
         except Exception:  # noqa: BLE001 - seam import must not break tick
             return None
@@ -644,25 +649,22 @@ class AutonomyProducer:
             requested_at=_iso(ctx.started_at),
         )
 
-        try:
-            response = port.decide(request=request)
-        except Exception:  # noqa: BLE001 - port raise → fast-path
-            logger.warning(
-                "autonomy producer: retry-guard decision port raised",
-                exc_info=True,
-            )
+        response, trace = consult_decision_port(
+            self._decision_port, request=request
+        )
+        if not response.skip:
             return None
 
-        if response is None or not getattr(response, "skip", False):
-            return None
-
-        reason = getattr(response, "reason", "") or "decision_port_skip"
-        metadata = dict(getattr(response, "metadata", {}) or {})
+        reason = response.reason or "decision_port_skip"
         return AutonomyDispatch(
             source=SOURCE_CI_FAILED_PR,
             outcome=DispatchOutcome.SKIPPED,
             reason=f"retry_guard skip: {reason}",
-            payload={**payload, "decision_metadata": metadata},
+            payload={
+                **payload,
+                "decision_metadata": dict(response.metadata or {}),
+                "decision_invocation": dict(trace.to_payload()),
+            },
         )
 
 

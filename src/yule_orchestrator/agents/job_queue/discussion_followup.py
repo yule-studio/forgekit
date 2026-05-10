@@ -304,28 +304,39 @@ class DiscussionFollowupDispatcher:
 
         # Optional Claude decision seam — when wired, the runtime can
         # ask "is this discussion truly unresolved?" before we burn
-        # role_take rows on a turn that's already settled. Failures
-        # fall back to the deterministic path.
+        # role_take rows on a turn that's already settled. Routes the
+        # call through the seam's :func:`consult_decision_port` helper
+        # so raise / wrong-type / unwired all degrade identically to
+        # the retry-guard callsite, and the invocation trace lands on
+        # the outcome's payload for audit.
         if decision_port is not None and mode == _MODE_DISCUSSION:
             try:
-                advice = decision_port.decide(
+                from .claude_decision_seam import consult_decision_port
+            except Exception:  # noqa: BLE001 - dispatcher must keep running
+                consult_decision_port = None  # type: ignore[assignment]
+            if consult_decision_port is not None:
+                advice, advice_trace = consult_decision_port(
+                    decision_port,
                     request=_build_decision_request(
                         session_id=session_id,
                         discussion_row=discussion_row,
-                    )
-                )
-            except Exception:  # noqa: BLE001
-                advice = None
-            if advice is not None and getattr(advice, "skip", False):
-                return (
-                    DiscussionFollowupOutcome(
-                        session_id=session_id,
-                        mode=mode,
-                        kind=DISCUSSION_FOLLOWUP_KIND_ROLE_TAKE,
-                        outcome=DispatchOutcome.SKIPPED,
-                        reason=getattr(advice, "reason", "decision_port_skip"),
                     ),
                 )
+                if advice.skip:
+                    return (
+                        DiscussionFollowupOutcome(
+                            session_id=session_id,
+                            mode=mode,
+                            kind=DISCUSSION_FOLLOWUP_KIND_ROLE_TAKE,
+                            outcome=DispatchOutcome.SKIPPED,
+                            reason=advice.reason or "decision_port_skip",
+                            payload={
+                                "decision_invocation": dict(
+                                    advice_trace.to_payload()
+                                ),
+                            },
+                        ),
+                    )
 
         session = self._resolve_session(session_id)
         extra = _normalise_extra(getattr(session, "extra", None))
