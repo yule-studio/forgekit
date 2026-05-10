@@ -28,7 +28,8 @@ responsible for actual transport.
 
 from __future__ import annotations
 
-from typing import Mapping, Optional, Tuple
+from dataclasses import dataclass
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from .models import (
     CollectionMode,
@@ -36,6 +37,7 @@ from .models import (
     SourceEntry,
     SourceKind,
     SourceTier,
+    default_refresh_interval_for_kind,
 )
 
 
@@ -964,17 +966,297 @@ def axis_hints_for_task_type(task_type: Optional[str]) -> Tuple[SourceAxis, ...]
     return _TASK_TYPE_AXIS_HINTS.get(str(task_type).strip().lower(), ())
 
 
+# ---------------------------------------------------------------------------
+# Role feed digest — operator-facing "what does this role keep watching?"
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RoleFeedEntry:
+    """One source projected for the operator-facing digest.
+
+    Mirrors the parts of :class:`SourceEntry` an operator scanning a
+    "what feeds does role X watch?" view actually cares about — id /
+    name / base url / how it's collected / whether the collector picks
+    it up automatically / whether a human review gate sits in front.
+    No trust/freshness floats here: the digest is about *coverage*,
+    not scoring.
+    """
+
+    source_id: str
+    name: str
+    base_url: str
+    source_kind: SourceKind
+    collection_mode: CollectionMode
+    tier: SourceTier
+    auto_collect: bool
+    review_required: bool
+    refresh_interval_minutes: int
+    axes: Tuple[SourceAxis, ...]
+    role_tags: Tuple[str, ...]
+
+    @classmethod
+    def from_source(cls, entry: SourceEntry) -> "RoleFeedEntry":
+        interval = entry.refresh_interval_minutes or default_refresh_interval_for_kind(
+            entry.source_kind
+        )
+        return cls(
+            source_id=entry.source_id,
+            name=entry.name,
+            base_url=entry.base_url,
+            source_kind=entry.source_kind,
+            collection_mode=entry.collection_mode,
+            tier=entry.tier,
+            auto_collect=entry.auto_collect,
+            review_required=entry.review_required,
+            refresh_interval_minutes=interval,
+            axes=tuple(entry.axes),
+            role_tags=tuple(entry.role_tags),
+        )
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "name": self.name,
+            "base_url": self.base_url,
+            "source_kind": self.source_kind.value,
+            "collection_mode": self.collection_mode.value,
+            "tier": self.tier.value,
+            "auto_collect": bool(self.auto_collect),
+            "review_required": bool(self.review_required),
+            "refresh_interval_minutes": int(self.refresh_interval_minutes),
+            "axes": [axis.value for axis in self.axes],
+            "role_tags": list(self.role_tags),
+        }
+
+
+@dataclass(frozen=True)
+class RoleAxisGroup:
+    """One axis worth of feeds for a role — the unit of "the role keeps an eye on this axis"."""
+
+    axis: SourceAxis
+    is_required: bool
+    feeds: Tuple[RoleFeedEntry, ...]
+
+    @property
+    def auto_collect_count(self) -> int:
+        return sum(
+            1
+            for f in self.feeds
+            if f.auto_collect and not f.review_required
+        )
+
+    @property
+    def review_required_count(self) -> int:
+        return sum(1 for f in self.feeds if f.review_required)
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "axis": self.axis.value,
+            "is_required": bool(self.is_required),
+            "feed_count": len(self.feeds),
+            "auto_collect_count": self.auto_collect_count,
+            "review_required_count": self.review_required_count,
+            "feeds": [f.to_payload() for f in self.feeds],
+        }
+
+
+@dataclass(frozen=True)
+class RoleFeedDigest:
+    """Per-role "what is this role watching, broken down by axis".
+
+    The digest answers three questions an operator usually has when
+    they meet the system for the first time:
+
+      * *which axes does this role cover?* — :attr:`axes` listed in
+        the role's required-axis order first, then the rest sorted by
+        axis value for deterministic dump.
+      * *which feeds back each axis?* — :class:`RoleAxisGroup.feeds`,
+        each :class:`RoleFeedEntry` carries name / base url / how it's
+        collected / whether it auto-collects.
+      * *is anything missing?* — :attr:`missing_required_axes`
+        surfaces the required axes that have zero feeds. The
+        :func:`required_axes_for_role` contract pins this list, so
+        adding a role without seeding the right axes fails loudly
+        instead of silently producing skinny digests.
+
+    The digest is built off the same :func:`role_sources` pipeline the
+    runtime uses, so what the operator sees here is exactly what the
+    background refresher / retrieval will reach for at request time.
+    """
+
+    role: str
+    axes: Tuple[RoleAxisGroup, ...]
+    unclassified_feeds: Tuple[RoleFeedEntry, ...]
+    missing_required_axes: Tuple[SourceAxis, ...]
+
+    @property
+    def total_feeds(self) -> int:
+        seen: set[str] = set()
+        for group in self.axes:
+            for feed in group.feeds:
+                seen.add(feed.source_id)
+        for feed in self.unclassified_feeds:
+            seen.add(feed.source_id)
+        return len(seen)
+
+    @property
+    def required_axes(self) -> Tuple[SourceAxis, ...]:
+        return tuple(g.axis for g in self.axes if g.is_required)
+
+    @property
+    def auto_collect_feed_count(self) -> int:
+        seen: set[str] = set()
+        for group in self.axes:
+            for feed in group.feeds:
+                if feed.auto_collect and not feed.review_required:
+                    seen.add(feed.source_id)
+        for feed in self.unclassified_feeds:
+            if feed.auto_collect and not feed.review_required:
+                seen.add(feed.source_id)
+        return len(seen)
+
+    def headline(self) -> str:
+        """One-line operator summary — safe to drop in a dashboard cell."""
+
+        bits = [
+            f"{self.role}: {self.total_feeds} feeds across {len(self.axes)} axes"
+        ]
+        if self.auto_collect_feed_count != self.total_feeds:
+            bits.append(
+                f"{self.auto_collect_feed_count} auto / "
+                f"{self.total_feeds - self.auto_collect_feed_count} review"
+            )
+        if self.missing_required_axes:
+            missing = ",".join(a.value for a in self.missing_required_axes)
+            bits.append(f"missing required axes: {missing}")
+        return " · ".join(bits)
+
+    def to_payload(self) -> Mapping[str, Any]:
+        return {
+            "role": self.role,
+            "headline": self.headline(),
+            "total_feeds": self.total_feeds,
+            "auto_collect_feed_count": self.auto_collect_feed_count,
+            "required_axes": [a.value for a in self.required_axes],
+            "missing_required_axes": [
+                a.value for a in self.missing_required_axes
+            ],
+            "axes": [g.to_payload() for g in self.axes],
+            "unclassified_feeds": [
+                f.to_payload() for f in self.unclassified_feeds
+            ],
+        }
+
+
+def role_feed_digest(role_id: str) -> RoleFeedDigest:
+    """Build a :class:`RoleFeedDigest` for *role_id*.
+
+    Pulls from :func:`role_sources` so the digest reflects exactly the
+    seed the rest of the pipeline uses. Required axes (per
+    :func:`required_axes_for_role`) come first in :attr:`axes` so an
+    operator scanning the digest immediately sees the contract floor
+    before the optional axes. Sources without any axis tag are
+    bucketed under :attr:`unclassified_feeds` so a missing tag does
+    not silently disappear.
+    """
+
+    sources = role_sources(role_id)  # raises KeyError on unknown role
+    required = required_axes_for_role(role_id)
+
+    axis_to_feeds: dict[SourceAxis, list[RoleFeedEntry]] = {}
+    unclassified: list[RoleFeedEntry] = []
+    for entry in sources:
+        feed = RoleFeedEntry.from_source(entry)
+        if not feed.axes:
+            unclassified.append(feed)
+            continue
+        for axis in feed.axes:
+            axis_to_feeds.setdefault(axis, []).append(feed)
+
+    # Required axes go first (in declared order), optional axes after,
+    # sorted by axis value for deterministic dumps. Tier 1 wins ties
+    # inside an axis group via :func:`prioritise_sources` ordering.
+    required_set = set(required)
+    optional_axes = sorted(
+        (a for a in axis_to_feeds.keys() if a not in required_set),
+        key=lambda a: a.value,
+    )
+
+    groups: list[RoleAxisGroup] = []
+    for axis in required:
+        feeds = axis_to_feeds.get(axis, [])
+        prioritised = prioritise_sources(
+            tuple(_feed_to_source_lookup(role_id, feeds))
+        )
+        ordered = tuple(RoleFeedEntry.from_source(s) for s in prioritised)
+        groups.append(
+            RoleAxisGroup(axis=axis, is_required=True, feeds=ordered)
+        )
+    for axis in optional_axes:
+        feeds = axis_to_feeds[axis]
+        prioritised = prioritise_sources(
+            tuple(_feed_to_source_lookup(role_id, feeds))
+        )
+        ordered = tuple(RoleFeedEntry.from_source(s) for s in prioritised)
+        groups.append(
+            RoleAxisGroup(axis=axis, is_required=False, feeds=ordered)
+        )
+
+    missing = tuple(
+        axis for axis in required if not axis_to_feeds.get(axis)
+    )
+
+    return RoleFeedDigest(
+        role=role_id,
+        axes=tuple(groups),
+        unclassified_feeds=tuple(
+            sorted(unclassified, key=lambda f: f.source_id)
+        ),
+        missing_required_axes=missing,
+    )
+
+
+def _feed_to_source_lookup(
+    role_id: str, feeds: Sequence[RoleFeedEntry]
+) -> Tuple[SourceEntry, ...]:
+    # Project RoleFeedEntry rows back to their SourceEntry counterparts
+    # so prioritise_sources can rank by tier × trust × freshness — the
+    # digest deliberately does not hold the trust/freshness floats.
+    by_id = {entry.source_id: entry for entry in role_sources(role_id)}
+    return tuple(
+        by_id[f.source_id] for f in feeds if f.source_id in by_id
+    )
+
+
+def multi_role_feed_digest(
+    roles: Sequence[str] = SUPPORTED_ROLES,
+) -> Tuple[RoleFeedDigest, ...]:
+    """Build :func:`role_feed_digest` for *roles* in given order.
+
+    Defaults to :data:`SUPPORTED_ROLES` so the operator dashboard can
+    render the full grid in one call without re-listing role names.
+    """
+
+    return tuple(role_feed_digest(role) for role in roles)
+
+
 __all__ = [
     "COMMON_CORE_SOURCES",
+    "RoleAxisGroup",
+    "RoleFeedDigest",
+    "RoleFeedEntry",
     "SUPPORTED_ROLES",
     "auto_collectable_sources",
     "axes_for_role",
     "axis_hints_for_task_type",
     "daily_limit_for_role",
     "find_source",
+    "multi_role_feed_digest",
     "prioritise_sources",
     "required_axes_for_role",
     "role_axis_coverage_report",
+    "role_feed_digest",
     "role_sources",
     "sources_for_axis",
 ]
