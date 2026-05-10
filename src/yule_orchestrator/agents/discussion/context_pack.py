@@ -132,9 +132,14 @@ class EngineeringKnowledgeRef:
     note_path: Optional[str] = None
     score: Optional[float] = None
     signals: Sequence[str] = field(default_factory=tuple)
+    # Retrieval evidence + role-feed provenance are both preserved so the
+    # discussion surface can explain why this row was picked and which role
+    # axis feed produced it.
     evidence_labels: Sequence[str] = field(default_factory=tuple)
     share_scope: str = "public"
     share_scope_reason: str = ""
+    matched_axes: Sequence[str] = field(default_factory=tuple)
+    relevance_reason: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +251,8 @@ class ContextPack:
                     "evidence_labels": list(k.evidence_labels),
                     "share_scope": k.share_scope,
                     "share_scope_reason": k.share_scope_reason,
+                    "matched_axes": list(k.matched_axes),
+                    "relevance_reason": k.relevance_reason,
                 }
                 for k in self.relevant_knowledge
             ],
@@ -644,13 +651,14 @@ class ContextPackBuilder:
 
         Two paths:
 
-        1. ``knowledge_retriever`` is provided — call it with the
-           coerced :class:`EngineeringKnowledgeRef` candidates so the
-           caller's deterministic scoring (typically
+        1. ``knowledge_retriever`` is provided — call its
+           ``with_signals`` method (or fall back to plain ``__call__``)
+           so the deterministic scoring (typically
            :class:`engineering_intelligence.KnowledgeRetriever`) drives
-           ordering. We forward ``KnowledgeRecord`` style objects when
-           we have them so the retriever can use its own score
-           signals.
+           ordering. ``with_signals`` matches are unpacked so the role-
+           feed provenance (``matched_axes``, ``relevance_reason``,
+           ``signals``, ``score``) lands on the
+           :class:`EngineeringKnowledgeRef`.
         2. No retriever — fall back to "first ``max_knowledge`` items
            after coercion / role match filter".
         """
@@ -711,10 +719,10 @@ class ContextPackBuilder:
         except TypeError:
             try:
                 picked = self.knowledge_retriever(raw)
+            except TypeError:
+                picked = coerced[: self.max_knowledge]
             except Exception:  # noqa: BLE001
                 picked = coerced[: self.max_knowledge]
-        except Exception:  # noqa: BLE001
-            picked = coerced[: self.max_knowledge]
         normalized: list[EngineeringKnowledgeRef] = []
         for item in picked:
             ref = self._coerce_knowledge_ref(item)
@@ -748,6 +756,8 @@ class ContextPackBuilder:
         score: Optional[float] = None
         signals_seq: tuple[str, ...] = ()
         evidence_labels_seq: tuple[str, ...] = ()
+        matched_axes_seq: tuple[str, ...] = ()
+        relevance_reason: Optional[str] = None
         record_attr = getattr(value, "record", None)
         if (
             record_attr is not None
@@ -765,8 +775,12 @@ class ContextPackBuilder:
                     evidence_labels_seq = tuple(label_method())
                 except Exception:  # noqa: BLE001
                     evidence_labels_seq = ()
+            axes_raw = getattr(value, "matched_axes", ()) or ()
+            matched_axes_seq = tuple(
+                str(getattr(a, "value", a)) for a in axes_raw if a
+            )
+            relevance_reason = getattr(value, "relevance_reason", None) or None
             value = record_attr
-
         # KnowledgeRecord 와 EngineeringKnowledgeItem (engineering_intelligence
         # 패키지) 둘 다 있으면 직접 import 하지 않고 duck typing 으로 처리.
         title = getattr(value, "title", None)
@@ -796,12 +810,20 @@ class ContextPackBuilder:
                 collected_at=getattr(value, "collected_at", None) or None,
                 note_path=getattr(value, "note_path", None),
                 score=score if score is not None else getattr(value, "score", None),
-                signals=signals_seq,
+                signals=signals_seq or tuple(getattr(value, "signals", ()) or ()),
                 evidence_labels=evidence_labels_seq,
                 share_scope=share_scope,
                 share_scope_reason=str(
                     getattr(value, "share_scope_reason", "") or ""
                 ),
+                matched_axes=matched_axes_seq
+                or tuple(
+                    str(getattr(a, "value", a))
+                    for a in (getattr(value, "matched_axes", ()) or ())
+                    if a
+                ),
+                relevance_reason=relevance_reason
+                or (getattr(value, "relevance_reason", None) or None),
             )
         if isinstance(value, Mapping):
             title_v = str(value.get("title") or "").strip()
@@ -810,6 +832,10 @@ class ContextPackBuilder:
                 return None
             axes_raw = value.get("axes") or ()
             axes_seq = [str(a) for a in axes_raw if a]
+            matched_raw = value.get("matched_axes") or ()
+            matched_seq = tuple(
+                str(getattr(a, "value", a)) for a in matched_raw if a
+            )
             mapping_signals = tuple(value.get("signals") or ()) or signals_seq
             mapping_labels = tuple(value.get("evidence_labels") or ()) or evidence_labels_seq
             mapping_score = value.get("score")
@@ -830,6 +856,8 @@ class ContextPackBuilder:
                 evidence_labels=mapping_labels,
                 share_scope=str(value.get("share_scope") or "public"),
                 share_scope_reason=str(value.get("share_scope_reason") or ""),
+                matched_axes=matched_seq,
+                relevance_reason=value.get("relevance_reason") or relevance_reason,
             )
         return None
 
@@ -926,9 +954,13 @@ def _format_knowledge_evidence_lines(ref: EngineeringKnowledgeRef) -> list[str]:
         detail_bits.append(f"role={ref.role}")
     if ref.score is not None:
         detail_bits.append(f"score={ref.score:.1f}")
+    if ref.matched_axes:
+        detail_bits.append("axes=" + ",".join(str(axis) for axis in ref.matched_axes))
     labels = list(ref.evidence_labels) if ref.evidence_labels else list(ref.signals)
     if labels:
         detail_bits.append("근거: " + ", ".join(labels))
+    if ref.relevance_reason:
+        detail_bits.append(f"설명: {ref.relevance_reason}")
     if detail_bits:
         lines.append(f"  - {' · '.join(detail_bits)}")
     return lines

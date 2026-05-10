@@ -288,6 +288,89 @@ class ContextPackKnowledgeIntegrationTestCase(unittest.TestCase):
         )
         self.assertEqual(len(pack.relevant_knowledge), 3)
 
+    def test_role_feed_provenance_lands_on_ref(self) -> None:
+        # The retriever should hand back KnowledgeMatch envelopes via
+        # with_signals; the builder unpacks them so the role-feed
+        # provenance (matched_axes, relevance_reason, signals, score)
+        # surfaces on the EngineeringKnowledgeRef and survives as_dict.
+        candidates = [
+            self._record(
+                "spring-auth",
+                "Spring 인증",
+                axes=(SourceAxis.API_SCHEMA_AUTH, SourceAxis.OFFICIAL_DOCS),
+            ),
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+            knowledge_retriever=KnowledgeRetriever(min_score=0.0),
+            max_knowledge=5,
+        )
+        pack = builder.build(
+            message_text="auth flow",
+            session=SimpleNamespace(
+                session_id="abc",
+                task_type="backend-feature",
+                write_requested=False,
+                write_blocked_reason=None,
+                extra={},
+            ),
+            role_for_research="engineering-agent/backend-engineer",
+        )
+        self.assertEqual(len(pack.relevant_knowledge), 1)
+        ref = pack.relevant_knowledge[0]
+        self.assertIn("api_schema_auth", ref.matched_axes)
+        self.assertIn("official_docs", ref.matched_axes)
+        self.assertTrue(ref.relevance_reason)
+        self.assertIn("role=backend-engineer", ref.relevance_reason or "")
+        self.assertGreater(ref.score or 0, 0)
+        self.assertTrue(ref.signals)
+        # as_dict surface
+        payload = pack.as_dict()
+        first = payload["relevant_knowledge"][0]
+        self.assertEqual(
+            first["matched_axes"], ["api_schema_auth", "official_docs"]
+        )
+        self.assertIn("role=backend-engineer", first["relevance_reason"])
+
+    def test_provenance_passthrough_in_dict_candidates(self) -> None:
+        # Vault rows already carrying the provenance fields (because
+        # they were scored upstream and persisted) should round-trip
+        # through the builder without the retriever wiping them.
+        candidates = [
+            {
+                "topic_key": "spring-auth",
+                "title": "Spring 인증",
+                "role": "backend-engineer",
+                "summary": "OAuth2 정리",
+                "axes": ["api_schema_auth"],
+                "rag_tags": ["auth"],
+                "collected_at": "2026-05-08T00:00:00Z",
+                "matched_axes": ["api_schema_auth"],
+                "relevance_reason": "role=backend-engineer; axes=api_schema_auth",
+                "signals": ["role_primary_match", "axis_overlap:api_schema_auth"],
+                "score": 5.5,
+            }
+        ]
+        builder = ContextPackBuilder(
+            knowledge_loader=lambda q: candidates,
+        )
+        pack = builder.build(
+            message_text="auth",
+            role_for_research="backend-engineer",
+        )
+        self.assertEqual(len(pack.relevant_knowledge), 1)
+        ref = pack.relevant_knowledge[0]
+        self.assertEqual(ref.matched_axes, ("api_schema_auth",))
+        self.assertEqual(
+            ref.relevance_reason,
+            "role=backend-engineer; axes=api_schema_auth",
+        )
+        self.assertEqual(ref.score, 5.5)
+        self.assertEqual(
+            ref.signals,
+            ("role_primary_match", "axis_overlap:api_schema_auth"),
+        )
+
     def test_dict_candidates_coerce(self) -> None:
         candidates = [
             {
