@@ -276,10 +276,152 @@ def utc_now_iso() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# ---------------------------------------------------------------------------
+# Scheduler-aware sweep
+# ---------------------------------------------------------------------------
+
+
+def collect_for_role_with_schedule(
+    role_id: str,
+    *,
+    adapter: SourceCollectorAdapter,
+    states: Mapping[str, Any] = (),  # type: ignore[assignment]
+    now: Optional[datetime] = None,
+    already_stored: Sequence[EngineeringKnowledgeItem] = (),
+    daily_limit: Optional[int] = None,
+    tick_quota: Optional[int] = None,
+    warn: Optional[Callable[[str], None]] = None,
+) -> Tuple[CollectionRunResult, "Mapping[str, Any]"]:
+    """Run a single ingestion tick filtered by the refresh planner.
+
+    Returns ``(run_result, updated_states)`` so the caller can persist
+    the new ``SourceRefreshState`` map. The orchestrator is then free
+    to drop the result on the floor on dry-run, or enqueue
+    ObsidianWriteRequests for accepted items.
+
+    Behaviour mirrors :func:`collect_for_role` but only visits the
+    sources the planner marks as ``due`` for *this* tick. Sources
+    already fresh / under backoff / over the per-tick quota are left
+    untouched and produce no new state row.
+    """
+
+    if warn is None:
+        warn = lambda _msg: None  # noqa: E731
+
+    # Defer scheduler import so :mod:`.collector` stays importable even
+    # if the scheduler module had a parse error in development.
+    from .scheduler import (
+        SourceRefreshState,
+        compute_refresh_plan,
+        record_refresh_outcome,
+    )
+
+    state_map: dict[str, SourceRefreshState] = {
+        sid: state for sid, state in (states or {}).items()
+    }
+    plan = compute_refresh_plan(
+        role_id,
+        now=now,
+        states=state_map,
+        tick_quota=tick_quota,
+    )
+    due_ids = set(plan.due_source_ids())
+
+    sources = role_sources(role_id)
+    sources_by_id = {s.source_id: s for s in sources}
+
+    visited: List[str] = []
+    bag: List[EngineeringKnowledgeItem] = []
+    new_states: dict[str, SourceRefreshState] = dict(state_map)
+    for source_id in plan.due_source_ids():
+        source = sources_by_id.get(source_id)
+        if source is None:
+            continue
+        visited.append(source_id)
+        previous = new_states.get(source_id) or SourceRefreshState(
+            source_id=source_id
+        )
+        try:
+            produced = adapter(source) or ()
+        except Exception as exc:  # noqa: BLE001 — adapter must not crash run
+            warn(
+                f"adapter failed for source={source_id!r}: "
+                f"{type(exc).__name__}"
+            )
+            new_states[source_id] = record_refresh_outcome(
+                previous,
+                now=now,
+                success=False,
+                items_collected=0,
+                notes=type(exc).__name__,
+            )
+            continue
+        for item in produced:
+            if not item.dedup_key:
+                item = item.with_dedup_key(compute_dedup_key(item))
+            bag.append(item)
+        new_states[source_id] = record_refresh_outcome(
+            previous,
+            now=now,
+            success=True,
+            items_collected=len(produced),
+            notes="",
+        )
+
+    deduped, dedup_rejected = dedup_items(bag)
+    fresh, same_day_rejected = enforce_same_day_topic_uniqueness(
+        deduped, already_stored=already_stored
+    )
+
+    sources_lookup = {s.source_id: s for s in role_sources(role_id)}
+    ordered = tuple(
+        sorted(fresh, key=lambda item: _sort_key(item, sources=sources_lookup))
+    )
+    limit = (
+        daily_limit
+        if daily_limit is not None
+        else daily_limit_for_role(role_id)
+    )
+    accepted = ordered[: max(0, limit)]
+    overflow = ordered[max(0, limit):]
+    overflow_rejections: List[Mapping[str, Any]] = [
+        {
+            "reason": "daily_limit_exceeded",
+            "topic_key": item.topic_key,
+            "title": item.title,
+        }
+        for item in overflow
+    ]
+
+    rejected: List[Mapping[str, Any]] = (
+        list(dedup_rejected)
+        + list(same_day_rejected)
+        + overflow_rejections
+        + [
+            {
+                "reason": skipped.decision,
+                "source_id": skipped.source_id,
+                "next_eligible_at": skipped.next_eligible_at,
+            }
+            for skipped in plan.skipped
+        ]
+    )
+
+    result = CollectionRunResult(
+        role=role_id,
+        accepted=tuple(accepted),
+        rejected=tuple(rejected),
+        visited_source_ids=tuple(visited),
+        daily_limit=limit,
+    )
+    return result, new_states
+
+
 __all__ = [
     "CollectionRunResult",
     "FakeSourceCollectorAdapter",
     "SourceCollectorAdapter",
     "collect_for_role",
+    "collect_for_role_with_schedule",
     "utc_now_iso",
 ]

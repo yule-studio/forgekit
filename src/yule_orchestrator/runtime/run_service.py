@@ -22,10 +22,11 @@ import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Iterable, Optional, Sequence
+from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ..agents.job_queue import (
     ApprovalWorker,
+    CodingExecutorWorker,
     HeartbeatStore,
     JobQueue,
     ObsidianWriterWorker,
@@ -34,10 +35,23 @@ from ..agents.job_queue import (
     default_render_fn,
     default_vault_root_resolver,
     default_write_fn,
+    dispatch_ready_coding_jobs,
 )
 from ..agents.job_queue.approval_discord_poster import (
     build_approval_channel_resolver,
     build_production_post_fn,
+)
+from ..agents.job_queue.coding_execute_progress import (
+    make_github_pr_comment_fn,
+    record_coding_execute_progress,
+)
+from ..agents.job_queue.coding_executor_live import (
+    build_live_executor,
+    detect_live_executor_availability,
+)
+from ..agents.job_queue.coding_executor_worker import (
+    CodingExecuteOutcome,
+    CodingExecuteRequest,
 )
 from ..agents.job_queue.standalone_runners import (
     build_research_runner,
@@ -337,7 +351,218 @@ def _build_process_job(spec: ServiceSpec, *, queue, heartbeats):
 
         return _process
 
+    if spec.kind == ServiceKind.CODING_EXECUTOR:
+        bundle = build_coding_executor_bundle()
+        worker = CodingExecutorWorker(
+            queue=queue,
+            heartbeats=heartbeats,
+            **bundle,
+        )
+        obsidian_progress_writer = ObsidianWriterWorker(
+            queue=queue,
+            heartbeats=heartbeats,
+            render_fn=default_render_fn,
+            write_fn=default_write_fn,
+            vault_root_resolver=default_vault_root_resolver,
+        )
+        progress_post_fn = _build_coding_progress_post_fn()
+
+        # Producer side runs once per consumer tick — picks up any
+        # ``coding_job=ready`` session the gateway approved between
+        # iterations and stamps the dispatch marker on the session.
+        # Failures inside the dispatcher are swallowed (see the
+        # dispatcher's per-row try/except) so a bad session can never
+        # crash the consumer loop.
+        async def _process(job):
+            try:
+                dispatch_ready_coding_jobs(worker=worker)
+            except Exception:  # noqa: BLE001 - producer must not break consumer
+                logger.warning(
+                    "coding_execute dispatcher tick raised", exc_info=True
+                )
+            outcome = worker.process_job(job)
+            _record_coding_progress_after_outcome(
+                outcome=outcome,
+                obsidian_writer=obsidian_progress_writer,
+                progress_post_fn=progress_post_fn,
+            )
+
+        return _process
+
     raise ValueError(f"no worker builder for kind={spec.kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# Coding executor bundle — Round 3 wiring
+# ---------------------------------------------------------------------------
+#
+# Resolves the live executor Protocol implementations once at service
+# startup. The bundle composition is *layered* so an operator can opt in
+# to live push without first wiring the LLM editor (which the project
+# treats as a separate authorization gate):
+#
+#   * worktree provisioner / record-only editor / subprocess test runner /
+#     local git committer — always wired (no external creds).
+#   * pusher + draft PR creator — wired ONLY when GitHub App env is set
+#     (``YULE_GITHUB_APP_ID`` + installation id + private key path).
+#     Otherwise the worker keeps the ``_NotImplementedStep`` defaults
+#     and a live ``dry_run=False`` job lands as
+#     ``REASON_NOT_IMPLEMENTED`` rather than half-running.
+#
+# An operator who explicitly forces the dry-run env wins over both
+# (we never push when the operator says "just verify the plumbing").
+ENV_CODING_EXECUTOR_REPO_ROOT: str = "YULE_CODING_EXECUTOR_REPO_ROOT"
+ENV_CODING_EXECUTOR_WORKTREE_ROOT: str = "YULE_CODING_EXECUTOR_WORKTREE_ROOT"
+
+
+def build_coding_executor_bundle(
+    *,
+    env: Optional[Mapping[str, str]] = None,
+    live_client_factory: Optional[Any] = None,
+) -> Mapping[str, Any]:
+    """Return the kwargs for :class:`CodingExecutorWorker` construction.
+
+    *env* defaults to ``os.environ``; tests pass a controlled mapping
+    to drive the matrix without polluting the live process. The
+    *live_client_factory* injection point lets tests stub the live
+    GitHub App client without exercising the real JWT path.
+    """
+
+    import os as _os
+
+    source: Mapping[str, str] = env if env is not None else _os.environ
+    repo_root = (source.get(ENV_CODING_EXECUTOR_REPO_ROOT) or "").strip()
+    if not repo_root:
+        repo_root = (source.get("YULE_REPO_ROOT") or _os.getcwd()).strip() or _os.getcwd()
+    worktree_root = (source.get(ENV_CODING_EXECUTOR_WORKTREE_ROOT) or "").strip() or None
+
+    live_client = None
+    if live_client_factory is not None:
+        try:
+            live_client = live_client_factory()
+        except Exception:  # noqa: BLE001 - never crash service startup
+            logger.warning(
+                "coding executor: live_client_factory raised; "
+                "pusher / draft PR will fall back to dry-run blocker",
+                exc_info=True,
+            )
+            live_client = None
+    else:
+        live_client = _maybe_build_live_github_client(env=source)
+
+    bundle = build_live_executor(
+        repo_root=repo_root,
+        live_client=live_client,
+        worktree_root=worktree_root,
+    )
+    availability = detect_live_executor_availability(
+        repo_root=repo_root, live_client=live_client
+    )
+    logger.info(
+        "coding executor wiring: pusher=%s draft_pr=%s editor=%s",
+        availability.pusher,
+        availability.draft_pr_creator,
+        availability.code_editor,
+    )
+    return bundle
+
+
+def _build_coding_progress_post_fn() -> Optional[Any]:
+    """Construct the GitHub PR comment poster wired around the live client.
+
+    Returns None when the GitHub App env is absent so the runtime
+    happily writes only the Obsidian task-log + in-memory progress
+    history. The poster is shared across all coding_execute outcomes
+    in this process — tokens are minted lazily inside the live client.
+    """
+
+    import os as _os
+
+    live_client = _maybe_build_live_github_client(env=_os.environ)
+    if live_client is None:
+        return None
+    return make_github_pr_comment_fn(live_client)
+
+
+def _record_coding_progress_after_outcome(
+    *,
+    outcome: CodingExecuteOutcome,
+    obsidian_writer: Any,
+    progress_post_fn: Optional[Any],
+) -> None:
+    """Wrap :func:`record_coding_execute_progress` for the run-service path.
+
+    Loads the originating session via the workflow store (best effort —
+    when the cache row is gone the recorder still creates the in-memory
+    entry but the persisted history isn't updated). All exceptions are
+    swallowed so a progress recorder bug never derails the consumer.
+    """
+
+    if outcome is None or outcome.job is None:
+        return
+    payload = outcome.job.payload or {}
+    session_id = str(payload.get("session_id") or outcome.job.session_id or "")
+    if not session_id:
+        return
+
+    try:
+        from ..agents.workflow_state import load_session
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        session = load_session(session_id)
+    except Exception:  # noqa: BLE001
+        session = None
+    if session is None:
+        return
+
+    try:
+        request = CodingExecuteRequest.from_payload(payload)
+    except Exception:  # noqa: BLE001
+        request = None
+
+    try:
+        record_coding_execute_progress(
+            session=session,
+            outcome=outcome,
+            request=request,
+            obsidian_writer=obsidian_writer,
+            github_comment_fn=progress_post_fn,
+            repo_full_name=request.repo_full_name if request else None,
+        )
+    except Exception:  # noqa: BLE001 - never crash consumer on progress bug
+        logger.warning(
+            "coding_execute progress recorder raised", exc_info=True
+        )
+
+
+def _maybe_build_live_github_client(*, env: Mapping[str, str]) -> Optional[Any]:
+    """Return a live GitHub App client if env is set, else None.
+
+    The factory only fires when *all three* env keys are present —
+    we don't want a partial config (e.g. app id but no key path) to
+    silently force a stub through. Errors at construction are
+    swallowed so the consumer falls back to dry-run-only.
+    """
+
+    needed = (
+        "YULE_GITHUB_APP_ID",
+        "YULE_GITHUB_APP_INSTALLATION_ID",
+        "YULE_GITHUB_APP_PRIVATE_KEY_PATH",
+    )
+    if not all((env.get(name) or "").strip() for name in needed):
+        return None
+    try:
+        from ..github_app.live_client import build_live_client_from_env
+
+        return build_live_client_from_env(env)
+    except Exception:  # noqa: BLE001 - log and continue dry-run
+        logger.warning(
+            "coding executor: build_live_client_from_env raised; falling "
+            "back to push-blocked bundle",
+            exc_info=True,
+        )
+        return None
 
 
 def _pick_filters_for(spec: ServiceSpec):
@@ -351,6 +576,8 @@ def _pick_filters_for(spec: ServiceSpec):
         return (("approval_post",), ())
     if spec.kind == ServiceKind.OBSIDIAN_WRITER:
         return (("obsidian_write",), ())
+    if spec.kind == ServiceKind.CODING_EXECUTOR:
+        return (("coding_execute",), ())
     return ((), ())
 
 
@@ -484,9 +711,12 @@ def parse_args_and_run(argv: Optional[Iterable[str]] = None) -> int:
 
 
 __all__ = (
+    "ENV_CODING_EXECUTOR_REPO_ROOT",
+    "ENV_CODING_EXECUTOR_WORKTREE_ROOT",
     "EXIT_INTERNAL_ERROR",
     "EXIT_OK",
     "EXIT_UNKNOWN_SERVICE",
+    "build_coding_executor_bundle",
     "parse_args_and_run",
     "run_service_main",
 )

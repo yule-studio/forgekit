@@ -81,6 +81,31 @@ class KnowledgeStatus(str, Enum):
     DEPRECATED = "deprecated"
 
 
+class KnowledgeShareScope(str, Enum):
+    """공유 가능 범위 — note/report 출력에 박혀 외부 노출 경계가 된다.
+
+    - ``PUBLIC``: 공식 문서·릴리스 노트·블로그처럼 외부 surface(Discord
+      digest, PR 본문, 합성 응답)에 본문 요약과 함께 그대로 인용해도
+      되는 자료. note 의 모든 섹션이 그대로 렌더된다.
+    - ``TEAM_INTERNAL``: 사내 repo/ADR/private security advisory 처럼
+      Obsidian vault 안에서는 전체 내용을 보지만 외부 surface 로는 제목
+      + 출처 링크 + share_scope 만 노출한다. 본문 요약은 chat 응답에
+      포함하지 말 것.
+    - ``RESTRICTED``: 보안 incident report, customer data 가 섞인 자료
+      처럼 본문은 vault 에도 압축 저장(요약 1~2줄)하고 외부에서는 "공개
+      제한된 자료" 라는 신호만 남긴다. 렌더된 note 의 본문은 link +
+      share_scope_reason 만 남고, common_mistakes / practice 같은 학습
+      섹션도 "내부 채널에서만 공유" 라는 한 줄로 대체된다.
+
+    기본값은 :data:`KnowledgeShareScope.PUBLIC`. 호출자(collector /
+    operator) 가 명시적으로 더 좁힐 수 있다.
+    """
+
+    PUBLIC = "public"
+    TEAM_INTERNAL = "team_internal"
+    RESTRICTED = "restricted"
+
+
 # Tier 1 = official spec/docs; Tier 4 = community. Auto collection
 # defaults to Tier 1~2; Tier 3~4 requires review_required=True or low
 # trust_weight.
@@ -89,6 +114,56 @@ class SourceTier(str, Enum):
     TIER_2 = "tier_2_official_release"
     TIER_3 = "tier_3_official_repo"
     TIER_4 = "tier_4_community"
+
+
+class SourceAxis(str, Enum):
+    """역할별 자료 축. 한 source는 여러 axis에 속할 수 있다.
+
+    이 enum은 master plan §9.1의 "역할별 상시 수집 대상" 항목들을
+    1:1로 흡수한다. 각 source가 어떤 axis를 cover하는지 태깅해두면
+    request-time retrieval에서 task_type → axes hint matrix로 정렬할
+    수 있고, scheduler는 한 axis가 누락되지 않도록 감시할 수 있다.
+    """
+
+    OFFICIAL_DOCS = "official_docs"
+    API_SCHEMA_AUTH = "api_schema_auth"
+    WEB_PLATFORM_FRAMEWORK = "web_platform_framework"
+    REGRESSION_TEST_PLAN = "regression_test_plan"
+    CI_CD_INFRA_OBSERVABILITY = "ci_cd_infra_observability"
+    ARCHITECTURE_ADR_TRADEOFF = "architecture_adr_tradeoff"
+    AI_FRAMEWORK = "ai_framework"
+    DESIGN_SYSTEM = "design_system"
+    SECURITY = "security"
+    RELEASE_NOTES_CHANGELOG = "release_notes_changelog"
+
+
+# 기본 refresh 주기 (분 단위). source_kind를 보고 상식적인 값을 박는다.
+# scheduler가 SourceEntry.refresh_interval_minutes 미설정인 경우의
+# fallback으로 사용한다.
+_DEFAULT_REFRESH_INTERVAL_MINUTES_BY_KIND: "Mapping[SourceKind, int]" = {
+    # 보안 권고는 신선도가 핵심 — 30분 cadence
+    SourceKind.SECURITY_ADVISORY: 30,
+    # 릴리스/체인지로그는 시간 단위
+    SourceKind.RELEASE_NOTES: 60,
+    SourceKind.CHANGELOG: 60,
+    # 엔지니어링 블로그는 6시간
+    SourceKind.ENGINEERING_BLOG: 360,
+    # 공식 문서는 사이트맵을 자주 돌릴 필요가 없다 — 24시간
+    SourceKind.DOCS: 1440,
+    SourceKind.DESIGN_SYSTEM: 1440,
+    # 깃허브 레포 watch는 1시간
+    SourceKind.REPO: 60,
+    SourceKind.ISSUE_TRACKER: 60,
+    # 표준 / 매뉴얼 검토 대상은 주 단위
+    SourceKind.STANDARD: 10080,
+    SourceKind.COMMUNITY: 720,
+}
+
+
+def default_refresh_interval_for_kind(kind: "SourceKind") -> int:
+    """``SourceKind`` 기준 기본 refresh interval (분)."""
+
+    return _DEFAULT_REFRESH_INTERVAL_MINUTES_BY_KIND.get(kind, 1440)
 
 
 # Note kind for vault writes — distinct from canonical "knowledge"
@@ -134,6 +209,11 @@ class SourceEntry:
         "link + short summary + light quotation only — no full-text reproduction"
     )
     max_items_per_day: int = 5
+    # 한 source가 여러 axis에 속할 수 있다. 비어 있으면 collector는 axis 정렬에서
+    # "not classified" bucket으로 본다 — retrieval에서는 보너스 점수 없음.
+    axes: Tuple["SourceAxis", ...] = ()
+    # 기본은 SourceKind 기반 fallback. 0/None은 fallback 사용 의도.
+    refresh_interval_minutes: int = 0
 
     def is_official(self) -> bool:
         return self.tier in (
@@ -141,6 +221,13 @@ class SourceEntry:
             SourceTier.TIER_2,
             SourceTier.TIER_3,
         )
+
+    def effective_refresh_interval_minutes(self) -> int:
+        """SourceEntry-level override가 있으면 그 값, 없으면 kind 기본값."""
+
+        if self.refresh_interval_minutes and self.refresh_interval_minutes > 0:
+            return self.refresh_interval_minutes
+        return default_refresh_interval_for_kind(self.source_kind)
 
     def to_payload(self) -> Mapping[str, Any]:
         return {
@@ -158,6 +245,8 @@ class SourceEntry:
             "review_required": self.review_required,
             "content_policy": self.content_policy,
             "max_items_per_day": self.max_items_per_day,
+            "axes": [axis.value for axis in self.axes],
+            "refresh_interval_minutes": self.effective_refresh_interval_minutes(),
         }
 
 
@@ -287,6 +376,11 @@ class EngineeringKnowledgeItem:
     review_after_days: int = 90
     staleness_reason: str = ""
 
+    # Share boundary — note/report 출력 시 외부 surface(Discord digest,
+    # PR body, 합성 응답)에 어디까지 인용해도 되는지를 결정한다.
+    share_scope: KnowledgeShareScope = KnowledgeShareScope.PUBLIC
+    share_scope_reason: str = ""
+
     # Project applicability
     project_applicability: Optional[ProjectApplicability] = None
 
@@ -351,6 +445,8 @@ class EngineeringKnowledgeItem:
             "knowledge_status": self.knowledge_status.value,
             "review_after_days": self.review_after_days,
             "staleness_reason": self.staleness_reason,
+            "share_scope": self.share_scope.value,
+            "share_scope_reason": self.share_scope_reason,
             "project_applicability": (
                 self.project_applicability.to_payload()
                 if self.project_applicability is not None
@@ -373,12 +469,15 @@ __all__ = [
     "ENGINEERING_KNOWLEDGE_CONTRACT",
     "EngineeringKnowledgeItem",
     "Importance",
+    "KnowledgeShareScope",
     "KnowledgeStatus",
     "LearningLevel",
     "NOTE_KIND_ENGINEERING_KNOWLEDGE",
     "PracticeVerification",
     "ProjectApplicability",
+    "SourceAxis",
     "SourceEntry",
     "SourceKind",
     "SourceTier",
+    "default_refresh_interval_for_kind",
 ]

@@ -37,6 +37,11 @@ tags: [task-log, tech-lead-runtime, foundation]
 | 2026-05-09 commit-8 | Round 2 — C. auto-spawn opt-in (`YULE_CODING_EXECUTOR_AUTOSPAWN` env flag) | 완료, runtime up 연결 |
 | 2026-05-09 commit-9 | Round 2 — D. CI failure → retry loop (`ci_status.py` + selector 가드) | 완료, 무한 재시도 차단 |
 | 2026-05-09 commit-10 | Round 2 — task-log + governance 회귀 + PR body 갱신 | 본 commit |
+| 2026-05-09 round-3 kickoff | live wiring 4 종 (dispatcher / 서비스 spawn / CI orchestrator / progress hook) — 같은 PR / 같은 branch | |
+| 2026-05-09 commit-11 | Round 3 — A. coding_execute_dispatcher (`coding_execute_dispatcher.py` + tests) | 완료 |
+| 2026-05-09 commit-12 | Round 3 — B. eng-coding-executor 서비스 spawn + LiveGithubAppClient.list_check_runs / get_pull_request | 완료 |
+| 2026-05-09 commit-13 | Round 3 — C. CI retry orchestrator + Obsidian/GitHub progress hook | 완료 |
+| 2026-05-09 commit-14 | Round 3 — D. 마스터 플랜 16-bis 섹션 + 본 task-log Round 3 갱신 | 본 commit |
 
 # 변경 / 산출물 (계획)
 
@@ -135,3 +140,47 @@ tags: [task-log, tech-lead-runtime, foundation]
 - [[2026-05-09_issue-73-decision-tech-lead-runtime-loop]]
 - [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
 - [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
+
+# Round 3 — 종료 시점 갱신 (2026-05-09)
+
+## 결과 요약
+
+같은 PR / 같은 branch 위에서 commit 11~14 추가. Round 1 의 protocol foundation, Round 2 의 live executor + CI policy 위에 producer / 서비스 spawn / orchestrator / progress hook 4 영역을 한 번에 land — 회사형 runtime 의 execution + improvement 루프가 처음으로 end-to-end deterministic.
+
+## 산출물 (Round 3)
+
+| 영역 | 위치 | 비고 |
+| --- | --- | --- |
+| A. coding_execute dispatcher | `src/yule_orchestrator/agents/job_queue/coding_execute_dispatcher.py` (480 라인) | iter_ready_coding_jobs / build_coding_execute_request / dispatch_ready_coding_jobs / WorkflowSessionState. session.extra["coding_execute_dispatch"] marker + worker.find_active 양쪽으로 dedup. |
+| A. tests | `tests/job_queue/test_coding_execute_dispatcher.py` (23 케이스) | iter 필터 / env 우선순위 / 큐 wiring / idempotency / loader 실패 가드. |
+| B. 서비스 spawn | `src/yule_orchestrator/runtime/run_service.py` | _build_process_job 의 CODING_EXECUTOR 분기 + build_coding_executor_bundle + dispatcher 틱 + progress recorder hook. |
+| B. CI 조회 endpoint | `src/yule_orchestrator/github_app/live_client.py` | list_check_runs / get_pull_request 추가, /repos/{repo}/commits/{sha}/check-runs 결과를 ci_status.from_check_runs 와 직접 호환되는 dict 로 투영. |
+| B. tests | `tests/runtime/test_run_service_coding_executor.py` (8 케이스), `tests/github_app/test_live_client_check_runs.py` (5 케이스) | env matrix / factory 실패 / 클로저 wiring / dispatcher 틱 / GET endpoint round-trip. |
+| C. CI retry orchestrator | `src/yule_orchestrator/agents/job_queue/ci_retry_orchestrator.py` (480 라인) | orchestrate_ci_retry / GithubAppCheckRunFetcher / CIRetryDecision. retry 시 branch_hint 에 -attemptN suffix 붙여 새 행 enqueue, terminal 시 completion_hook funnel. |
+| C. progress hook | `src/yule_orchestrator/agents/job_queue/coding_execute_progress.py` (430 라인) | record_coding_execute_progress / make_github_pr_comment_fn. task-log obsidian_write 큐 + 선택적 PR comment + 50 행 capped history. |
+| C. tests | `tests/job_queue/test_ci_retry_orchestrator.py` (9 케이스), `tests/job_queue/test_coding_execute_progress.py` (11 케이스) | success / under-budget / over-budget / unknown / pending / GitHub failure / dry-run skip / collaborator 부재. |
+
+## 회귀 검증
+
+- `python3 -m unittest discover -s tests -t .` → **3117/3117 OK** (skip 5).
+- 신규 테스트만 56 케이스 (Round 1+2 기준 +56).
+
+## Hard rails 보존 확인 (Round 3)
+
+- 보호 브랜치 push 차단: 그대로.
+- LLM 코드 편집기 비활성: 그대로 (RecordOnlyCodeEditor).
+- live GitHub push: GitHub App env 3 종 모두 갖춰진 경우만, 부분 설정으로는 절대 활성화 안 됨.
+- 무한 재시도: decide_retry max_attempts 그대로, orchestrator 는 verdict 신뢰.
+- task-log 노트만 자동 enqueue (knowledge / decision-record 같은 approval-required kind 는 제외).
+- progress poster 실패 swallowed — verdict 무결성 보존.
+
+## 본 PR 비범위 → 후속 PR 매핑 (Round 3 갱신)
+
+- live LLM 코드 편집기 활성화 → 별도 PR. operator 승인 + cost 검토.
+- CI orchestrator 의 supervisor watch loop 자동 호출 (현재는 명시적 호출 / 테스트 inject 까지만 — 후속 PR 에서 지정 인터벌 polling).
+- Discord 봇 alert (escalated PR / blocked job 운영자 알림) → 별도 PR.
+
+## 외부 blocker
+
+- 없음. Round 3 4 영역 모두 hard-rail 안에서 land. live LLM editor 만 명시적 별도 PR.
+

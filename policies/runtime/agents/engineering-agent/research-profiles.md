@@ -125,3 +125,73 @@ RoleQueryHints(
 - ResearchPack과 본 프로필의 연결: 자료가 들어올 때 `collected_by_role`과 `source_type`을 보고 본 프로필 가중치로 자동 정렬.
 - 사용자 task 신호(예: prompt에 "moodboard", "API reference" 같은 단어)가 있을 때 task_type 분류 외에 추가 가중치를 주는 보정.
 - 가중치를 외부 정책 JSON으로 빼서 운영자가 코드 수정 없이 조정 가능하게.
+
+## 부록 A — 역할별 SourceAxis 매트릭스 (engineering_intelligence)
+
+`engineering_intelligence.SourceAxis`는 master plan §9.1에서 명시한 역할별 상시 수집 대상을 enum으로 굳힌 것이다. 위 §역할별 기본 프로필은 사용자 발화 직후 retrieval에서 `source_type` 가중치를 결정하지만, 본 부록은 background ingestion이 어떤 axis를 항상 채워두어야 하는지를 결정한다. 코드 진실 소스는 `source_registry.required_axes_for_role(role_id)` + `axes_for_role(role_id)`.
+
+| 역할 | 필수 SourceAxis (operational seed) | 핵심 source 종류 |
+| --- | --- | --- |
+| tech-lead | `architecture_adr_tradeoff`, `official_docs` | RFC editor, ISO/IEC 25010, ADR repo, Cloudflare/Stripe engineering blog |
+| backend-engineer | `official_docs`, `api_schema_auth`, `release_notes_changelog`, `security` | Spring docs/blog, FastAPI/PostgreSQL/Redis release, OWASP Top 10, NIST CVE |
+| frontend-engineer | `web_platform_framework`, `official_docs`, `release_notes_changelog` | React blog, Next.js releases, TypeScript what's new, web.dev, MDN, WCAG |
+| devops-engineer | `ci_cd_infra_observability`, `release_notes_changelog`, `security` | Docker/Kubernetes/Argo CD/Terraform release, GitHub Actions changelog, NIST CVE |
+| qa-engineer | `regression_test_plan`, `security` | Playwright/Testing Library/Cypress, ISO 29119, Google Testing Blog, NIST CVE |
+| ai-engineer | `ai_framework` | OpenAI/Anthropic news, Hugging Face blog, LangChain blog, pgvector, Ragas |
+| product-designer | `design_system` | Apple HIG, Material Design, Fluent, Atlassian, Carbon, GOV.UK Patterns |
+
+축가 하나라도 빠지면 `tests/engineering_intelligence/test_source_registry.py::AxisCoverageTests::test_every_role_meets_required_axes` 가 실패한다. 새 source seed를 추가하거나 기존 seed에서 axis tag를 빼면 본 표와 `_ROLE_REQUIRED_AXES` 둘 다 같이 갱신할 것.
+
+## 부록 B — task_type → axis hint matrix
+
+discussion request-time retrieval은 위의 `_ROLE_RESEARCH_PROFILES` 가중치 외에 task_type에서 유도한 axis hint를 추가 보너스로 사용한다. 코드 진실 소스는 `source_registry.axis_hints_for_task_type(task_type)`.
+
+| task_type | 부스트되는 axis |
+| --- | --- |
+| `backend-feature` | `api_schema_auth`, `official_docs`, `security` |
+| `frontend-feature` | `web_platform_framework`, `official_docs` |
+| `landing-page` | `design_system`, `web_platform_framework` |
+| `onboarding-flow` | `design_system`, `web_platform_framework` |
+| `visual-polish` | `design_system` |
+| `email-campaign` | `design_system` |
+| `qa-test` | `regression_test_plan`, `security` |
+| `platform-infra` | `ci_cd_infra_observability`, `architecture_adr_tradeoff` |
+| (그 외 / `unknown` / `None`) | (없음 — 기본 role 가중치만 사용) |
+
+이 표를 변경하면 해당 매트릭스를 코드(`_TASK_TYPE_AXIS_HINTS`)와 함께 업데이트해야 한다 — 두 위치가 따로 놀면 retrieval에서 생기는 미스매치를 디버그하기가 까다로워진다.
+
+## 부록 C — knowledge note share_scope 와 evidence surface
+
+`engineering_intelligence.KnowledgeShareScope` 는 한 knowledge note 가 외부 surface(Discord digest, PR body, 합성 응답)에 어디까지 인용될 수 있는지를 결정하는 boundary 플래그다. 본 부록은 retrieval surface 에 share_scope 가 어떻게 노출되는지를 정리한다 — 운영자 관점에서 "이 자료가 chat 응답에 그대로 인용되어도 되는가?" 를 빠르게 판단하기 위한 표.
+
+### C.1 share_scope 별 surface 동작
+
+| share_scope | retrieval surface (`relevant_knowledge` 블록) | Discord 일별 digest |
+| --- | --- | --- |
+| `public` | 제목 + 출처 링크 + 요약 1줄 + 점수/근거 표시 | 제목 + importance badge + source link |
+| `team_internal` | 제목 + 출처 링크 + 점수/근거 표시 (요약 자동 차단) + `🔒 team-internal` 라벨 | 제목 + source link + `🔒 team-internal` 라벨 |
+| `restricted` | `🔒 공개 제한된 자료` + `share_scope_reason` 만 노출 (제목/URL/요약 모두 마스킹) | `🔒 공개 제한된 자료 (topic_key)` 라벨만 |
+
+코드 진실 소스: `discussion.context_pack.format_knowledge_evidence_block` + `engineering_intelligence.discord_summary._format_line`.
+
+### C.2 retrieval evidence 라벨
+
+`KnowledgeMatch.evidence_labels()` 가 score signal 토큰을 사람이 읽을 수 있는 한국어 라벨로 변환한다. 합성 응답이나 Obsidian decision note 의 "근거 자료" 블록은 본 라벨을 그대로 사용한다.
+
+| signal token | 한국어 라벨 |
+| --- | --- |
+| `role_primary_match` | 요청 역할과 정확히 일치 |
+| `role_secondary_match` | 요청 역할이 보조 역할로 등록됨 |
+| `axis_overlap:<axes>` | task_type 축 일치 (`<axes>`) |
+| `topic_overlap:<n>` | 질문 토큰 겹침 (+`n`) |
+| `importance_critical` / `importance_high` | 중요도 critical / high |
+| `importance_low` | 중요도 low (감점) |
+| `fresh_7d` / `fresh_30d` | 최근 7일 / 30일 이내 수집 |
+| `empty_body_penalty` | 본문/태그 비어 있음 (감점) |
+
+새 signal 을 추가하면 `engineering_intelligence.retrieval._KNOWN_SIGNAL_LABELS` 에 한국어 라벨을 함께 넣을 것 — 비어 있으면 surface 가 raw token 을 그대로 노출한다.
+
+### C.3 운영 가드
+
+- ContextPack 빌더는 retriever 가 `with_signals` 를 노출하면 우선 사용해서 score + signals 를 surface 에 끌고 들어온다. 라이트한 fallback retriever 만 줘도 되지만 score/signal 트레이스가 없으면 evidence 블록은 점수/근거 없이 제목/요약만 보인다.
+- `share_scope=restricted` 자료가 `relevant_knowledge` 에 들어 있으면 합성 응답은 자동으로 본문을 마스킹한다. 운영자가 직접 본문을 합성 응답에 넣는 코드를 추가할 일이 생기면 `format_knowledge_evidence_block` 결과만 사용하거나 `obsidian.shareable_external_payload` 페이로드만 사용한다 — raw `EngineeringKnowledgeRef.summary` 를 직접 인용하지 않는다.
