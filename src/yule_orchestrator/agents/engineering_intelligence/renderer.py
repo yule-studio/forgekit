@@ -35,6 +35,7 @@ from typing import List, Optional, Sequence
 from .models import (
     ENGINEERING_KNOWLEDGE_CONTRACT,
     EngineeringKnowledgeItem,
+    KnowledgeShareScope,
 )
 
 
@@ -104,7 +105,14 @@ def _yaml_list(values: Sequence[str]) -> str:
 
 
 def render_frontmatter(item: EngineeringKnowledgeItem) -> str:
-    """Build the YAML frontmatter block (no leading/trailing markers)."""
+    """Build the YAML frontmatter block (no leading/trailing markers).
+
+    ``share_scope`` is stamped into the frontmatter so vault tooling
+    (memory indexer, archive sync, Discord digest) can decide whether
+    an item's body is safe to ship outside the vault. The body
+    renderer separately blanks restricted sections — frontmatter alone
+    is the discovery hint, never the enforcement.
+    """
 
     lines: List[str] = [
         f"title: {_quote(item.title)}",
@@ -122,6 +130,8 @@ def render_frontmatter(item: EngineeringKnowledgeItem) -> str:
         f"retrieval_queries: {_yaml_list(item.retrieval_queries)}",
         f"collected_at: {_quote(item.collected_at)}",
         f"review_after_days: {int(item.review_after_days)}",
+        f"share_scope: {_quote(item.share_scope.value)}",
+        f"share_scope_reason: {_quote(item.share_scope_reason)}",
         f"project: {_quote('yule-studio-agent')}",
         f"contract: {ENGINEERING_KNOWLEDGE_CONTRACT}",
         f"dedup_key: {_quote(item.dedup_key)}",
@@ -147,7 +157,31 @@ _REQUIRED_SECTIONS: tuple[str, ...] = (
     "10. 완료 기준",
     "11. 자주 하는 실수",
     "12. RAG/CAG 메타데이터",
-    "13. 참고 자료",
+    "13. 공유 가능 범위",
+    "14. 참고 자료",
+)
+
+
+# Sections we redact (replace body with a one-line placeholder) when
+# ``share_scope == RESTRICTED``. The L1 vault note still exists so the
+# operator can find it, but external surface payloads that copy any of
+# these sections by index won't accidentally leak content.
+_RESTRICTED_REDACTED_SECTION_INDEXES: tuple[int, ...] = (
+    1,   # 핵심 요약
+    2,   # 배경
+    3,   # 무엇이 바뀌었나
+    4,   # 왜 중요한가
+    5,   # 실무 영향
+    6,   # 권장 대응
+    7,   # 실습 주제
+    8,   # 실습 과정
+    9,   # 완료 기준
+    10,  # 자주 하는 실수
+)
+
+
+_RESTRICTED_PLACEHOLDER = (
+    "_공개 제한된 자료입니다 — 본문은 vault 내부 채널에서만 공유하세요._"
 )
 
 
@@ -341,8 +375,58 @@ def _render_rag_cag(item: EngineeringKnowledgeItem) -> str:
     return "\n".join(parts)
 
 
-def _render_references(item: EngineeringKnowledgeItem) -> str:
+_SHARE_SCOPE_LABELS: dict[KnowledgeShareScope, str] = {
+    KnowledgeShareScope.PUBLIC: (
+        "공개 가능 — 외부 surface(Discord 다이제스트, PR 본문, 합성 응답)에 "
+        "본문 요약과 함께 인용해도 된다"
+    ),
+    KnowledgeShareScope.TEAM_INTERNAL: (
+        "팀 내부 한정 — Obsidian vault 내에서만 본문 열람. 외부 채널에는 "
+        "제목 + 출처 링크 + share_scope 표시까지만 노출"
+    ),
+    KnowledgeShareScope.RESTRICTED: (
+        "공개 제한 — 본문 전체를 외부 surface 로 옮기지 않는다. "
+        "vault 안에서도 요약 1~2줄과 share_scope_reason 만 보존"
+    ),
+}
+
+
+_SHARE_SCOPE_EXTERNAL_RULES: dict[KnowledgeShareScope, tuple[str, ...]] = {
+    KnowledgeShareScope.PUBLIC: (
+        "Discord digest / 합성 응답에 제목·요약·source_url 인용 가능",
+        "PR 본문에 references 항목으로 그대로 추가 가능",
+    ),
+    KnowledgeShareScope.TEAM_INTERNAL: (
+        "외부 surface 에는 제목 + source_url + 'team-internal' 라벨만 노출",
+        "본문 요약은 합성 응답에 직접 인용하지 않는다 — vault link 로 우회",
+        "PR 본문 references 에 포함할 때 'internal-only' 노트와 함께",
+    ),
+    KnowledgeShareScope.RESTRICTED: (
+        "외부 surface 에는 '공개 제한된 자료 1건' 신호만 노출",
+        "본문/실습 단계 어떤 형태로도 chat·PR·로그에 인용 금지",
+        "공유가 필요하면 운영자가 별도 보안 채널에서 수동 전달",
+    ),
+}
+
+
+def _render_share_scope(item: EngineeringKnowledgeItem) -> str:
     parts: List[str] = [_section_header(_REQUIRED_SECTIONS[12])]
+    label = _SHARE_SCOPE_LABELS.get(
+        item.share_scope, item.share_scope.value
+    )
+    parts.append(f"- **share_scope**: `{item.share_scope.value}` — {label}")
+    if item.share_scope_reason:
+        parts.append(
+            f"- **share_scope_reason**: {_redact(item.share_scope_reason)}"
+        )
+    parts.append("- **외부 surface 노출 규칙**:")
+    for rule in _SHARE_SCOPE_EXTERNAL_RULES.get(item.share_scope, ()):
+        parts.append(f"  - {rule}")
+    return "\n".join(parts)
+
+
+def _render_references(item: EngineeringKnowledgeItem) -> str:
+    parts: List[str] = [_section_header(_REQUIRED_SECTIONS[13])]
     parts.append(f"- 출처: [{_redact(item.source_name)}]({_redact(item.source_url)})")
     for ref in item.references:
         if ref:
@@ -386,6 +470,13 @@ def render_engineering_knowledge_note(item: EngineeringKnowledgeItem) -> str:
 
     Raises :class:`RendererError` when the item violates one of the
     hard contracts (empty body, missing source, missing practice).
+
+    When ``item.share_scope == KnowledgeShareScope.RESTRICTED`` the
+    learning-body sections are replaced with a one-line placeholder so
+    the vault note still tracks the topic but no body content can be
+    copied to an external surface. The Overview / RAG-CAG metadata /
+    공유 가능 범위 / References sections still render — they are
+    structural pointers, not body content.
     """
 
     if not item.title.strip():
@@ -402,6 +493,30 @@ def render_engineering_knowledge_note(item: EngineeringKnowledgeItem) -> str:
         m.strip() for m in item.common_mistakes
     ):
         raise RendererError("common_mistakes must have at least 1 non-empty entry")
+    if (
+        item.share_scope == KnowledgeShareScope.RESTRICTED
+        and not item.share_scope_reason.strip()
+    ):
+        raise RendererError(
+            "share_scope=RESTRICTED requires share_scope_reason"
+        )
+
+    body_renderers = [
+        _render_overview,        # 0 — structural, keep
+        _render_summary,         # 1 — body
+        _render_background,      # 2 — body
+        _render_what_changed,    # 3 — body
+        _render_why_important,   # 4 — body
+        _render_practical_impact,# 5 — body
+        _render_recommended,     # 6 — body
+        _render_practice_topic,  # 7 — body
+        _render_practice_steps,  # 8 — body
+        _render_completion,      # 9 — body
+        _render_common_mistakes, # 10 — body
+        _render_rag_cag,         # 11 — metadata, keep
+        _render_share_scope,     # 12 — share-scope, keep
+        _render_references,      # 13 — references, keep
+    ]
 
     blocks: List[str] = []
     blocks.append("---")
@@ -412,32 +527,17 @@ def render_engineering_knowledge_note(item: EngineeringKnowledgeItem) -> str:
     blocks.append("")
     blocks.append(_toc())
     blocks.append("")
-    blocks.append(_render_overview(item))
-    blocks.append("")
-    blocks.append(_render_summary(item))
-    blocks.append("")
-    blocks.append(_render_background(item))
-    blocks.append("")
-    blocks.append(_render_what_changed(item))
-    blocks.append("")
-    blocks.append(_render_why_important(item))
-    blocks.append("")
-    blocks.append(_render_practical_impact(item))
-    blocks.append("")
-    blocks.append(_render_recommended(item))
-    blocks.append("")
-    blocks.append(_render_practice_topic(item))
-    blocks.append("")
-    blocks.append(_render_practice_steps(item))
-    blocks.append("")
-    blocks.append(_render_completion(item))
-    blocks.append("")
-    blocks.append(_render_common_mistakes(item))
-    blocks.append("")
-    blocks.append(_render_rag_cag(item))
-    blocks.append("")
-    blocks.append(_render_references(item))
-    blocks.append("")
+
+    restricted = item.share_scope == KnowledgeShareScope.RESTRICTED
+    for index, renderer in enumerate(body_renderers):
+        if restricted and index in _RESTRICTED_REDACTED_SECTION_INDEXES:
+            blocks.append(
+                f"{_section_header(_REQUIRED_SECTIONS[index])}\n"
+                f"{_RESTRICTED_PLACEHOLDER}"
+            )
+        else:
+            blocks.append(renderer(item))
+        blocks.append("")
     return "\n".join(blocks)
 
 

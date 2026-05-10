@@ -229,7 +229,29 @@ scheduler 자체는 env를 읽지 않는다. 다만 **runtime 가 본 모듈을 
 - GitHub API spec의 `requires_auth_env=("YULE_GITHUB_APP_ID",)` 는 "App env 3종 중 하나라도 비어 있으면 fetch 시도 자체를 차단해야 한다" 는 신호다. fetcher impl 가 아직 land 하지 않았으므로, 본 PR scope 에서는 `StubLiveSourceFetcher` 만 제공한다.
 - request_headers_seed에는 token 헤더가 없다. fetcher impl 가 env를 읽어 별도로 합성해야 한다.
 
-### 13.3 후속 wiring (별도 PR)
+### 13.3 share_scope — 외부 surface 인용 boundary
+
+`engineering_intelligence.KnowledgeShareScope` 가 한 자료 항목이 어디까지 외부 surface(Discord digest, PR body, 합성 응답)에 인용 가능한지를 결정한다. 코드 진실 소스: `models.KnowledgeShareScope` + `obsidian.shareable_external_payload` + `discord_summary._format_line`.
+
+| share_scope | 외부 surface 노출 | Obsidian note 본문 | 사용 예 |
+| --- | --- | --- | --- |
+| `public` | 제목 + 요약 + source link 인용 가능 | 14 섹션 전부 렌더 | 공식 docs / release notes / 엔지니어링 블로그 |
+| `team_internal` | 제목 + source link 만 노출 (요약 차단) | 14 섹션 전부 렌더, 다만 외부 합성 응답에 본문은 사용 금지 | 사내 ADR / private repo 의 PR / 사내 advisory |
+| `restricted` | "🔒 공개 제한된 자료" 신호만 노출 | 학습 본문 섹션은 placeholder, 메타데이터 + share_scope_reason 만 보존 | 보안 incident / 고객 데이터가 섞인 자료 |
+
+규칙:
+
+- 기본값은 `public`. collector 가 명시하지 않으면 `public` 으로 처리한다.
+- `restricted` 자료는 반드시 `share_scope_reason` 을 채워야 한다 — quality gate 가 막는다 (`missing:share_scope_reason_for_restricted`).
+- `team_internal` 자료는 chat 합성 응답의 본문 인용에 사용하지 않는다. ContextPack `relevant_knowledge` 의 `summary` 가 `team_internal` 인 경우 evidence 블록은 자동으로 요약 라인을 생략한다.
+- `restricted` 자료는 ContextPack evidence 블록에서도 제목/링크가 모두 마스킹되고 `topic_key` + `share_scope_reason` 만 surface 에 남는다.
+
+운영자 관점:
+
+- vault 안에서는 share_scope 와 무관하게 본문(자료 형태에 따라 placeholder 가 박힌 채로) 이 다 보인다 — Obsidian 은 운영 채널이지 외부 surface 가 아니다.
+- 외부 surface 로 보낼 페이로드를 만들 때는 `obsidian.shareable_external_payload(item)` 결과만 사용한다. raw `EngineeringKnowledgeItem.to_payload()` 는 vault 전용.
+
+### 13.4 후속 wiring (별도 PR)
 
 1. `providers_live.py` — urllib 기반 fetcher 구현 (RSS / Atom / Sitemap / HTML_LIST / GitHub Releases / GitHub API).
 2. fetcher rate limiter — `LiveProviderSpec.rate_limit_per_minute` 를 token bucket으로 강제.

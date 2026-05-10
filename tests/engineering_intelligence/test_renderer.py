@@ -134,16 +134,18 @@ class FrontmatterTests(unittest.TestCase):
 
 
 class SectionPresenceTests(unittest.TestCase):
-    def test_all_thirteen_sections_rendered(self) -> None:
+    def test_all_required_sections_rendered(self) -> None:
         body = render_engineering_knowledge_note(_full_item())
         for title in required_sections():
             self.assertIn(f"## {title}", body, msg=f"missing section: {title}")
 
-    def test_toc_lists_thirteen_sections(self) -> None:
+    def test_toc_lists_all_required_sections(self) -> None:
         body = render_engineering_knowledge_note(_full_item())
         self.assertIn("## 목차", body)
-        # The TOC line numbers 1..13 each appear on their own line.
-        for index in range(1, 14):
+        # TOC line numbers 1..N each appear on their own line, where N
+        # is the current required-section count (14 — share_scope was
+        # added between RAG/CAG and References).
+        for index in range(1, len(required_sections()) + 1):
             self.assertRegex(body, rf"\n{index}\. ")
 
     def test_practice_section_includes_steps_checklist_verification(self) -> None:

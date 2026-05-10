@@ -81,6 +81,31 @@ class KnowledgeStatus(str, Enum):
     DEPRECATED = "deprecated"
 
 
+class KnowledgeShareScope(str, Enum):
+    """공유 가능 범위 — note/report 출력에 박혀 외부 노출 경계가 된다.
+
+    - ``PUBLIC``: 공식 문서·릴리스 노트·블로그처럼 외부 surface(Discord
+      digest, PR 본문, 합성 응답)에 본문 요약과 함께 그대로 인용해도
+      되는 자료. note 의 모든 섹션이 그대로 렌더된다.
+    - ``TEAM_INTERNAL``: 사내 repo/ADR/private security advisory 처럼
+      Obsidian vault 안에서는 전체 내용을 보지만 외부 surface 로는 제목
+      + 출처 링크 + share_scope 만 노출한다. 본문 요약은 chat 응답에
+      포함하지 말 것.
+    - ``RESTRICTED``: 보안 incident report, customer data 가 섞인 자료
+      처럼 본문은 vault 에도 압축 저장(요약 1~2줄)하고 외부에서는 "공개
+      제한된 자료" 라는 신호만 남긴다. 렌더된 note 의 본문은 link +
+      share_scope_reason 만 남고, common_mistakes / practice 같은 학습
+      섹션도 "내부 채널에서만 공유" 라는 한 줄로 대체된다.
+
+    기본값은 :data:`KnowledgeShareScope.PUBLIC`. 호출자(collector /
+    operator) 가 명시적으로 더 좁힐 수 있다.
+    """
+
+    PUBLIC = "public"
+    TEAM_INTERNAL = "team_internal"
+    RESTRICTED = "restricted"
+
+
 # Tier 1 = official spec/docs; Tier 4 = community. Auto collection
 # defaults to Tier 1~2; Tier 3~4 requires review_required=True or low
 # trust_weight.
@@ -351,6 +376,11 @@ class EngineeringKnowledgeItem:
     review_after_days: int = 90
     staleness_reason: str = ""
 
+    # Share boundary — note/report 출력 시 외부 surface(Discord digest,
+    # PR body, 합성 응답)에 어디까지 인용해도 되는지를 결정한다.
+    share_scope: KnowledgeShareScope = KnowledgeShareScope.PUBLIC
+    share_scope_reason: str = ""
+
     # Project applicability
     project_applicability: Optional[ProjectApplicability] = None
 
@@ -415,6 +445,8 @@ class EngineeringKnowledgeItem:
             "knowledge_status": self.knowledge_status.value,
             "review_after_days": self.review_after_days,
             "staleness_reason": self.staleness_reason,
+            "share_scope": self.share_scope.value,
+            "share_scope_reason": self.share_scope_reason,
             "project_applicability": (
                 self.project_applicability.to_payload()
                 if self.project_applicability is not None
@@ -437,6 +469,7 @@ __all__ = [
     "ENGINEERING_KNOWLEDGE_CONTRACT",
     "EngineeringKnowledgeItem",
     "Importance",
+    "KnowledgeShareScope",
     "KnowledgeStatus",
     "LearningLevel",
     "NOTE_KIND_ENGINEERING_KNOWLEDGE",

@@ -202,6 +202,9 @@ async def run_supervisor_watch_loop(
     self_improvement_detect_fn: Optional[Callable[..., Any]] = None,
     self_improvement_dispatch_fn: Optional[Callable[..., Any]] = None,
     self_improvement_interval_seconds: Optional[float] = None,
+    autonomy_producer_tick_fn: Optional[Callable[..., Any]] = None,
+    autonomy_producer_interval_seconds: Optional[float] = None,
+    autonomy_producer_on_report: Optional[Callable[[Any], None]] = None,
 ) -> int:
     """Long-running supervisor watchdog. Calls
     :func:`run_supervisor_sweep` every *sweep_interval_seconds* and
@@ -252,6 +255,24 @@ async def run_supervisor_watch_loop(
 
     Detection / dispatch failures are caught + logged with the
     same "never crash supervisor" guarantee as status posting.
+
+    Round 4 of #73 added optional autonomy producer ticking:
+
+      * *autonomy_producer_tick_fn* — sync or coroutine callable that
+        runs one :class:`AutonomyProducer` tick and returns the
+        :class:`AutonomyProducerReport`. The supervisor calls this
+        on its own interval so the runtime keeps generating next-task
+        candidates without any external prompt.
+      * *autonomy_producer_interval_seconds* — minimum spacing
+        between ticks. ``None`` (default) leaves the path dormant.
+      * *autonomy_producer_on_report* — best-effort hook receiving the
+        producer report. Production wires this to a one-line log +
+        status-post update; tests pass a list-append stub.
+
+    Producer tick failures NEVER crash the supervisor. The producer's
+    own internal try/except already converts sub-producer crashes
+    into ``ERROR`` rows on the report — this layer's try/except is
+    the last-resort guard.
     """
 
     if sweep_fn is None:
@@ -264,6 +285,7 @@ async def run_supervisor_watch_loop(
     iterations = 0
     last_post_at: Optional[float] = None
     last_si_detect_at: Optional[float] = None
+    last_autonomy_tick_at: Optional[float] = None
     post_enabled = (
         status_post_fn is not None
         and status_post_interval_seconds is not None
@@ -274,6 +296,11 @@ async def run_supervisor_watch_loop(
         and self_improvement_dispatch_fn is not None
         and self_improvement_interval_seconds is not None
         and self_improvement_interval_seconds > 0
+    )
+    autonomy_enabled = (
+        autonomy_producer_tick_fn is not None
+        and autonomy_producer_interval_seconds is not None
+        and autonomy_producer_interval_seconds > 0
     )
 
     def _shutdown_requested() -> bool:
@@ -332,6 +359,20 @@ async def run_supervisor_watch_loop(
                 # the next state change anyway.
                 last_post_at = now_clock
 
+        # ----- Round 4: autonomy producer tick -----------------------
+        if autonomy_enabled:
+            now_clock_autonomy = float(clock())
+            autonomy_interval = float(autonomy_producer_interval_seconds or 0.0)
+            if (
+                last_autonomy_tick_at is None
+                or (now_clock_autonomy - last_autonomy_tick_at) >= autonomy_interval
+            ):
+                await _run_autonomy_producer_tick(
+                    tick_fn=autonomy_producer_tick_fn,
+                    on_report=autonomy_producer_on_report,
+                )
+                last_autonomy_tick_at = now_clock_autonomy
+
         # ----- A-M12: self-improvement detect + dispatch tick --------
         if si_enabled:
             now_clock_si = float(clock())
@@ -352,6 +393,51 @@ async def run_supervisor_watch_loop(
         await sleep_fn(sweep_interval_seconds)
 
     return iterations
+
+
+async def _run_autonomy_producer_tick(
+    *,
+    tick_fn: Callable[..., Any],
+    on_report: Optional[Callable[[Any], None]] = None,
+) -> None:
+    """Run one autonomy producer tick from the supervisor.
+
+    *tick_fn* may be sync or async. Failures are logged + swallowed —
+    the producer already converts sub-producer crashes into ``ERROR``
+    rows on its report, so a hard exception here means something
+    deeper broke (import-time crash, etc.) and the supervisor must
+    keep ticking regardless.
+    """
+
+    try:
+        result = tick_fn()
+        if asyncio.iscoroutine(result):
+            result = await result
+    except Exception:  # noqa: BLE001 - never crash supervisor
+        logger.warning(
+            "autonomy producer tick raised", exc_info=True
+        )
+        return
+
+    if on_report is None:
+        try:
+            summary = (
+                result.summary_line()
+                if result is not None and hasattr(result, "summary_line")
+                else None
+            )
+        except Exception:  # noqa: BLE001
+            summary = None
+        if summary:
+            logger.info("autonomy producer: %s", summary)
+        return
+
+    try:
+        on_report(result)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "autonomy producer on_report handler raised", exc_info=True
+        )
 
 
 async def _run_self_improvement_tick(

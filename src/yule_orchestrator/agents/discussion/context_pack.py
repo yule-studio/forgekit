@@ -107,6 +107,16 @@ class EngineeringKnowledgeRef:
     동일하지만, 본 모듈은 engineering_intelligence 를 import 하지 않는다
     (서로 독립적으로 import-able 해야 한다는 운영 원칙). 합성 어댑터는
     ``ContextPackBuilder._coerce_knowledge_ref`` 가 담당.
+
+    ``share_scope`` / ``share_scope_reason`` 는 외부 surface (Discord,
+    합성 응답, PR 본문) 가 어디까지 인용해도 되는지를 결정하는 boundary
+    플래그다. 값이 없으면 ``"public"`` 으로 간주한다 — collector 가
+    명시하지 않은 자료는 운영자 합의로 PUBLIC default 로 처리한다.
+
+    ``score`` / ``signals`` / ``evidence_labels`` 은 retrieval 이 왜 이
+    자료를 골랐는지를 사람이 읽을 수 있는 형태로 surface 에 남기기
+    위한 슬롯이다. 합성 응답 / Obsidian decision note 가 "근거 자료"
+    블록을 만들 때 그대로 사용한다.
     """
 
     title: str
@@ -122,8 +132,12 @@ class EngineeringKnowledgeRef:
     note_path: Optional[str] = None
     score: Optional[float] = None
     signals: Sequence[str] = field(default_factory=tuple)
-    # Role-feed provenance — which role-axis feed surfaced the row, and a
-    # one-line "why relevant" sentence the synthesizer can paste verbatim.
+    # Retrieval evidence + role-feed provenance are both preserved so the
+    # discussion surface can explain why this row was picked and which role
+    # axis feed produced it.
+    evidence_labels: Sequence[str] = field(default_factory=tuple)
+    share_scope: str = "public"
+    share_scope_reason: str = ""
     matched_axes: Sequence[str] = field(default_factory=tuple)
     relevance_reason: Optional[str] = None
 
@@ -234,6 +248,9 @@ class ContextPack:
                     "note_path": k.note_path,
                     "score": k.score,
                     "signals": list(k.signals),
+                    "evidence_labels": list(k.evidence_labels),
+                    "share_scope": k.share_scope,
+                    "share_scope_reason": k.share_scope_reason,
                     "matched_axes": list(k.matched_axes),
                     "relevance_reason": k.relevance_reason,
                 }
@@ -255,6 +272,103 @@ class ContextPack:
             "blockers": list(self.blockers),
             "extra": dict(self.extra),
         }
+
+    def format_knowledge_evidence_block(
+        self,
+        *,
+        max_items: int = 5,
+        heading: str = "근거 자료 (engineering_intelligence)",
+    ) -> str:
+        """``relevant_knowledge`` 를 마크다운 evidence 블록으로 렌더한다.
+
+        합성 응답 / Obsidian decision note / PR body footer 가 "이번
+        토의에서 어떤 사내 자료가 근거로 쓰였는가" 를 사람에게 보여주기
+        위한 구조화된 출력이다. 빈 리스트일 때는 빈 문자열을 반환해
+        호출자가 if-string-truthy 로 분기할 수 있다.
+
+        규칙:
+
+        - ``share_scope=public`` — 제목 + 출처 링크 + summary 한 줄.
+        - ``share_scope=team_internal`` — 제목 + 출처 링크 + 'team-
+          internal' 라벨, summary 는 의도적으로 생략. vault 외부에서는
+          본문 합성에 인용하지 않는다는 정책을 따른다.
+        - ``share_scope=restricted`` — 제목/링크/summary 모두 가리고
+          topic_key + share_scope_reason 만 노출. 외부에 자료가 있다는
+          신호만 남긴다.
+
+        retrieval 점수 / signal 은 ``evidence_labels`` 가 채워져 있으면
+        한국어 라벨로, 아니면 raw signal 문자열로 노출한다.
+        """
+
+        if not self.relevant_knowledge:
+            return ""
+        lines: list[str] = [f"### {heading}"]
+        for ref in list(self.relevant_knowledge)[: max(max_items, 0)]:
+            lines.extend(_format_knowledge_evidence_lines(ref))
+        return "\n".join(lines)
+
+    def share_boundary_breakdown(self) -> Mapping[str, int]:
+        """``relevant_knowledge`` 항목 수를 share_scope 별로 집계한다.
+
+        외부 surface (Discord 다이제스트 / 합성 응답 / PR body) 가
+        "이번 응답에 인용한 자료가 어떤 boundary 안에 있는지" 를
+        한 눈에 보여줄 때 쓴다. 키는 항상 4 종 (`public`,
+        `team_internal`, `restricted`, `total`) 이 모두 들어 있고
+        값은 정수다 — 호출자가 dict[k] 접근으로 바로 쓸 수 있다.
+        """
+
+        counts = {"public": 0, "team_internal": 0, "restricted": 0}
+        for ref in self.relevant_knowledge:
+            scope = (ref.share_scope or "public").lower()
+            if scope not in counts:
+                scope = "public"
+            counts[scope] += 1
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def knowledge_short_summary(self, *, max_topics: int = 2) -> str:
+        """근거 자료를 한 줄로 요약한다 — 합성 응답 / 운영 dashboard 용.
+
+        - 총 건수 + share_scope 별 카운트 (0 인 scope 는 생략).
+        - 상위 ``max_topics`` 건의 제목 / topic_key — share_scope 정책을
+          그대로 따른다 (restricted 는 topic_key 만, team_internal/public
+          은 제목).
+        - relevant_knowledge 가 비어 있으면 빈 문자열.
+
+        예시 출력:
+        ``"근거 자료 3건 (public 2 · team_internal 1) — Spring Security 인증 흐름 외 1건"``
+        """
+
+        refs = list(self.relevant_knowledge)
+        if not refs:
+            return ""
+        breakdown = self.share_boundary_breakdown()
+        scope_bits: list[str] = []
+        for scope_key in ("public", "team_internal", "restricted"):
+            value = breakdown.get(scope_key, 0)
+            if value:
+                scope_bits.append(f"{scope_key} {value}")
+        scope_part = f" ({' · '.join(scope_bits)})" if scope_bits else ""
+        topic_labels: list[str] = []
+        for ref in refs[: max(max_topics, 0)]:
+            scope = (ref.share_scope or "public").lower()
+            if scope == "restricted":
+                topic_labels.append(f"🔒 `{ref.topic_key or 'restricted'}`")
+            else:
+                title = (ref.title or "(제목 없음)").strip()
+                if scope == "team_internal":
+                    topic_labels.append(f"{title} (🔒 team-internal)")
+                else:
+                    topic_labels.append(title)
+        topic_part = ""
+        if topic_labels:
+            extra = max(len(refs) - len(topic_labels), 0)
+            preview = ", ".join(topic_labels)
+            if extra:
+                topic_part = f" — {preview} 외 {extra}건"
+            else:
+                topic_part = f" — {preview}"
+        return f"근거 자료 {breakdown['total']}건{scope_part}{topic_part}"
 
 
 # ---------------------------------------------------------------------------
@@ -566,47 +680,47 @@ class ContextPackBuilder:
             picked = (same_role + other)[: self.max_knowledge]
             return tuple(picked)
 
-        # Prefer with_signals when the retriever exposes it — matches
-        # carry score / signals / matched_axes / relevance_reason that
-        # the synthesizer surfaces back to the operator.
+        # Prefer the retriever's ``with_signals`` form so we can carry
+        # the score + signals through to the surface. The plain
+        # ``__call__`` form just returns records and loses the "왜 이
+        # 자료가 골라졌는가" trace, which is exactly what this PR is
+        # trying to surface.
         with_signals = getattr(self.knowledge_retriever, "with_signals", None)
-        picked: Any
         if callable(with_signals):
             try:
-                picked = with_signals(
+                matches = with_signals(
                     candidates=raw,
                     query=query,
                     role=role,
                     task_type=task_type,
                     limit=self.max_knowledge,
                 )
-            except TypeError:
-                try:
-                    picked = self.knowledge_retriever(
-                        candidates=raw,
-                        query=query,
-                        role=role,
-                        task_type=task_type,
-                        limit=self.max_knowledge,
-                    )
-                except Exception:  # noqa: BLE001
-                    picked = coerced[: self.max_knowledge]
             except Exception:  # noqa: BLE001
-                picked = coerced[: self.max_knowledge]
-        else:
+                matches = ()
+            normalized: list[EngineeringKnowledgeRef] = []
+            for match in matches:
+                ref = self._coerce_knowledge_ref(match)
+                if ref is not None:
+                    normalized.append(ref)
+            if normalized:
+                return tuple(normalized[: self.max_knowledge])
+            # Fall through to the plain retriever — sometimes
+            # ``with_signals`` returns nothing while the plain call
+            # would, and we'd rather show *something* than nothing.
+
+        try:
+            picked = self.knowledge_retriever(
+                candidates=raw,
+                query=query,
+                role=role,
+                task_type=task_type,
+                limit=self.max_knowledge,
+            )
+        except TypeError:
             try:
-                picked = self.knowledge_retriever(
-                    candidates=raw,
-                    query=query,
-                    role=role,
-                    task_type=task_type,
-                    limit=self.max_knowledge,
-                )
+                picked = self.knowledge_retriever(raw)
             except TypeError:
-                try:
-                    picked = self.knowledge_retriever(raw)
-                except Exception:  # noqa: BLE001
-                    picked = coerced[: self.max_knowledge]
+                picked = coerced[: self.max_knowledge]
             except Exception:  # noqa: BLE001
                 picked = coerced[: self.max_knowledge]
         normalized: list[EngineeringKnowledgeRef] = []
@@ -618,39 +732,55 @@ class ContextPackBuilder:
 
     @staticmethod
     def _coerce_knowledge_ref(value: Any) -> Optional[EngineeringKnowledgeRef]:
-        """Best-effort projection of vault row / KnowledgeRecord /
-        KnowledgeMatch / dict.
+        """Best-effort projection of vault row / KnowledgeRecord / dict.
 
-        Carries score / signals / matched_axes / relevance_reason
-        through whenever they are present so the role-feed provenance
-        survives the round trip from retriever to ContextPack.
+        Accepts:
+
+        - ``EngineeringKnowledgeRef`` — passthrough.
+        - ``KnowledgeMatch`` (duck-typed: has ``record`` / ``score`` /
+          ``signals`` attrs; bonus: ``evidence_labels()`` method) — the
+          score / signal trace is unpacked onto the resulting ref so
+          the synthesizer can show "왜 이 자료가 골라졌는가" without a
+          second lookup.
+        - ``KnowledgeRecord`` / ``EngineeringKnowledgeItem`` — flat
+          attribute walk.
+        - Plain mapping — the dict carries the same field names.
         """
 
         if value is None:
             return None
         if isinstance(value, EngineeringKnowledgeRef):
             return value
-        # KnowledgeMatch 호환: ``record`` 속성을 가진 envelope 면 record 를
-        # 안쪽으로 풀고 score/signals/matched_axes/relevance_reason 를
-        # 위로 끌어올린다. engineering_intelligence 를 직접 import 하지
-        # 않으려고 duck typing 으로만 검사.
-        match_score = None
-        match_signals: tuple = ()
-        match_matched_axes: tuple = ()
-        match_reason: Optional[str] = None
+
+        # KnowledgeMatch duck-typing: unwrap into (record, score, signals).
+        score: Optional[float] = None
+        signals_seq: tuple[str, ...] = ()
+        evidence_labels_seq: tuple[str, ...] = ()
+        matched_axes_seq: tuple[str, ...] = ()
+        relevance_reason: Optional[str] = None
         record_attr = getattr(value, "record", None)
-        if record_attr is not None and not isinstance(value, Mapping):
-            inner_title = getattr(record_attr, "title", None)
-            inner_role = getattr(record_attr, "role", None)
-            if inner_title and inner_role:
-                match_score = getattr(value, "score", None)
-                match_signals = tuple(getattr(value, "signals", ()) or ())
-                axes_raw = getattr(value, "matched_axes", ()) or ()
-                match_matched_axes = tuple(
-                    str(getattr(a, "value", a)) for a in axes_raw if a
-                )
-                match_reason = getattr(value, "relevance_reason", None) or None
-                value = record_attr
+        if (
+            record_attr is not None
+            and not isinstance(value, Mapping)
+            and hasattr(value, "signals")
+        ):
+            try:
+                score = float(getattr(value, "score"))
+            except (TypeError, ValueError):
+                score = None
+            signals_seq = tuple(getattr(value, "signals", ()) or ())
+            label_method = getattr(value, "evidence_labels", None)
+            if callable(label_method):
+                try:
+                    evidence_labels_seq = tuple(label_method())
+                except Exception:  # noqa: BLE001
+                    evidence_labels_seq = ()
+            axes_raw = getattr(value, "matched_axes", ()) or ()
+            matched_axes_seq = tuple(
+                str(getattr(a, "value", a)) for a in axes_raw if a
+            )
+            relevance_reason = getattr(value, "relevance_reason", None) or None
+            value = record_attr
         # KnowledgeRecord 와 EngineeringKnowledgeItem (engineering_intelligence
         # 패키지) 둘 다 있으면 직접 import 하지 않고 duck typing 으로 처리.
         title = getattr(value, "title", None)
@@ -664,21 +794,9 @@ class ContextPackBuilder:
                     axes_seq.append(str(axis_value))
             importance_attr = getattr(value, "importance", None)
             importance_value = getattr(importance_attr, "value", importance_attr)
-            score_value = match_score
-            if score_value is None:
-                raw_score = getattr(value, "score", None)
-                score_value = raw_score if raw_score is not None else None
-            signals_value = match_signals or tuple(
-                getattr(value, "signals", ()) or ()
-            )
-            matched_axes_value = match_matched_axes or tuple(
-                str(getattr(a, "value", a))
-                for a in (getattr(value, "matched_axes", ()) or ())
-                if a
-            )
-            reason_value = match_reason or (
-                getattr(value, "relevance_reason", None) or None
-            )
+            share_attr = getattr(value, "share_scope", None)
+            share_value = getattr(share_attr, "value", share_attr)
+            share_scope = str(share_value) if share_value else "public"
             return EngineeringKnowledgeRef(
                 title=str(title),
                 role=str(role),
@@ -691,10 +809,21 @@ class ContextPackBuilder:
                 importance=str(importance_value) if importance_value else None,
                 collected_at=getattr(value, "collected_at", None) or None,
                 note_path=getattr(value, "note_path", None),
-                score=score_value,
-                signals=signals_value,
-                matched_axes=matched_axes_value,
-                relevance_reason=reason_value,
+                score=score if score is not None else getattr(value, "score", None),
+                signals=signals_seq or tuple(getattr(value, "signals", ()) or ()),
+                evidence_labels=evidence_labels_seq,
+                share_scope=share_scope,
+                share_scope_reason=str(
+                    getattr(value, "share_scope_reason", "") or ""
+                ),
+                matched_axes=matched_axes_seq
+                or tuple(
+                    str(getattr(a, "value", a))
+                    for a in (getattr(value, "matched_axes", ()) or ())
+                    if a
+                ),
+                relevance_reason=relevance_reason
+                or (getattr(value, "relevance_reason", None) or None),
             )
         if isinstance(value, Mapping):
             title_v = str(value.get("title") or "").strip()
@@ -707,6 +836,9 @@ class ContextPackBuilder:
             matched_seq = tuple(
                 str(getattr(a, "value", a)) for a in matched_raw if a
             )
+            mapping_signals = tuple(value.get("signals") or ()) or signals_seq
+            mapping_labels = tuple(value.get("evidence_labels") or ()) or evidence_labels_seq
+            mapping_score = value.get("score")
             return EngineeringKnowledgeRef(
                 title=title_v,
                 role=role_v,
@@ -719,10 +851,13 @@ class ContextPackBuilder:
                 importance=value.get("importance"),
                 collected_at=value.get("collected_at"),
                 note_path=value.get("note_path"),
-                score=value.get("score"),
-                signals=tuple(value.get("signals") or ()),
+                score=mapping_score if mapping_score is not None else score,
+                signals=mapping_signals,
+                evidence_labels=mapping_labels,
+                share_scope=str(value.get("share_scope") or "public"),
+                share_scope_reason=str(value.get("share_scope_reason") or ""),
                 matched_axes=matched_seq,
-                relevance_reason=value.get("relevance_reason") or None,
+                relevance_reason=value.get("relevance_reason") or relevance_reason,
             )
         return None
 
@@ -781,6 +916,54 @@ class ContextPackBuilder:
         if not bits:
             return None
         return ", ".join(bits)
+
+
+_RESTRICTED_LINE_FALLBACK = "🔒 공개 제한된 자료"
+
+
+def _format_knowledge_evidence_lines(ref: EngineeringKnowledgeRef) -> list[str]:
+    """Format one ``EngineeringKnowledgeRef`` as evidence bullet lines.
+
+    Splits into a heading bullet + an optional indented signal bullet
+    so the operator can scan title-first and only drop into "왜 이
+    자료가 골라졌는가" details when needed.
+    """
+
+    scope = (ref.share_scope or "public").lower()
+    lines: list[str] = []
+    if scope == "restricted":
+        marker = _RESTRICTED_LINE_FALLBACK
+        if ref.share_scope_reason:
+            marker = f"{marker} — {ref.share_scope_reason}"
+        else:
+            marker = f"{marker} (`{ref.topic_key}`)"
+        lines.append(f"- {marker}")
+    else:
+        title = ref.title or "(제목 없음)"
+        if ref.source_url:
+            head = f"- **{title}** — [{ref.source_name or '출처'}]({ref.source_url})"
+        else:
+            head = f"- **{title}**"
+        if scope == "team_internal":
+            head = f"{head} · 🔒 team-internal"
+        lines.append(head)
+        if scope == "public" and ref.summary:
+            lines.append(f"  - 요약: {ref.summary}")
+    detail_bits: list[str] = []
+    if ref.role:
+        detail_bits.append(f"role={ref.role}")
+    if ref.score is not None:
+        detail_bits.append(f"score={ref.score:.1f}")
+    if ref.matched_axes:
+        detail_bits.append("axes=" + ",".join(str(axis) for axis in ref.matched_axes))
+    labels = list(ref.evidence_labels) if ref.evidence_labels else list(ref.signals)
+    if labels:
+        detail_bits.append("근거: " + ", ".join(labels))
+    if ref.relevance_reason:
+        detail_bits.append(f"설명: {ref.relevance_reason}")
+    if detail_bits:
+        lines.append(f"  - {' · '.join(detail_bits)}")
+    return lines
 
 
 def _summarize_thread(messages: Sequence[ThreadMessage]) -> str:
