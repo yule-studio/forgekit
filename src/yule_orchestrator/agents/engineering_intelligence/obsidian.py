@@ -26,7 +26,7 @@ here (note_kind ``engineering-knowledge`` is not in
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Mapping, Optional, Tuple
+from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from .models import (
     NOTE_KIND_ENGINEERING_KNOWLEDGE,
@@ -172,6 +172,51 @@ def shareable_external_payload(
     return base
 
 
+def summarize_share_boundary(
+    items: Sequence[EngineeringKnowledgeItem],
+) -> Mapping[str, Any]:
+    """Operator-facing one-line summary of a digest's share-boundary mix.
+
+    Returns ``{"counts": {public, team_internal, restricted, total},
+    "summary": str}``. The ``summary`` is the same one-line shape used
+    by the Discord digest footer and the discussion synthesizer's
+    ``knowledge_short_summary`` so an operator dashboard / status
+    poster can stamp the same sentence regardless of surface.
+
+    Empty input returns a stable empty payload so the caller can
+    branch on ``payload["counts"]["total"] == 0``.
+    """
+
+    counts = {"public": 0, "team_internal": 0, "restricted": 0}
+    for item in items:
+        scope = item.share_scope
+        key = (
+            scope.value
+            if isinstance(scope, KnowledgeShareScope)
+            else str(scope or "public").lower()
+        )
+        if key not in counts:
+            key = "public"
+        counts[key] += 1
+    counts["total"] = sum(counts.values())
+    if counts["total"] == 0:
+        return {"counts": counts, "summary": ""}
+    bits: list[str] = []
+    for key in ("public", "team_internal", "restricted"):
+        if counts[key]:
+            bits.append(f"{key} {counts[key]}건")
+    summary = (
+        f"근거 자료 {counts['total']}건 ({' · '.join(bits)})."
+        if bits
+        else f"근거 자료 {counts['total']}건."
+    )
+    if counts["restricted"]:
+        summary += " 🔒 공개 제한 자료가 포함돼 있어 외부 채널 인용 금지."
+    elif counts["team_internal"]:
+        summary += " 🔒 team-internal 항목은 vault link 로만 참조."
+    return {"counts": counts, "summary": summary}
+
+
 def vault_only_metadata(
     item: EngineeringKnowledgeItem,
 ) -> Mapping[str, Any]:
@@ -300,5 +345,6 @@ __all__ = [
     "build_rejected_quality_gate_audit",
     "evaluate_quality_gate",
     "shareable_external_payload",
+    "summarize_share_boundary",
     "vault_only_metadata",
 ]

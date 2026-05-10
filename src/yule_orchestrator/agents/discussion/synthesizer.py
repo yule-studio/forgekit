@@ -64,6 +64,16 @@ class DiscussionSynthesis:
     - ``role_perspectives``: 영역별 관점 (backend/frontend/...) — 설계
       논의 출력에 사용.
     - ``blockers``: pack의 blocker + synthesizer가 발견한 blocker.
+    - ``knowledge_evidence_block``: ``ContextPack.format_knowledge_evidence_block``
+      결과를 미리 만들어 둔 마크다운 블록. operator-facing surface 가
+      response_text 외에 따로 PR body / Obsidian decision note 등에
+      그대로 끼워 넣을 수 있도록 노출한다.
+    - ``knowledge_short_summary``: 한 줄 요약 ("근거 자료 N건 (public ...) — ...").
+      운영자가 본문 펼치기 전에 share_scope 분포 + 상위 자료를 한 눈에
+      보게 하는 용도. response_text 안에도 같은 한 줄이 포함된다.
+    - ``share_boundary``: ``ContextPack.share_boundary_breakdown()`` 결과
+      그대로. 외부 publisher (status poster / digest hook) 가 이 turn 의
+      자료 boundary 분포를 그대로 쓸 수 있도록 carries through.
     """
 
     mode: DiscussionMode
@@ -76,6 +86,9 @@ class DiscussionSynthesis:
     role_perspectives: Mapping[str, str] = field(default_factory=dict)
     blockers: Sequence[str] = field(default_factory=tuple)
     suggested_handoff_role: Optional[str] = None
+    knowledge_evidence_block: str = ""
+    knowledge_short_summary: str = ""
+    share_boundary: Mapping[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Mapping[str, object]:
         return {
@@ -89,6 +102,9 @@ class DiscussionSynthesis:
             "role_perspectives": dict(self.role_perspectives),
             "blockers": list(self.blockers),
             "suggested_handoff_role": self.suggested_handoff_role,
+            "knowledge_evidence_block": self.knowledge_evidence_block,
+            "knowledge_short_summary": self.knowledge_short_summary,
+            "share_boundary": dict(self.share_boundary),
         }
 
 
@@ -167,6 +183,7 @@ def _synthesize_clarification(
             "정보가 충분해지면 다시 분류",
         ),
         blockers=tuple(pack.blockers),
+        share_boundary=dict(pack.share_boundary_breakdown()),
     )
 
 
@@ -179,15 +196,24 @@ def _synthesize_research(
     followups = _research_followups(pack)
     body_lines = [
         f"좋아요. \"{topic}\"는 코드 변경 전에 자료부터 모으는 단계로 받겠습니다.",
-        "",
-        "모을 자료 후보:",
     ]
+    short_summary = pack.knowledge_short_summary()
+    if short_summary:
+        body_lines.append(f"_이미 모인 자료: {short_summary}_")
+    body_lines.append("")
+    body_lines.append("모을 자료 후보:")
     if followups:
         body_lines.extend(f"- {item}" for item in followups)
     else:
         body_lines.append(
             "- 우선 사용자 메시지의 키워드로 1차 검색을 돌리고, 결과를 함께 보면서 좁혀 갈게요."
         )
+    evidence_block = pack.format_knowledge_evidence_block(
+        heading="이미 vault 에 있는 근거 자료"
+    )
+    if evidence_block:
+        body_lines.append("")
+        body_lines.append(evidence_block)
     body_lines.append("")
     body_lines.append(
         "정리한 결과는 운영-리서치 thread와 Obsidian에 남기고, 그때 구현 여부를 다시 결정하시면 됩니다."
@@ -209,6 +235,9 @@ def _synthesize_research(
         research_followups=tuple(followups),
         blockers=tuple(pack_blockers),
         suggested_handoff_role=None,
+        knowledge_evidence_block=evidence_block,
+        knowledge_short_summary=short_summary,
+        share_boundary=dict(pack.share_boundary_breakdown()),
     )
 
 
@@ -221,11 +250,16 @@ def _synthesize_discussion(
     next_actions = _discussion_next_actions(pack)
     research_followups = _research_followups(pack)
 
+    short_summary = pack.knowledge_short_summary()
+    evidence_block = pack.format_knowledge_evidence_block()
+
     body_lines = [
         f"좋아요. \"{topic}\"는 토의로 받아 다음 단계를 함께 정해 보겠습니다.",
     ]
     rationale_short = _truncate(classification.rationale, 140)
     body_lines.append(f"_분류 근거: {rationale_short}_")
+    if short_summary:
+        body_lines.append(f"_{short_summary}_")
     body_lines.append("")
 
     if perspectives:
@@ -254,6 +288,10 @@ def _synthesize_discussion(
             )
         body_lines.append("")
 
+    if evidence_block:
+        body_lines.append(evidence_block)
+        body_lines.append("")
+
     body_lines.append("다음에 할 수 있는 선택:")
     for action in next_actions:
         body_lines.append(f"- {action}")
@@ -266,6 +304,9 @@ def _synthesize_discussion(
         research_followups=tuple(research_followups),
         role_perspectives=dict(perspectives),
         blockers=tuple(pack.blockers),
+        knowledge_evidence_block=evidence_block,
+        knowledge_short_summary=short_summary,
+        share_boundary=dict(pack.share_boundary_breakdown()),
     )
 
 
@@ -274,15 +315,25 @@ def _synthesize_implementation(
     classification: DiscussionModeMatch,
 ) -> DiscussionSynthesis:
     topic = _short_topic(pack.current_message)
+    short_summary = pack.knowledge_short_summary()
+    evidence_block = pack.format_knowledge_evidence_block(
+        heading="이번 결정 근거 자료"
+    )
     body_lines = [
         f"\"{topic}\"는 구현 후보로 보입니다. 곧바로 코드를 만지지는 않고, "
         "권한 제안을 먼저 만들어 보여 드릴게요.",
-        "",
-        "다음 단계:",
-        "- tech-lead가 어느 역할(executor)이 맞을지 추천",
-        "- 사용자가 `수정 승인` 또는 `이대로 구현 진행`이라 답하면 코딩 작업으로 넘김",
-        "- 그 전까지는 어떤 파일도 수정하지 않습니다",
     ]
+    if short_summary:
+        body_lines.append(f"_결정 근거 요약: {short_summary}_")
+    body_lines.extend(
+        [
+            "",
+            "다음 단계:",
+            "- tech-lead가 어느 역할(executor)이 맞을지 추천",
+            "- 사용자가 `수정 승인` 또는 `이대로 구현 진행`이라 답하면 코딩 작업으로 넘김",
+            "- 그 전까지는 어떤 파일도 수정하지 않습니다",
+        ]
+    )
     if pack.write_blocked_reason:
         body_lines.append("")
         body_lines.append(f"_쓰기 차단 사유: {pack.write_blocked_reason}_")
@@ -291,6 +342,9 @@ def _synthesize_implementation(
     if suggested_role:
         body_lines.append("")
         body_lines.append(f"_초기 추천 executor: `{suggested_role}` (권한 제안 단계에서 재계산)_")
+    if evidence_block:
+        body_lines.append("")
+        body_lines.append(evidence_block)
     return DiscussionSynthesis(
         mode=DiscussionMode.IMPLEMENTATION_CANDIDATE,
         rationale=classification.rationale,
@@ -303,6 +357,9 @@ def _synthesize_implementation(
         implementation_ready=True,
         blockers=tuple(blockers),
         suggested_handoff_role=suggested_role,
+        knowledge_evidence_block=evidence_block,
+        knowledge_short_summary=short_summary,
+        share_boundary=dict(pack.share_boundary_breakdown()),
     )
 
 

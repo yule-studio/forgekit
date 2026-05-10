@@ -6,6 +6,10 @@ Produces a short markdown block per role. Rules:
   * Each line carries title / importance / source name + URL.
   * Body refers the reader to the full Obsidian document — Discord
     is *not* where the long-form knowledge note lives.
+  * Each digest carries a share-boundary footer when any
+    `team_internal` or `restricted` items appear so the operator can
+    see "이 채널에 떠 있는 자료 5건 중 1건은 vault 안에서만 본다" 를
+    스크롤 없이 파악할 수 있다.
   * No actual Discord posting happens here. The post-side wiring
     (gateway / status-poster) is left for follow-up so the surface
     stays test-friendly and offline.
@@ -13,7 +17,7 @@ Produces a short markdown block per role. Rules:
 
 from __future__ import annotations
 
-from typing import Iterable, List, Sequence
+from typing import Iterable, List, Mapping, Sequence
 
 from .models import EngineeringKnowledgeItem, Importance, KnowledgeShareScope
 
@@ -62,6 +66,56 @@ def _format_line(index: int, item: EngineeringKnowledgeItem) -> str:
     )
 
 
+def share_boundary_breakdown(
+    items: Sequence[EngineeringKnowledgeItem],
+) -> Mapping[str, int]:
+    """Count digest items per ``share_scope``.
+
+    Returns a dict that always carries 4 keys (`public`,
+    `team_internal`, `restricted`, `total`) so callers can dispatch
+    on the value without a missing-key check. Sums to ``len(items)``
+    even when the digest's own daily-limit truncation would hide
+    items downstream — the caller controls truncation, this helper
+    just classifies what it received.
+    """
+
+    counts = {"public": 0, "team_internal": 0, "restricted": 0}
+    for item in items:
+        scope = item.share_scope
+        key = scope.value if isinstance(scope, KnowledgeShareScope) else str(scope or "public").lower()
+        if key not in counts:
+            key = "public"
+        counts[key] += 1
+    counts["total"] = sum(counts.values())
+    return counts
+
+
+def _share_boundary_footer(breakdown: Mapping[str, int]) -> str:
+    """One-line footer summarising the digest's share-boundary mix.
+
+    Empty when everything is `public` (no operator action needed).
+    Otherwise lists the non-public counts so the operator knows the
+    digest contains material that should not be copy-pasted out of
+    Discord verbatim.
+    """
+
+    bits: List[str] = []
+    for key, label in (
+        ("team_internal", "🔒 team-internal"),
+        ("restricted", "🔒 공개 제한"),
+    ):
+        value = breakdown.get(key, 0)
+        if value:
+            bits.append(f"{label} {value}건")
+    if not bits:
+        return ""
+    public_count = breakdown.get("public", 0)
+    return (
+        f"_share boundary — public {public_count}건 · {' · '.join(bits)}. "
+        "외부 채널 복사 시 vault link 로만 참조하세요._"
+    )
+
+
 def render_daily_role_summary(
     role_id: str,
     items: Sequence[EngineeringKnowledgeItem],
@@ -91,6 +145,10 @@ def render_daily_role_summary(
     lines.append(
         "_상세 문서와 실습 가이드는 Obsidian `engineering-knowledge` 노트를 참고하세요._"
     )
+    if visible:
+        footer = _share_boundary_footer(share_boundary_breakdown(visible))
+        if footer:
+            lines.append(footer)
     if extra_note:
         lines.append("")
         lines.append(extra_note)
@@ -117,4 +175,5 @@ def render_multi_role_summary(
 __all__ = [
     "render_daily_role_summary",
     "render_multi_role_summary",
+    "share_boundary_breakdown",
 ]

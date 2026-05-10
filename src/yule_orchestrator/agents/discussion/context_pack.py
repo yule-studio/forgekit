@@ -300,6 +300,69 @@ class ContextPack:
             lines.extend(_format_knowledge_evidence_lines(ref))
         return "\n".join(lines)
 
+    def share_boundary_breakdown(self) -> Mapping[str, int]:
+        """``relevant_knowledge`` 항목 수를 share_scope 별로 집계한다.
+
+        외부 surface (Discord 다이제스트 / 합성 응답 / PR body) 가
+        "이번 응답에 인용한 자료가 어떤 boundary 안에 있는지" 를
+        한 눈에 보여줄 때 쓴다. 키는 항상 4 종 (`public`,
+        `team_internal`, `restricted`, `total`) 이 모두 들어 있고
+        값은 정수다 — 호출자가 dict[k] 접근으로 바로 쓸 수 있다.
+        """
+
+        counts = {"public": 0, "team_internal": 0, "restricted": 0}
+        for ref in self.relevant_knowledge:
+            scope = (ref.share_scope or "public").lower()
+            if scope not in counts:
+                scope = "public"
+            counts[scope] += 1
+        counts["total"] = sum(counts.values())
+        return counts
+
+    def knowledge_short_summary(self, *, max_topics: int = 2) -> str:
+        """근거 자료를 한 줄로 요약한다 — 합성 응답 / 운영 dashboard 용.
+
+        - 총 건수 + share_scope 별 카운트 (0 인 scope 는 생략).
+        - 상위 ``max_topics`` 건의 제목 / topic_key — share_scope 정책을
+          그대로 따른다 (restricted 는 topic_key 만, team_internal/public
+          은 제목).
+        - relevant_knowledge 가 비어 있으면 빈 문자열.
+
+        예시 출력:
+        ``"근거 자료 3건 (public 2 · team_internal 1) — Spring Security 인증 흐름 외 1건"``
+        """
+
+        refs = list(self.relevant_knowledge)
+        if not refs:
+            return ""
+        breakdown = self.share_boundary_breakdown()
+        scope_bits: list[str] = []
+        for scope_key in ("public", "team_internal", "restricted"):
+            value = breakdown.get(scope_key, 0)
+            if value:
+                scope_bits.append(f"{scope_key} {value}")
+        scope_part = f" ({' · '.join(scope_bits)})" if scope_bits else ""
+        topic_labels: list[str] = []
+        for ref in refs[: max(max_topics, 0)]:
+            scope = (ref.share_scope or "public").lower()
+            if scope == "restricted":
+                topic_labels.append(f"🔒 `{ref.topic_key or 'restricted'}`")
+            else:
+                title = (ref.title or "(제목 없음)").strip()
+                if scope == "team_internal":
+                    topic_labels.append(f"{title} (🔒 team-internal)")
+                else:
+                    topic_labels.append(title)
+        topic_part = ""
+        if topic_labels:
+            extra = max(len(refs) - len(topic_labels), 0)
+            preview = ", ".join(topic_labels)
+            if extra:
+                topic_part = f" — {preview} 외 {extra}건"
+            else:
+                topic_part = f" — {preview}"
+        return f"근거 자료 {breakdown['total']}건{scope_part}{topic_part}"
+
 
 # ---------------------------------------------------------------------------
 # Builder — 외부 source는 callable seam으로 주입

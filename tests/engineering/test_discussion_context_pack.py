@@ -416,6 +416,71 @@ class ContextPackEvidenceSurfaceTestCase(unittest.TestCase):
         self.assertIn("요청 역할과 정확히 일치", knowledge["evidence_labels"])
 
 
+class ContextPackShortSummaryTestCase(unittest.TestCase):
+    """`knowledge_short_summary` + `share_boundary_breakdown` 회귀 가드."""
+
+    def _ref(self, **overrides) -> EngineeringKnowledgeRef:
+        base = dict(
+            title="Spring Security 인증 흐름",
+            role="backend-engineer",
+            topic_key="spring-auth",
+            source_url="https://example.com/spring-auth",
+            source_name="Spring Docs",
+            summary="OAuth2 정리",
+            share_scope="public",
+        )
+        base.update(overrides)
+        return EngineeringKnowledgeRef(**base)
+
+    def test_empty_pack_returns_empty_summary_and_zero_breakdown(self) -> None:
+        pack = ContextPack(current_message="hi")
+        self.assertEqual(pack.knowledge_short_summary(), "")
+        breakdown = pack.share_boundary_breakdown()
+        self.assertEqual(breakdown["public"], 0)
+        self.assertEqual(breakdown["team_internal"], 0)
+        self.assertEqual(breakdown["restricted"], 0)
+        self.assertEqual(breakdown["total"], 0)
+
+    def test_summary_lists_top_titles_and_scope_counts(self) -> None:
+        pack = ContextPack(
+            current_message="auth",
+            relevant_knowledge=(
+                self._ref(),
+                self._ref(
+                    title="사내 OAuth playbook",
+                    topic_key="company-oauth",
+                    share_scope="team_internal",
+                ),
+                self._ref(
+                    title="incident-2026-04-29",
+                    topic_key="incident-2026-04-29",
+                    share_scope="restricted",
+                    share_scope_reason="PII",
+                ),
+            ),
+        )
+        summary = pack.knowledge_short_summary()
+        self.assertIn("근거 자료 3건", summary)
+        self.assertIn("public 1", summary)
+        self.assertIn("team_internal 1", summary)
+        self.assertIn("restricted 1", summary)
+        # 상위 2 건의 제목이 들어가지만 restricted 의 제목/url 은 절대 새지 않는다.
+        self.assertIn("Spring Security 인증 흐름", summary)
+        self.assertIn("사내 OAuth playbook", summary)
+        self.assertIn("team-internal", summary)
+        self.assertNotIn("incident-2026-04-29", summary)
+
+    def test_summary_max_topics_caps_preview(self) -> None:
+        refs = tuple(
+            self._ref(topic_key=f"k{i}", title=f"item {i}") for i in range(4)
+        )
+        pack = ContextPack(current_message="x", relevant_knowledge=refs)
+        summary = pack.knowledge_short_summary(max_topics=1)
+        self.assertIn("외 3건", summary)
+        self.assertIn("item 0", summary)
+        self.assertNotIn("item 1", summary)
+
+
 class ContextPackKnowledgeMatchUnwrapTestCase(unittest.TestCase):
     """``KnowledgeRetriever.with_signals`` 가 ContextPack 까지 흘러들어와야 한다."""
 

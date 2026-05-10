@@ -106,6 +106,7 @@ from .obsidian import (
     build_rejected_quality_gate_audit,
     evaluate_quality_gate,
     shareable_external_payload,
+    summarize_share_boundary,
     vault_only_metadata,
 )
 from .renderer import (
@@ -195,6 +196,7 @@ __all__ = [
     "build_rejected_quality_gate_audit",
     "evaluate_quality_gate",
     "shareable_external_payload",
+    "summarize_share_boundary",
     "vault_only_metadata",
     # renderer
     "RendererError",
