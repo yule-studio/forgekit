@@ -115,6 +115,11 @@ from .renderer import (
     render_frontmatter,
     required_sections,
 )
+from .title_normalizer import (
+    DEFAULT_TITLE_MAX_CHARS,
+    canonical_engineering_title,
+    display_title_for,
+)
 from .source_registry import (
     COMMON_CORE_SOURCES,
     SUPPORTED_ROLES,
@@ -203,6 +208,10 @@ __all__ = [
     "render_engineering_knowledge_note",
     "render_frontmatter",
     "required_sections",
+    # title normalizer
+    "DEFAULT_TITLE_MAX_CHARS",
+    "canonical_engineering_title",
+    "display_title_for",
     # source registry
     "COMMON_CORE_SOURCES",
     "SUPPORTED_ROLES",

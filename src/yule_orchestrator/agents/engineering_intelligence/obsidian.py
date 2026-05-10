@@ -34,6 +34,7 @@ from .models import (
     KnowledgeShareScope,
 )
 from .renderer import RendererError, render_engineering_knowledge_note
+from .title_normalizer import display_title_for
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +151,7 @@ def shareable_external_payload(
     if scope == KnowledgeShareScope.PUBLIC:
         base.update(
             {
-                "title": item.title,
+                "title": display_title_for(item),
                 "summary": item.summary,
                 "source_name": item.source_name,
                 "source_url": item.source_url,
@@ -159,7 +160,7 @@ def shareable_external_payload(
     elif scope == KnowledgeShareScope.TEAM_INTERNAL:
         base.update(
             {
-                "title": item.title,
+                "title": display_title_for(item),
                 "source_name": item.source_name,
                 "source_url": item.source_url,
                 "internal_only": True,
@@ -304,10 +305,15 @@ def build_engineering_knowledge_write_request(
         "shareable_external_payload": dict(shareable_external_payload(item)),
     }
 
+    # ``request.title`` is the visible label the worker echoes back to
+    # the operator surface. The path resolver still runs its own
+    # ``YYYY-MM-DD_<kind>-<slug>.md`` filename rule on top, so stripping
+    # the date / aggregator label here only changes the human-facing
+    # title — never the on-disk filename.
     return ObsidianWriteRequest(
         session_id=session_id,
         note_kind=NOTE_KIND_ENGINEERING_KNOWLEDGE,
-        title=item.title[:80],
+        title=display_title_for(item)[:80],
         project=project,
         layout=layout,
         metadata=metadata,

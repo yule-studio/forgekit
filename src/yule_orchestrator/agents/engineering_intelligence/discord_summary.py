@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Iterable, List, Mapping, Sequence
 
 from .models import EngineeringKnowledgeItem, Importance, KnowledgeShareScope
+from .title_normalizer import display_title_for
 
 
 _IMPORTANCE_BADGES = {
@@ -61,7 +62,7 @@ def _format_line(index: int, item: EngineeringKnowledgeItem) -> str:
             f"(`{item.topic_key}`) — {badge}{scope_tag}"
         )
     return (
-        f"{index}. **{item.title}** — {badge} · "
+        f"{index}. **{display_title_for(item)}** — {badge} · "
         f"[{item.source_name}]({item.source_url}){scope_tag}"
     )
 

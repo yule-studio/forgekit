@@ -225,13 +225,18 @@ class VaultOnlyMetadataTests(unittest.TestCase):
 
 
 class DiscordSummaryShareScopeTests(unittest.TestCase):
-    def test_public_line_unchanged(self) -> None:
+    def test_public_line_uses_canonical_title(self) -> None:
         text = render_daily_role_summary(
             "backend-engineer",
             [_item()],
             today="2026-04-30",
         )
-        self.assertIn("2026-04-29 고객 데이터 노출 사고", text)
+        # The fixture title carries a leading ``2026-04-29`` aggregator
+        # date — the canonical visible title scrubs it out so the digest
+        # bullet reads as the article topic. The header still carries
+        # the digest's ``today`` marker for context.
+        self.assertIn("**고객 데이터 노출 사고 — 내부 분석**", text)
+        self.assertNotIn("**2026-04-29", text)
         self.assertNotIn("team-internal", text)
 
     def test_team_internal_keeps_title_with_tag(self) -> None:
@@ -240,7 +245,8 @@ class DiscordSummaryShareScopeTests(unittest.TestCase):
             [_item(share_scope=KnowledgeShareScope.TEAM_INTERNAL)],
             today="2026-04-30",
         )
-        self.assertIn("2026-04-29 고객 데이터 노출 사고", text)
+        self.assertIn("**고객 데이터 노출 사고 — 내부 분석**", text)
+        self.assertNotIn("**2026-04-29", text)
         self.assertIn("team-internal", text)
 
     def test_restricted_line_hides_title_and_url(self) -> None:

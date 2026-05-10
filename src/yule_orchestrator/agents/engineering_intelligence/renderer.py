@@ -37,6 +37,7 @@ from .models import (
     EngineeringKnowledgeItem,
     KnowledgeShareScope,
 )
+from .title_normalizer import display_title_for
 
 
 _MAX_QUOTATION_CHARS = 1200
@@ -112,10 +113,15 @@ def render_frontmatter(item: EngineeringKnowledgeItem) -> str:
     an item's body is safe to ship outside the vault. The body
     renderer separately blanks restricted sections — frontmatter alone
     is the discovery hint, never the enforcement.
+
+    The ``title`` line is the **canonical visible title** (date /
+    aggregator label / Re: / 이슈: scrubbed). The filename written by
+    the path resolver still keeps its own ``YYYY-MM-DD_`` prefix —
+    only the human-facing title is rewritten here.
     """
 
     lines: List[str] = [
-        f"title: {_quote(item.title)}",
+        f"title: {_quote(display_title_for(item))}",
         "kind: engineering-knowledge",
         f"status: {item.knowledge_status.value}",
         f"role: {_quote(item.role)}",
@@ -441,8 +447,11 @@ def _render_references(item: EngineeringKnowledgeItem) -> str:
 
 def _doc_header(item: EngineeringKnowledgeItem) -> str:
     today = item.collected_at.split("T", 1)[0] if item.collected_at else ""
+    # H1 is the canonical visible title — date / aggregator label /
+    # Re: / 이슈: scrubbed. The collected_at date still surfaces in the
+    # version table row below.
     lines = [
-        f"# {_redact(item.title)}",
+        f"# {display_title_for(item)}",
         "",
         "| 문서 버전 | 작성일 | 작성자 | 주요 변경 사항 |",
         "| --- | --- | --- | --- |",
