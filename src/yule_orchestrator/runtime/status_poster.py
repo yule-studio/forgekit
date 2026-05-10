@@ -57,7 +57,16 @@ from ..agents.job_queue.approval_discord_poster import (
 )
 from .circuit_breaker import CircuitSnapshot
 from .fallback import FallbackAuditRecord
-from .status import RuntimeStatusReport
+from .status import (
+    AUTONOMY_OUTCOME_ERROR,
+    AUTONOMY_OUTCOME_LOCKED,
+    CompletionFunnelSummary,
+    OperatorAction,
+    RuntimeStatusReport,
+    render_autonomy_summary_markdown,
+    render_runtime_status_compact,
+    summarize_operator_actions,
+)
 from .status_summary import render_status_summary_markdown
 
 
@@ -246,10 +255,17 @@ def compute_status_dedup_key(
       * service_id list of currently circuit-open services
       * job_id list of failed_terminal rows in ``failed_recent``
       * fallback_id list across the supplied fallback records
+      * Round 4: autonomy producer tick_ids that errored, sources
+        that landed on locked_by_other (persistent lock contention),
+        and the set of session_ids parked on a non-tick funnel
+        status (``blocked`` / ``needs_approval``). Tick *ids* are
+        stable strings, so a tick that's already been reported once
+        won't re-trigger a post.
 
-    What does NOT go in: timestamps, ages, last_reason text. The
-    point of the dedup is "did the operator-actionable state
-    change?", not "is the snapshot byte-identical?".
+    What does NOT go in: timestamps, ages, last_reason text,
+    successful dispatches. The point of the dedup is "did the
+    operator-actionable state change?", not "is the snapshot
+    byte-identical?".
     """
 
     circuit_map = dict(circuits) if circuits else {}
@@ -266,6 +282,20 @@ def compute_status_dedup_key(
         f.job_id for f in report.failed_recent if f.state == "failed_terminal"
     )
     fallback_ids = sorted(record.fallback_id for record in fallback_seq)
+    autonomy_errored_ticks = sorted(
+        t.tick_id for t in report.autonomy_recent if t.error
+    )
+    autonomy_locked = sorted({
+        f"{d.source}:{d.session_id or d.executor_role or d.branch_hint}"
+        for t in report.autonomy_recent
+        for d in t.dispatches
+        if d.outcome == AUTONOMY_OUTCOME_LOCKED
+    })
+    funnel_parked = sorted({
+        f"{c.completion_status}:{c.session_id or c.job_id}"
+        for c in report.completion_funnel_recent
+        if c.completion_status in {"blocked", "needs_approval"}
+    })
 
     payload = {
         "profile": report.profile,
@@ -273,6 +303,9 @@ def compute_status_dedup_key(
         "circuit_open_services": open_circuits,
         "failed_terminal_jobs": failed_terminal_jobs,
         "fallback_ids": fallback_ids,
+        "autonomy_errored_ticks": autonomy_errored_ticks,
+        "autonomy_locked_dispatches": autonomy_locked,
+        "funnel_parked_sessions": funnel_parked,
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
@@ -304,6 +337,19 @@ def is_clean_state(
     if any(f.state == "failed_terminal" for f in report.failed_recent):
         return False
     if fallback_seq:
+        return False
+    if any(t.error for t in report.autonomy_recent):
+        return False
+    if any(
+        d.outcome in {AUTONOMY_OUTCOME_ERROR, AUTONOMY_OUTCOME_LOCKED}
+        for t in report.autonomy_recent
+        for d in t.dispatches
+    ):
+        return False
+    if any(
+        c.completion_status in {"blocked", "needs_approval"}
+        for c in report.completion_funnel_recent
+    ):
         return False
     return True
 
@@ -628,6 +674,29 @@ class StatusPostOutcome:
     posted_message_id: Optional[int] = None
 
 
+def _render_top_action_banner(report: RuntimeStatusReport) -> str:
+    """Return a one-line "🚨 do this first" banner or empty string.
+
+    Picks the highest-severity operator action and renders it as a
+    block-quote so the Discord notification preview surfaces the
+    next step. Returns ``""`` when nothing operator-actionable is
+    going on so a healthy snapshot stays compact.
+    """
+
+    actions = summarize_operator_actions(report)
+    if not actions:
+        return ""
+    top = actions[0]
+    icon = top.icon or "!"
+    extra = (
+        f" (+{len(actions) - 1} more action(s))" if len(actions) > 1 else ""
+    )
+    return (
+        f"> {icon} **[{top.severity}] {top.headline}**{extra}\n"
+        f"> 다음 단계: `{top.next_step}`"
+    )
+
+
 async def post_runtime_status_summary(
     *,
     report: RuntimeStatusReport,
@@ -669,6 +738,14 @@ async def post_runtime_status_summary(
         fallbacks=fallbacks,
         profile_label=profile_label,
     )
+    # Lead the post with the highest-severity operator action so a
+    # mobile reader sees the next step in the notification preview.
+    top_action_banner = _render_top_action_banner(report)
+    if top_action_banner:
+        markdown = top_action_banner + "\n\n" + markdown
+    autonomy_markdown = render_autonomy_summary_markdown(report)
+    if autonomy_markdown:
+        markdown = markdown + "\n\n" + autonomy_markdown
     sender = post_fn or build_status_post_fn()
 
     try:
@@ -786,6 +863,100 @@ def collect_recent_fallback_audits(
     return tuple(record for _key, record in records[: max(0, int(audit_limit))])
 
 
+# ---------------------------------------------------------------------------
+# Completion funnel aggregator — pulls recent funnel decisions from
+# session.extra so the supervisor's status post can surface "what the
+# runtime decided to do after each completion" alongside the producer
+# tick view. Mirrors :func:`collect_recent_fallback_audits` so the two
+# read paths share the same shape and tolerate the same "session_lister
+# missing" / "extra bucket malformed" failure modes without crashing
+# the status post.
+# ---------------------------------------------------------------------------
+
+
+def collect_recent_completion_funnel(
+    *,
+    session_lister: Optional[Callable[..., Sequence[Any]]] = None,
+    session_limit: int = 50,
+    funnel_limit: int = 8,
+) -> Tuple[CompletionFunnelSummary, ...]:
+    """Scan recent sessions and return their funnel-decision history.
+
+    Latest first; capped to *funnel_limit* entries so the markdown
+    footer doesn't grow unbounded for a session with many turns.
+    Tests inject *session_lister* to feed a controlled list. Any
+    error during scanning is logged and degraded into "no funnel
+    data" so the status post still goes out.
+    """
+
+    if session_lister is None:
+        try:
+            from ..agents.workflow_state import list_sessions as _ls
+
+            session_lister = _ls
+        except Exception:  # noqa: BLE001 - partial install fallback
+            return ()
+
+    try:
+        sessions = session_lister(limit=session_limit) if session_lister else ()
+    except TypeError:
+        sessions = session_lister() if session_lister else ()
+    except Exception:  # noqa: BLE001 - never crash status post
+        logger.warning(
+            "status poster: session_lister raised; no funnel rows in summary",
+            exc_info=True,
+        )
+        return ()
+
+    rows: list[Tuple[str, CompletionFunnelSummary]] = []
+    for session in sessions or ():
+        extra = getattr(session, "extra", None) or {}
+        block = extra.get("completion_funnel") if isinstance(extra, dict) else None
+        if not isinstance(block, Mapping):
+            continue
+        history = block.get("history")
+        if not isinstance(history, list):
+            continue
+        for entry in history:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                summary = CompletionFunnelSummary(
+                    session_id=str(
+                        entry.get("session_id")
+                        or getattr(session, "session_id", "")
+                        or ""
+                    ),
+                    job_id=str(entry.get("job_id") or ""),
+                    job_type=str(entry.get("job_type") or ""),
+                    completion_status=str(
+                        entry.get("completion_status") or ""
+                    ),
+                    ticked=bool(entry.get("ticked", False)),
+                    reason=str(entry.get("reason") or ""),
+                    recommended_source=(
+                        str(entry["recommended_source"])
+                        if entry.get("recommended_source")
+                        else None
+                    ),
+                    producer_summary=(
+                        str(entry["producer_summary"])
+                        if entry.get("producer_summary")
+                        else None
+                    ),
+                    at=str(entry.get("at") or ""),
+                )
+            except Exception:  # noqa: BLE001 - skip malformed rows
+                continue
+            if not summary.completion_status:
+                continue
+            sort_key = summary.at or ""
+            rows.append((sort_key, summary))
+
+    rows.sort(key=lambda pair: pair[0], reverse=True)
+    return tuple(record for _key, record in rows[: max(0, int(funnel_limit))])
+
+
 __all__ = (
     "GUILD_ID_ENV",
     "STATUS_CHANNEL_ID_ENV",
@@ -806,6 +977,7 @@ __all__ = (
     "StatusPosterStateStore",
     "build_status_channel_resolver",
     "build_status_post_fn",
+    "collect_recent_completion_funnel",
     "collect_recent_fallback_audits",
     "compute_status_dedup_key",
     "is_clean_state",

@@ -26,12 +26,21 @@ from typing import Any, Iterable, Mapping, Optional, Sequence
 
 from ..agents.job_queue import (
     ApprovalWorker,
+    AutonomyLockRegistry,
+    AutonomyProducer,
     CodingExecutorWorker,
+    DecisionPortBuildTrace,
+    ENV_LIVE_ENABLED,
     HeartbeatStore,
     JobQueue,
     ObsidianWriterWorker,
     ResearchWorker,
     RoleTakeWorker,
+    WorkflowSessionState,
+    build_completion_funnel,
+    build_decision_port_from_env,
+    build_discussion_followup_dispatcher,
+    claude_subprocess_factory_from_env,
     default_render_fn,
     default_vault_root_resolver,
     default_write_fn,
@@ -126,12 +135,18 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
         post_fn, post_interval = _build_supervisor_status_post(
             queue=queue, heartbeats=heartbeats
         )
+        autonomy_tick_fn, autonomy_interval = _build_autonomy_producer_tick(
+            queue=queue, heartbeats=heartbeats
+        )
         await run_supervisor_watch_loop(
             heartbeat_store=heartbeats,
             job_queue=queue,
             shutdown_event=shutdown_event,
             status_post_fn=post_fn,
             status_post_interval_seconds=post_interval,
+            autonomy_producer_tick_fn=autonomy_tick_fn,
+            autonomy_producer_interval_seconds=autonomy_interval,
+            autonomy_producer_on_report=_supervisor_autonomy_on_report,
         )
         return EXIT_OK
 
@@ -633,19 +648,32 @@ def _build_supervisor_status_post(
         # Lazy imports keep the supervisor branch importable when
         # status posting is off (no Discord deps loaded).
         from .circuit_breaker import load_persisted_circuit_snapshots
-        from .status import build_runtime_status
+        from .status import build_runtime_status, render_runtime_status_compact
         from .status_poster import (
+            collect_recent_completion_funnel,
             collect_recent_fallback_audits,
             post_runtime_status_summary,
         )
 
         circuits = load_persisted_circuit_snapshots()
+        funnel_recent = collect_recent_completion_funnel()
         report = build_runtime_status(
             queue=queue,
             heartbeats=heartbeats,
             circuit_snapshots=circuits,
+            completion_funnel_recent=funnel_recent,
         )
         fallbacks = collect_recent_fallback_audits()
+        # Always emit the compact digest to journalctl so an operator
+        # without Discord access can still read "what's the runtime
+        # doing right now?" even when the dedup gate skips the post.
+        try:
+            for line in render_runtime_status_compact(report).splitlines():
+                logger.info("supervisor status: %s", line)
+        except Exception:  # noqa: BLE001 - never crash status post on render
+            logger.warning(
+                "supervisor compact status render raised", exc_info=True
+            )
         outcome = await post_runtime_status_summary(
             report=report,
             circuits=circuits,
@@ -663,6 +691,198 @@ def _build_supervisor_status_post(
             )
 
     return _post_once, interval
+
+
+def _supervisor_autonomy_on_report(report: Any) -> None:
+    """Hook the supervisor watch loop calls after every autonomy tick.
+
+    Pipes the producer report into the process-local
+    :class:`RuntimeAutonomyJournal` so the next status post sees it,
+    and emits a one-line structured log for ``journalctl`` operators
+    who don't have Discord access. Best-effort: any failure is
+    logged-and-swallowed so a journal hiccup never crashes the
+    supervisor.
+    """
+
+    try:
+        from .status import record_autonomy_report
+
+        record_autonomy_report(report)
+    except Exception:  # noqa: BLE001 - never crash supervisor
+        logger.warning(
+            "supervisor autonomy on_report: journal record raised",
+            exc_info=True,
+        )
+
+    summary_fn = getattr(report, "summary_line", None)
+    if callable(summary_fn):
+        try:
+            logger.info("autonomy producer: %s", summary_fn())
+        except Exception:  # noqa: BLE001
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Round 4 of #73 — autonomy producer tick wiring
+# ---------------------------------------------------------------------------
+#
+# The supervisor watchdog runs the autonomy producer on its own
+# interval so the runtime auto-generates the next coding_execute /
+# discussion follow-up after every completion. The interval is
+# operator-tunable; ``None`` (default) keeps the producer dormant
+# so this PR doesn't change supervisor behaviour for installations
+# that haven't opted in yet.
+
+ENV_AUTONOMY_PRODUCER_ENABLED: str = "YULE_AUTONOMY_PRODUCER_ENABLED"
+ENV_AUTONOMY_PRODUCER_INTERVAL: str = "YULE_AUTONOMY_PRODUCER_INTERVAL_SECONDS"
+DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS: float = 30.0
+
+
+def _build_autonomy_producer_tick(
+    *,
+    queue: JobQueue,
+    heartbeats: HeartbeatStore,
+):
+    """Return ``(tick_fn, interval)`` for the supervisor's autonomy hook.
+
+    Returns ``(None, None)`` unless
+    ``YULE_AUTONOMY_PRODUCER_ENABLED`` is truthy. The producer wires
+    to a single ``CodingExecutorWorker`` instance + the production
+    follow-up dispatcher; the lock registry is process-local so two
+    supervisor restarts naturally start with a clean slate.
+
+    Failures during construction (e.g. missing executor bundle env)
+    log a warning + return the dormant pair — the supervisor still
+    runs sweep / status post, just without the producer tick.
+    """
+
+    import os as _os
+
+    raw_enabled = (_os.environ.get(ENV_AUTONOMY_PRODUCER_ENABLED) or "").strip().lower()
+    if raw_enabled not in {"1", "true", "yes", "on"}:
+        return None, None
+
+    raw_interval = (_os.environ.get(ENV_AUTONOMY_PRODUCER_INTERVAL) or "").strip()
+    interval: float
+    if raw_interval:
+        try:
+            interval = max(5.0, float(raw_interval))
+        except ValueError:
+            interval = DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS
+    else:
+        interval = DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS
+
+    try:
+        coding_bundle = build_coding_executor_bundle()
+        coding_worker = CodingExecutorWorker(
+            queue=queue, heartbeats=heartbeats, **coding_bundle
+        )
+        role_worker = RoleTakeWorker(queue=queue, heartbeats=heartbeats)
+        research_worker = ResearchWorker(queue=queue, heartbeats=heartbeats)
+        followup = build_discussion_followup_dispatcher(
+            role_take_worker=role_worker,
+            research_worker=research_worker,
+        )
+        session_state = WorkflowSessionState()
+        registry = AutonomyLockRegistry()
+        decision_port, decision_trace = build_decision_port_from_env(
+            external_callable_factory=_resolve_external_decision_callable_factory(),
+        )
+        _log_decision_port_trace(decision_trace)
+        producer = AutonomyProducer(
+            session_state=session_state,
+            coding_executor=coding_worker,
+            lock_registry=registry,
+            followup_dispatch=followup,
+            decision_port=decision_port,
+        )
+    except Exception:  # noqa: BLE001 - never crash supervisor startup
+        logger.warning(
+            "autonomy producer construction failed — supervisor will tick "
+            "without producer hook",
+            exc_info=True,
+        )
+        return None, None
+
+    def _tick():
+        return producer.tick()
+
+    return _tick, interval
+
+
+# ---------------------------------------------------------------------------
+# Decision port wiring helpers (env-driven, deterministic-by-default)
+# ---------------------------------------------------------------------------
+#
+# The Claude decision seam is plugged into the autonomy producer by
+# composing a port chain from env. ``build_decision_port_from_env``
+# always returns a port that terminates in the deterministic fallback,
+# so the supervisor's behaviour is unchanged for installations that
+# haven't opted into a record / external tier.
+#
+# The external tier is wired through a factory hook so a follow-up PR
+# can drop a live Claude API client / hosted decision sidecar in
+# without touching this module. The hook is intentionally a no-op in
+# this PR — the operator opting in via env still ends up with a
+# deterministic chain because the factory returns ``None``.
+
+
+def _resolve_external_decision_callable_factory():
+    """Return the factory the seam uses to materialise the live tier.
+
+    Kept as a function (not a constant) so a test or follow-up PR can
+    monkeypatch it without re-importing the module. The default
+    implementation now hands :func:`claude_subprocess_factory_from_env`
+    back — that helper is itself env-gated (via
+    ``YULE_CLAUDE_DECISION_LIVE_ENABLED``), so an operator who hasn't
+    opted in continues to run on the deterministic fallback. Two-key
+    opt-in (provider chain *and* live flag) keeps a typo on either
+    side from surfacing a real shell call.
+    """
+
+    def _factory(env: Mapping[str, str]):
+        return claude_subprocess_factory_from_env(env)
+
+    return _factory
+
+
+def _log_decision_port_trace(
+    trace: DecisionPortBuildTrace,
+    *,
+    env: Optional[Mapping[str, str]] = None,
+) -> None:
+    """Surface the env-derived port composition on supervisor stdout.
+
+    Keeps the operator briefing tight: one line that names the
+    enabled tiers + any tokens the env factory had to skip + the
+    deterministic fallback at the bottom + (when external is enabled)
+    whether the operator also opted in to the live subprocess
+    adapter so the line answers "is the runtime actually about to
+    spawn ``claude -p``?" without having to grep the seam.
+    """
+
+    import os as _os
+
+    source: Mapping[str, str] = env if env is not None else _os.environ
+    enabled = ",".join(trace.enabled) or trace.fallback
+    skipped = (
+        " skipped=" + ",".join(f"{tok}({why})" for tok, why in trace.skipped)
+        if trace.skipped
+        else ""
+    )
+    live_flag = (source.get(ENV_LIVE_ENABLED) or "").strip().lower()
+    live_marker = (
+        " live=on"
+        if live_flag in {"1", "true", "yes", "on"}
+        else " live=off"
+    )
+    logger.info(
+        "claude decision port composed: enabled=%s fallback=%s%s%s",
+        enabled,
+        trace.fallback,
+        skipped,
+        live_marker,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -711,6 +931,9 @@ def parse_args_and_run(argv: Optional[Iterable[str]] = None) -> int:
 
 
 __all__ = (
+    "DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS",
+    "ENV_AUTONOMY_PRODUCER_ENABLED",
+    "ENV_AUTONOMY_PRODUCER_INTERVAL",
     "ENV_CODING_EXECUTOR_REPO_ROOT",
     "ENV_CODING_EXECUTOR_WORKTREE_ROOT",
     "EXIT_INTERNAL_ERROR",
