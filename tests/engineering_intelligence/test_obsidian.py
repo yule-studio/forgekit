@@ -113,6 +113,10 @@ class GatePassTests(unittest.TestCase):
         ei = request.metadata["engineering_intelligence"]
         self.assertEqual(ei["topic_key"], "spring-6-2-virtual-thread")
         self.assertEqual(ei["role"], "backend-engineer")
+        self.assertEqual(
+            ei["canonical_display_title"],
+            "Spring 6.2 Virtual Thread 최신 권장",
+        )
         self.assertIn("rag_tags", ei)
         # L1 autonomy hint.
         self.assertEqual(

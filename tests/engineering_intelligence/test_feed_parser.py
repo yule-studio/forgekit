@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 from yule_orchestrator.agents.engineering_intelligence.feed_parser import (
     BytesFetcher,
     FeedParserError,
+    canonicalize_feed_title,
     make_feed_live_factory,
     parse_atom_bytes,
     parse_feed_bytes,
@@ -165,6 +166,21 @@ class AtomParserTests(unittest.TestCase):
         empty = b'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"/>'
         self.assertEqual(parse_atom_bytes(empty, source=self.source), ())
 
+    def test_title_is_canonicalized_for_operator_surface(self) -> None:
+        atom = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <title>[Release] Spring 6.2 Virtual Thread defaults | Engineering Blog</title>
+    <link rel="alternate" href="https://example.com/posts/vt"/>
+    <updated>2026-05-09T09:30:00Z</updated>
+    <summary>summary</summary>
+  </entry>
+</feed>
+"""
+        items = parse_atom_bytes(atom, source=self.source)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].title, "Spring 6.2 Virtual Thread defaults")
+
 
 # ---------------------------------------------------------------------------
 # RSS parser
@@ -268,6 +284,67 @@ class ParseFeedDispatchTests(unittest.TestCase):
                 source=self.rss_source,
                 transport=ProviderTransport.MANUAL,
             )
+
+
+# ---------------------------------------------------------------------------
+# Title canonicalization
+# ---------------------------------------------------------------------------
+
+
+class CanonicalTitleTests(unittest.TestCase):
+    """Discord 이슈방 / GeekNews surface needs short, prefix-free titles."""
+
+    def test_strips_bracketed_prefix_and_trailing_site_marker(self) -> None:
+        raw = "[번역] Kubernetes probe edge cases | GitHub"
+        self.assertEqual(
+            canonicalize_feed_title(raw),
+            "Kubernetes probe edge cases",
+        )
+
+    def test_strips_paren_notice_and_numeric_prefix(self) -> None:
+        raw = "1. (공지) Node 22 LTS 변경점 - Engineering Blog"
+        self.assertEqual(
+            canonicalize_feed_title(raw),
+            "Node 22 LTS 변경점",
+        )
+
+    def test_release_prefix_and_engineering_blog_suffix(self) -> None:
+        raw = "[Release] Spring 6.2 Virtual Thread defaults | Engineering Blog"
+        self.assertEqual(
+            canonicalize_feed_title(raw),
+            "Spring 6.2 Virtual Thread defaults",
+        )
+
+    def test_collapses_internal_whitespace(self) -> None:
+        raw = "  [번역]\tKubernetes  probe  edge  cases  "
+        self.assertEqual(
+            canonicalize_feed_title(raw),
+            "Kubernetes probe edge cases",
+        )
+
+    def test_falls_back_when_title_is_empty_after_scrub(self) -> None:
+        self.assertEqual(
+            canonicalize_feed_title("[공지]", fallback="Node 22 LTS 변경점"),
+            "Node 22 LTS 변경점",
+        )
+
+    def test_truncates_long_titles_on_phrase_boundary(self) -> None:
+        raw = (
+            "How to tune retry budgets for cross-region failover without "
+            "breaking p99 latency or saturating workers"
+        )
+        out = canonicalize_feed_title(raw, max_chars=48)
+        self.assertTrue(out.endswith("…"))
+        self.assertLessEqual(len(out), 49)
+        # Truncation happens on a word boundary — never mid-word.
+        self.assertFalse(out.rstrip("…").endswith(" "))
+
+    def test_short_title_passes_through_unchanged(self) -> None:
+        raw = "Spring 6.2 가상 스레드"
+        self.assertEqual(canonicalize_feed_title(raw), raw)
+
+    def test_empty_title_with_empty_fallback_stays_empty(self) -> None:
+        self.assertEqual(canonicalize_feed_title("", fallback=""), "")
 
 
 # ---------------------------------------------------------------------------
