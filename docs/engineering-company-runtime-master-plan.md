@@ -42,13 +42,21 @@ Yule가 도달해야 하는 최종 상태는 아래와 같다.
 
 이 수치는 운영 판단 기준으로 유지한다.
 
-| 영역 | 현재 추정 |
-| --- | --- |
-| 운영 골격 | 65~75% |
-| Discord 기술 토의 능력 | 40~50% |
-| 완전 자율 코딩 루프 | 45~55% |
-| 역할별 자료 수집/정형화 루프 | 25~35% |
-| 실제 회사처럼 굴러가는 종합 수준 | 45~55% |
+| 영역 | 현재 추정 (2026-05-11) | 이전 추정 |
+| --- | --- | --- |
+| 운영 골격 | 80~85% | 65~75% |
+| Discord 기술 토의 능력 | 50~60% | 40~50% |
+| 완전 자율 코딩 루프 | 70~80% | 45~55% |
+| 역할별 자료 수집/정형화 루프 | 50~60% | 25~35% |
+| 실제 회사처럼 굴러가는 종합 수준 | 60~70% | 45~55% |
+
+2026-05-11 갱신 근거 — issue #81 통합 polish (`feature/issue-81-integration-polish`) 의 cross-axis 회귀 (3493 + 160 cases 모두 OK) 와 Round 4 / 4-bis / 4-ter / 4 마무리 / Round 4 후속 시리즈 land 결과. 자세한 결정은 [[notes/vault-mirror/10-projects/yule-studio-agent/decisions/2026-05-11_issue-81-decision-integration-polish.md]] § D-81-3 ~ D-81-7. 상한이 100% 가 아닌 이유:
+
+- 운영 골격 상한 85% — autonomy producer / decision seam / status surface / operator actions 까지 land. 잔여: live LLM editor / live decision provider 활성화, Discord escalation alert 자동화.
+- Discord 기술 토의 상한 60% — discussion_followup + context_pack + retrieval slot land. 잔여: `feature/issue-81-discussion-gateway` (commit `512ce7c`) 미머지, gateway / tech-lead 경계 가독성 PR 필요.
+- 완전 자율 코딩 루프 상한 80% — dispatcher + executor live (RecordOnly) + CI orchestrator + retry guard + producer + funnel + claude subprocess seam land. 잔여: live LLM editor (운영자 승인 + cost + secret 정책 별도 PR).
+- 역할별 자료 수집/정형화 상한 60% — provider registry + routing + retrieval + feed parser + role feed digest + provenance land. 잔여: urllib `BytesFetcher`, sitemap / html_list / html_detail / github_api 라이브 fetcher, `eng-research-collector` runtime service spawn, `SourceRefreshState` 영속화.
+- 종합 상한 70% — 세 축이 cross-axis 회귀로 충돌 없음 확인, 그러나 #81 worktree split 3 축 (discussion-gateway / autonomy-execution / knowledge-geeknews) 미머지 + § 14 시나리오 6~8 단계가 live LLM editor 없이는 end-to-end 자동 불가.
 
 이 문서의 목표는 위 4개 축이 서로 충돌하지 않게 나누어 100%에 수렴하도록 만드는 것이다.
 
