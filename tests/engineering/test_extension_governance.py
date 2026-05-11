@@ -42,7 +42,8 @@ _EXPECTED_ROLES = (
     "product-designer",
 )
 
-_HIGH_RISK_PLUGIN_IDS = ("paste-guard",)
+_HIGH_RISK_PLUGIN_IDS = ("paste-guard", "live-llm-editor", "tool-call-gate")
+_F11_2_PLUGIN_IDS = ("live-llm-editor", "tool-call-gate", "discussion-response")
 
 
 def _read_manifest_json(path: Path) -> dict:
@@ -74,6 +75,20 @@ class ExtensionGovernanceTests(unittest.TestCase):
             payload = _read_manifest_json(_PLUGINS_DIR / plugin_id / "manifest.json")
             manifest = load_plugin_manifest_from_dict(payload)
             self.assertEqual(manifest.id, plugin_id)
+
+    def test_f11_2_plugin_manifests_load(self) -> None:
+        # F11.2 follow-up — manifests for already-merged plugins F4 / F6 / F12.
+        for plugin_id in _F11_2_PLUGIN_IDS:
+            payload = _read_manifest_json(_PLUGINS_DIR / plugin_id / "manifest.json")
+            manifest = load_plugin_manifest_from_dict(payload)
+            self.assertEqual(manifest.id, plugin_id)
+            self.assertIn(manifest.kind, ("guard", "delivery"))
+            # paste_guard_required 정책 일치: outbound 가 있는 delivery 는 true
+            if "OUTBOUND_LLM" in manifest.hooks_provided:
+                self.assertTrue(
+                    manifest.paste_guard_required,
+                    f"plugin '{plugin_id}' with OUTBOUND_LLM must require paste-guard",
+                )
 
     def test_high_risk_plugins_declare_risk_explicitly(self) -> None:
         for plugin_id in _HIGH_RISK_PLUGIN_IDS:

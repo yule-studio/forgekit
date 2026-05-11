@@ -1,0 +1,23 @@
+{
+  "id": "live-llm-editor",
+  "name": "Live LLM Editor",
+  "version": "0.1.0",
+  "kind": "delivery",
+  "hooks_provided": [
+    "OUTBOUND_LLM",
+    "COMPLETION"
+  ],
+  "hooks_consumed": [
+    "PREFLIGHT"
+  ],
+  "env_keys": [
+    "YULE_LIVE_EDITOR_ENABLED",
+    "YULE_LIVE_EDITOR_PROVIDER",
+    "YULE_LIVE_EDITOR_MODEL",
+    "YULE_LIVE_EDITOR_MAX_RETRIES"
+  ],
+  "autonomy_level": "supervised",
+  "paste_guard_required": true,
+  "risk_class": "HIGH",
+  "module_path": "yule_orchestrator.agents.job_queue.coding_executor_live"
+}
