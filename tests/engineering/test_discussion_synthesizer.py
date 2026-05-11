@@ -19,6 +19,8 @@ from yule_orchestrator.agents.discussion import (
     GithubIssueRef,
     GithubPRRef,
     ObsidianNoteRef,
+    RolePerspective,
+    ThreadMessage,
     synthesize_discussion,
 )
 
@@ -290,6 +292,141 @@ class SynthesizeKnowledgeEvidenceTestCase(unittest.TestCase):
         # boundary surface never silently drops items.
         self.assertEqual(breakdown["public"], 1)
         self.assertEqual(breakdown["total"], 1)
+
+
+class SynthesizeHeaderAndEscalationTestCase(unittest.TestCase):
+    """header_text + escalation_state + primary_actor 가 모드마다 정렬되는지."""
+
+    def test_discussion_header_includes_mode_label_and_classifier(self) -> None:
+        pack = ContextPack(current_message="이 구조 맞아?")
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=DiscussionModeMatch(
+                mode=DiscussionMode.DISCUSSION,
+                rationale="설계 검토 신호 — discussion으로 받는다",
+                signals=("이 구조 맞",),
+                source="deterministic",
+                confidence="high",
+            ),
+        )
+        self.assertIn("**모드:** 토의 (discussion)", synth.header_text)
+        self.assertIn("설계 검토 신호", synth.header_text)
+        self.assertIn("분류기: deterministic", synth.header_text)
+        self.assertIn("신뢰도: high", synth.header_text)
+        # response_text 도 동일한 헤더로 시작한다.
+        self.assertTrue(synth.response_text.startswith("**모드:** 토의"))
+        # discussion + no blockers → escalation 상태가 discussion_open / user.
+        self.assertEqual(synth.escalation_state, "discussion_open")
+        self.assertEqual(synth.primary_actor, "user")
+
+    def test_research_header_marks_research_state(self) -> None:
+        pack = ContextPack(current_message="조사만 진행해줘")
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=DiscussionModeMatch(
+                mode=DiscussionMode.RESEARCH_ONLY,
+                rationale="research-only 명시",
+                signals=("조사만",),
+                source="deterministic",
+                confidence="high",
+            ),
+        )
+        self.assertIn("조사 (research_only)", synth.header_text)
+        self.assertEqual(synth.escalation_state, "research_pending")
+        self.assertEqual(synth.primary_actor, "tech-lead")
+        # 조사 완료 후 다음 단계 안내가 본문에 들어간다.
+        self.assertIn("조사 종료 후 다음 단계", synth.response_text)
+
+    def test_implementation_header_when_ready(self) -> None:
+        pack = ContextPack(current_message="auth 흐름 패치 작성")
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=DiscussionModeMatch(
+                mode=DiscussionMode.IMPLEMENTATION_CANDIDATE,
+                rationale="impl verb",
+                signals=("패치 작성",),
+                source="deterministic",
+                confidence="high",
+            ),
+        )
+        self.assertIn("구현 후보 (implementation_candidate)", synth.header_text)
+        self.assertEqual(synth.escalation_state, "implementation_ready")
+        self.assertEqual(synth.primary_actor, "user")
+
+    def test_clarification_header_and_already_known_line(self) -> None:
+        pack = ContextPack(
+            current_message="ㅎ",
+            recent_thread=(
+                ThreadMessage(role="user", content="이전 대화"),
+                ThreadMessage(role="tech-lead", content="이전 답"),
+            ),
+            related_issues=(
+                GithubIssueRef(number=1, title="이전 issue", state="open"),
+            ),
+        )
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=DiscussionModeMatch(
+                mode=DiscussionMode.CLARIFICATION_NEEDED,
+                rationale="too vague",
+                signals=("too_vague",),
+                source="deterministic",
+                confidence="high",
+            ),
+        )
+        self.assertIn("추가 질문 필요 (clarification_needed)", synth.header_text)
+        self.assertEqual(synth.escalation_state, "clarification_needed")
+        self.assertEqual(synth.primary_actor, "user")
+        # 사용자가 어디서부터 더 알려주면 되는지 알도록 "지금까지 모인 문맥" 표시.
+        self.assertIn("지금까지 모인 문맥", synth.response_text)
+        self.assertIn("thread 발화", synth.response_text)
+        self.assertIn("관련 issue", synth.response_text)
+
+    def test_blocker_in_pack_flips_discussion_to_operator(self) -> None:
+        pack = ContextPack(
+            current_message="이 구조 맞아? backend 관점에서",
+            blockers=("issue_loader 호출 실패: offline",),
+        )
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=_classification(DiscussionMode.DISCUSSION),
+        )
+        # pack blockers 가 surface 되면 escalation 이 operator 로 넘어간다.
+        self.assertEqual(synth.escalation_state, "blocked")
+        self.assertEqual(synth.primary_actor, "operator")
+
+
+class SynthesizeRolePerspectiveBulletsTestCase(unittest.TestCase):
+    """role perspectives 가 단일 라인이 아니라 헤드라인 + 구체 bullet 묶음."""
+
+    def test_devops_role_lists_concrete_checks(self) -> None:
+        pack = ContextPack(
+            current_message="이 구조 맞아? devops 관점에서 어떻게 풀지",
+        )
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=_classification(DiscussionMode.DISCUSSION),
+        )
+        self.assertIn("devops-engineer", synth.role_perspectives)
+        devops = synth.role_perspectives["devops-engineer"]
+        self.assertIsInstance(devops, RolePerspective)
+        # 2 개 이상의 구체 체크 — 사용자가 "어떻게 풀지" 라고 물었을 때 다음
+        # turn 에 묻기 좋은 항목들이 정렬되어 있어야 한다.
+        self.assertGreaterEqual(len(devops.checks), 2)
+        # 본문에 nested bullet 로 렌더된다.
+        self.assertIn("**devops-engineer** — 배포 / CI / runtime / 관측성", synth.response_text)
+        for check in devops.checks:
+            self.assertIn(check, synth.response_text)
+
+    def test_no_role_signal_falls_back_to_tech_lead(self) -> None:
+        pack = ContextPack(current_message="이게 맞을까")
+        synth = synthesize_discussion(
+            pack=pack,
+            classification=_classification(DiscussionMode.DISCUSSION),
+        )
+        self.assertIn("tech-lead", synth.role_perspectives)
+        tl = synth.role_perspectives["tech-lead"]
+        self.assertGreaterEqual(len(tl.checks), 2)
 
 
 if __name__ == "__main__":
