@@ -14,6 +14,9 @@ from yule_orchestrator.agents.discussion import (
     ContextPack,
     DiscussionMode,
     DiscussionSynthesis,
+    HANDOFF_BLOCKER_KIND_EMPTY_REQUEST,
+    HANDOFF_BLOCKER_KIND_NOT_IMPL,
+    HANDOFF_BLOCKER_KIND_RESEARCH_CONFLICT,
     build_implementation_handoff,
 )
 
@@ -60,6 +63,10 @@ class BuildImplementationHandoffTestCase(unittest.TestCase):
                 )
                 self.assertIsNone(handoff.proposal)
                 self.assertIsNotNone(handoff.blocker)
+                self.assertEqual(
+                    handoff.blocker.kind, HANDOFF_BLOCKER_KIND_NOT_IMPL
+                )
+                self.assertIsNotNone(handoff.blocker.remediation)
 
     def test_skips_when_implementation_ready_false(self) -> None:
         handoff = build_implementation_handoff(
@@ -74,7 +81,9 @@ class BuildImplementationHandoffTestCase(unittest.TestCase):
         handoff = build_implementation_handoff(synthesis=_impl_synth(), pack=pack)
         self.assertIsNone(handoff.proposal)
         assert handoff.blocker is not None
-        self.assertEqual(handoff.blocker.reason, "user_request가 비어 있음")
+        self.assertEqual(handoff.blocker.reason, "user_request 가 비어 있음")
+        self.assertEqual(handoff.blocker.kind, "user_request_empty")
+        self.assertIsNotNone(handoff.blocker.remediation)
 
     def test_falls_back_to_thread_summary(self) -> None:
         pack = ContextPack(
@@ -94,6 +103,21 @@ class BuildImplementationHandoffTestCase(unittest.TestCase):
         self.assertIsNone(handoff.proposal)
         assert handoff.blocker is not None
         self.assertIn("research-only", handoff.blocker.reason)
+        self.assertEqual(
+            handoff.blocker.kind, HANDOFF_BLOCKER_KIND_RESEARCH_CONFLICT
+        )
+        # remediation 은 사용자에게 2 가지 선택 (`수정 권한 제안` /
+        # `일단 조사만`) 을 함께 안내한다.
+        self.assertIn("수정 권한 제안", handoff.follow_up_text)
+        self.assertIn("일단 조사만", handoff.follow_up_text)
+
+    def test_empty_request_blocker_uses_dedicated_kind(self) -> None:
+        pack = ContextPack(current_message="   ")
+        handoff = build_implementation_handoff(synthesis=_impl_synth(), pack=pack)
+        assert handoff.blocker is not None
+        self.assertEqual(
+            handoff.blocker.kind, HANDOFF_BLOCKER_KIND_EMPTY_REQUEST
+        )
 
 
 if __name__ == "__main__":

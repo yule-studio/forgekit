@@ -37,16 +37,30 @@ from .mode import DiscussionMode
 from .synthesizer import DiscussionSynthesis
 
 
+_BLOCKER_KIND_NOT_IMPL: str = "mode_not_implementation"
+_BLOCKER_KIND_EMPTY_REQUEST: str = "user_request_empty"
+_BLOCKER_KIND_RESEARCH_CONFLICT: str = "research_only_conflict"
+_BLOCKER_KIND_INTERNAL_ERROR: str = "recommend_authorization_failure"
+
+
 @dataclass(frozen=True)
 class HandoffBlocker:
     """handoff를 만들지 못한 사유.
 
     blocker는 사용자에게 그대로 노출 가능 — gateway가 "권한 제안을 만들
-    수 없습니다: <reason>"이라고 답한다.
+    수 없습니다: <reason>"이라고 답한다. ``kind``는 안정 식별자
+    (``mode_not_implementation`` / ``user_request_empty`` /
+    ``research_only_conflict`` / ``recommend_authorization_failure``)
+    로 operator surface 가 라우팅 키로 그대로 쓸 수 있다.
+    ``remediation`` 은 사용자/운영자가 다음에 무엇을 하면 되는지를
+    한국어 한 줄로 정리한 안내 — gateway 는 본문 뒤에 따로 게시하지
+    않고 ``follow_up_text`` 안에 이미 포함되어 있다.
     """
 
     reason: str
     detail: Optional[str] = None
+    kind: str = "unknown"
+    remediation: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -78,14 +92,18 @@ def build_implementation_handoff(
     """
 
     if synthesis.mode != DiscussionMode.IMPLEMENTATION_CANDIDATE or not synthesis.implementation_ready:
+        remediation = (
+            "지금 turn 은 토의/조사 단계입니다. 구현으로 넘기려면 "
+            "`수정 권한 제안` 또는 `구현 시작` 으로 답해 주세요."
+        )
         return DiscussionHandoff(
             proposal=None,
-            follow_up_text=(
-                "_지금 turn은 구현 후보가 아니라 토의/조사 단계라서 권한 제안은 만들지 않습니다._"
-            ),
+            follow_up_text=f"_{remediation}_",
             blocker=HandoffBlocker(
-                reason="discussion mode가 구현 후보가 아님",
+                reason="discussion mode 가 구현 후보가 아님",
                 detail=f"현재 모드: {synthesis.mode.value}",
+                kind=_BLOCKER_KIND_NOT_IMPL,
+                remediation=remediation,
             ),
         )
 
@@ -93,15 +111,18 @@ def build_implementation_handoff(
     if not user_request and pack.thread_summary:
         user_request = pack.thread_summary.strip()
     if not user_request:
+        remediation = (
+            "요청 본문이 비어 있어 권한 제안을 만들 수 없습니다. "
+            "어떤 변경을 원하시는지 한두 문장으로 알려 주세요."
+        )
         return DiscussionHandoff(
             proposal=None,
-            follow_up_text=(
-                "_요청 본문이 비어 있어 권한 제안을 만들 수 없습니다. "
-                "어떤 변경을 원하시는지 한두 문장으로 알려 주세요._"
-            ),
+            follow_up_text=f"_{remediation}_",
             blocker=HandoffBlocker(
-                reason="user_request가 비어 있음",
-                detail="ContextPack.current_message와 thread_summary 모두 빈 값",
+                reason="user_request 가 비어 있음",
+                detail="ContextPack.current_message 와 thread_summary 모두 빈 값",
+                kind=_BLOCKER_KIND_EMPTY_REQUEST,
+                remediation=remediation,
             ),
         )
 
@@ -113,32 +134,39 @@ def build_implementation_handoff(
             role_profile_loader=role_profile_loader,
         )
     except Exception as exc:  # noqa: BLE001
+        remediation = (
+            "권한 제안 생성 중 내부 오류가 발생했습니다. "
+            "운영자가 로그를 확인한 뒤 tech-lead 에게 다시 요청해 주세요."
+        )
         return DiscussionHandoff(
             proposal=None,
-            follow_up_text=(
-                "_권한 제안 생성 중 내부 오류가 발생했습니다. "
-                "tech-lead에게 다시 요청해 주세요._"
-            ),
+            follow_up_text=f"_{remediation}_",
             blocker=HandoffBlocker(
                 reason="recommend_authorization 호출 실패",
                 detail=str(exc),
+                kind=_BLOCKER_KIND_INTERNAL_ERROR,
+                remediation=remediation,
             ),
         )
 
     if proposal.lifecycle_mode == LIFECYCLE_MODE_RESEARCH_ONLY:
+        remediation = (
+            "권한 추천이 research-only 로 떨어졌습니다 — 분류기는 구현 후보로 봤지만 "
+            "권한 레이어는 본문 신호가 약하다고 판단했습니다. 그대로 구현을 원하면 "
+            "`수정 권한 제안` 이라고 다시 답해 주시고, 우선 조사 단계로 받아들이려면 "
+            "`일단 조사만` 이라고 알려 주세요."
+        )
         return DiscussionHandoff(
             proposal=None,
-            follow_up_text=(
-                "_권한 추천이 research-only로 떨어졌습니다 — 토의에서는 구현 후보로 보였지만 "
-                "본문 신호가 약합니다. `수정 권한 제안`이라고 다시 답해 주시거나, "
-                "조사 단계로 받아들이실지 알려 주세요._"
-            ),
+            follow_up_text=f"_{remediation}_",
             blocker=HandoffBlocker(
                 reason="권한 추천이 research-only",
                 detail=(
-                    "분류기는 implementation_candidate로 봤지만 "
-                    "recommend_authorization는 코드 변경 신호를 약하다고 판단함"
+                    "분류기는 implementation_candidate 로 봤지만 "
+                    "recommend_authorization 는 코드 변경 신호를 약하다고 판단함"
                 ),
+                kind=_BLOCKER_KIND_RESEARCH_CONFLICT,
+                remediation=remediation,
             ),
         )
 
@@ -157,8 +185,18 @@ def build_implementation_handoff(
     )
 
 
+HANDOFF_BLOCKER_KIND_NOT_IMPL: str = _BLOCKER_KIND_NOT_IMPL
+HANDOFF_BLOCKER_KIND_EMPTY_REQUEST: str = _BLOCKER_KIND_EMPTY_REQUEST
+HANDOFF_BLOCKER_KIND_RESEARCH_CONFLICT: str = _BLOCKER_KIND_RESEARCH_CONFLICT
+HANDOFF_BLOCKER_KIND_INTERNAL_ERROR: str = _BLOCKER_KIND_INTERNAL_ERROR
+
+
 __all__ = (
     "DiscussionHandoff",
     "HandoffBlocker",
+    "HANDOFF_BLOCKER_KIND_NOT_IMPL",
+    "HANDOFF_BLOCKER_KIND_EMPTY_REQUEST",
+    "HANDOFF_BLOCKER_KIND_RESEARCH_CONFLICT",
+    "HANDOFF_BLOCKER_KIND_INTERNAL_ERROR",
     "build_implementation_handoff",
 )
