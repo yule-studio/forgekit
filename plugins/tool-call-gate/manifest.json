@@ -1,0 +1,18 @@
+{
+  "id": "tool-call-gate",
+  "name": "Tool Call Gate",
+  "version": "0.1.0",
+  "kind": "guard",
+  "hooks_provided": [
+    "PREFLIGHT"
+  ],
+  "hooks_consumed": [],
+  "env_keys": [
+    "YULE_TOOL_GATE_ENABLED",
+    "YULE_TOOL_GATE_DEFAULT_AUTONOMY"
+  ],
+  "autonomy_level": "supervised",
+  "paste_guard_required": false,
+  "risk_class": "HIGH",
+  "module_path": "yule_orchestrator.agents.safety.tool_call_gate"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "discussion-response",
+  "name": "Discussion Response",
+  "version": "0.1.0",
+  "kind": "delivery",
+  "hooks_provided": [
+    "COMPLETION"
+  ],
+  "hooks_consumed": [
+    "PREFLIGHT"
+  ],
+  "env_keys": [],
+  "autonomy_level": "advisory",
+  "paste_guard_required": true,
+  "risk_class": "MEDIUM",
+  "module_path": "yule_orchestrator.agents.conversation.discussion_response"
+}
