@@ -1,0 +1,21 @@
+{
+  "id": "hookify",
+  "name": "Hookify",
+  "version": "0.1.0",
+  "kind": "learning",
+  "hooks_provided": [
+    "PREFLIGHT",
+    "COMPLETION",
+    "POSTMORTEM"
+  ],
+  "hooks_consumed": [
+    "COMPLETION"
+  ],
+  "env_keys": [
+    "YULE_CACHE_DB_PATH"
+  ],
+  "autonomy_level": "advisory",
+  "paste_guard_required": true,
+  "risk_class": "MEDIUM",
+  "module_path": "yule_orchestrator.agents.learning.mistake_ledger"
+}

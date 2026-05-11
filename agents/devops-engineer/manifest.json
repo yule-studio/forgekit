@@ -1,0 +1,21 @@
+{
+  "id": "devops-engineer",
+  "name": "DevOps Engineer",
+  "role": "devops-engineer",
+  "version": "0.1.0",
+  "capabilities": [
+    "ci-cd",
+    "infra-config",
+    "release-pipeline"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "engineering.devops_engineer.v1",
+  "github_app_env_prefix": "GITHUB_APP_DEVOPS",
+  "autonomy_level": "supervised",
+  "risk_class": "HIGH",
+  "module_path": ""
+}

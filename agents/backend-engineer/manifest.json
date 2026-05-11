@@ -1,0 +1,21 @@
+{
+  "id": "backend-engineer",
+  "name": "Backend Engineer",
+  "role": "backend-engineer",
+  "version": "0.1.0",
+  "capabilities": [
+    "service-impl",
+    "api-design",
+    "data-model"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "engineering.backend_engineer.v1",
+  "github_app_env_prefix": "GITHUB_APP_BACKEND",
+  "autonomy_level": "supervised",
+  "risk_class": "MEDIUM",
+  "module_path": ""
+}

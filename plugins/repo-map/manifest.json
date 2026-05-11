@@ -1,0 +1,15 @@
+{
+  "id": "repo-map",
+  "name": "RepoMap",
+  "version": "0.1.0",
+  "kind": "exploration",
+  "hooks_provided": [
+    "PREFLIGHT"
+  ],
+  "hooks_consumed": [],
+  "env_keys": [],
+  "autonomy_level": "advisory",
+  "paste_guard_required": true,
+  "risk_class": "LOW",
+  "module_path": "yule_orchestrator.agents.exploration.repo_map"
+}

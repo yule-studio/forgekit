@@ -1,0 +1,18 @@
+{
+  "id": "paste-guard",
+  "name": "PasteGuard",
+  "version": "0.1.0",
+  "kind": "guard",
+  "hooks_provided": [
+    "OUTBOUND_LLM",
+    "OUTBOUND_DISCORD",
+    "OUTBOUND_GITHUB",
+    "OUTBOUND_VAULT"
+  ],
+  "hooks_consumed": [],
+  "env_keys": [],
+  "autonomy_level": "supervised",
+  "paste_guard_required": false,
+  "risk_class": "HIGH",
+  "module_path": "yule_orchestrator.agents.security.paste_guard"
+}
