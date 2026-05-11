@@ -1,0 +1,21 @@
+{
+  "id": "ai-engineer",
+  "name": "AI Engineer",
+  "role": "ai-engineer",
+  "version": "0.1.0",
+  "capabilities": [
+    "prompt-engineering",
+    "model-eval",
+    "retrieval-tuning"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "engineering.ai_engineer.v1",
+  "github_app_env_prefix": "GITHUB_APP_AI",
+  "autonomy_level": "supervised",
+  "risk_class": "MEDIUM",
+  "module_path": ""
+}

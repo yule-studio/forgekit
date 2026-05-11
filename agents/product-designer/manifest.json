@@ -1,0 +1,21 @@
+{
+  "id": "product-designer",
+  "name": "Product Designer",
+  "role": "product-designer",
+  "version": "0.1.0",
+  "capabilities": [
+    "ux-flow",
+    "wireframe",
+    "design-spec"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "engineering.product_designer.v1",
+  "github_app_env_prefix": "GITHUB_APP_DESIGNER",
+  "autonomy_level": "advisory",
+  "risk_class": "LOW",
+  "module_path": ""
+}

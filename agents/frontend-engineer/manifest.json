@@ -1,0 +1,21 @@
+{
+  "id": "frontend-engineer",
+  "name": "Frontend Engineer",
+  "role": "frontend-engineer",
+  "version": "0.1.0",
+  "capabilities": [
+    "ui-impl",
+    "component-design",
+    "state-management"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "engineering.frontend_engineer.v1",
+  "github_app_env_prefix": "GITHUB_APP_FRONTEND",
+  "autonomy_level": "supervised",
+  "risk_class": "MEDIUM",
+  "module_path": ""
+}

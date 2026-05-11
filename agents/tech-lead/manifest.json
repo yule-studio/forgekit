@@ -1,0 +1,21 @@
+{
+  "id": "tech-lead",
+  "name": "Tech Lead",
+  "role": "tech-lead",
+  "version": "0.1.0",
+  "capabilities": [
+    "task-decomposition",
+    "dependency-ordering",
+    "conflict-mediation"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "engineering.tech_lead.v1",
+  "github_app_env_prefix": "GITHUB_APP_TECH_LEAD",
+  "autonomy_level": "advisory",
+  "risk_class": "LOW",
+  "module_path": ""
+}
