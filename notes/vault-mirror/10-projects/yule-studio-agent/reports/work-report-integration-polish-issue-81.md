@@ -54,7 +54,7 @@ PR 미생성 branch: `feature/issue-81-discussion-gateway` (`512ce7c`), `feature
 | 역할별 자료 수집/정형화 루프 | 25~35% | **50~60%** |
 | 실제 회사처럼 굴러가는 종합 수준 | 45~55% | **60~70%** |
 
-근거 / 상한 유보 사유는 [[2026-05-11_issue-81-decision-integration-polish]] § D-81-3 ~ D-81-7 참조.
+근거 / 상한 유보 사유는 [[decision-integration-polish-issue-81]] § D-81-3 ~ D-81-7 참조.
 
 # Hard rails 보존
 
@@ -66,7 +66,7 @@ PR 미생성 branch: `feature/issue-81-discussion-gateway` (`512ce7c`), `feature
 
 # 후속 이슈 (10 종)
 
-F-81-1 ~ F-81-10 — [[2026-05-11_issue-81-decision-integration-polish]] § "후속 이슈 드래프트" 표 그대로.
+F-81-1 ~ F-81-10 — [[decision-integration-polish-issue-81]] § "후속 이슈 드래프트" 표 그대로.
 
 # Issue #81 progress comment 본문 (운영자가 직접 post)
 
@@ -126,7 +126,7 @@ F-81-1 ~ F-81-10 — [[2026-05-11_issue-81-decision-integration-polish]] § "후
 
 # 관련 문서
 
-- [[2026-05-11_issue-81-task-log-integration-polish]]
-- [[2026-05-11_issue-81-decision-integration-polish]]
-- [[2026-05-11_issue-81-research-integration-polish]]
-- [[2026-05-09_issue-73-task-log-tech-lead-runtime-loop]]
+- [[task-log-integration-polish-issue-81]]
+- [[decision-integration-polish-issue-81]]
+- [[research-integration-polish-issue-81]]
+- [[task-log-tech-lead-runtime-loop-issue-73]]

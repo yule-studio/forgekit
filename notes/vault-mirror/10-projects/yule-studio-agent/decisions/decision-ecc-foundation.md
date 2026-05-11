@@ -117,8 +117,8 @@ ECC (`affaan-m/everything-claude-code`) 의 외부 layer 패턴을 Yule 의 회�
 ## 관련 문서
 
 - [[CLAUDE]]
-- [[2026-05-08_research_ecc-foundation]]
-- [[2026-05-08_task-log_25-ecc]]
-- [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
-- [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
-- [[2026-05-08_issue-69-task-log-governance-integration]]
+- [[research-ecc-foundation]]
+- [[task-log-25-ecc]]
+- [[research-engineering-agent-governance-synthesis-issue-69]]
+- [[decision-engineering-agent-authoring-policy-issue-69]]
+- [[task-log-governance-integration-issue-69]]

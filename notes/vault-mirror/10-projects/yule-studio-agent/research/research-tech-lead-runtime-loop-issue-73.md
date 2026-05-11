@@ -160,7 +160,7 @@ ContextPack(
 ## 관련 문서
 
 - [[CLAUDE]]
-- [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
-- [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
-- [[2026-05-09_issue-73-decision-tech-lead-runtime-loop]]
-- [[2026-05-09_issue-73-task-log-tech-lead-runtime-loop]]
+- [[research-engineering-agent-governance-synthesis-issue-69]]
+- [[decision-engineering-agent-authoring-policy-issue-69]]
+- [[decision-tech-lead-runtime-loop-issue-73]]
+- [[task-log-tech-lead-runtime-loop-issue-73]]

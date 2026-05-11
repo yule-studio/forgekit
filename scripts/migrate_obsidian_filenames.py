@@ -361,8 +361,10 @@ def run_migration(
             wikilink_updates=tuple(wikilink_plans),
         )
 
-    applied_renames = apply_renames(plans, repo_root=repo_root)
+    # 순서 주의: wikilink 갱신을 **rename 전** 에 수행한다. rename 후에는
+    # ``wikilink_plans`` 의 ``path`` 가 더 이상 존재하지 않기 때문이다.
     applied_wikilinks = apply_wikilink_updates(wikilink_plans, rename_map)
+    applied_renames = apply_renames(plans, repo_root=repo_root)
     return MigrationReport(
         apply=True,
         renames=tuple(applied_renames),
