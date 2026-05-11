@@ -72,7 +72,7 @@ _TASK_LOG = (
     / "10-projects"
     / "yule-studio-agent"
     / "task-logs"
-    / "2026-05-09_issue-73-task-log-tech-lead-runtime-loop.md"
+    / "task-log-tech-lead-runtime-loop-issue-73.md"
 )
 
 

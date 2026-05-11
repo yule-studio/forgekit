@@ -30,7 +30,7 @@ from yule_orchestrator.agents.extension.manifest import (
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PLUGINS_DIR = _REPO_ROOT / "plugins"
-_AGENTS_DIR = _REPO_ROOT / "agents"
+_AGENTS_DIR = _REPO_ROOT / "agents" / "engineering-agent"
 
 _EXPECTED_ROLES = (
     "tech-lead",

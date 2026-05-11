@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta, tzinfo
 import re
 from typing import Optional, Sequence
 
+from ..core.timezone import local_tz
 from ..integrations.calendar.models import CalendarEvent, build_fallback_item_uid
 from .models import PlanningCheckpoint, PlanningExecutionBlock, PlanningTaskCandidate, PlanningTimeBlock
 
@@ -380,7 +381,9 @@ def _derive_schedule_timezone(fixed_schedule: Sequence[PlanningTimeBlock]) -> Op
         if parsed.tzinfo is not None:
             return parsed.tzinfo
 
-    return datetime.now().astimezone().tzinfo
+    # CI/UTC 환경에서도 YULE_TIMEZONE env 가 있으면 그것을 우선 사용.
+    # 명시 env 가 없으면 시스템 tz 폴백.
+    return local_tz()
 
 
 def _assign_task_block(

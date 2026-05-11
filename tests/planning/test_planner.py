@@ -5,9 +5,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
+import os
 from datetime import date, datetime
 import unittest
 from unittest.mock import patch
+
+# CI 환경(UTC) 에서도 KST 기준 테스트가 동작하도록 강제.
+os.environ.setdefault("YULE_TIMEZONE", "Asia/Seoul")
 
 from yule_orchestrator.integrations.calendar.models import CalendarEvent, CalendarTodo
 from yule_orchestrator.integrations.github.issues import GitHubIssue
