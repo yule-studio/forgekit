@@ -81,11 +81,12 @@ related_skills:
 
 본 markdown 정의가 *아무리* `blocking=true` 라고 선언해도, 실제 **secret 출력 / pem 노출 / protected branch / merge / push** 같은 가드는 코드 수준 (autonomy_policy + github_writer + redact_secret_like) 에서 1 차 차단된다. hook 은 정책 추적·감사용이지 보안 1 차 line 이 아니다.
 
-## 7. 디렉터리 인벤토리 (2026-05-08 시점)
+## 7. 디렉터리 인벤토리 (2026-05-10 시점)
 
 | hook | fires_on | phase | sync | 상태 |
 | --- | --- | --- | --- | --- |
 | [`research-first-gate`](research-first-gate.md) | deliberation | pre | blocking | 정의 (reference manifest) |
+| [`role-mistake-preflight`](role-mistake-preflight.md) | coding_authorization_pending | pre | advisory | 정의 + pure-python seam + tests |
 
 새 hook 추가:
 
