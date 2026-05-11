@@ -267,16 +267,17 @@ class OperatorGuideTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+# F8 (#99) Obsidian 마이그레이션 후 — 날짜 prefix 제거 컨벤션 (`<kind>-<topic>-issue-<n>.md`).
 _REQUIRED_NOTES = {
-    "research": "research/2026-05-08_issue-69-research-engineering-agent-governance-synthesis.md",
-    "decision": "decisions/2026-05-08_issue-69-decision-engineering-agent-authoring-policy.md",
-    "task-log": "task-logs/2026-05-08_issue-69-task-log-governance-integration.md",
+    "research": "research/research-engineering-agent-governance-synthesis-issue-69.md",
+    "decision": "decisions/decision-engineering-agent-authoring-policy-issue-69.md",
+    "task-log": "task-logs/task-log-governance-integration-issue-69.md",
 }
 
 _ECC_BACKLINK_NOTES = (
-    "research/2026-05-08_research_ecc-foundation.md",
-    "decisions/2026-05-08_decision_ecc-foundation.md",
-    "task-logs/2026-05-08_task-log_25-ecc.md",
+    "research/research-ecc-foundation.md",
+    "decisions/decision-ecc-foundation.md",
+    "task-logs/task-log-25-ecc.md",
 )
 
 
@@ -303,10 +304,11 @@ class ObsidianMirrorTests(unittest.TestCase):
                 )
 
     def test_issue_69_notes_cross_link_each_other(self) -> None:
+        # F8 마이그레이션 후 새 컨벤션 파일명 — `<kind>-<topic>-issue-<n>`.
         names = {
-            "research": "2026-05-08_issue-69-research-engineering-agent-governance-synthesis",
-            "decision": "2026-05-08_issue-69-decision-engineering-agent-authoring-policy",
-            "task-log": "2026-05-08_issue-69-task-log-governance-integration",
+            "research": "research-engineering-agent-governance-synthesis-issue-69",
+            "decision": "decision-engineering-agent-authoring-policy-issue-69",
+            "task-log": "task-log-governance-integration-issue-69",
         }
         for kind, rel in _REQUIRED_NOTES.items():
             text = _read(_NOTES_DIR / rel)
@@ -323,9 +325,9 @@ class ObsidianMirrorTests(unittest.TestCase):
         # #25 vault mirror notes must have been augmented with backlinks
         # to the new #69 integration notes.
         targets = (
-            "2026-05-08_issue-69-research-engineering-agent-governance-synthesis",
-            "2026-05-08_issue-69-decision-engineering-agent-authoring-policy",
-            "2026-05-08_issue-69-task-log-governance-integration",
+            "research-engineering-agent-governance-synthesis-issue-69",
+            "decision-engineering-agent-authoring-policy-issue-69",
+            "task-log-governance-integration-issue-69",
         )
         for rel in _ECC_BACKLINK_NOTES:
             with self.subTest(rel=rel):

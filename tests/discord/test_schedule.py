@@ -6,9 +6,13 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 import asyncio
+import os
 from datetime import datetime, time, timedelta
 import unittest
 from unittest.mock import patch
+
+# CI 환경(UTC) 에서도 KST 기준 테스트가 동작하도록 강제. local 머신에 영향 없음.
+os.environ.setdefault("YULE_TIMEZONE", "Asia/Seoul")
 
 from yule_orchestrator.discord.bot import (
     _collect_due_daily_preparation_steps,

@@ -6,9 +6,34 @@ live wiring 은 후속 PR — 본 테스트는 deterministic fake 만 사용한�
 
 from __future__ import annotations
 
+try:
+    import _bootstrap  # noqa: F401
+except ModuleNotFoundError:
+    from tests import _bootstrap  # noqa: F401
+
 from typing import Optional, Sequence, Tuple
 
-import pytest
+from contextlib import contextmanager
+
+
+@contextmanager
+def _raises(exc_type):
+    """Minimal stdlib stand-in for ``pytest.raises`` — CI 환경이 unittest
+    discover 만 가지고 있어서 pytest 의존을 제거.
+    """
+
+    try:
+        yield
+    except exc_type:
+        return
+    raise AssertionError(f"expected {exc_type.__name__} to be raised")
+
+
+class _PytestStub:
+    raises = staticmethod(_raises)
+
+
+pytest = _PytestStub()
 
 from yule_orchestrator.agents.conversation.discussion_response import (
     DiscussionResponse,
