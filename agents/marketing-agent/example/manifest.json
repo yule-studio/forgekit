@@ -1,0 +1,20 @@
+{
+  "id": "marketing-agent-example",
+  "name": "Example Marketing Agent",
+  "role": "example-marketing",
+  "version": "0.1.0",
+  "capabilities": [
+    "campaign_draft",
+    "audience_research_summary"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/marketing-agent/example/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_MARKETING_EXAMPLE_",
+  "autonomy_level": "advisory",
+  "risk_class": "LOW",
+  "module_path": "agents.marketing_agent.example.runner"
+}

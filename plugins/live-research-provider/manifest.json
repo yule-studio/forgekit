@@ -1,0 +1,23 @@
+{
+  "id": "live-research-provider",
+  "name": "Live Research Provider",
+  "version": "0.1.0",
+  "kind": "delivery",
+  "hooks_provided": [
+    "OUTBOUND_VAULT"
+  ],
+  "hooks_consumed": [
+    "PREFLIGHT"
+  ],
+  "env_keys": [
+    "YULE_RESEARCH_LIVE_ENABLED",
+    "YULE_RESEARCH_LIVE_ALLOW_HOSTS",
+    "YULE_RESEARCH_LIVE_DISABLE_HOSTS",
+    "YULE_RESEARCH_LIVE_KINDS",
+    "YULE_RESEARCH_LIVE_RATE_LIMIT_PER_SEC"
+  ],
+  "autonomy_level": "advisory",
+  "paste_guard_required": true,
+  "risk_class": "MEDIUM",
+  "module_path": "yule_orchestrator.agents.research.providers.live.registry"
+}

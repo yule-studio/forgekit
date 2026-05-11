@@ -42,8 +42,23 @@ _EXPECTED_ROLES = (
     "product-designer",
 )
 
-_HIGH_RISK_PLUGIN_IDS = ("paste-guard", "live-llm-editor", "tool-call-gate")
+_HIGH_RISK_PLUGIN_IDS = (
+    "paste-guard",
+    "live-llm-editor",
+    "tool-call-gate",
+    "auto-merge-decider",
+)
 _F11_2_PLUGIN_IDS = ("live-llm-editor", "tool-call-gate", "discussion-response")
+# F11.3 — F5/F7/F8/F9/F10 manifest 마지막 한 번에 land (closes #102).
+_F11_3_PLUGIN_IDS = (
+    "live-research-provider",
+    "auto-merge-decider",
+    "obsidian-vault-push",
+    "lsp-preflight",
+    "claude-mem",
+)
+# 새 부서 추가 흐름 데모 — agents/marketing-agent/example/manifest.json.
+_EXAMPLE_DEPT_AGENT = Path("marketing-agent") / "example"
 
 
 def _read_manifest_json(path: Path) -> dict:
@@ -75,6 +90,39 @@ class ExtensionGovernanceTests(unittest.TestCase):
             payload = _read_manifest_json(_PLUGINS_DIR / plugin_id / "manifest.json")
             manifest = load_plugin_manifest_from_dict(payload)
             self.assertEqual(manifest.id, plugin_id)
+
+    def test_f11_3_plugin_manifests_load(self) -> None:
+        # F11.3 follow-up — F5/F7/F8/F9/F10 manifest 5종. PR #102 close.
+        for plugin_id in _F11_3_PLUGIN_IDS:
+            payload = _read_manifest_json(_PLUGINS_DIR / plugin_id / "manifest.json")
+            manifest = load_plugin_manifest_from_dict(payload)
+            self.assertEqual(manifest.id, plugin_id)
+            self.assertIn(
+                manifest.kind, ("guard", "delivery", "learning")
+            )
+            # auto-merge-decider 는 보안 critical — HIGH 명시 강제.
+            if plugin_id == "auto-merge-decider":
+                self.assertEqual(manifest.risk_class, "HIGH")
+
+    def test_example_marketing_agent_manifest_loads(self) -> None:
+        # 새 부서 추가 흐름 데모. agents/<dept>/<role>/manifest.json 구조 검증.
+        manifest_path = (
+            _REPO_ROOT
+            / "agents"
+            / _EXAMPLE_DEPT_AGENT
+            / "manifest.json"
+        )
+        self.assertTrue(manifest_path.is_file(), manifest_path)
+        payload = _read_manifest_json(manifest_path)
+        manifest = load_agent_manifest_from_dict(payload)
+        self.assertEqual(manifest.id, "marketing-agent-example")
+        # plugins_required 가 실제 등록된 plugin id 만 가리키는지 검증.
+        for plugin_id in manifest.plugins_required:
+            plugin_dir = _PLUGINS_DIR / plugin_id
+            self.assertTrue(
+                plugin_dir.is_dir(),
+                f"example agent references missing plugin '{plugin_id}'",
+            )
 
     def test_f11_2_plugin_manifests_load(self) -> None:
         # F11.2 follow-up — manifests for already-merged plugins F4 / F6 / F12.

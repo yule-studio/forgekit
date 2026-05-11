@@ -1,0 +1,19 @@
+{
+  "id": "lsp-preflight",
+  "name": "LSP-style Preflight",
+  "version": "0.1.0",
+  "kind": "guard",
+  "hooks_provided": [
+    "PREFLIGHT"
+  ],
+  "hooks_consumed": [],
+  "env_keys": [
+    "YULE_LSP_PREFLIGHT_ENABLED",
+    "YULE_LSP_RUNNERS",
+    "YULE_LSP_TIMEOUT_SECONDS"
+  ],
+  "autonomy_level": "advisory",
+  "paste_guard_required": true,
+  "risk_class": "MEDIUM",
+  "module_path": "yule_orchestrator.agents.static_analysis.lsp_preflight"
+}

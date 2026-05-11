@@ -1,0 +1,21 @@
+{
+  "id": "claude-mem",
+  "name": "Claude Mem Unifier",
+  "version": "0.1.0",
+  "kind": "learning",
+  "hooks_provided": [
+    "PREFLIGHT"
+  ],
+  "hooks_consumed": [
+    "COMPLETION"
+  ],
+  "env_keys": [
+    "YULE_LONG_TERM_MEMORY_ENABLED",
+    "YULE_MEMORY_FRESHNESS_DAYS",
+    "YULE_MEMORY_MAX_SHARDS_PER_QUERY"
+  ],
+  "autonomy_level": "advisory",
+  "paste_guard_required": true,
+  "risk_class": "MEDIUM",
+  "module_path": "yule_orchestrator.agents.memory.long_term_memory"
+}
