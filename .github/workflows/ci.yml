@@ -1,4 +1,4 @@
-name : CI
+name: CI
 
 on:
   pull_request:
@@ -11,24 +11,24 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-  
+
     steps:
-        - name: Checkout
-          uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-        - name: Set up Python
-          uses: actions/setup-python@v5
-          with:
-            python-version: "3.11"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-        - name: Install dependencies
-          run: |
-            python -m pip install --upgrade pip setuptools wheel
-            python -m pip install -e .
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e .
 
-        - name: Run tests
-          run: |
-            python3 -m unittest discover -s tests -t .
+      - name: Run tests
+        run: |
+          python3 -m unittest discover -s tests -t .
 
   notify:
     if: always()
@@ -47,6 +47,11 @@ jobs:
           ACTOR: ${{ github.actor }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_CI_WEBHOOK_URL is empty. Skip notification."
+            exit 0
+          fi
+
           payload=$(jq -n \
             --arg repo "$REPO" \
             --arg pr "#$PR_NUMBER $PR_TITLE" \
@@ -63,10 +68,11 @@ jobs:
                   {name: "Repository", value: $repo, inline: true},
                   {name: "PR", value: $pr, inline: false},
                   {name: "Triggered by", value: $actor, inline: true},
-                  {name: "Workflow", value: "[실행 보기](" + $url + ")", inline: false}
+                  {name: "Workflow", value: "[실행 보기](\($url))", inline: false}
                 ]
               }]
             }')
+
           curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
 
       - name: Notify failure
@@ -80,6 +86,11 @@ jobs:
           ACTOR: ${{ github.actor }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "DISCORD_CI_WEBHOOK_URL is empty. Skip notification."
+            exit 0
+          fi
+
           payload=$(jq -n \
             --arg repo "$REPO" \
             --arg pr "#$PR_NUMBER $PR_TITLE" \
@@ -96,9 +107,9 @@ jobs:
                   {name: "Repository", value: $repo, inline: true},
                   {name: "PR", value: $pr, inline: false},
                   {name: "Triggered by", value: $actor, inline: true},
-                  {name: "Workflow", value: "[실행 보기](" + $url + ")", inline: false}
+                  {name: "Workflow", value: "[실행 보기](\($url))", inline: false}
                 ]
               }]
             }')
-          curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
 
+          curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
