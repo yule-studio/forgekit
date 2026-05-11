@@ -16,7 +16,7 @@ tags: [decision, governance, integration, engineering-agent]
 
 # 목표
 
-#25 / #48 / #59 의 결과물을 통합하면서 발생한 *충돌·갭* 을 해소할 14 개 결정을 단일 노트로 고정한다. 각 결정은 본 통합이 land 한 *정책 어디에 어떻게* 박혔는지 위치를 명시한다. raw 분석은 [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]].
+#25 / #48 / #59 의 결과물을 통합하면서 발생한 *충돌·갭* 을 해소할 14 개 결정을 단일 노트로 고정한다. 각 결정은 본 통합이 land 한 *정책 어디에 어떻게* 박혔는지 위치를 명시한다. raw 분석은 [[research-engineering-agent-governance-synthesis-issue-69]].
 
 # 결정
 
@@ -91,11 +91,11 @@ tags: [decision, governance, integration, engineering-agent]
 ## 관련 문서
 
 - [[CLAUDE]]
-- [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
-- [[2026-05-08_issue-69-task-log-governance-integration]]
-- [[2026-05-08_research_ecc-foundation]]
-- [[2026-05-08_decision_ecc-foundation]]
-- [[2026-05-08_task-log_25-ecc]]
+- [[research-engineering-agent-governance-synthesis-issue-69]]
+- [[task-log-governance-integration-issue-69]]
+- [[research-ecc-foundation]]
+- [[decision-ecc-foundation]]
+- [[task-log-25-ecc]]
 - [[2026-05-08_research-harness-team-patterns]]
 - [[2026-05-08_decision-tech-lead-single-write-subject]]
 - [[2026-05-08_task-log-issue-48-harness]]

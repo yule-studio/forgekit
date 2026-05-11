@@ -44,11 +44,11 @@ tags: [task-log, governance, integration, engineering-agent]
 
 # 도입 / 보류 / 비도입
 
-[[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]] §결정 표 그대로 인용.
+[[decision-engineering-agent-authoring-policy-issue-69]] §결정 표 그대로 인용.
 
 # 왜 회사형 시니어 팀 운영에 필요한가
 
-[[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]] §"왜 시니어 개발팀형 회사 구현에 필요한가" 그대로 인용.
+[[research-engineering-agent-governance-synthesis-issue-69]] §"왜 시니어 개발팀형 회사 구현에 필요한가" 그대로 인용.
 
 # 리스크 + 다음 액션
 
@@ -76,11 +76,11 @@ tags: [task-log, governance, integration, engineering-agent]
 ## 관련 문서
 
 - [[CLAUDE]]
-- [[2026-05-08_issue-69-research-engineering-agent-governance-synthesis]]
-- [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
-- [[2026-05-08_research_ecc-foundation]]
-- [[2026-05-08_decision_ecc-foundation]]
-- [[2026-05-08_task-log_25-ecc]]
+- [[research-engineering-agent-governance-synthesis-issue-69]]
+- [[decision-engineering-agent-authoring-policy-issue-69]]
+- [[research-ecc-foundation]]
+- [[decision-ecc-foundation]]
+- [[task-log-25-ecc]]
 - [[2026-05-08_research-harness-team-patterns]]
 - [[2026-05-08_decision-tech-lead-single-write-subject]]
 - [[2026-05-08_task-log-issue-48-harness]]

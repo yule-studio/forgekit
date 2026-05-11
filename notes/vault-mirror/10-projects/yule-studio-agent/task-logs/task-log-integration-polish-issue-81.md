@@ -17,7 +17,7 @@ tags: [task-log, issue-81, integration, regression, handoff]
 
 #81 (엔지니어 에이전트 팀 단위 자동화) 의 worktree split — `discussion-gateway` / `autonomy-execution` / `knowledge-geeknews` — 가 #73 Round 1~Round 4 마무리 시리즈 위에서 어떻게 결합하는지 단일 worktree (`feature/issue-81-integration-polish`) 에서 한 번에 검증하고, 운영자에게 넘기기 전 마지막 정리를 수행한다.
 
-자세한 결정은 [[2026-05-11_issue-81-decision-integration-polish]], 분석은 [[2026-05-11_issue-81-research-integration-polish]].
+자세한 결정은 [[decision-integration-polish-issue-81]], 분석은 [[research-integration-polish-issue-81]].
 
 # 통합 시점 main 상태 (2026-05-11 09:40 KST)
 
@@ -118,7 +118,7 @@ cross-axis 충돌 없음 — autonomy producer 의 tick 이 discussion follow-up
 
 # 본 worktree 비범위 → 후속 이슈 매핑
 
-본 worktree 는 코드 변경을 하지 않고 통합 검증 / 문서 / handoff 만 다룬다. 100% 까지 남은 일은 아래 후속 이슈로 분리한다 (자세한 본문은 [[2026-05-11_issue-81-decision-integration-polish]] § "후속 이슈 드래프트" 참고).
+본 worktree 는 코드 변경을 하지 않고 통합 검증 / 문서 / handoff 만 다룬다. 100% 까지 남은 일은 아래 후속 이슈로 분리한다 (자세한 본문은 [[decision-integration-polish-issue-81]] § "후속 이슈 드래프트" 참고).
 
 1. **discussion-gateway PR 생성 + 머지** — 로컬/원격 branch (`feature/issue-81-discussion-gateway`, commit `512ce7c`) 만 존재. gateway/tech-lead 경계 + Discord 토의 surface 가독성 변경을 PR 로 묶어 머지.
 2. **autonomy-execution PR 생성 + 머지** — `feature/issue-81-autonomy-execution` commit `38e9332` (역할별 반복 실수 ledger + preflight seam round 1) 머지.
@@ -149,8 +149,8 @@ cross-axis 충돌 없음 — autonomy producer 의 tick 이 discussion follow-up
 
 # 관련 문서
 
-- [[2026-05-11_issue-81-research-integration-polish]]
-- [[2026-05-11_issue-81-decision-integration-polish]]
-- [[2026-05-09_issue-73-task-log-tech-lead-runtime-loop]]
-- [[2026-05-09_issue-73-research-tech-lead-runtime-loop]]
-- [[2026-05-09_issue-73-decision-tech-lead-runtime-loop]]
+- [[research-integration-polish-issue-81]]
+- [[decision-integration-polish-issue-81]]
+- [[task-log-tech-lead-runtime-loop-issue-73]]
+- [[research-tech-lead-runtime-loop-issue-73]]
+- [[decision-tech-lead-runtime-loop-issue-73]]

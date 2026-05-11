@@ -19,7 +19,7 @@ tags: [research, governance, integration, engineering-agent]
 
 # 목표
 
-완료된 #25 (everything-claude-code) / #48 (Harness) / #59 (Hermes) 의 산출물을 *통합 입력* 으로 받아 `engineering-agent` 부서 전체가 따를 공통 GitHub / Obsidian 운영 규칙으로 정착시킨다. 본 노트는 그 통합 결정의 *raw 분석* 이며, 결정 자체는 [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]] 에서 책임진다.
+완료된 #25 (everything-claude-code) / #48 (Harness) / #59 (Hermes) 의 산출물을 *통합 입력* 으로 받아 `engineering-agent` 부서 전체가 따를 공통 GitHub / Obsidian 운영 규칙으로 정착시킨다. 본 노트는 그 통합 결정의 *raw 분석* 이며, 결정 자체는 [[decision-engineering-agent-authoring-policy-issue-69]] 에서 책임진다.
 
 # 현재 Yule 기준선
 
@@ -52,9 +52,9 @@ tags: [research, governance, integration, engineering-agent]
 4. ECC 의 GateGuard 류 강성 hook 은 후속 PR (autonomy_policy 새 action_id 와 합쳐 도입).
 
 선행 노트 (실제 vault mirror):
-- [[2026-05-08_research_ecc-foundation]] (`notes/vault-mirror/.../research/`)
-- [[2026-05-08_decision_ecc-foundation]] (`notes/vault-mirror/.../decisions/`)
-- [[2026-05-08_task-log_25-ecc]] (`notes/vault-mirror/.../task-logs/`)
+- [[research-ecc-foundation]] (`notes/vault-mirror/.../research/`)
+- [[decision-ecc-foundation]] (`notes/vault-mirror/.../decisions/`)
+- [[task-log-25-ecc]] (`notes/vault-mirror/.../task-logs/`)
 
 # 입력 2 — #48 Harness (PR #66)
 
@@ -150,7 +150,7 @@ planning-agent 의 label policy 는 **5 종 추천 label** (`🏗 Infrastructure
 
 # 도입 / 보류 결정 요약
 
-[[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]] 가 14 개 결정 (D-69-1 ~ D-69-14) 을 정리. 본 노트는 *그 결정의 입력 분석* 만 책임.
+[[decision-engineering-agent-authoring-policy-issue-69]] 가 14 개 결정 (D-69-1 ~ D-69-14) 을 정리. 본 노트는 *그 결정의 입력 분석* 만 책임.
 
 핵심 하이라이트:
 
@@ -202,14 +202,14 @@ planning-agent 의 label policy 는 **5 종 추천 label** (`🏗 Infrastructure
 ## 관련 문서
 
 - [[CLAUDE]]
-- [[2026-05-08_research_ecc-foundation]]
-- [[2026-05-08_decision_ecc-foundation]]
-- [[2026-05-08_task-log_25-ecc]]
+- [[research-ecc-foundation]]
+- [[decision-ecc-foundation]]
+- [[task-log-25-ecc]]
 - [[2026-05-08_research-harness-team-patterns]]
 - [[2026-05-08_decision-tech-lead-single-write-subject]]
 - [[2026-05-08_task-log-issue-48-harness]]
 - [[2026-05-08_hermes-agent-architecture-deep-dive]]
 - [[2026-05-08_hermes-yule-integration-decisions]]
 - [[2026-05-08_59-hermes-tech-lead]]
-- [[2026-05-08_issue-69-decision-engineering-agent-authoring-policy]]
-- [[2026-05-08_issue-69-task-log-governance-integration]]
+- [[decision-engineering-agent-authoring-policy-issue-69]]
+- [[task-log-governance-integration-issue-69]]
