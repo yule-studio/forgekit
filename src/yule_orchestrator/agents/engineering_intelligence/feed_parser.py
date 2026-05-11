@@ -36,6 +36,7 @@ the BytesFetcher in.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -57,6 +58,25 @@ from .providers import LiveProviderSpec, ProviderTransport
 
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 _SUMMARY_LIMIT = 500
+_TITLE_LIMIT = 72
+
+# Leading label noise an operator surface (Discord 이슈방, GeekNews-style
+# digest, Obsidian title) wouldn't want to read: ``[Release]``, ``[번역]``,
+# ``(공지)``, ``1.``, ``2)``, ``#``, ``-``, ``•`` and combinations of those.
+# We allow whitespace *between* prefixes so compound noise like
+# ``"1. [번역] Foo"`` strips down to ``"Foo"`` in one pass.
+_TITLE_PREFIX_RE = re.compile(
+    r"^(?:\s*(?:\[[^\]]+\]|\([^)]+\)|\d+[.)]|#+|[\-–—:•]))+\s*"
+)
+# Trailing site markers: " | GitHub", " - Engineering Blog", " — Release Notes",
+# etc. Anchored to the end so we don't munch separators inside the title.
+_TRAILING_SITE_RE = re.compile(
+    r"\s+(?:\||·|—|-)\s+"
+    r"(?:engineering blog|release notes?|github|gitlab|medium|substack|blog)"
+    r"\b.*$",
+    re.IGNORECASE,
+)
+_WS_RE = re.compile(r"\s+")
 
 
 class FeedParserError(Exception):
@@ -136,6 +156,50 @@ def _trim(value: str, *, limit: int = _SUMMARY_LIMIT) -> str:
     return value[: limit - 1].rstrip() + "…"
 
 
+def canonicalize_feed_title(
+    title: str,
+    *,
+    fallback: str = "",
+    max_chars: int = _TITLE_LIMIT,
+) -> str:
+    """Convert a raw feed headline into a short human-facing title.
+
+    The Discord 이슈방 / GeekNews-style engineering-knowledge surface
+    needs titles that are easy to scan, not raw feed prefixes or site
+    suffixes. This is deterministic and conservative:
+
+    - drop leading label noise (``[Release]`` / ``[번역]`` / ``(공지)`` /
+      ``1.`` / ``#``)
+    - strip obvious trailing site markers (``| GitHub``, ``- Engineering
+      Blog``, ``— Release Notes``)
+    - collapse whitespace and trim leftover punctuation
+    - phrase-truncate over-long titles on a separator or word boundary
+      without inventing wording
+
+    Falls back to *fallback* when the title is empty after scrubbing so
+    a label-only entry like ``"[공지]"`` still produces a usable title.
+    """
+
+    cleaned = (title or "").replace("\r", " ").replace("\n", " ").strip()
+    cleaned = _TITLE_PREFIX_RE.sub("", cleaned)
+    cleaned = _TRAILING_SITE_RE.sub("", cleaned)
+    cleaned = _WS_RE.sub(" ", cleaned).strip(" -–—:;,.|·")
+    if not cleaned:
+        cleaned = (fallback or "").strip()
+    if not cleaned or len(cleaned) <= max_chars:
+        return cleaned
+
+    head = cleaned[:max_chars]
+    pivot = max(head.rfind(" · "), head.rfind(" — "), head.rfind(" - "))
+    if pivot >= max_chars // 2:
+        head = head[:pivot]
+    else:
+        space = head.rfind(" ")
+        if space >= max_chars // 2:
+            head = head[:space]
+    return head.rstrip(" -–—:;,.|·") + "…"
+
+
 def _build_item(
     source: SourceEntry,
     *,
@@ -152,7 +216,10 @@ def _build_item(
     """
 
     role = source.role_tags[0] if source.role_tags else "tech-lead"
-    final_title = title or url or source.name
+    final_title = canonicalize_feed_title(
+        title,
+        fallback=(url or source.name),
+    )
     final_url = url or source.base_url
     item_id = _hash_id(source.source_id, final_title, final_url)
     topic_key = _hash_id("topic", source.source_id, final_title.lower())
@@ -421,6 +488,7 @@ __all__ = [
     "BytesFetcher",
     "FeedFetchOutcome",
     "FeedParserError",
+    "canonicalize_feed_title",
     "make_feed_live_factory",
     "parse_atom_bytes",
     "parse_feed_bytes",

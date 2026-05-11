@@ -284,6 +284,7 @@ def build_engineering_knowledge_write_request(
         "engineering_intelligence": {
             "topic_key": item.topic_key,
             "role": item.role,
+            "canonical_display_title": item.title,
             "stack_tags": list(item.stack_tags),
             "rag_tags": list(item.rag_tags),
             "cag_context_key": item.cag_context_key,
