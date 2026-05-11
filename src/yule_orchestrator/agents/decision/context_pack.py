@@ -31,6 +31,8 @@ from typing import (
     Tuple,
 )
 
+from ..memory import MemoryPack
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -39,7 +41,14 @@ from typing import (
 
 @dataclass(frozen=True)
 class ContextPack:
-    """Bundle of related context the classifier reads."""
+    """Bundle of related context the classifier reads.
+
+    F10 (issue #101) extends this with an optional ``memory_pack``
+    field carrying the cross-session :class:`MemoryPack` produced by
+    the long-term memory unifier. Older callers that don't wire the
+    unifier keep getting ``memory_pack=None`` so the field is fully
+    backwards compatible.
+    """
 
     id: str
     related_notes: Tuple[str, ...]
@@ -49,9 +58,10 @@ class ContextPack:
     code_hints: Tuple[str, ...]
     created_at: str
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    memory_pack: Optional[MemoryPack] = None
 
     def to_payload(self) -> Mapping[str, Any]:
-        return {
+        payload: dict = {
             "id": self.id,
             "related_notes": list(self.related_notes),
             "recent_threads": list(self.recent_threads),
@@ -61,15 +71,24 @@ class ContextPack:
             "created_at": self.created_at,
             "metadata": dict(self.metadata),
         }
+        if self.memory_pack is not None:
+            payload["memory_pack"] = self.memory_pack.to_payload()
+        else:
+            payload["memory_pack"] = None
+        return payload
 
     @property
     def is_empty(self) -> bool:
+        has_memory = bool(
+            self.memory_pack is not None and self.memory_pack.shards
+        )
         return not (
             self.related_notes
             or self.recent_threads
             or self.related_issues
             or self.related_prs
             or self.code_hints
+            or has_memory
         )
 
 
@@ -131,6 +150,7 @@ def build_context_pack(
     pr_limit: int = 3,
     code_limit: int = 5,
     metadata: Optional[Mapping[str, Any]] = None,
+    memory_pack: Optional[MemoryPack] = None,
 ) -> ContextPack:
     """Compose a :class:`ContextPack` from the available providers.
 
@@ -187,6 +207,7 @@ def build_context_pack(
         code_hints=hints,
         created_at=datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat(),
         metadata=dict(metadata or {}),
+        memory_pack=memory_pack,
     )
 
 
