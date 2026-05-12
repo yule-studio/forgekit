@@ -92,7 +92,7 @@ class DryRunPlanTests(unittest.TestCase):
         # NOT in the spawn plan even though it is implemented. Total
         # auto-spawn count remains 12.
         ids = {entry[0] for entry in plan.services}
-        self.assertEqual(len(plan.services), 12)
+        self.assertEqual(len(plan.services), 13)
         self.assertNotIn("eng-coding-executor", ids)
         self.assertIn("eng-research-worker", ids)
         self.assertIn("eng-role-tech-lead", ids)
@@ -123,7 +123,7 @@ class DryRunPlanTests(unittest.TestCase):
         rendered = render_dry_run_plan(plan)
         self.assertIn("profile: engineering", rendered)
         # 13 specs total; 1 opt-in (coding executor) → 12 spawned.
-        self.assertIn("services to start: 12", rendered)
+        self.assertIn("services to start: 13", rendered)
         self.assertIn("eng-research-worker", rendered)
         self.assertIn("eng-discord-gateway", rendered)
         # No reserved block now that gateway is implemented.
@@ -208,7 +208,7 @@ class SpawnAndSuperviseTests(unittest.TestCase):
         # as opt-in (auto_spawn=False) so it is NOT spawned by default —
         # spawn count remains 12.
         spawned_ids = [cmd[-1] for cmd in spawned]
-        self.assertEqual(len(spawned_ids), 12)
+        self.assertEqual(len(spawned_ids), 13)
         self.assertIn("eng-discord-gateway", spawned_ids)
         self.assertNotIn("eng-coding-executor", spawned_ids)
         # Every fake process received terminate() during drain.

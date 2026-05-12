@@ -49,9 +49,8 @@ class CodingExecutorRegistrationTests(unittest.TestCase):
             )
 
     def test_engineering_profile_size_grew_by_one(self) -> None:
-        # 12 → 13 (added eng-coding-executor). If this drifts the spec
-        # changelog needs an update.
-        self.assertEqual(len(ENGINEERING_PROFILE), 13)
+        # 13 → 14 (F13 #122 added eng-digest-scheduler).
+        self.assertEqual(len(ENGINEERING_PROFILE), 14)
 
 
 if __name__ == "__main__":
