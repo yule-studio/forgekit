@@ -305,5 +305,113 @@
     "product-owner_or_user": [
       "사용자 흐름 변경 / MVP 범위 재조정 / 톤 결정"
     ]
+  },
+  "user_goal_standard": {
+    "must_include": [
+      "primary_user",
+      "user_goal_in_one_sentence",
+      "user_motivation",
+      "out_of_scope_users"
+    ],
+    "rules": [
+      "사용자 목표 한 줄이 없으면 화면 제안을 시작하지 않는다",
+      "복수 사용자 그룹이면 우선 사용자를 명시한다"
+    ]
+  },
+  "user_flow_standard": {
+    "must_include": [
+      "entry_points",
+      "primary_flow_steps",
+      "alternate_flows",
+      "exit_or_failure_paths",
+      "critical_actions"
+    ],
+    "rules": [
+      "정상 흐름만 그리고 실패/대안 흐름을 빼지 않는다",
+      "흐름 변경은 frontend와 합의 없이 단독으로 ship하지 않는다"
+    ]
+  },
+  "information_architecture_standard": {
+    "must_include": [
+      "site_map",
+      "screen_priority",
+      "navigation_grouping",
+      "content_hierarchy",
+      "search_or_filter_strategy"
+    ],
+    "rules": [
+      "정보 구조는 사용자 의도(찾기/비교/완료)에 맞춰 그룹화한다",
+      "메뉴/내비 변경은 사용자 학습 비용을 함께 평가한다"
+    ]
+  },
+  "ux_copy_standard": {
+    "must_include": [
+      "primary_actions_copy",
+      "error_state_copy",
+      "empty_state_copy",
+      "success_state_copy",
+      "permission_or_blocked_copy",
+      "tone_guideline",
+      "voice_owner"
+    ],
+    "rules": [
+      "에러/빈 상태 카피가 없으면 화면 제안으로 보지 않는다",
+      "사용자 행동을 안내하는 카피를 우선한다 (설명문 금지)",
+      "톤은 일관된 가이드라인 안에 둔다"
+    ]
+  },
+  "visual_hierarchy_standard": {
+    "must_include": [
+      "typography_scale",
+      "color_tokens",
+      "spacing_system",
+      "primary_focus_target",
+      "responsive_scaling"
+    ],
+    "rules": [
+      "디자인 시스템 토큰 없이 색/간격을 임의로 박지 않는다",
+      "시각 위계 없이 화면을 ship하지 않는다",
+      "primary CTA는 한 화면에 하나로 둔다"
+    ]
+  },
+  "accessibility_standard": {
+    "must_check": [
+      "키보드 접근성",
+      "스크린 리더 라벨/대체 텍스트",
+      "색 대비 (WCAG)",
+      "동적 콘텐츠 안내 (aria-live)",
+      "포커스 가시성/순서",
+      "터치 타깃 크기"
+    ],
+    "rules": [
+      "접근성은 화면 후순위 장식이 아니라 기본 품질로 본다",
+      "색만으로 의미를 전달하지 않는다"
+    ]
+  },
+  "design_reference_standard": {
+    "must_include": [
+      "reference_source",
+      "reason_for_reference",
+      "what_to_borrow",
+      "what_not_to_borrow",
+      "license_or_attribution"
+    ],
+    "rules": [
+      "reference는 복붙 대상이 아니라 의사결정 근거로 사용한다",
+      "라이선스/저작권 검토 없이 reference를 그대로 사용하지 않는다"
+    ]
+  },
+  "usability_test_standard": {
+    "must_include": [
+      "hypothesis",
+      "test_method",
+      "participant_profile",
+      "success_metrics",
+      "expected_failure_signals"
+    ],
+    "rules": [
+      "테스트가 비싸면 적은 인원의 가벼운 검증으로 시작한다",
+      "검증 결과는 reference와 함께 의사결정 노트로 남긴다"
+    ]
   }
 }

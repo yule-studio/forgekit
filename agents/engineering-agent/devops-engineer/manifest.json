@@ -321,5 +321,123 @@
     "product-designer": [
       "장애/지연 노출 UX (status page, 사용자 공지) 결정"
     ]
+  },
+  "runtime_environment_standard": {
+    "must_include": [
+      "supported_os_or_image",
+      "runtime_versions",
+      "external_dependencies",
+      "local_vs_staging_vs_prod_diffs",
+      "reproducibility_recipe"
+    ],
+    "rules": [
+      "운영에 들어갈 변경은 staging에서 같은 절차로 재현되어야 한다",
+      "로컬 환경 가정은 명시적 문서로 남긴다 (.env.example 동기화)"
+    ]
+  },
+  "deployment_standard": {
+    "must_include": [
+      "deployment_strategy",
+      "health_checks",
+      "readiness_probe",
+      "rollback_plan",
+      "downtime_window",
+      "verification_steps",
+      "owner_role"
+    ],
+    "rules": [
+      "rollback 경로 없는 변경은 production에 배포하지 않는다",
+      "health check 없는 deploy는 deploy로 보지 않는다",
+      "사용자 데이터 영향이 있는 배포는 추가 승인 한 단계를 둔다"
+    ]
+  },
+  "ci_cd_standard": {
+    "must_include": [
+      "pipeline_stages",
+      "branch_or_environment_matrix",
+      "required_checks",
+      "test_gating",
+      "secret_scope",
+      "artifact_retention"
+    ],
+    "rules": [
+      "테스트 green 없이 production stage로 자동 승격하지 않는다",
+      "secret은 환경별 scope로 분리한다",
+      "수동 승인 단계가 필요한 stage는 명시한다"
+    ]
+  },
+  "kubernetes_standard": {
+    "must_include": [
+      "workload_kind",
+      "resource_requests_and_limits",
+      "probes",
+      "config_and_secret_strategy",
+      "ingress_and_tls",
+      "scaling_policy",
+      "network_policy"
+    ],
+    "rules": [
+      "리소스 limit 없는 workload는 production에 배포하지 않는다",
+      "probe 없는 workload는 자동 회복 대상에서 제외한다",
+      "ingress는 TLS와 인증/인가 정책을 함께 설계한다"
+    ]
+  },
+  "secret_config_standard": {
+    "must_include": [
+      "secret_storage",
+      "rotation_policy",
+      "scope_boundary",
+      "access_audit",
+      "env_example_sync"
+    ],
+    "rules": [
+      "secret을 코드/이미지/repo에 평문으로 저장하지 않는다",
+      "secret 변경은 사용자 승인 후 .env.example 동기화 PR을 함께 남긴다",
+      "secret rotation 주기와 fallback 절차를 명시한다"
+    ]
+  },
+  "observability_standard": {
+    "must_include": [
+      "structured_logs",
+      "correlation_id",
+      "metrics",
+      "alerts",
+      "dashboard_signals",
+      "alert_owner",
+      "alert_threshold"
+    ],
+    "rules": [
+      "관측 신호 없는 새 흐름은 ship으로 보지 않는다",
+      "알림에는 owner와 1차 대응 절차가 함께 적힌다",
+      "사용자 영향이 있는 알림은 사용자에게도 노출 채널을 둔다"
+    ]
+  },
+  "incident_response_standard": {
+    "must_include": [
+      "incident_severity_levels",
+      "playbook_per_severity",
+      "communication_channel",
+      "rollback_or_mitigation_steps",
+      "postmortem_template",
+      "owner_on_call"
+    ],
+    "rules": [
+      "장애 시 우선 rollback → 안정화 → postmortem 순서를 지킨다",
+      "사용자 데이터 영향이 있는 incident는 추가 승인 후 조치한다",
+      "postmortem은 후속 액션과 owner를 함께 남긴다"
+    ]
+  },
+  "rollback_recovery_standard": {
+    "must_include": [
+      "rollback_trigger",
+      "rollback_procedure",
+      "data_recovery_plan",
+      "verification_steps",
+      "max_time_to_recover_target"
+    ],
+    "rules": [
+      "rollback이 비가역이거나 데이터 손실 가능성이 있으면 사용자 승인 필요",
+      "rollback 검증 없이 incident close하지 않는다"
+    ]
   }
 }

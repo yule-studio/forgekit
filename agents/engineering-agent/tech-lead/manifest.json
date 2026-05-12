@@ -314,5 +314,98 @@
     "product-designer": [
       "사용자 흐름 / UX copy / 정보 구조 결정 필요"
     ]
+  },
+  "role_selection_standard": {
+    "must_check": [
+      "tech-lead는 항상 required",
+      "각 selected role은 도메인 근거가 있는가",
+      "각 excluded role은 명시적 사유가 있는가",
+      "research-only인데 frontend/backend executor가 끼어들지 않았는가",
+      "infra-only인데 product-designer가 잘못 들어오지 않았는가",
+      "UI/디자인-only인데 backend가 잘못 들어오지 않았는가"
+    ],
+    "rules": [
+      "사용자가 명시한 role은 우선 포함한다",
+      "키워드/도메인 매칭이 없으면 fallback team으로 좁힌다",
+      "선택과 제외는 둘 다 사유와 함께 기록한다",
+      "한 번 정한 선택은 후행 단계에서 임의로 추가하지 않는다 (escalation으로만 확장)"
+    ]
+  },
+  "scope_control_standard": {
+    "must_separate": [
+      "사용자 최종 목표 vs 이번 task 범위",
+      "이번 phase 범위 vs 다음 phase 범위",
+      "research vs code-change",
+      "결정 가능 vs 사용자 결정 필요",
+      "rollback 가능 vs 비가역",
+      "필수 산출물 vs 부가 자료"
+    ],
+    "rules": [
+      "범위가 커지면 분해해서 후속 phase로 넘긴다",
+      "비범위 항목은 명시적으로 'out_of_scope'로 적는다",
+      "범위 변경은 사용자 동의 없이 하지 않는다"
+    ]
+  },
+  "synthesis_standard": {
+    "must_include": [
+      "consensus_summary",
+      "key_decisions",
+      "tradeoffs",
+      "open_research",
+      "user_decisions_needed",
+      "approval_required",
+      "next_actions"
+    ],
+    "rules": [
+      "consensus_summary는 한 줄로 압축한다",
+      "역할별 take를 그대로 모아 두지 않고 합의/불합의로 분리한다",
+      "근거 없는 합의는 합의로 보지 않고 open_research로 남긴다"
+    ]
+  },
+  "decision_standard": {
+    "must_include": [
+      "decision_statement",
+      "rationale",
+      "tradeoffs_considered",
+      "alternatives_rejected",
+      "reversibility",
+      "owner_role"
+    ],
+    "rules": [
+      "비가역 결정은 사용자 승인 후에만 ship한다",
+      "결정은 owner role을 명시한다",
+      "근거 없이 의견 평균으로 결정하지 않는다"
+    ]
+  },
+  "risk_review_standard": {
+    "must_check": [
+      "데이터 손실/유실 가능성",
+      "보안/권한 경계 변경",
+      "운영 중단/롤백 비용",
+      "사용자 흐름에 미치는 영향",
+      "다른 작업/세션에 미치는 충돌",
+      "비가역성"
+    ],
+    "rules": [
+      "리스크가 mitigations 없이 합의안에 들어가지 않는다",
+      "큰 리스크는 사용자에게 별도 줄로 알린다"
+    ]
+  },
+  "approval_handoff_standard": {
+    "must_include": [
+      "approval_required",
+      "approval_reason",
+      "what_will_change",
+      "what_will_not_change",
+      "rollback_plan",
+      "executor_role",
+      "write_scope",
+      "forbidden_scope"
+    ],
+    "rules": [
+      "write 작업은 사용자 승인 phrase가 있어야 시작한다",
+      "executor는 단일 role이어야 한다",
+      "forbidden_scope를 빠뜨린 승인 제안은 승인 제안으로 보지 않는다"
+    ]
   }
 }
