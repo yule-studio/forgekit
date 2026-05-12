@@ -1,0 +1,23 @@
+{
+  "id": "marketing-agent-content-strategist",
+  "name": "Content Strategist",
+  "role": "content-strategist",
+  "version": "0.1.0",
+  "capabilities": [
+    "editorial_calendar_planning",
+    "content_brief_authoring",
+    "topic_cluster_design",
+    "narrative_framework_synth",
+    "content_performance_review"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/marketing-agent/content-strategist/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_CONTENT_STRATEGIST_",
+  "autonomy_level": "advisory",
+  "risk_class": "LOW",
+  "module_path": "agents.marketing_agent.content_strategist.runner"
+}

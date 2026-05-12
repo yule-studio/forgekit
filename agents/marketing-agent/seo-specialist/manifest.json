@@ -1,0 +1,23 @@
+{
+  "id": "marketing-agent-seo-specialist",
+  "name": "SEO Specialist",
+  "role": "seo-specialist",
+  "version": "0.1.0",
+  "capabilities": [
+    "keyword_research",
+    "on_page_seo_audit",
+    "technical_seo_diagnosis",
+    "serp_intent_mapping",
+    "backlink_strategy_planning"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "agents/marketing-agent/seo-specialist/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_SEO_SPECIALIST_",
+  "autonomy_level": "advisory",
+  "risk_class": "LOW",
+  "module_path": "agents.marketing_agent.seo_specialist.runner"
+}
