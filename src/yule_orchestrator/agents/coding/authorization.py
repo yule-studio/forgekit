@@ -4,7 +4,7 @@ The engineering-agent gateway needs a small, deterministic surface that
 turns a user's "이 작업 코딩으로 진행해줘" request into a structured
 proposal Tech Lead can show the user before any code is written. This
 module is the pure-Python core: it loads role profiles from
-``agents/engineering-agent/<role>/agent.json``, scores each role
+``agents/engineering-agent/<role>/manifest.json``, scores each role
 against the user request using the role's
 ``default_executor_priority`` keyword bank, and produces a
 :class:`CodingAuthorizationProposal` with executor / review /
@@ -86,7 +86,7 @@ def reset_role_profile_cache() -> None:
 
 
 def load_role_profile(role: str, *, department_dir: Optional[Path] = None) -> Mapping[str, object]:
-    """Read ``agents/engineering-agent/<role>/agent.json``.
+    """Read ``agents/engineering-agent/<role>/manifest.json``.
 
     Cached after the first read. Pass ``department_dir`` when running
     tests against a fixture tree.
@@ -97,7 +97,7 @@ def load_role_profile(role: str, *, department_dir: Optional[Path] = None) -> Ma
     if cached is not None:
         return cached
     base = department_dir or DEPARTMENT_DIR
-    path = base / role / "agent.json"
+    path = base / role / "manifest.json"
     raw = path.read_text(encoding="utf-8")
     profile = json.loads(raw)
     _ROLE_PROFILE_CACHE[cache_key] = profile
