@@ -1,0 +1,23 @@
+{
+  "id": "product-agent-product-manager",
+  "name": "Product Manager",
+  "role": "product-manager",
+  "version": "0.1.0",
+  "capabilities": [
+    "prd_authoring",
+    "okr_planning",
+    "roadmap_prioritisation",
+    "discovery_synthesis",
+    "stakeholder_alignment"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "agents/product-agent/product-manager/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_PRODUCT_MANAGER_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.product_agent.product_manager.runner"
+}

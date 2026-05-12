@@ -1,0 +1,22 @@
+{
+  "id": "product-agent-user-researcher",
+  "name": "User Researcher",
+  "role": "user-researcher",
+  "version": "0.1.0",
+  "capabilities": [
+    "user_interview_design",
+    "persona_synthesis",
+    "usability_test_planning",
+    "journey_map_authoring"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/product-agent/user-researcher/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_USER_RESEARCHER_",
+  "autonomy_level": "advisory",
+  "risk_class": "LOW",
+  "module_path": "agents.product_agent.user_researcher.runner"
+}
