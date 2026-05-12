@@ -1,10 +1,10 @@
-"""Phase 7 — role-profiles.md ↔ agent.json + memory pipeline integration.
+"""Phase 7 — role-profiles.md ↔ manifest.json + memory pipeline integration.
 
 The role policy documentation must:
 
 1. Live at the canonical path
    ``policies/runtime/agents/engineering-agent/role-profiles.md``.
-2. Be listed in ``agents/engineering-agent/agent.json``'s ``policies``
+2. Be listed in ``agents/engineering-agent/manifest.json``'s ``policies``
    array so ``context_loader`` picks it up when the department boots.
 3. Be ingested by ``yule memory reindex`` as a SOURCE_POLICY document
    so retrieval / search hit it without bespoke wiring.
@@ -34,7 +34,7 @@ DOC_PATH = (
     / "engineering-agent"
     / "role-profiles.md"
 )
-AGENT_JSON = REPO_ROOT / "agents" / "engineering-agent" / "agent.json"
+AGENT_JSON = REPO_ROOT / "agents" / "engineering-agent" / "manifest.json"
 
 
 _REQUIRED_ROLES = (
@@ -79,14 +79,14 @@ class RolePoliciesDocPresenceTests(unittest.TestCase):
 
 
 class AgentJsonPolicyListTests(unittest.TestCase):
-    def test_agent_json_lists_role_profiles_doc(self) -> None:
+    def test_manifest_json_lists_role_profiles_doc(self) -> None:
         manifest = json.loads(AGENT_JSON.read_text(encoding="utf-8"))
         policies = manifest.get("policies") or []
         expected = "policies/runtime/agents/engineering-agent/role-profiles.md"
         self.assertIn(
             expected,
             policies,
-            "agent.json policies array must include role-profiles.md so "
+            "manifest.json policies array must include role-profiles.md so "
             "context_loader picks it up during department bootstrap.",
         )
 

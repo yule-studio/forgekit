@@ -27,7 +27,7 @@
 | ollama | advise, local_private |
 | github-copilot | github_native, patch_propose |
 
-`execute`(쓰기 권한)는 풀 전체에서 한 번에 한 런너만 갖는다. `agent.json`의 `write_policy.max_write_executors_per_run=1` 규칙과 일치해야 한다.
+`execute`(쓰기 권한)는 풀 전체에서 한 번에 한 런너만 갖는다. `manifest.json`의 `write_policy.max_write_executors_per_run=1` 규칙과 일치해야 한다.
 
 ## Extension Points
 런너 본문은 `RunnerHooks`를 통해 선택적으로 다음을 받는다.
@@ -48,7 +48,7 @@
 dry-run 응답은 `RunnerStatus.DRY_RUN`을 반환하며 backend가 컨택트되지 않았음을 detail에 명시한다.
 
 ## 최소 테스트 기준
-- 레지스트리 로딩이 `engineering-agent/agent.json`의 5종 id를 모두 인식한다.
+- 레지스트리 로딩이 `engineering-agent/manifest.json`의 5종 id를 모두 인식한다.
 - 매핑 누락 id는 warnings로만 노출되고 풀 빌드를 막지 않는다.
 - dry-run 경로에서 `submit`이 호출되지 않는다.
 - `PerformanceTracker.record`가 매 실행마다 한 번 호출된다.

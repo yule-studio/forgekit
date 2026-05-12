@@ -8,8 +8,8 @@ Agents should load only the context required for their current role and task.
 - Start with the root project instructions, then load the active agent's `instruction_entry` file.  
   (루트 프로젝트 지침을 먼저 읽고, 그 다음 현재 활성 에이전트의 `instruction_entry` 파일을 읽는다)
 
-- Load policy files listed in the active agent's `agent.json`.  
-  (현재 활성 에이전트의 `agent.json`에 나열된 정책 파일을 읽는다)
+- Load policy files listed in the active agent's `manifest.json`.  
+  (현재 활성 에이전트의 `manifest.json`에 나열된 정책 파일을 읽는다)
 
 - Do not load policies for unrelated agents unless the task explicitly requires them.  
   (작업에서 명시적으로 필요하지 않은 한 관련 없는 에이전트의 정책은 읽지 않는다)

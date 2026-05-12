@@ -60,7 +60,7 @@ prompt 에 `코드 수정 없이` / `자료 수집이 목표` / `리서치만` /
 | UX copy / 운영 UX / 디자인 토큰 / 사용자 흐름 문서 | `product-designer` |
 | 도메인 키워드 매칭 실패 / 모호 / 빈 요청 | `tech-lead` (clarification fallback) |
 
-`agents/engineering-agent/<role>/agent.json` 의 `default_executor_priority.high|medium|low` 키워드 뱅크가 점수 합산(high=+3, medium=+1.5, low=−1) 으로 단일 executor 를 결정. 동점 시 `backend → ai → devops → frontend → qa → product-designer` 순서로 deterministic.
+`agents/engineering-agent/<role>/manifest.json` 의 `default_executor_priority.high|medium|low` 키워드 뱅크가 점수 합산(high=+3, medium=+1.5, low=−1) 으로 단일 executor 를 결정. 동점 시 `backend → ai → devops → frontend → qa → product-designer` 순서로 deterministic.
 
 ### 상태 진단
 

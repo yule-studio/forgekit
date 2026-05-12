@@ -29,7 +29,7 @@ CTO 조직이 도입되면 engineering-agent의 외부 인터페이스는 cto-ag
 ```
 agents/
 └── engineering-agent/             ← Department gateway (게이트웨이)
-    ├── agent.json                  type=department, members=[...], 부서 단위 LLM 풀
+    ├── manifest.json                  type=department, members=[...], 부서 단위 LLM 풀
     ├── CLAUDE.md                   게이트웨이 책임/입출력 계약 정의
     ├── tech-lead/                  Role member: 작업 분해 / 합의 조율
     ├── ai-engineer/                LLM/RAG/research collector/agent eval 자문
@@ -50,7 +50,7 @@ policies/runtime/agents/engineering-agent/
 ```
 
 ## How Members Share LLM Backends
-멤버 폴더의 `agent.json`은 **개별 LLM 백엔드를 직접 소유하지 않는다**. 모든 멤버는 부서 단위 `agent.json`의 `participants`/`integrations` 풀을 공유한다.
+멤버 폴더의 `manifest.json`은 **개별 LLM 백엔드를 직접 소유하지 않는다**. 모든 멤버는 부서 단위 `manifest.json`의 `participants`/`integrations` 풀을 공유한다.
 
 - 게이트웨이가 작업 성격과 `role-weights-v0.md`의 가중치를 보고 어떤 executor(Claude / Codex / Gemini / Ollama / GitHub Copilot)를 쓸지 결정한다.
 - 멤버는 자기 책임 범위(responsibilities)와 입력/출력 계약만 정의한다.
@@ -107,8 +107,8 @@ policies/runtime/agents/engineering-agent/
 
 이 부서가 다른 부서 구축의 템플릿이 되도록 다음 세 가지를 보장한다:
 
-1. **폴더 구조**: `agents/<department-name>/<member-id>/{agent.json, CLAUDE.md}` 패턴 유지
+1. **폴더 구조**: `agents/<department-name>/<member-id>/{manifest.json, CLAUDE.md}` 패턴 유지
 2. **정책 4종**: `mvp-scope`, `mvp-operating-policy`, `role-weights-v0`, `reference-pack` (해당되는 경우)
-3. **agent.json 스키마**: `type=department` 부서장 + `type=role` 멤버, `runner: null`로 시작해 단계적 채움
+3. **manifest.json 스키마**: `type=department` 부서장 + `type=role` 멤버, `runner: null`로 시작해 단계적 채움
 
 이 패턴이 정착되면 product/design/marketing/operations agent 도입 시 폴더 복사 + 책임 재정의만으로 빠르게 출범 가능하다.

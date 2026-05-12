@@ -23,7 +23,7 @@ Engineering Agent는 회사 전체 agent platform의 **첫 번째 실행 부서(
 ### S1. 정체성 문서 ✅
 - 부서 게이트웨이 역할/책임/경계/I·O 계약 명시 (`agents/engineering-agent/CLAUDE.md`)
 - 5명 멤버(tech-lead, backend-engineer, frontend-engineer, product-designer, qa-engineer)의 책임 범위와 입력/출력 계약 (`agents/engineering-agent/<member>/CLAUDE.md`)
-- 부서 단위 LLM participant 풀(claude / codex / gemini / ollama / github-copilot) 정의 (`agents/engineering-agent/agent.json`)
+- 부서 단위 LLM participant 풀(claude / codex / gemini / ollama / github-copilot) 정의 (`agents/engineering-agent/manifest.json`)
 
 ### S2. 운영 정책 문서 ✅
 - 작업 범위, 트리거, 통신 방식, Discord 봇 운영 방식 4가지 결정 명문화 (`mvp-operating-policy.md`)
@@ -56,7 +56,7 @@ Engineering Agent는 회사 전체 agent platform의 **첫 번째 실행 부서(
 
 다음은 별도 마일스톤 (Phase 2)에서 다룬다:
 
-- **LLM 러너 본문 구현** — 각 멤버 `agent.json`은 `runner: null` 상태로 둔다. claude-code/codex/gemini/ollama subprocess wrapper는 다음 단계에서 별도 추상화 레이어로 만든다.
+- **LLM 러너 본문 구현** — 각 멤버 `manifest.json`은 `runner: null` 상태로 둔다. claude-code/codex/gemini/ollama subprocess wrapper는 다음 단계에서 별도 추상화 레이어로 만든다.
 - **멤버 간 메시지 디스패처** — `tech-lead`가 자동으로 다른 멤버를 호출하는 자동화는 아직 없다. MVP 단계에서는 사용자/게이트웨이가 직접 멤버를 지정해 호출한다.
 - **멀티봇 Discord 인프라** — 멤버별 별도 Discord 봇 토큰, `yule discord bot --agent <name>` CLI는 다음 단계.
 - **자동 머지 / 자동 배포 / secrets 자동 접근** — 어떤 단계에서도 사용자 명시 승인 없이 수행하지 않는다.
@@ -69,7 +69,7 @@ Engineering Agent는 회사 전체 agent platform의 **첫 번째 실행 부서(
 
 1. `agents/engineering-agent/`와 `policies/runtime/agents/engineering-agent/` 안의 문서가 외부 사람/에이전트가 읽고 부서의 책임 경계와 운영 방식을 이해할 수 있는 수준으로 정리되어 있다.
 2. MVP 범위 안 일과 범위 밖 일이 분리되어 있어, 다음 이슈가 어디부터 시작해야 하는지 명확하다.
-3. 이후 다른 부서가 같은 패턴으로 추가될 때 이 부서를 템플릿으로 복제할 수 있다(폴더 구조, agent.json 스키마, 멤버 CLAUDE.md 양식, mvp-scope/operating-policy/role-weights/reference-pack 4종 문서 양식).
+3. 이후 다른 부서가 같은 패턴으로 추가될 때 이 부서를 템플릿으로 복제할 수 있다(폴더 구조, manifest.json 스키마, 멤버 CLAUDE.md 양식, mvp-scope/operating-policy/role-weights/reference-pack 4종 문서 양식).
 
 ## Boundaries Reminder
 

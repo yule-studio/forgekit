@@ -8,7 +8,7 @@
 
 | 영역 | 현재 Yule | ECC | 도입 여부 | 이유 | 구현 위치 | 리스크 |
 | --- | --- | --- | --- | --- | --- | --- |
-| **Agent 정의** | `agents/engineering-agent/<role>/agent.json` + role contract-v1 (JSON) | `agents/<name>.md` (YAML frontmatter + body system prompt) | **유지 (변경 없음)** | Yule 의 deterministic loader / role_profiles_data 와 호환. 단, agent.json 에 optional `skills:` `hooks:` `commands:` 선언 필드 추가 가능. | 기존 그대로 | JSON ↔ markdown 차이가 외부 reference 가독성에 영향 — `docs/engineering.md` 에서 cross-link |
+| **Agent 정의** | `agents/engineering-agent/<role>/manifest.json` + role contract-v1 (JSON) | `agents/<name>.md` (YAML frontmatter + body system prompt) | **유지 (변경 없음)** | Yule 의 deterministic loader / role_profiles_data 와 호환. 단, manifest.json 에 optional `skills:` `hooks:` `commands:` 선언 필드 추가 가능. | 기존 그대로 | JSON ↔ markdown 차이가 외부 reference 가독성에 영향 — `docs/engineering.md` 에서 cross-link |
 | **Skill** | 없음 (역할 contract 안에 묻혀 있음) | `skills/<id>/SKILL.md` (디렉터리 + 4 섹션 본문) | **신설 — 단일 파일** | 가장 약한 영역. ECC 의 4 섹션 본문 + Yule 의 IO contract frontmatter 결합. | `agents/engineering-agent/skills/<id>.md` | dispatcher 미존재 → 정의만 있고 동작 안 한다는 오해. README 에 명시 |
 | **Hook** | 없음 (lifecycle 코드에 분산) | `hooks.json` registry + Node script + 6 native event | **신설 — markdown spec 만** | Yule 의 13 lifecycle stage × {pre, post} 로 매핑. 본 PR 은 markdown 까지만, runtime registry / dispatcher 는 후속 PR | `agents/engineering-agent/hooks/<id>.md` | blocking 선언과 코드 가드 (autonomy_policy / github_writer) 의 책임 경계 — README §6 명시 |
 | **Command** | slash + CLI 코드 직접 정의 (already 동작) | `commands/<name>.md` (행동 명세 markdown, primitive prompt) | **신설 — documentation layer** | Yule 의 기존 동작 entry 를 markdown 으로 등록만. dispatcher 자동화는 후속 PR. | `agents/engineering-agent/commands/<id>.md` | orphan markdown (코드 없는 entry) 금지 — README §8 |

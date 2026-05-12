@@ -64,7 +64,7 @@ _REQUIRED_THICK_FIELDS = (
 
 
 def _load_role_profile(role: str) -> dict:
-    path = DEPARTMENT_DIR / role / "agent.json"
+    path = DEPARTMENT_DIR / role / "manifest.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 

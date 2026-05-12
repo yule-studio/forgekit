@@ -23,7 +23,7 @@ except ModuleNotFoundError:
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TECH_LEAD_PROFILE = (
-    REPO_ROOT / "agents" / "engineering-agent" / "tech-lead" / "agent.json"
+    REPO_ROOT / "agents" / "engineering-agent" / "tech-lead" / "manifest.json"
 )
 
 

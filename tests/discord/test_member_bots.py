@@ -145,7 +145,7 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
         self.assertIn("devops-engineer", active_roles)
 
     def test_missing_role_config_dir_emits_warning(self) -> None:
-        """Members listed in agent.json without a sibling role config dir
+        """Members listed in manifest.json without a sibling role config dir
         must surface a 'role config missing' warning so operators see the
         gap in ``yule discord up`` output instead of silently spawning a
         role bot that has no policy files behind it."""
@@ -165,13 +165,13 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
                 "instruction_entry": "agents/fake-agent/CLAUDE.md",
                 "policies": [],
             }
-            (agent_dir / "agent.json").write_text(
+            (agent_dir / "manifest.json").write_text(
                 json.dumps(manifest), encoding="utf-8"
             )
             present = agent_dir / "present-role"
             present.mkdir()
-            (present / "agent.json").write_text("{}", encoding="utf-8")
-            # Intentionally omit ``missing-role/agent.json``.
+            (present / "manifest.json").write_text("{}", encoding="utf-8")
+            # Intentionally omit ``missing-role/manifest.json``.
 
             env = {k: v for k, v in os.environ.items() if not k.startswith("FAKE_AGENT_BOT_")}
             with patch.dict(os.environ, env, clear=True):

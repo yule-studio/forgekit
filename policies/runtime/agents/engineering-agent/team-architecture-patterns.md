@@ -141,8 +141,8 @@ Yule 은 이미 Pipeline (lifecycle 13 단계), Fan-out (multi-role research), P
 ### 7.2 Yule 와의 매핑
 
 - L0 = `RoleProfile.mission` + `activation_keywords` + `output_sections` (이미 존재).
-- L1 = `agent.json` 의 `operating_modes` + `reasoning_flow` + `required_questions` (backend 는 이미 v1 contract 로 노출, 다른 역할은 phase 1~7 점진).
-- L2 = `agent.json` 의 `contract_standards` (api / data / error / security / transaction / observability / test_handoff). 현재 backend 만 7 종 노출.
+- L1 = `manifest.json` 의 `operating_modes` + `reasoning_flow` + `required_questions` (backend 는 이미 v1 contract 로 노출, 다른 역할은 phase 1~7 점진).
+- L2 = `manifest.json` 의 `contract_standards` (api / data / error / security / transaction / observability / test_handoff). 현재 backend 만 7 종 노출.
 
 다른 역할로 동일 패턴을 확장하는 절차는 `role-profiles.md` §"다른 role 로 확장할 때 재사용할 패턴" 이 이미 7 단계로 정리해 두었다 — 본 정책은 그 절차를 **회사형 팀의 표준 onboarding** 으로 채택한다.
 
@@ -191,7 +191,7 @@ Harness 의 또 다른 핵심은 "팀이 자기 자신을 개선하는 retrospec
 | coordinator agent / orchestrator agent / sub-agent runtime 도입 (Hierarchical Delegation 2 단 확장) | #25 선행 의존 | 중간 |
 | skill / hook / MCP wiring 으로 progressive disclosure 실 구현 | #25 선행 의존 | 중간 |
 | engineering-intelligence 의 daily 결과를 self-improvement detector 의 `empty_knowledge_note` 신호와 연결하는 retrospective loop | M12 + G-engineering-intelligence | 낮음 |
-| frontend / devops / qa / ai / product-designer 역할의 `agent.json` 을 backend v1 패턴으로 phase 1~7 점진 강화 (operating_modes / reasoning_flow / contract_standards) | role-profiles.md §"다른 role 로 확장할 때 재사용할 패턴" | 낮음 |
+| frontend / devops / qa / ai / product-designer 역할의 `manifest.json` 을 backend v1 패턴으로 phase 1~7 점진 강화 (operating_modes / reasoning_flow / contract_standards) | role-profiles.md §"다른 role 로 확장할 때 재사용할 패턴" | 낮음 |
 | 본 정책 §6.1 routing matrix 와 `role_selection.py` 의 fallback 정책 사이의 일관성을 자동 점검하는 단위 테스트 | 본 정책 통과 후 | 낮음 |
 
 ## 변경 이력

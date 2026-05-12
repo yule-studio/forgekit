@@ -32,7 +32,7 @@ yule discord up --agents engineering-agent,marketing-agent
 1. **planning-bot** — `DISCORD_BOT_TOKEN` 환경변수 사용. `discord/bot.py:run_discord_bot`로 실행.
 2. **부서 에이전트별로 (입력 순서대로):**
    - **gateway** 봇 — `<AGENT>_BOT_GATEWAY_TOKEN`
-   - **각 멤버** 봇 — `<AGENT>_BOT_<ROLE>_TOKEN` (`agent.json`의 `members` 순서 그대로)
+   - **각 멤버** 봇 — `<AGENT>_BOT_<ROLE>_TOKEN` (`manifest.json`의 `members` 순서 그대로)
 
 각 봇은 토큰 유무에 따라 다음 상태:
 

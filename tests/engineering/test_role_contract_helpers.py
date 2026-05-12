@@ -32,7 +32,7 @@ class DefaultResponseTemplateTests(unittest.TestCase):
         reset_contract_cache_for_tests()
         self.addCleanup(reset_contract_cache_for_tests)
 
-    def test_backend_template_pulled_from_agent_json(self) -> None:
+    def test_backend_template_pulled_from_manifest_json(self) -> None:
         template = default_response_template_for("backend-engineer")
         self.assertGreaterEqual(len(template), 8)
         joined = " ".join(template)
