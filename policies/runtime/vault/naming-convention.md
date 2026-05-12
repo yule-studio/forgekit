@@ -82,24 +82,35 @@ tags:
 ---
 ```
 
-## 폴더 README hub 구조
+## 폴더 README hub 구조 (v.2.0.0)
 
-각 폴더는 `README.md` 를 가지며 vault root README 가 모든 폴더 README
-로 [[link]]. 가지 구조:
+최상단 `yule-agent-vault/README.md` 만 README 로 유지 (오픈소스 컨벤션).
+하위 폴더의 인덱스는 폴더명 (숫자 prefix 제외) 으로:
 
 ```
-README.md (root)
-├── _moc/README.md          (주제별 hub 인덱스)
-│   ├── f15-corporate-structure.md
-│   ├── manifest-migration.md
-│   ├── plugins-catalog.md
-│   └── ...
-├── decisions/README.md     (kind 인덱스)
-├── research/README.md
-├── task-logs/uncRotate.md
-└── knowledge/README.md
-    └── plugins/README.md   (하위 영역 인덱스)
+yule-agent-vault/README.md       (오픈소스 README, vault 진입점)
+└── obsidian-vault/index.md      (10 폴더 인덱스)
+    ├── 00-inbox/inbox.md
+    ├── 10-projects/projects.md
+    │   └── yule-studio-agent/yule-studio-agent.md
+    │       ├── _moc/_moc.md
+    │       ├── decisions/decisions.md
+    │       ├── research/research.md
+    │       ├── task-logs/task-logs.md
+    │       └── knowledge/knowledge.md
+    │           └── plugins/plugins.md
+    ├── 20-areas/areas.md
+    ├── 30-resources/resources.md
+    ├── 40-patterns/patterns.md
+    ├── 50-snippets/snippets.md
+    ├── 60-troubleshooting/troubleshooting.md
+    ├── 70-daily/daily.md
+    ├── 80-templates/templates.md
+    └── 90-archive/archive.md
 ```
+
+이유: Obsidian 그래프에서 모든 노드가 "README" 라벨로 표시되면 구분
+불가. 폴더명 토큰으로 가면 한 눈에 어떤 인덱스인지 보임.
 
 ## 자동화 에이전트 작성 규칙
 
@@ -125,6 +136,7 @@ README.md (root)
 
 ## 본 컨벤션의 vault 사본
 
-vault 안에도 같은 내용의 README 가 존재:
-`10-projects/yule-studio-agent/README.md`. 본 repo 의 정책과 vault README
-가 어긋나면 본 repo 가 권위.
+vault 안에도 같은 내용의 인덱스가 존재:
+`10-projects/yule-studio-agent/yule-studio-agent.md` (프로젝트 진입점) +
+`obsidian-vault/index.md` (10 폴더 인덱스). 본 repo 의 정책과 vault
+인덱스가 어긋나면 본 repo 가 권위.
