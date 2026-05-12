@@ -2,6 +2,12 @@
 
 본 문서는 engineering-agent (tech-lead / backend / frontend / qa / devops / ai / product-designer) 가 GitHub issue / PR / Obsidian 노트 / 자동 머지 를 다룰 때 따르는 **단일 컨벤션 진실** 이다. agent 가 본 컨벤션을 따르지 않으면 PR review 단계에서 reject + mistake ledger 등록 대상.
 
+## 참고 패턴 (2026-05-12 갱신)
+
+- **gstack** (github.com/garrytan/gstack): preamble resolver / SKILL.md.tmpl / token ceiling 가드 / CLAUDE.md persistent answers 패턴 — F14 (#124) 에서 차용.
+- **harness engineering**: 모든 agent / module 은 Protocol seam + fake injection + governance regression 으로 가드.
+- **token harness**: §3 commit 분리 + preamble cache (agents/preamble) + memory unifier (F10) 로 컨텍스트 재사용.
+
 ## 1. Issue 컨벤션
 
 ### 1.1 Title 포맷
@@ -139,7 +145,9 @@ issue body 와 동일하되 추가:
 - **Ready for review** 마킹: 자체 회귀 OK + governance test 통과 + acceptance criteria 충족
 - tech-lead 가 spawn 한 agent 의 PR 은 기본 Draft. 자체 회귀 PASS 시 mark-ready 가능.
 
-## 3. Commit 컨벤션 (기존 메모리 재확인)
+## 3. Commit 컨벤션 (2026-05-12 갱신 — 분리 정책)
+
+### 3.1 메시지 포맷
 
 ```
 <gitmoji> #<n> <Type 한국어 한 줄 요약>
@@ -155,6 +163,29 @@ issue body 와 동일하되 추가:
 ```
 
 **금지**: `Co-Authored-By` trailer, 🤖 생성 trailer, `Generated with Claude` 류 메시지.
+
+### 3.2 커밋 분리 정책 (필수)
+
+**PR 당 최소 3 commit** 으로 분리. 하나의 거대 커밋 금지. 분리 기준:
+
+| 분리 단위 | 예시 |
+| --- | --- |
+| **data model / dataclass** 한 묶음 | `Plugin manifest dataclass + 검증` |
+| **로직 / runtime** 한 묶음 | `PluginRegistry + HookChain invoke` |
+| **integration / wiring** 한 묶음 | `runtime/services.py 등록 + CLI 진입점` |
+| **테스트 + governance** 한 묶음 | `test_plugin_registry.py + test_extension_governance.py` |
+| **docs / convention / policy** 한 묶음 | `extension-architecture.md + .env.example` |
+
+**PR merge 방식**: `gh pr merge --merge` 또는 `--rebase` (squash 금지 — 커밋 history 보존).
+
+`gh pr merge --squash` 는 docs-only / 1-commit chore PR 에만 허용.
+
+### 3.3 mistake_ledger signature 추가
+
+| signature | level | reason |
+| --- | --- | --- |
+| `commit.single-mega-commit` | WARNING | feature PR 인데 1 commit 만 — 분리 필요 |
+| `commit.squash-merge-multi-commit-pr` | WARNING | 3+ commit PR 을 squash 머지 — history 손실 |
 
 ## 4. Obsidian 노트 컨벤션
 
