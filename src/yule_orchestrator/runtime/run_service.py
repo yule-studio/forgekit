@@ -153,6 +153,11 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
     if spec.kind == ServiceKind.DISCORD_GATEWAY:
         return await _run_discord_gateway(spec, shutdown_event=shutdown_event)
 
+    if spec.kind == ServiceKind.DIGEST_SCHEDULER:
+        from ..agents.digest.scheduler import run_scheduler
+
+        return await run_scheduler(shutdown_event=shutdown_event)
+
     process_job_fn = _build_process_job(spec, queue=queue, heartbeats=heartbeats)
     job_types, roles = _pick_filters_for(spec)
 

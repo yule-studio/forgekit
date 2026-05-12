@@ -51,6 +51,8 @@ class ServiceKind(str, Enum):
     CODING_EXECUTOR = "coding_executor"
     SUPERVISOR = "supervisor"
     DISCORD_GATEWAY = "discord_gateway"
+    # F13 #122 — 부서별 자동 이슈 수집 (RSS/release crawler + dept dispatch).
+    DIGEST_SCHEDULER = "digest_scheduler"
     # Kept for backward compatibility — older inventory dumps may
     # reference the reserved name. New code should use
     # ``DISCORD_GATEWAY``.
@@ -210,6 +212,19 @@ def _build_engineering_profile(
                 "engineering Discord gateway — listens on #업무-접수, "
                 "enqueues research_collect/role_take/approval_post jobs "
                 "for the workers above (does not consume from queue itself)"
+            ),
+        )
+    )
+    rows.append(
+        ServiceSpec(
+            service_id="eng-digest-scheduler",
+            kind=ServiceKind.DIGEST_SCHEDULER,
+            description=(
+                "F13 (#122) 부서별 자동 이슈 수집 — RSS/release feed 16 host "
+                "interval crawl → dept_router (design/planning/engineering/multi-dept) → "
+                "dedup ledger (24h url+title hash) → 부서 채널 GeekNews 카드 게시. "
+                "다중 부서 영향 시 #운영-리서치 thread 자동 생성. "
+                "YULE_DIGEST_SCHEDULER_ENABLED=true 일 때만 실행 (exit 78 if disabled)."
             ),
         )
     )
