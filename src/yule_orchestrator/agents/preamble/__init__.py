@@ -16,6 +16,7 @@ from .builder import (
     build_default_preamble,
 )
 from .cache import PreambleCache, get_shared_cache
+from .memory_inject import inject_memory_summary
 
 
 __all__ = (
@@ -25,4 +26,5 @@ __all__ = (
     "PreambleSection",
     "build_default_preamble",
     "get_shared_cache",
+    "inject_memory_summary",
 )
