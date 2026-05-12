@@ -648,14 +648,14 @@ def recommend_knowledge_path(
         resolve_layout,
     )
 
+    # F15 v2: canonical shape `knowledge-<topic-slug>.md` — date prefix removed
+    # (validated by filename_convention.validate_filename).
     layout_resolved = resolve_layout(layout, env=env)
-    when = created_at or datetime.utcnow()
-    date_part = when.date().isoformat()
     slug = _slugify(title, max_chars=FILENAME_SLUG_LIMIT) or "untitled"
-    basename = f"{date_part}_knowledge-{slug}.md"
+    basename = f"knowledge-{slug}.md"
     if len(basename) > FILENAME_BASENAME_LIMIT:
-        keep = FILENAME_BASENAME_LIMIT - (len(date_part) + 1 + len("knowledge") + 1 + 3)
-        basename = f"{date_part}_knowledge-{slug[:max(1, keep)]}.md"
+        keep = FILENAME_BASENAME_LIMIT - (len("knowledge") + 1 + 3)
+        basename = f"knowledge-{slug[:max(1, keep)]}.md"
 
     if layout_resolved == LAYOUT_LEGACY_AGENT:
         # No legacy parent for ``knowledge/`` exists — route to the inbox

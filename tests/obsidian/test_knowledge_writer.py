@@ -200,7 +200,7 @@ class BuildKnowledgeNoteTests(unittest.TestCase):
             note.vault_folder.endswith(f"/{KNOWLEDGE_SUBDIR}"),
             note.vault_folder,
         )
-        self.assertTrue(note.vault_filename.startswith("2026-05-05_knowledge-"))
+        self.assertTrue(note.vault_filename.startswith("knowledge-"))
 
     def test_original_prompt_preserved_in_frontmatter_and_body(self) -> None:
         session = _session(

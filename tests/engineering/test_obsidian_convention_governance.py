@@ -62,7 +62,7 @@ class CanonicalShapeTests(unittest.TestCase):
 
 class MistakeSignatureTests(unittest.TestCase):
     def test_date_prefix_maps_to_date_prefix_signature(self) -> None:
-        verdict = validate_filename("2026-05-08_task-log-foo.md")
+        verdict = validate_filename("2026-05-12_task-log-foo.md")
         self.assertFalse(verdict.valid)
         self.assertEqual(verdict.signature, "obsidian.filename.date-prefix")
 

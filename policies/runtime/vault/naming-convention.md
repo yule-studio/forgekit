@@ -1,84 +1,130 @@
-# Vault Naming Convention (F15)
+# Vault Naming Convention (v.2.0.0)
+
+| 문서 버전 | 작성일 | 작성자 | 주요 변경 사항 |
+| --- | --- | --- | --- |
+| v.2.0.0 | 2026-05-12 | engineering-agent/tech-lead | 날짜 prefix 제거 + dash 분리자 통일 + 본문 표 양식 |
+| v.1.0.0 | 2026-05-11 | engineering-agent/tech-lead | 최초 (날짜 + underscore 형식, deprecated) |
 
 Obsidian vault (`yule-agent-vault/obsidian-vault/10-projects/yule-studio-agent/`)
-안의 노트 명명 규칙. 운영자 / 에이전트가 한 눈에 무엇인지 보이게 한다.
+안의 노트 명명 규칙. 코드 (`filename_convention.validate_filename`) +
+회귀 테스트 (`tests/engineering/test_obsidian_convention_governance.py`)
+가 hard rail.
 
 ## 표준 형식
 
 ```
-YYYY-MM-DD_<kind>_<topic-kebab-case>.md
+<kind>-<topic-kebab>[-issue-<n>].md
 ```
 
-- `YYYY-MM-DD` — 생성 날짜 (KST 기준)
 - `<kind>` — `decision` / `research` / `task-log` / `knowledge` /
-  `meeting-notes` / `retrospective`
-- `<topic-kebab-case>` — 주제 식별자. issue 번호 포함 시
-  `issue-NN-<주제>` 형태
+  `meeting` / `work-report`
+- `<topic-kebab>` — kebab-case, 영문 소문자 / 숫자 / hyphen
+- `-issue-<n>` — 선택, 관련 GitHub issue 번호
+
+**파일명에 날짜를 넣지 않는다.** 날짜는 frontmatter `created_at` +
+본문 첫 줄 문서 버전 표 에서만 관리. 파일 rename 없이 새 버전 행만
+추가하므로 [[link]] 가 깨지지 않음.
 
 ## 예시
 
 | 형식 | 예 |
 |---|---|
-| ✅ 표준 | `2026-05-11_decision_product-vs-marketing-cpo-cmo-separation.md` |
-| ✅ 표준 + issue | `2026-05-09_task-log_issue-73-tech-lead-runtime-loop.md` |
-| ❌ dash 구분자 | `2026-05-08_decision-tech-lead-single-write-subject.md` |
-| ❌ kind 누락 | `2026-05-08_59-hermes-tech-lead.md` |
-| ❌ kind plural / 뒤쪽 | `2026-05-08_hermes-yule-integration-decisions.md` |
+| ✅ 표준 | `decision-product-vs-marketing-cpo-cmo-separation-issue-126.md` |
+| ✅ 표준 + issue | `task-log-tech-lead-runtime-loop-issue-73.md` |
+| ✅ 표준 | `research-engineering-knowledge-surface-strengthening.md` |
+| ❌ 날짜 prefix | `2026-05-08_decision-tech-lead-single-write-subject.md` (mistake `obsidian.filename.date-prefix`) |
+| ❌ kind 누락 | `2026-05-08_59-hermes-tech-lead.md` (mistake `obsidian.filename.kind-missing`) |
+| ❌ 잘못된 분리자 | `decision_tech-lead-foo.md` (mistake `obsidian.filename.topic-malformed`) |
 
 ## 폴더 매핑
 
 | 폴더 | kind | 용도 |
 |---|---|---|
-| `decisions/` | decision | 결정 박스 + 의미 + 비결정 + 변경 영향 |
-| `research/` | research | 외부 / 내부 자료 조사 결과 + 출처 |
-| `task-logs/` | task-log | issue 단위 작업 진행 / 결정 흐름 |
-| `knowledge/` | knowledge | 운영 지식 surface (auto-collected 포함) |
-| `meeting-notes/` | meeting-notes | 운영자 회의 / 합의 기록 |
+| `_moc/` | knowledge | 주제별 Map of Content hub |
+| `decisions/` | decision | 결정 박스 + 의미 + 비결정 + 영향 |
+| `research/` | research | 외부/내부 자료 조사 + 출처 |
+| `task-logs/` | task-log | issue/사이클 단위 작업 진행 |
+| `knowledge/` | knowledge | 운영 지식 reference card |
+| `meeting-notes/` | meeting | 운영자 회의/합의 |
 | `retrospectives/` | retrospective | 사이클 회고 |
+
+## 본문 첫 줄 표준
+
+모든 노트는 frontmatter 다음에 문서 버전 표를 둔다:
+
+```markdown
+# <한 줄 제목>
+
+| 문서 버전 | 작성일 | 작성자 | 주요 변경 사항 |
+| --- | --- | --- | --- |
+| v.1.0.0 | YYYY-MM-DD | <부서>/<역할> | 최초 ... |
+```
+
+후속 개정마다 행 추가 (위쪽이 최신). 이 표가 파일명에서 빠진 날짜·버전
+정보를 보존한다.
 
 ## frontmatter 표준
 
 ```yaml
 ---
 title: "한 줄 제목"
-kind: decision | research | task-log | knowledge | ...
-session_id: <짧은 식별자>
+kind: decision | research | task-log | knowledge | meeting | work-report
 project: yule-studio-agent
-created_at: 2026-MM-DDTHH:MM:SS+09:00
 agent: <부서>/<역할>
-status: decided | draft | superseded | in-progress | current
+status: decided | draft | superseded | current | completed | historical
+created_at: 2026-MM-DDTHH:MM:SS+09:00
+session_id: <짧은 식별자>   # optional
+issue_number: <NN>           # optional
 related:
   - ../<폴더>/<관련-노트>.md
 tags:
   - <topic-tag>
-  - <kind>
 ---
+```
+
+## 폴더 README hub 구조
+
+각 폴더는 `README.md` 를 가지며 vault root README 가 모든 폴더 README
+로 [[link]]. 가지 구조:
+
+```
+README.md (root)
+├── _moc/README.md          (주제별 hub 인덱스)
+│   ├── f15-corporate-structure.md
+│   ├── manifest-migration.md
+│   ├── plugins-catalog.md
+│   └── ...
+├── decisions/README.md     (kind 인덱스)
+├── research/README.md
+├── task-logs/uncRotate.md
+└── knowledge/README.md
+    └── plugins/README.md   (하위 영역 인덱스)
 ```
 
 ## 자동화 에이전트 작성 규칙
 
-runtime / agent 가 vault 에 노트를 작성할 때:
+1. 본 컨벤션 (파일명 + 본문 표 + frontmatter) 준수
+2. PasteGuard 통과한 페이로드만 작성
+3. 해당 폴더 README 에 [[link]] 추가
+4. 같은 주제의 다른 단계 노트 (decision/research/task-log) 와
+   frontmatter `related` 로 cross-link
+5. 새 주제면 `_moc/` 안에 hub 노트도 함께 작성
 
-1. 본 컨벤션 준수 (파일명 + frontmatter)
-2. PasteGuard 통과한 페이로드만 작성 (secret/PII 자동 마스킹)
-3. `OUTBOUND_VAULT` hook 통과 → `obsidian-vault-push` 가 켜져 있으면
-   자동 git push, 아니면 vault 만 write
-4. 관련 시기 vault 의 다른 노트와 cross-link (`related`)
-5. 같은 결정/연구가 이미 존재하면 새로 만들지 말고 `status: superseded`
-   로 갱신한 새 노트 + 본 노트 첫 줄에 후속 링크
+## 코드 enforcement
+
+- `src/yule_orchestrator/agents/obsidian/filename_convention.py` —
+  `validate_filename` 이 단일 판정 소스
+- `src/yule_orchestrator/agents/obsidian/export.py` —
+  `recommend_path` 가 본 컨벤션으로 basename 생성 (날짜 제거됨)
+- `src/yule_orchestrator/agents/obsidian/knowledge_writer.py` — 같음
+- `tests/engineering/test_obsidian_convention_governance.py` —
+  hard rail CI 게이트
+- mistake_ledger signature: `obsidian.filename.date-prefix` /
+  `obsidian.filename.kind-missing` / `obsidian.filename.topic-malformed` /
+  `obsidian.filename.not-markdown`
 
 ## 본 컨벤션의 vault 사본
 
-vault 안에도 같은 내용의 README 가 존재 (운영자 vault 만 들고 다닐 때
-참조용):
-
-```
-10-projects/yule-studio-agent/README.md
-```
-
-본 repo 의 policies 와 vault 의 README 가 어긋나면 본 repo 가 권위.
-
-## 관련
-
-- F15 #126 corporate-structure 사이클의 commit 8 에서 도입
-- `policies/runtime/plugins/obsidian-vault-push.md` — vault push 자동화 게이트
+vault 안에도 같은 내용의 README 가 존재:
+`10-projects/yule-studio-agent/README.md`. 본 repo 의 정책과 vault README
+가 어긋나면 본 repo 가 권위.
