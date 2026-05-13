@@ -14,7 +14,7 @@ discord.py. ``bot.py`` wires the production callables.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
 from ..agents.coding.authorization import (
@@ -57,9 +57,12 @@ from ..agents.runtime import (
     INTENT_CONTINUE_EXISTING_WORK as RUNTIME_INTENT_CONTINUE_EXISTING_WORK,
     INTENT_EXECUTE_EXISTING_STEP as RUNTIME_INTENT_EXECUTE_EXISTING_STEP,
     INTENT_SUMMARIZE_PREVIOUS_WORK as RUNTIME_INTENT_SUMMARIZE_PREVIOUS_WORK,
+    RecallCoverage,
     RuntimeInput,
+    RuntimeRecallResult,
     RuntimeResearchPlan,
     classify_intent_deterministic,
+    compute_recall_coverage,
     decide_default,
     make_recall_fn,
 )
@@ -100,10 +103,20 @@ class EngineeringRouteContext:
     Both ``intake_channel_id`` and ``intake_channel_name`` are optional
     individually — if either one matches the message channel (or its
     parent, for a thread), the message is treated as engineering.
+
+    F16 (issue #128) added ``prefer_recall_first_gateway`` — an opt-in
+    flag that, when set, lets the router call ``decide_gateway`` (the
+    new 7-action recall-first decision) for **any** intent. While off
+    (default), the router keeps the legacy preflight short-circuit
+    behaviour so all pre-F16 contracts hold. The coverage scorer is
+    attached to recall results unconditionally — it is **derived**
+    metadata and changes no existing behaviour, but lets observability
+    and future routing tap into it without re-running recall.
     """
 
     intake_channel_id: Optional[int] = None
     intake_channel_name: Optional[str] = None
+    prefer_recall_first_gateway: bool = False
 
     @property
     def configured(self) -> bool:
@@ -117,6 +130,9 @@ class EngineeringRouteContext:
             intake_channel_id=_optional_int_env("DISCORD_ENGINEERING_INTAKE_CHANNEL_ID"),
             intake_channel_name=_optional_string_env(
                 "DISCORD_ENGINEERING_INTAKE_CHANNEL_NAME"
+            ),
+            prefer_recall_first_gateway=_optional_bool_env(
+                "YULE_GATEWAY_RECALL_FIRST_ENABLED", default=False
             ),
         )
 
@@ -2128,6 +2144,11 @@ async def _run_runtime_preflight(
 
     recall_fn = make_recall_fn(list_sessions_fn=list_sessions_fn)
     recall = recall_fn(observation, intent, runtime_input)
+    # F16 (issue #128): attach coverage scoring to every recall result
+    # the runtime preflight touches. The coverage value is *derived*
+    # metadata — legacy callers ignore it, observability can read it,
+    # and the future ``decide_gateway`` path branches on it.
+    recall = _attach_recall_coverage(recall)
     decision = decide_default(
         observation,
         intent,
@@ -3087,3 +3108,39 @@ def _optional_string_env(name: str) -> Optional[str]:
         return None
     value = raw.strip()
     return value or None
+
+
+def _optional_bool_env(name: str, *, default: bool = False) -> bool:
+    """Parse a boolean envvar — empty/unset returns ``default``.
+
+    Accepted truthy values: ``"true"``, ``"1"``, ``"yes"``, ``"on"``
+    (case-insensitive). Anything else is treated as the default. Used
+    by F16 ``EngineeringRouteContext.prefer_recall_first_gateway`` so
+    operators can opt into the recall-first gateway path without code
+    changes.
+    """
+
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if not value:
+        return default
+    return value in {"true", "1", "yes", "on"}
+
+
+def _attach_recall_coverage(recall: RuntimeRecallResult) -> RuntimeRecallResult:
+    """F16 — replace ``recall`` with a copy whose ``coverage`` is scored.
+
+    The scorer is **defensive**: any failure (None, malformed hits)
+    degrades to ``RecallCoverage(level=low, stale=True)``. Legacy
+    callers that ignore ``coverage`` see no behaviour change.
+    """
+
+    try:
+        coverage = compute_recall_coverage(recall)
+    except Exception:  # noqa: BLE001
+        coverage = RecallCoverage(
+            level="low", stale=True, sources=(), reason="scorer raised"
+        )
+    return replace(recall, coverage=coverage)
