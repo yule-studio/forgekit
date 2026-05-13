@@ -71,6 +71,42 @@ KNOWN_ACTIONS = (
 
 
 # ---------------------------------------------------------------------------
+# F16 — Gateway decision actions (issue #128, docs/runtime-recall-first.md)
+#
+# These 7 string ids identify the recall-first gateway decision branches.
+# They are **labels** that ride along on the existing KNOWN_ACTIONS via
+# ``RuntimeAction.payload["gateway_action"]``; this keeps the existing
+# action_id enum stable while letting the channel router dispatch on the
+# gateway-specific shape.
+# ---------------------------------------------------------------------------
+GATEWAY_REPLY_ONLY = "gateway:reply_only"
+GATEWAY_ASK_CLARIFICATION = "gateway:ask_clarification"
+GATEWAY_JOIN_EXISTING = "gateway:join_existing"
+GATEWAY_APPEND_CONTEXT = "gateway:append_context"
+GATEWAY_HANDOFF_TECH_LEAD_NO_RESEARCH = "gateway:handoff_tech_lead_no_research"
+GATEWAY_TARGETED_RESEARCH = "gateway:targeted_research"
+GATEWAY_FULL_RESEARCH = "gateway:full_research"
+
+GATEWAY_DECISION_ACTIONS = (
+    GATEWAY_REPLY_ONLY,
+    GATEWAY_ASK_CLARIFICATION,
+    GATEWAY_JOIN_EXISTING,
+    GATEWAY_APPEND_CONTEXT,
+    GATEWAY_HANDOFF_TECH_LEAD_NO_RESEARCH,
+    GATEWAY_TARGETED_RESEARCH,
+    GATEWAY_FULL_RESEARCH,
+)
+
+
+# Recall coverage levels — used by ``RecallCoverage`` below.
+COVERAGE_HIGH = "high"
+COVERAGE_MEDIUM = "medium"
+COVERAGE_LOW = "low"
+
+KNOWN_COVERAGE_LEVELS = (COVERAGE_HIGH, COVERAGE_MEDIUM, COVERAGE_LOW)
+
+
+# ---------------------------------------------------------------------------
 # Runtime stage I/O
 # ---------------------------------------------------------------------------
 
@@ -165,6 +201,26 @@ class SessionCandidate:
 
 
 @dataclass(frozen=True)
+class RecallCoverage:
+    """F16 — How much grounded context Recall actually surfaced.
+
+    ``level`` is one of :data:`KNOWN_COVERAGE_LEVELS` and answers
+    "does the gateway already know enough to skip research?".
+    ``stale`` flags that even a "high" coverage may be older than the
+    freshness threshold (default 7 days) — Decide treats stale-high
+    the same as medium so we don't reuse rotten context silently.
+    ``sources`` lists short labels (``"session"``, ``"memory:obsidian"``,
+    ``"memory:rag"``) so audit log entries can show *why* a branch
+    decided to skip / take research.
+    """
+
+    level: str = COVERAGE_LOW
+    stale: bool = True
+    sources: Tuple[str, ...] = field(default_factory=tuple)
+    reason: str = ""
+
+
+@dataclass(frozen=True)
 class RuntimeRecallResult:
     """Output of Recall: which sessions / memories matched.
 
@@ -172,7 +228,10 @@ class RuntimeRecallResult:
     enough to attach. When several candidates score similarly the loop
     leaves it None and the Decide stage emits ``ask_clarification``.
     ``memory_hits`` mirrors the memory adapter's free-form mapping per
-    hit so role bots can show citations.
+    hit so role bots can show citations. ``coverage`` (F16) is a
+    derived score the gateway path uses to decide whether to skip
+    research; it stays ``None`` for legacy non-gateway callers that
+    don't need it.
     """
 
     matched_session_id: Optional[str] = None
@@ -182,6 +241,7 @@ class RuntimeRecallResult:
     memory_hits: Tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
     confidence: str = "low"
     reason: str = ""
+    coverage: Optional[RecallCoverage] = None
 
 
 @dataclass(frozen=True)
