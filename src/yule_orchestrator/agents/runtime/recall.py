@@ -32,6 +32,9 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Optional, Sequence, Tuple
 
 from .models import (
+    COVERAGE_HIGH,
+    COVERAGE_LOW,
+    COVERAGE_MEDIUM,
     INTENT_APPEND_CONTEXT,
     INTENT_CONTINUE_EXISTING_WORK,
     INTENT_DIAGNOSTIC_QUESTION,
@@ -39,6 +42,7 @@ from .models import (
     INTENT_NEW_WORK_REQUEST,
     INTENT_STATUS_QUESTION,
     INTENT_SUMMARIZE_PREVIOUS_WORK,
+    RecallCoverage,
     RuntimeInput,
     RuntimeIntent,
     RuntimeObservation,
@@ -52,6 +56,173 @@ SCORE_HIGH = 0.45
 SCORE_MEDIUM = 0.20
 AMBIGUITY_MARGIN = 0.10
 MAX_CANDIDATES_RETURNED = 5
+
+
+# F16 — Recall coverage scoring (docs/runtime-recall-first.md §2.1)
+#
+# Coverage answers "does the gateway already know enough to skip
+# research?". It is *derived* from ``RuntimeRecallResult`` so the
+# scorer can be unit-tested in isolation and the gateway path can
+# attach a coverage decision without re-running the recall stage.
+COVERAGE_FRESH_HOURS = 24
+COVERAGE_STALE_DAYS = 7
+COVERAGE_HIGH_MIN_MEMORY_HITS = 2
+COVERAGE_MEDIUM_MIN_MEMORY_HITS = 1
+
+
+def compute_recall_coverage(
+    recall: RuntimeRecallResult,
+    *,
+    now: Optional[datetime] = None,
+) -> RecallCoverage:
+    """Score recall hits into a high/medium/low + stale judgment.
+
+    Rules (matching docs/runtime-recall-first.md §2.1):
+
+      * **high** — recall produced a matched session AND at least
+        ``COVERAGE_HIGH_MIN_MEMORY_HITS`` memory hits AND at least one
+        source was updated within the past 24h.
+      * **medium** — either a matched session or at least one memory
+        hit, and at least one source within the past 7 days.
+      * **low** — neither condition holds.
+
+    ``stale`` flips True whenever the freshest detected source is
+    older than 7 days OR no datetime could be parsed at all (the
+    caller should treat unknown freshness as stale to avoid relying
+    on rotten context).
+
+    ``sources`` collects short labels (``"session"``, ``"memory:rag"``,
+    ``"memory:obsidian"``, ...) for audit log lines.
+
+    The function is **defensive**: malformed/missing fields fall back
+    to a low+stale coverage so any failure in the recall stage
+    degrades to "we don't know enough — let research decide".
+    """
+
+    if recall is None:  # pragma: no cover - defensive
+        return RecallCoverage(
+            level=COVERAGE_LOW,
+            stale=True,
+            sources=(),
+            reason="recall result is None",
+        )
+
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    sources: list[str] = []
+    timestamps: list[datetime] = []
+
+    has_session = bool(recall.matched_session_id)
+    if has_session:
+        sources.append("session")
+        # Try to pull updated_at from the matched candidate, if any.
+        for candidate in recall.candidates:
+            if candidate.session_id != recall.matched_session_id:
+                continue
+            ts = _candidate_timestamp(candidate)
+            if ts is not None:
+                timestamps.append(ts)
+            break
+
+    memory_count = 0
+    for hit in recall.memory_hits or ():
+        memory_count += 1
+        backend = ""
+        try:
+            backend = str(hit.get("backend") or hit.get("source") or "memory")
+        except AttributeError:
+            backend = "memory"
+        label = f"memory:{backend}" if not backend.startswith("memory") else backend
+        if label not in sources:
+            sources.append(label)
+        ts = _hit_timestamp(hit)
+        if ts is not None:
+            timestamps.append(ts)
+
+    fresh_cutoff = now.timestamp() - COVERAGE_FRESH_HOURS * 3600
+    stale_cutoff = now.timestamp() - COVERAGE_STALE_DAYS * 86400
+
+    has_fresh = any(ts.timestamp() >= fresh_cutoff for ts in timestamps)
+    has_within_week = any(ts.timestamp() >= stale_cutoff for ts in timestamps)
+
+    # Default: no timestamps == "we cannot prove freshness" → stale=True
+    stale = True if not timestamps else not has_within_week
+
+    if (
+        has_session
+        and memory_count >= COVERAGE_HIGH_MIN_MEMORY_HITS
+        and has_fresh
+    ):
+        level = COVERAGE_HIGH
+        reason = (
+            f"session+memory hits {memory_count} within {COVERAGE_FRESH_HOURS}h"
+        )
+    elif (has_session or memory_count >= COVERAGE_MEDIUM_MIN_MEMORY_HITS) and has_within_week:
+        level = COVERAGE_MEDIUM
+        reason = (
+            f"partial coverage (session={has_session}, memory={memory_count})"
+        )
+    else:
+        level = COVERAGE_LOW
+        reason = "no usable session match and no fresh memory hits"
+
+    return RecallCoverage(
+        level=level,
+        stale=stale,
+        sources=tuple(sources),
+        reason=reason,
+    )
+
+
+def _candidate_timestamp(candidate: SessionCandidate) -> Optional[datetime]:
+    """Extract ``updated_at`` (or similar) from a candidate's ``extra``."""
+
+    extra = candidate.extra or {}
+    for key in ("updated_at", "last_activity_at", "last_message_at"):
+        value = extra.get(key)
+        ts = _coerce_datetime(value)
+        if ts is not None:
+            return ts
+    return None
+
+
+def _hit_timestamp(hit: Any) -> Optional[datetime]:
+    """Best-effort datetime extraction from a memory hit mapping."""
+
+    try:
+        for key in ("updated_at", "created_at", "ingested_at", "timestamp"):
+            value = hit.get(key)
+            ts = _coerce_datetime(value)
+            if ts is not None:
+                return ts
+    except AttributeError:
+        return None
+    return None
+
+
+def _coerce_datetime(value: Any) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        # ISO-8601 — fromisoformat in 3.9 accepts most variants we emit.
+        candidate = text.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return None
 
 
 # Intents where Recall must search for an existing session before the
