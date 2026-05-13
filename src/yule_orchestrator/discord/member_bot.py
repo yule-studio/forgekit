@@ -24,7 +24,7 @@ from .engineering_team_runtime import (
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
 from .research_forum import ResearchForumContext, chunk_for_discord_message
-from .typing_indicator import typing_context
+from .typing_indicator import typing_context, typing_keepalive
 
 
 @dataclass(frozen=True)
@@ -290,7 +290,13 @@ async def _dispatch_member_message(
         )
     if research_outcome is not None:
         try:
-            async with typing_context(message.channel):
+            # P0-D (#134): typing_keepalive 가 ~6s 마다 Discord typing
+            # event 재발사. 1-shot typing_context 는 Discord ~10s 만료
+            # 안에 _post_research_turn 의 chained synthesis (8-15s)
+            # 가 끝나지 않으면 typing 사라짐. interval=6.0s → 4s 버퍼.
+            async with typing_keepalive(
+                message.channel, interval=6.0, label="member:research-turn"
+            ):
                 await _post_research_turn(
                     message.channel, research_outcome
                 )
@@ -319,7 +325,12 @@ async def _dispatch_member_message(
         return
 
     try:
-        async with typing_context(message.channel):
+        # P0-D (#134): same keepalive rationale as research-turn above —
+        # handle_team_turn_message 의 deliberation re-render 가 8-15s
+        # 걸리는 경우 1-shot typing 으로는 fade 발생.
+        async with typing_keepalive(
+            message.channel, interval=6.0, label="member:team-turn"
+        ):
             await _post_team_turn(message.channel, team_outcome)
     except Exception as exc:  # noqa: BLE001
         try:
