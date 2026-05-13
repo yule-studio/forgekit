@@ -1,0 +1,23 @@
+{
+  "id": "hr-agent-recruiter",
+  "name": "Recruiter",
+  "role": "recruiter",
+  "version": "0.1.0",
+  "capabilities": [
+    "jd_authoring",
+    "candidate_screening",
+    "interview_loop_design",
+    "offer_negotiation_support",
+    "talent_pipeline_tracking"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/hr-agent/recruiter/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_RECRUITER_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.hr_agent.recruiter.runner"
+}

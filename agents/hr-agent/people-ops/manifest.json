@@ -1,0 +1,23 @@
+{
+  "id": "hr-agent-people-ops",
+  "name": "People Ops",
+  "role": "people-ops",
+  "version": "0.1.0",
+  "capabilities": [
+    "onboarding_playbook",
+    "people_policy_authoring",
+    "perf_review_cadence",
+    "leave_attendance_ops",
+    "employee_lifecycle_tracking"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "obsidian-vault-push"
+  ],
+  "prompt_template_ref": "agents/hr-agent/people-ops/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_PEOPLE_OPS_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.hr_agent.people_ops.runner"
+}
