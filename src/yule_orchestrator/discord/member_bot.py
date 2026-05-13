@@ -24,7 +24,11 @@ from .engineering_team_runtime import (
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
 from .research_forum import ResearchForumContext, chunk_for_discord_message
-from .typing_indicator import typing_context, typing_keepalive
+from .typing_indicator import (
+    should_type_for_member_research,
+    typing_context,
+    typing_keepalive,
+)
 
 
 @dataclass(frozen=True)
@@ -289,14 +293,35 @@ async def _dispatch_member_message(
             file=sys.stderr,
         )
     if research_outcome is not None:
+        # P0-E (#134 후속): explicit defense-in-depth gate for typing.
+        # Even though the handler already returned non-None (=will_post),
+        # we cross-check that profile.role is in the session's persisted
+        # active_research_roles before showing typing. If the helper
+        # says False (e.g., the handler returned an outcome for a role
+        # that's not in the active set — should never happen, but if
+        # it does we don't want a stale typing indicator), the post
+        # still goes through, just without the typing wrap.
+        active_roles = _resolve_active_roles_for_typing_gate(
+            getattr(research_outcome, "session_id", None)
+        )
+        will_type = should_type_for_member_research(
+            role=profile.role,
+            active_roles=active_roles,
+            will_post=True,
+        )
         try:
-            # P0-D (#134): typing_keepalive 가 ~6s 마다 Discord typing
-            # event 재발사. 1-shot typing_context 는 Discord ~10s 만료
-            # 안에 _post_research_turn 의 chained synthesis (8-15s)
-            # 가 끝나지 않으면 typing 사라짐. interval=6.0s → 4s 버퍼.
-            async with typing_keepalive(
-                message.channel, interval=6.0, label="member:research-turn"
-            ):
+            if will_type:
+                # P0-D (#134): typing_keepalive 가 ~6s 마다 Discord typing
+                # event 재발사. 1-shot typing_context 는 Discord ~10s 만료
+                # 안에 _post_research_turn 의 chained synthesis (8-15s)
+                # 가 끝나지 않으면 typing 사라짐. interval=6.0s → 4s 버퍼.
+                async with typing_keepalive(
+                    message.channel, interval=6.0, label="member:research-turn"
+                ):
+                    await _post_research_turn(
+                        message.channel, research_outcome
+                    )
+            else:
                 await _post_research_turn(
                     message.channel, research_outcome
                 )
@@ -324,13 +349,25 @@ async def _dispatch_member_message(
     if team_outcome is None:
         return
 
+    # P0-E (#134 후속): defense-in-depth gate matching the research-turn
+    # branch. team_outcome.turn.session_id is the canonical anchor.
+    team_session_id = getattr(getattr(team_outcome, "turn", None), "session_id", None)
+    active_roles = _resolve_active_roles_for_typing_gate(team_session_id)
+    will_type = should_type_for_member_research(
+        role=profile.role,
+        active_roles=active_roles,
+        will_post=True,
+    )
     try:
-        # P0-D (#134): same keepalive rationale as research-turn above —
-        # handle_team_turn_message 의 deliberation re-render 가 8-15s
-        # 걸리는 경우 1-shot typing 으로는 fade 발생.
-        async with typing_keepalive(
-            message.channel, interval=6.0, label="member:team-turn"
-        ):
+        if will_type:
+            # P0-D (#134): same keepalive rationale as research-turn above —
+            # handle_team_turn_message 의 deliberation re-render 가 8-15s
+            # 걸리는 경우 1-shot typing 으로는 fade 발생.
+            async with typing_keepalive(
+                message.channel, interval=6.0, label="member:team-turn"
+            ):
+                await _post_team_turn(message.channel, team_outcome)
+        else:
             await _post_team_turn(message.channel, team_outcome)
     except Exception as exc:  # noqa: BLE001
         try:
@@ -339,6 +376,42 @@ async def _dispatch_member_message(
             )
         except Exception:  # noqa: BLE001
             pass
+
+
+def _resolve_active_roles_for_typing_gate(
+    session_id: Optional[str],
+) -> Optional[tuple]:
+    """Best-effort load of persisted active_research_roles for typing gate.
+
+    Returns ``None`` when the session can't be loaded or has no
+    explicit ``active_research_roles`` metadata — caller passes
+    ``None`` to :func:`should_type_for_member_research` which
+    interprets it as legacy fallback (helper returns True so typing
+    follows the handler's outcome contract).
+
+    Never raises — typing must not break dispatch.
+    """
+
+    if not session_id:
+        return None
+    try:
+        session = load_session(session_id)
+    except Exception:  # noqa: BLE001 - typing decision must never crash
+        return None
+    if session is None:
+        return None
+    extra = getattr(session, "extra", None)
+    if not isinstance(extra, dict):
+        return None
+    raw_roles = extra.get("active_research_roles")
+    if not raw_roles:
+        return None
+    cleaned = tuple(
+        str(role).strip()
+        for role in raw_roles
+        if isinstance(role, str) and str(role).strip()
+    )
+    return cleaned or None
 
 
 def _member_bot_permission_targets_from_env() -> tuple[_PermissionTarget, ...]:
