@@ -16,7 +16,7 @@ from .base import (
 class GitHubCopilotRunner(AgentRunner):
     """GitHub-native executor (Copilot workspace / `gh copilot`).
 
-    Modeled as an *integration* in agent.json rather than a standalone CLI:
+    Modeled as an *integration* in manifest.json rather than a standalone CLI:
     this runner is the entry point for issue → branch → draft-PR flows that
     happen entirely on GitHub. Body is a stub for the MVP.
     """

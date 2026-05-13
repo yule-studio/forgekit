@@ -11,10 +11,10 @@
 ├── agents/
 │   ├── engineering-agent/
 │   │   ├── CLAUDE.md
-│   │   └── agent.json
+│   │   └── manifest.json
 │   └── planning-agent/
 │       ├── CLAUDE.md
-│       └── agent.json
+│       └── manifest.json
 ├── policies/
 │   ├── reference/                  # commit / branch / naming convention
 │   └── runtime/                    # lifecycle / role weight / live regression

@@ -1,0 +1,23 @@
+{
+  "id": "product-agent-growth-analyst",
+  "name": "Growth Analyst",
+  "role": "growth-analyst",
+  "version": "0.1.0",
+  "capabilities": [
+    "sql_query_authoring",
+    "cohort_analysis",
+    "ab_test_design",
+    "funnel_diagnosis",
+    "north_star_metric_tracking"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/product-agent/growth-analyst/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_GROWTH_ANALYST_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.product_agent.growth_analyst.runner"
+}

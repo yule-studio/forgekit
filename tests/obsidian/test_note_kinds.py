@@ -189,7 +189,7 @@ class ExportRecommendPathTests(unittest.TestCase):
             env={},
         )
         self.assertEqual(path.folder, "20-knowledge")
-        self.assertTrue(path.filename.startswith("2026-05-08_knowledge-"))
+        self.assertTrue(path.filename.startswith("knowledge-"))
         self.assertTrue(path.filename.endswith(".md"))
 
     def test_decision_record_routes_to_top_level_30_decisions(self) -> None:
@@ -200,7 +200,7 @@ class ExportRecommendPathTests(unittest.TestCase):
             env={},
         )
         self.assertEqual(path.folder, "30-decisions")
-        self.assertTrue(path.filename.startswith("2026-05-08_decision-"))
+        self.assertTrue(path.filename.startswith("decision-"))
 
     def test_legacy_knowledge_keeps_project_nested_routing(self) -> None:
         path = recommend_path(

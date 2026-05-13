@@ -1,0 +1,23 @@
+{
+  "id": "finance-agent-budget-analyst",
+  "name": "Budget Analyst",
+  "role": "budget-analyst",
+  "version": "0.1.0",
+  "capabilities": [
+    "budget_planning",
+    "cost_tracking",
+    "burn_rate_forecasting",
+    "invoice_review",
+    "financial_reporting"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "obsidian-vault-push"
+  ],
+  "prompt_template_ref": "agents/finance-agent/budget-analyst/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_BUDGET_ANALYST_",
+  "autonomy_level": "advisory",
+  "risk_class": "HIGH",
+  "module_path": "agents.finance_agent.budget_analyst.runner"
+}

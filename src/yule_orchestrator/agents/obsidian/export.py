@@ -305,22 +305,18 @@ def recommend_path(
             (project or "").strip() or resolve_default_project(env=env)
         )
         folder = _yule_vault_kind_to_folder(kind, project_resolved)
-    when = created_at or datetime.utcnow()
-    if isinstance(when, datetime):
-        date_part = when.date().isoformat()
-    elif isinstance(when, date):
-        date_part = when.isoformat()
-    else:
-        date_part = datetime.utcnow().date().isoformat()
+    # F15 v2: filename drops date prefix and uses dash separator —
+    # canonical shape `<kind>-<topic-slug>[-issue-<n>].md` enforced by
+    # filename_convention.validate_filename. Date lives in frontmatter
+    # `created_at` and the body version table.
     kind_normalized = _kind_short_label(kind)
     slug = _slugify(title, max_chars=FILENAME_SLUG_LIMIT)
     if not slug:
         slug = "untitled"
-    basename = f"{date_part}_{kind_normalized}-{slug}.md"
+    basename = f"{kind_normalized}-{slug}.md"
     if len(basename) > FILENAME_BASENAME_LIMIT:
-        # Hard cap — trim slug further so the basename always fits.
-        keep = FILENAME_BASENAME_LIMIT - (len(date_part) + 1 + len(kind_normalized) + 1 + 3)
-        basename = f"{date_part}_{kind_normalized}-{slug[:max(1, keep)]}.md"
+        keep = FILENAME_BASENAME_LIMIT - (len(kind_normalized) + 1 + 3)
+        basename = f"{kind_normalized}-{slug[:max(1, keep)]}.md"
     return ExportPath(folder=folder, filename=basename)
 
 

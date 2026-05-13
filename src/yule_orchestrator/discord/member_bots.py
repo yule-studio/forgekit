@@ -121,7 +121,7 @@ def env_key_for(agent_id: str, role: str) -> str:
 
 
 def load_member_bot_config(repo_root: Path, agent_id: str) -> MemberBotConfig:
-    """Read agent.json + env to build the member bot table.
+    """Read manifest.json + env to build the member bot table.
 
     Missing token = inactive member. Unknown role passed via CLI is rejected
     by ``MemberBotConfig.get`` rather than here.
@@ -134,7 +134,7 @@ def load_member_bot_config(repo_root: Path, agent_id: str) -> MemberBotConfig:
 
     members = loaded.manifest.get("members", [])
     if not isinstance(members, list):
-        raise ValueError(f"{agent_id}/agent.json members must be a list of role ids")
+        raise ValueError(f"{agent_id}/manifest.json members must be a list of role ids")
 
     warnings: list[str] = list(loaded.warnings)
     profiles: list[MemberBotProfile] = [_build_profile(agent_id, GATEWAY_ROLE_KEY)]
@@ -144,12 +144,12 @@ def load_member_bot_config(repo_root: Path, agent_id: str) -> MemberBotConfig:
             warnings.append("Skipping non-string member id in manifest")
             continue
         profiles.append(_build_profile(agent_id, member))
-        # Each member id in agent.json is expected to have a sibling
-        # config directory (``agents/<agent_id>/<member>/agent.json``).
+        # Each member id in manifest.json is expected to have a sibling
+        # config directory (``agents/<agent_id>/<member>/manifest.json``).
         # Missing role configs are a frequent source of "bot in
         # inventory but no policy" surprises — surface them as a
         # warning instead of silently spawning the bot.
-        role_config = repo_root.resolve() / "agents" / agent_id / member / "agent.json"
+        role_config = repo_root.resolve() / "agents" / agent_id / member / "manifest.json"
         if not role_config.exists():
             warnings.append(
                 f"role config missing: {role_config.relative_to(repo_root.resolve()) if str(role_config).startswith(str(repo_root.resolve())) else role_config}"

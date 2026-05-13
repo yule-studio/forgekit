@@ -28,7 +28,7 @@ class LoadedContext:
 
 def load_agent_context(repo_root: Path, agent_id: str) -> LoadedContext:
     repo_root = repo_root.resolve()
-    manifest_path = repo_root / "agents" / agent_id / "agent.json"
+    manifest_path = repo_root / "agents" / agent_id / "manifest.json"
     manifest = _load_manifest(manifest_path)
     documents: List[ContextDocument] = []
     warnings: List[str] = []

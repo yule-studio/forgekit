@@ -8,7 +8,7 @@
 
 ## 1. 핵심 원칙
 
-1. **Yule 구조가 기준선** — 외부 레퍼런스는 정책 단위로만 흡수한다. 기존 모듈 / SQLite 키 / lifecycle 단계 / agent.json 스키마는 본 정책으로 변경되지 않는다.
+1. **Yule 구조가 기준선** — 외부 레퍼런스는 정책 단위로만 흡수한다. 기존 모듈 / SQLite 키 / lifecycle 단계 / manifest.json 스키마는 본 정책으로 변경되지 않는다.
 2. **정책 우선, 코드 점진** — 본 PR 은 정책 + 디렉터리 골격까지 land. dispatcher / runtime wiring 은 후속 PR (#48, #59 가 공통 기반으로 활용).
 3. **tech-lead orchestration 강화** — gateway 가 분배·합의·외부 회신을 책임지는 기존 구조를 ECC 의 "research-first / skill 단위 호출 / hook 기반 확장" 패턴으로 보강한다.
 4. **safety gate 유지** — autonomy_policy L0~L4, approval gate, secret redaction, protected branch 차단, smoke do-not-merge 정책은 그대로. 어떤 ECC 패턴도 이 gate 를 우회할 수 없다.
@@ -19,10 +19,10 @@
 
 ### 2.1 agents/ — 이미 존재 (재정의)
 
-Yule 은 이미 `agents/engineering-agent/<role>/agent.json` + role contract-v1 으로 agent 를 정의한다. 본 정책은 *재정의 없음*. 다만:
+Yule 은 이미 `agents/engineering-agent/<role>/manifest.json` + role contract-v1 으로 agent 를 정의한다. 본 정책은 *재정의 없음*. 다만:
 
 - ECC 의 `agents/` 가 markdown 인 것과 달리 Yule 은 JSON 이다 — 이는 Yule 의 deterministic loader / role_profiles_data 와의 호환성을 위한 의도된 차이다. **본 PR 에서 markdown 으로 전환하지 않는다.**
-- 단, agent.json 에 `skills:` `hooks:` `commands:` 필드를 *선언만* 추가해 외부 layer 를 가리킬 수 있게 한다. 필드는 optional, 기존 contract 비파괴.
+- 단, manifest.json 에 `skills:` `hooks:` `commands:` 필드를 *선언만* 추가해 외부 layer 를 가리킬 수 있게 한다. 필드는 optional, 기존 contract 비파괴.
 
 ### 2.2 skills/ — 신설 (foundation)
 

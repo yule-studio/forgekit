@@ -241,12 +241,13 @@ def required_context_for_role(role_id: str) -> Tuple[str, ...]:
 
 
 # ---------------------------------------------------------------------------
-# Disk-backed role contract reader (agent.json) — Phase 6 connection point.
+# Disk-backed role contract reader (manifest.json) — F15 unified schema.
 #
 # The Python ``RoleProfile`` registry above is the selector / aggregator
 # surface. The richer contract fields (default_response_template /
 # stop_conditions / standards / catalogs) live on the on-disk
-# ``agent.json`` per role so operators can edit them without a code
+# ``manifest.json`` per role (F15 commit 4 absorbed the legacy
+# ``agent.json`` payload) so operators can edit them without a code
 # deploy. This loader exposes those fields read-only so deliberation
 # fallbacks and runtime preface builders can reference them without
 # duplicating the JSON shape.
@@ -271,7 +272,7 @@ def _agents_dir() -> Path:
 
 
 def _load_agent_json(role_id: str) -> Optional[Mapping[str, Any]]:
-    """Read ``agents/engineering-agent/<role>/agent.json`` lazily.
+    """Read ``agents/engineering-agent/<role>/manifest.json`` lazily.
 
     Returns ``None`` when the file is missing or unreadable so callers
     can fall back to legacy defaults instead of crashing. JSON parse
@@ -285,7 +286,7 @@ def _load_agent_json(role_id: str) -> Optional[Mapping[str, Any]]:
     cached = _AGENT_JSON_CACHE.get(short)
     if cached is not None:
         return cached
-    path = _agents_dir() / short / "agent.json"
+    path = _agents_dir() / short / "manifest.json"
     if not path.exists():
         return None
     try:

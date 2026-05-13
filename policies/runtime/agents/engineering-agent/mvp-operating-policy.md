@@ -10,7 +10,7 @@
   - "자동 머지"는 사용자 승인 없는 변경을 production-bound 브랜치에 흘려보낼 위험. MVP 단계에서는 위험이 큼.
   - Draft PR 생성은 사람 리뷰 단계가 안전망. 부서가 코드를 만들면서도 사용자 통제권이 유지됨.
 - **반영 범위**:
-  - `agent.json:write_policy.require_human_review_before_publish=true` (이미 적용)
+  - `manifest.json:write_policy.require_human_review_before_publish=true` (이미 적용)
   - 러너(다음 단계)는 git 브랜치 생성 + diff 작성 + draft PR 생성까지 권한 부여
   - `workflow.md`에 PR 생성 단계 명시
 - **회피 동작**:
@@ -61,7 +61,7 @@
 - **반영 범위**:
   - **1단계 (현재 MVP 단계)**: 기존 봇 토큰 1개 그대로 사용. `engineering-agent` 게이트웨이가 Discord 채팅에서 멤버 이름을 명시(`@tech-lead 의견 부탁`)받으면 그 페르소나로 응답.
   - **2단계**: 멤버별 `DISCORD_BOT_TOKEN_<MEMBER>` 환경변수 도입, `yule discord bot --agent <name>` CLI 추가, 각 봇이 독립 프로세스로 가동.
-  - 페르소나 정의는 멤버 `agent.json:description`과 `CLAUDE.md`에 그대로 의존. 봇 ID만 다를 뿐 책임 정의는 동일.
+  - 페르소나 정의는 멤버 `manifest.json:description`과 `CLAUDE.md`에 그대로 의존. 봇 ID만 다를 뿐 책임 정의는 동일.
 - **회피 동작**:
   - 1단계에서 1개 봇이 5개 페르소나처럼 보이려고 멘션 위조 X
   - 2단계에서 봇 토큰을 git에 커밋 X (`.env.local`에서만 관리)
@@ -81,5 +81,5 @@
 이 정책을 변경하려면:
 
 1. 변경 이유와 영향 범위를 PR 본문에 적는다.
-2. `agent.json:write_policy`나 `workflow.md`처럼 강하게 결합된 문서가 있는지 확인하고 함께 갱신한다.
+2. `manifest.json:write_policy`나 `workflow.md`처럼 강하게 결합된 문서가 있는지 확인하고 함께 갱신한다.
 3. 기존 마일스톤 결정과 충돌하지 않는지 검토한다 (예: "자동 머지" 결정으로 변경하려면 단일 write executor 원칙도 같이 풀어야 함).

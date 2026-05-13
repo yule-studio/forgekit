@@ -1,0 +1,23 @@
+{
+  "id": "marketing-agent-growth-marketer",
+  "name": "Growth Marketer",
+  "role": "growth-marketer",
+  "version": "0.1.0",
+  "capabilities": [
+    "funnel_optimisation",
+    "ab_test_planning",
+    "channel_attribution",
+    "campaign_authoring",
+    "growth_loop_design"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "repo-map"
+  ],
+  "prompt_template_ref": "agents/marketing-agent/growth-marketer/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_GROWTH_MARKETER_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.marketing_agent.growth_marketer.runner"
+}

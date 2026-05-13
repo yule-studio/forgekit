@@ -109,7 +109,7 @@ if write_requested and not user_approved:
 ```
 
 - 게이트는 **실행 단계**에서 검사한다. 디스패처는 plan을 생성하더라도 executor가 실제로 쓰기를 시도하기 전에 이 플래그를 확인해야 한다.
-- single-executor 원칙은 `write_policy.max_write_executors_per_run=1`(agent.json)과 일치한다.
+- single-executor 원칙은 `write_policy.max_write_executors_per_run=1`(manifest.json)과 일치한다.
 
 ## 7. RankingSignal 슬롯
 

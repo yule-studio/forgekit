@@ -38,7 +38,7 @@ DEFAULT_RUNNER_FACTORIES: Dict[str, RunnerFactory] = {
 
 @dataclass(frozen=True)
 class ParticipantsPool:
-    """Department-level pool of runners loaded from a single agent.json.
+    """Department-level pool of runners loaded from a single manifest.json.
 
     Members (tech-lead, backend-engineer, ...) do *not* own runners. They
     request work from the gateway, which selects from this shared pool based
@@ -73,7 +73,7 @@ def build_participants_pool(
 
     *factories* lets tests inject fakes without touching the default mapping.
     Unknown ids are skipped with a warning instead of raising — that way a
-    new participant can be referenced in agent.json before its wrapper lands.
+    new participant can be referenced in manifest.json before its wrapper lands.
     """
 
     try:

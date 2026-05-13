@@ -42,7 +42,7 @@ ENGINEERING_AGENT_BOT_QA_ENGINEER_TOKEN
 
 - 토큰을 채운 멤버만 활성화된다. 비어 있으면 gateway가 단일봇 fallback으로 그 멤버 메시지를 처리한다.
 - 멤버 토큰이 한 개라도 채워지면 gateway는 외부와의 통신만 담당하고, 내부 멤버는 자기 토큰으로 발화한다 (CLAUDE.md의 "외부 대화 권한은 게이트웨이만" 규칙 유지).
-- product-designer가 design-agent로 분리되면 해당 라인을 `DESIGN_AGENT_BOT_PRODUCT_DESIGNER_TOKEN`으로 옮긴다. engineering-agent.json에서는 멤버 목록과 함께 토큰 키를 제거한다.
+- product-designer가 design-agent로 분리되면 해당 라인을 `DESIGN_AGENT_BOT_PRODUCT_DESIGNER_TOKEN`으로 옮긴다. engineering-manifest.json에서는 멤버 목록과 함께 토큰 키를 제거한다.
 
 ### 2.3 채널 정책
 - 외부와의 대화는 gateway 봇만 한다. 멤버 봇이 활성화되어도 사용자에게 직접 답하지 않고 내부 채널/스레드에서만 발화한다.

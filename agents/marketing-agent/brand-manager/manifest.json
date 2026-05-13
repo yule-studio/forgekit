@@ -1,0 +1,23 @@
+{
+  "id": "marketing-agent-brand-manager",
+  "name": "Brand Manager",
+  "role": "brand-manager",
+  "version": "0.1.0",
+  "capabilities": [
+    "brand_voice_guardianship",
+    "messaging_framework_authoring",
+    "visual_identity_governance",
+    "pr_response_drafting",
+    "partnership_brand_review"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/marketing-agent/brand-manager/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_BRAND_MANAGER_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.marketing_agent.brand_manager.runner"
+}

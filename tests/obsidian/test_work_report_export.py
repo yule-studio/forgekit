@@ -30,7 +30,7 @@ class WorkReportPathRoutingTests(unittest.TestCase):
             path.folder,
             f"10-projects/yule-studio-agent/{PROJECT_WORK_REPORTS_SUBDIR}",
         )
-        self.assertTrue(path.filename.startswith("2026-05-06_work-report-"))
+        self.assertTrue(path.filename.startswith("work-report-"))
 
     def test_work_report_alias_underscore_kind_also_routes(self) -> None:
         path = recommend_path(

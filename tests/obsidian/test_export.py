@@ -71,7 +71,7 @@ class RecommendPathTestCase(unittest.TestCase):
         self.assertEqual(
             path.folder, _default_project_folder(PROJECT_RESEARCH_SUBDIR)
         )
-        self.assertTrue(path.filename.startswith("2026-04-30_"))
+        self.assertTrue(path.filename.startswith("research-"))
         self.assertTrue(path.filename.endswith(".md"))
 
     def test_decision_default_goes_to_default_project_decisions(self) -> None:
@@ -144,7 +144,7 @@ class RecommendPathTestCase(unittest.TestCase):
             created_at=datetime(2026, 4, 30),
             env={},
         )
-        self.assertEqual(path.filename, "2026-04-30_research-untitled.md")
+        self.assertEqual(path.filename, "research-untitled.md")
 
 
 class RenderNoteTestCase(unittest.TestCase):
@@ -502,7 +502,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         self.assertLessEqual(len(note.path.filename), 100)
         # Filename starts with date_kind- prefix.
         self.assertTrue(
-            note.path.filename.startswith("2026-05-05_research-"),
+            note.path.filename.startswith("research-"),
             note.path.filename,
         )
 

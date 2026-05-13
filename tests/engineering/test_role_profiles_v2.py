@@ -7,7 +7,7 @@ contract here so a typo (or a future profile that forgets a section)
 fails loudly instead of silently producing an unsafe selection.
 
 Distinct from ``test_role_profiles.py`` (which checks the on-disk
-``agent.json`` profile fields used by the coding-authorization MVP) —
+``manifest.json`` profile fields used by the coding-authorization MVP) —
 this file pins the in-process registry exposed via
 ``all_role_profiles()`` / ``get_role_profile()``.
 """

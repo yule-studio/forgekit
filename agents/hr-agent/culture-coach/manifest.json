@@ -1,0 +1,23 @@
+{
+  "id": "hr-agent-culture-coach",
+  "name": "Culture Coach",
+  "role": "culture-coach",
+  "version": "0.1.0",
+  "capabilities": [
+    "one_on_one_facilitation",
+    "feedback_loop_design",
+    "culture_health_signal_tracking",
+    "team_retro_facilitation",
+    "psychological_safety_audit"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/hr-agent/culture-coach/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_CULTURE_COACH_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.hr_agent.culture_coach.runner"
+}
