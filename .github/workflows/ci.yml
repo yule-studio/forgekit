@@ -3,6 +3,10 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    # Manual trigger for testing the notify path without opening a PR.
+    # Pick "Run workflow" on the Actions tab; the notify job will fire
+    # against the current ``DISCORD_CI_WEBHOOK_URL`` secret.
 
 concurrency:
   group: "CI for PR #${{ github.event.pull_request.number }}"
@@ -36,8 +40,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Preflight — verify DISCORD_CI_WEBHOOK_URL is set
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
+        run: |
+          # Surface a ::warning:: annotation on the PR / Actions page
+          # when the secret is missing so operators see why Discord
+          # alerts silently disappeared. The step still succeeds so the
+          # workflow doesn't flap red purely on a config gap.
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "::warning title=Discord CI notification skipped::Repository secret DISCORD_CI_WEBHOOK_URL is empty or unset. Notifications for the CI test job (test.result=${{ needs.test.result }}) will NOT be sent. Set it under Settings → Secrets and variables → Actions to enable Discord CI alerts. See docs/ci-discord-notifications.md."
+            echo "DISCORD_WEBHOOK_URL_PRESENT=false" >> "$GITHUB_ENV"
+          else
+            echo "DISCORD_WEBHOOK_URL_PRESENT=true" >> "$GITHUB_ENV"
+            echo "Discord webhook secret is configured. Continuing with notification."
+          fi
+
       - name: Notify success
-        if: needs.test.result == 'success'
+        if: needs.test.result == 'success' && env.DISCORD_WEBHOOK_URL_PRESENT == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
           IMAGE_URL: ${{ vars.DISCORD_CI_SUCCESS_IMAGE_URL }}
@@ -46,15 +66,13 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           ACTOR: ${{ github.actor }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "DISCORD_CI_WEBHOOK_URL is empty. Skip notification."
-            exit 0
-          fi
-
+          # ``${PR_NUMBER:-manual}`` keeps the ``PR`` field readable when
+          # the workflow fires via ``workflow_dispatch`` (no PR context).
           payload=$(jq -n \
             --arg repo "$REPO" \
-            --arg pr "#$PR_NUMBER $PR_TITLE" \
+            --arg pr "#${PR_NUMBER:-manual} ${PR_TITLE:-$EVENT_NAME}" \
             --arg actor "$ACTOR" \
             --arg url "$RUN_URL" \
             --arg image "$IMAGE_URL" \
@@ -73,10 +91,24 @@ jobs:
               }]
             }')
 
-          curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+          # ``--fail-with-body`` makes curl exit non-zero on HTTP 4xx/5xx
+          # so a revoked / misrouted webhook flips the step red instead
+          # of silently swallowing the failure. ``-w '%{http_code}'``
+          # surfaces the status for the operator-facing log.
+          http_code=$(curl -sS -o /tmp/discord_resp.txt -w '%{http_code}' \
+            --fail-with-body \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL") || true
+          echo "Discord webhook responded with HTTP $http_code"
+          if [ "${http_code:-0}" -ge 400 ] || [ -z "$http_code" ]; then
+            echo "::error title=Discord webhook rejected the notification::HTTP $http_code"
+            cat /tmp/discord_resp.txt || true
+            exit 1
+          fi
 
       - name: Notify failure
-        if: needs.test.result == 'failure'
+        if: needs.test.result == 'failure' && env.DISCORD_WEBHOOK_URL_PRESENT == 'true'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
           IMAGE_URL: ${{ vars.DISCORD_CI_FAIL_IMAGE_URL }}
@@ -85,15 +117,11 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           ACTOR: ${{ github.actor }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
-            echo "DISCORD_CI_WEBHOOK_URL is empty. Skip notification."
-            exit 0
-          fi
-
           payload=$(jq -n \
             --arg repo "$REPO" \
-            --arg pr "#$PR_NUMBER $PR_TITLE" \
+            --arg pr "#${PR_NUMBER:-manual} ${PR_TITLE:-$EVENT_NAME}" \
             --arg actor "$ACTOR" \
             --arg url "$RUN_URL" \
             --arg image "$IMAGE_URL" \
@@ -112,4 +140,63 @@ jobs:
               }]
             }')
 
-          curl -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL"
+          http_code=$(curl -sS -o /tmp/discord_resp.txt -w '%{http_code}' \
+            --fail-with-body \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL") || true
+          echo "Discord webhook responded with HTTP $http_code"
+          if [ "${http_code:-0}" -ge 400 ] || [ -z "$http_code" ]; then
+            echo "::error title=Discord webhook rejected the notification::HTTP $http_code"
+            cat /tmp/discord_resp.txt || true
+            exit 1
+          fi
+
+      - name: Notify cancelled / other
+        if: needs.test.result != 'success' && needs.test.result != 'failure' && env.DISCORD_WEBHOOK_URL_PRESENT == 'true'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_RESULT: ${{ needs.test.result }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # Without this step, ``cancelled`` / ``skipped`` (e.g. when a
+          # newer push pre-empts the run via concurrency cancellation)
+          # leaves zero Discord trace and operators wrongly conclude
+          # notifications are dead. Emit a low-noise warning embed so
+          # the silence breaks but the channel doesn't get spammed.
+          payload=$(jq -n \
+            --arg repo "$REPO" \
+            --arg pr "#${PR_NUMBER:-manual} ${PR_TITLE:-$EVENT_NAME}" \
+            --arg actor "$ACTOR" \
+            --arg url "$RUN_URL" \
+            --arg result "$TEST_RESULT" \
+            '{
+              content: "⚠️ CI \($result)",
+              embeds: [{
+                title: "Python CI — test \($result)",
+                color: 16763904,
+                fields: [
+                  {name: "Repository", value: $repo, inline: true},
+                  {name: "PR", value: $pr, inline: false},
+                  {name: "Triggered by", value: $actor, inline: true},
+                  {name: "Workflow", value: "[실행 보기](\($url))", inline: false}
+                ]
+              }]
+            }')
+
+          http_code=$(curl -sS -o /tmp/discord_resp.txt -w '%{http_code}' \
+            --fail-with-body \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "$DISCORD_WEBHOOK_URL") || true
+          echo "Discord webhook responded with HTTP $http_code"
+          if [ "${http_code:-0}" -ge 400 ] || [ -z "$http_code" ]; then
+            echo "::error title=Discord webhook rejected the notification::HTTP $http_code"
+            cat /tmp/discord_resp.txt || true
+            exit 1
+          fi
