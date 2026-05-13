@@ -24,9 +24,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping, Optional, Sequence, Tuple
+from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Tuple, Union
 
-from .approval_reply import ApprovalIntent, parse_approval_intent
+from .approval_reply import (
+    ApprovalIntent,
+    find_replyable_approval,
+    parse_approval_intent,
+)
+from .approval_worker import ApprovalRequest
+from .store import JobQueue
 
 
 # ---------------------------------------------------------------------------
@@ -465,16 +471,205 @@ def make_audit_entry(stage: str, **fields: Any) -> Mapping[str, Any]:
     return entry
 
 
+# ---------------------------------------------------------------------------
+# Reply handler (executor-injected — live merge call happens in commit 10)
+# ---------------------------------------------------------------------------
+
+
+# The merge executor signature. Implementations build a
+# :class:`PRMergeStatusSnapshot` from live GitHub state, run
+# :func:`evaluate_merge_gate`, and only on success call
+# ``live_client.merge_pull_request``. The function is intentionally
+# typed loosely so a sync stub (in tests) and a real async live client
+# wrapper (in production) both fit.
+PRMergeExecutor = Callable[
+    ["PRMergeReplyDispatch"], Union[Mapping[str, Any], Awaitable[Mapping[str, Any]]]
+]
+
+
+@dataclass(frozen=True)
+class PRMergeReplyDispatch:
+    """Bundle passed to the merge executor when intent=APPROVE.
+
+    The executor reads ``proposal`` for repo/pr_number/head_sha and the
+    full PR shape, ``approved_by``/``approved_at`` for audit entries,
+    and returns a mapping that the handler stores under
+    ``audit["merge_result"]``.
+    """
+
+    proposal: "PRMergeProposal"
+    approval_job_id: str
+    approved_by: str
+    approved_at: str
+    source_message_id: Optional[int]
+
+
+@dataclass(frozen=True)
+class PRMergeReplyResult:
+    """Output of :func:`handle_pr_merge_approval_reply`.
+
+    Mirrors :class:`ApprovalReplyOutcome` for symmetry but stays in
+    its own dataclass so PR-merge-specific fields (e.g.
+    ``merge_disabled``, ``gate_failed_step``) can grow without
+    polluting the obsidian path.
+    """
+
+    intent: PRMergeReplyIntent
+    approval_job_id: Optional[str] = None
+    proposal: Optional["PRMergeProposal"] = None
+    merge_disabled: bool = False
+    gate_failed_step: Optional[str] = None
+    gate_reason: str = ""
+    merge_result: Optional[Mapping[str, Any]] = None
+    rejection_recorded: bool = False
+    skipped_reason: Optional[str] = None
+    audit: Mapping[str, Any] = field(default_factory=dict)
+
+
+async def handle_pr_merge_approval_reply(
+    *,
+    queue: JobQueue,
+    text: str,
+    session_id: str,
+    approved_by: str,
+    source_message_id: Optional[int] = None,
+    source_thread_id: Optional[int] = None,
+    approved_at: str = "",
+    merge_executor: Optional[PRMergeExecutor] = None,
+) -> PRMergeReplyResult:
+    """Route a user's reply for a PR merge approval card.
+
+    Pure-ish: no Discord, no GitHub call. Side effects:
+
+      * Reads the queue to locate the matching ``approval_post`` row
+        whose ``approval_kind == APPROVAL_KIND_PR_MERGE``.
+      * On ``intent == APPROVE`` and a registered ``merge_executor``,
+        calls the executor (which runs the gate + GitHub merge call).
+      * Returns a structured :class:`PRMergeReplyResult` the router /
+        bot can render and audit.
+
+    When ``merge_executor is None`` the handler returns with
+    ``merge_disabled=True``. This is the safe disabled seam — useful
+    in CI / staging where ``YULE_GITHUB_MERGE_ENABLED=false`` would
+    still trigger the gate but never the API call.
+    """
+
+    intent = parse_pr_merge_reply_intent(text)
+
+    if intent in (PRMergeReplyIntent.HOLD, PRMergeReplyIntent.UNCLEAR):
+        return PRMergeReplyResult(
+            intent=intent, skipped_reason="intent_not_actionable"
+        )
+
+    approval_job = find_replyable_approval(
+        queue=queue,
+        session_id=session_id,
+        approval_kind=APPROVAL_KIND_PR_MERGE,
+        source_message_id=source_message_id,
+        source_thread_id=source_thread_id,
+    )
+    if approval_job is None:
+        return PRMergeReplyResult(
+            intent=intent, skipped_reason="no_matching_approval"
+        )
+
+    payload = approval_job.payload or {}
+    request = ApprovalRequest.from_payload(payload)
+    if request.approval_kind != APPROVAL_KIND_PR_MERGE:
+        return PRMergeReplyResult(
+            intent=intent,
+            approval_job_id=approval_job.job_id,
+            skipped_reason="approval_kind_mismatch",
+        )
+
+    proposal = PRMergeProposal.from_extra(request.extra or {})
+
+    if intent == PRMergeReplyIntent.REJECT:
+        return PRMergeReplyResult(
+            intent=intent,
+            approval_job_id=approval_job.job_id,
+            proposal=proposal,
+            rejection_recorded=True,
+            audit={
+                "rejected_by": approved_by,
+                "rejected_at": approved_at,
+                "source_message_id": source_message_id,
+            },
+        )
+
+    if intent == PRMergeReplyIntent.REVISE_AND_REPEAT:
+        # Cards are invalidated by the next commit (sha race in gate).
+        # The router may optionally post a review comment when
+        # ``YULE_PR_MERGE_REVIEW_COMMENT_ENABLED=true`` — that wire-up
+        # is in commit 10. For this commit we only audit the intent.
+        return PRMergeReplyResult(
+            intent=intent,
+            approval_job_id=approval_job.job_id,
+            proposal=proposal,
+            audit={
+                "revise_requested_by": approved_by,
+                "revise_at": approved_at,
+                "source_message_id": source_message_id,
+            },
+        )
+
+    # APPROVE — invoke the merge executor if registered.
+    if merge_executor is None:
+        return PRMergeReplyResult(
+            intent=intent,
+            approval_job_id=approval_job.job_id,
+            proposal=proposal,
+            merge_disabled=True,
+            audit={
+                "approved_by": approved_by,
+                "approved_at": approved_at,
+                "reason": "merge_executor_not_registered",
+            },
+        )
+
+    dispatch = PRMergeReplyDispatch(
+        proposal=proposal,
+        approval_job_id=approval_job.job_id,
+        approved_by=approved_by,
+        approved_at=approved_at,
+        source_message_id=source_message_id,
+    )
+    raw = merge_executor(dispatch)
+    if hasattr(raw, "__await__"):
+        raw = await raw  # type: ignore[assignment]
+    result: Mapping[str, Any] = dict(raw or {})
+
+    gate_failed = result.get("gate_failed_step")
+    return PRMergeReplyResult(
+        intent=intent,
+        approval_job_id=approval_job.job_id,
+        proposal=proposal,
+        merge_disabled=bool(result.get("merge_disabled", False)),
+        gate_failed_step=gate_failed if isinstance(gate_failed, str) else None,
+        gate_reason=str(result.get("gate_reason") or ""),
+        merge_result=result if result.get("merge_sha") else None,
+        audit={
+            "approved_by": approved_by,
+            "approved_at": approved_at,
+            "result": dict(result),
+        },
+    )
+
+
 __all__ = (
     "APPROVAL_KIND_PR_MERGE",
     "PRMergeReplyIntent",
     "PRMergeProposal",
     "PRMergeStatusSnapshot",
     "PRMergeGateResult",
+    "PRMergeReplyDispatch",
+    "PRMergeReplyResult",
+    "PRMergeExecutor",
     "PR_MERGE_AUDIT_KEY",
     "build_body_excerpt",
     "render_pr_merge_summary",
     "evaluate_merge_gate",
+    "handle_pr_merge_approval_reply",
     "parse_pr_merge_reply_intent",
     "make_audit_entry",
 )
