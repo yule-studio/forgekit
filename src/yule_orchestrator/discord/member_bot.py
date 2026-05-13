@@ -99,81 +99,7 @@ def run_member_bot(profile: MemberBotProfile) -> None:
                 # Gateway bot has its own conversation handlers in bot.py;
                 # never let the member-bot loop process gateway traffic.
                 return
-
-            text = message.content or ""
-
-            # Research-turn (운영-리서치 forum thread) takes precedence
-            # because research markers and team markers can both land in
-            # threads the bot can see. We process whichever shows up.
-            # Compose + post happens inside a typing context so the
-            # member bot's account shows ``입력 중...`` while its take is
-            # being assembled.
-            #
-            # tech-lead role: when ``profile.role == 'tech-lead'`` and the
-            # marker is ``RESEARCH_SYNTHESIS_ROLE``, this same wrap covers
-            # the synthesis comment so the tech-lead bot account types in
-            # the forum thread. The gateway-side legacy synthesis path is
-            # covered by the typing wrap in bot.py:on_message.
-            # Stabilisation Phase 5 — typing only fires when the
-            # outcome is non-None. ``handle_research_turn_message``
-            # already returns ``None`` for inactive roles (excluded
-            # from session.extra['active_research_roles']) so this
-            # bot stays silent on those research-open broadcasts.
-            try:
-                research_outcome = handle_research_turn_message(
-                    role=profile.role,
-                    text=text,
-                )
-            except Exception as exc:  # noqa: BLE001
-                research_outcome = None
-                print(
-                    f"warning: member bot '{profile.display_label}' "
-                    f"research handler failed: {exc}",
-                    file=sys.stderr,
-                )
-            if research_outcome is not None:
-                try:
-                    async with typing_context(message.channel):
-                        await _post_research_turn(
-                            message.channel, research_outcome
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    # Phase 5 stab — surface the failure instead of
-                    # leaving the user staring at an unfinished typing
-                    # indicator.
-                    try:
-                        await message.channel.send(
-                            f"⚠️ {profile.display_label} 댓글 게시 실패: {exc}"
-                        )
-                    except Exception:  # noqa: BLE001
-                        pass
-                return
-
-            try:
-                team_outcome = handle_team_turn_message(
-                    role=profile.role,
-                    text=text,
-                )
-            except Exception as exc:  # noqa: BLE001
-                team_outcome = None
-                print(
-                    f"warning: member bot '{profile.display_label}' "
-                    f"team handler failed: {exc}",
-                    file=sys.stderr,
-                )
-            if team_outcome is None:
-                return
-
-            try:
-                async with typing_context(message.channel):
-                    await _post_team_turn(message.channel, team_outcome)
-            except Exception as exc:  # noqa: BLE001
-                try:
-                    await message.channel.send(
-                        f"⚠️ {profile.display_label} take 게시 실패: {exc}"
-                    )
-                except Exception:  # noqa: BLE001
-                    pass
+            await _dispatch_member_message(profile=profile, message=message)
 
     bot = MemberBot(command_prefix=commands.when_mentioned, intents=intents)
     print(
@@ -246,8 +172,10 @@ def build_member_bot(profile: MemberBotProfile) -> Any:
                 return
             if profile.role == GATEWAY_ROLE_KEY:
                 return
-            # Delegate to the existing engineering_team_runtime dispatcher.
-            await _dispatch_member_message(profile, self, message)
+            # P0-C v2 (#132): shared dispatcher with the dev/test
+            # path (sync ``run_member_bot``). Both launchers reach
+            # the same engineering_team_runtime handlers.
+            await _dispatch_member_message(profile=profile, message=message)
 
     return MemberBot(command_prefix=commands.when_mentioned, intents=intents)
 
@@ -310,34 +238,96 @@ async def run_member_bot_until_shutdown(
 
 
 async def _dispatch_member_message(
-    profile: MemberBotProfile, bot: Any, message: Any
+    *,
+    profile: MemberBotProfile,
+    message: Any,
 ) -> None:
-    """Member-bot ``on_message`` dispatch — extracted for reuse.
+    """Member-bot ``on_message`` dispatch — shared across both launchers.
 
-    The body lives inside :func:`run_member_bot` 's closure today;
-    this stub keeps the new :func:`build_member_bot` factory's
-    on_message handler in sync without duplicating the closure logic.
-    Until the closure is refactored (separate follow-up), this
-    function calls back into the legacy ``run_member_bot`` 's bot
-    object via direct on_message — practically that means the new
-    factory routes its messages through the same legacy logic.
+    P0-C v2 (#132 / #134): hoisted from the inline closure in
+    :func:`run_member_bot` so the runtime path (``yule runtime up``
+    via :func:`build_member_bot` + :func:`run_member_bot_until_shutdown`)
+    and the dev/test path (``yule discord up`` via :func:`run_member_bot`)
+    invoke the **same** dispatcher. Before this refactor the runtime
+    path called a no-op placeholder and member bots logged in but
+    silently ignored every ``[research-*/team-*]`` directive — see
+    ``docs/runtime-member-bot-dispatch-parity.md`` for the full audit.
+
+    The dispatch order is:
+
+      1. ``handle_research_turn_message`` — research-open / research-turn
+         marker. Returns ``None`` for inactive roles (already excluded
+         via ``session.extra['active_research_roles']``) so this bot
+         stays silent on broadcasts not addressed to it.
+      2. ``handle_team_turn_message`` — team-turn marker. Same
+         "outcome is None → silent" contract.
+
+    Each ``_post_*`` call runs inside a typing context so the
+    member bot's account shows "입력 중..." while composing. Failures
+    surface as a ``⚠️`` message in the same channel to avoid leaving
+    the user staring at a frozen typing indicator. The 1-shot
+    ``typing_context`` here is upgraded to ``typing_keepalive`` in a
+    follow-up commit (commit 4 of this PR) to cover 8-15s chained
+    synthesis without the ~10s Discord typing fade.
     """
 
-    # For the P0-C minimum-viable land, ``build_member_bot`` 's
-    # MemberBot is structurally identical to ``run_member_bot`` 's
-    # MemberBot — the dispatcher logic lives inline in the legacy
-    # function. We intentionally keep the new factory minimal here
-    # to avoid copying the 80-line dispatcher; a follow-up refactor
-    # will pull the dispatcher into a standalone helper and both
-    # paths will share it. For now the new factory is only used by
-    # ``run_member_bot_until_shutdown`` in the runtime path, where
-    # the member bot's job is to receive Discord events and the
-    # production behaviour is owned by the (gateway-aware)
-    # ``run_member_bot`` closure dispatcher. This stub is a
-    # *placeholder* the runtime supervisor exercises in tests; live
-    # operators run the same code as ``yule discord up`` once the
-    # follow-up refactor lands.
-    return None
+    text = message.content or ""
+
+    # Research-turn (운영-리서치 forum thread) takes precedence
+    # because research markers and team markers can both land in
+    # threads the bot can see. We process whichever shows up.
+    try:
+        research_outcome = handle_research_turn_message(
+            role=profile.role,
+            text=text,
+        )
+    except Exception as exc:  # noqa: BLE001
+        research_outcome = None
+        print(
+            f"warning: member bot '{profile.display_label}' "
+            f"research handler failed: {exc}",
+            file=sys.stderr,
+        )
+    if research_outcome is not None:
+        try:
+            async with typing_context(message.channel):
+                await _post_research_turn(
+                    message.channel, research_outcome
+                )
+        except Exception as exc:  # noqa: BLE001
+            try:
+                await message.channel.send(
+                    f"⚠️ {profile.display_label} 댓글 게시 실패: {exc}"
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return
+
+    try:
+        team_outcome = handle_team_turn_message(
+            role=profile.role,
+            text=text,
+        )
+    except Exception as exc:  # noqa: BLE001
+        team_outcome = None
+        print(
+            f"warning: member bot '{profile.display_label}' "
+            f"team handler failed: {exc}",
+            file=sys.stderr,
+        )
+    if team_outcome is None:
+        return
+
+    try:
+        async with typing_context(message.channel):
+            await _post_team_turn(message.channel, team_outcome)
+    except Exception as exc:  # noqa: BLE001
+        try:
+            await message.channel.send(
+                f"⚠️ {profile.display_label} take 게시 실패: {exc}"
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _member_bot_permission_targets_from_env() -> tuple[_PermissionTarget, ...]:
