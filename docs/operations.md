@@ -8,9 +8,11 @@ dev / 단일 호스트:
 
 ```bash
 yule runtime up --dry-run               # 띄울 service 목록 확인 (실제 spawn 없음)
-yule runtime up                         # 전체 engineering runtime 부팅 (12 services)
+yule runtime up                         # 전체 engineering runtime 부팅 (20 services
+                                        # — 13 worker/gateway + 7 member bots)
 yule runtime status                     # 헬스 + 큐 + 실패 + 라이브 스모크 체크리스트
 yule run-service eng-research-worker    # 단일 worker (systemd 도 같은 명령을 호출)
+yule run-service eng-member-tech-lead   # 단일 member bot — token 결손 시 exit 78
 ```
 
 production (systemd):
@@ -27,11 +29,13 @@ journalctl -u yule-run-service@eng-supervisor-watch.service -f
 
 | | `yule runtime up` (production) | `yule discord up` (dev only) |
 |---|---|---|
-| Discord 봇 spawn | ✅ gateway + 7 멤버 | ✅ gateway + 7 멤버 + planning |
-| queue 워커 spawn | ✅ research / role / approval / obsidian-writer / supervisor | ❌ 없음 — gateway 가 enqueue 한 job 은 unpicked |
+| Discord 봇 spawn | ✅ gateway + 7 멤버 (P0-C #132 부터 first-class runtime service) | ✅ gateway + 7 멤버 + planning |
+| queue 워커 spawn | ✅ research / role / approval / obsidian-writer / supervisor / digest | ❌ 없음 — gateway 가 enqueue 한 job 은 unpicked |
 | 실제 작업 처리 | ✅ end-to-end | ❌ Discord 발화는 보이지만 결과가 안 나온다 |
 | systemd 동등 | `yule.target` (각 서비스 = `yule-run-service@<id>.service`) | 없음 |
 | 사용 시점 | 항상 (단일 호스트 / production) | Discord 발화만 빠르게 보고 싶은 dev smoke |
+
+> **P0-C 이전 (#132 머지 전)**: `runtime up` 은 gateway 만 spawn 했고 member bot 은 별도 `yule discord up` 으로만 떴다. 이제 production = `runtime up` 단일 진입점.
 
 **operator 결정 트리:**
 
@@ -41,7 +45,7 @@ journalctl -u yule-run-service@eng-supervisor-watch.service -f
 
 ### 0.2. 서비스 한눈에 보기
 
-`yule runtime up` (engineering profile) 이 띄우는 12 개 서비스 — 각 행이 어떤 job 을 처리하는지:
+`yule runtime up` (engineering profile) 이 띄우는 **20 개 서비스** — 각 행이 어떤 job / Discord identity 를 담당하는지. P0-C (#132) 가 7 개 member bot 을 first-class runtime service 로 추가했다:
 
 | service id | kind | 처리하는 큐 / 작업 |
 |---|---|---|
@@ -57,6 +61,16 @@ journalctl -u yule-run-service@eng-supervisor-watch.service -f
 | `eng-approval-worker` | approval_worker | `approval_post` 큐 — `#승인-대기` 카드 게시 + 답신 인입. |
 | `eng-obsidian-writer` | obsidian_writer | `obsidian_write` 큐 — vault 저장 (approval guard 적용). |
 | `eng-discord-gateway` | discord_gateway | 큐 컨슈머 아님. `#업무-접수` listener — research/role/approval/obsidian_write 큐에 enqueue. |
+| `eng-digest-scheduler` | digest_scheduler | F13 (#122) RSS/release feed 크롤 + 부서 채널 카드 게시. |
+| `eng-member-tech-lead` | discord_member_bot | tech-lead 의 Discord identity (P0-C #132). 토큰 결손 시 exit 78 (graceful disable). |
+| `eng-member-backend-engineer` | discord_member_bot | backend-engineer 의 Discord identity (P0-C #132). |
+| `eng-member-qa-engineer` | discord_member_bot | qa-engineer 의 Discord identity (P0-C #132). |
+| `eng-member-devops-engineer` | discord_member_bot | devops-engineer 의 Discord identity (P0-C #132). |
+| `eng-member-ai-engineer` | discord_member_bot | ai-engineer 의 Discord identity (P0-C #132). |
+| `eng-member-frontend-engineer` | discord_member_bot | frontend-engineer 의 Discord identity (P0-C #132). |
+| `eng-member-product-designer` | discord_member_bot | product-designer 의 Discord identity (P0-C #132). |
+
+**Member bot graceful disable**: `ENGINEERING_AGENT_BOT_<ROLE>_TOKEN` 이 비어있거나 placeholder shape (`<<TOKEN>>` 등) 이면 그 한 봇만 exit 78 로 종료. supervisor 가 `RestartPreventExitStatus=78` 로 분류해 재시작 폭주 없이 안정 비활성화. 나머지 19 service 는 영향 X. operator 가 `.env.local` 에 토큰 추가 후 `yule run-service eng-member-<role>` (또는 다음 `yule runtime up`) 으로 활성화.
 
 `yule runtime status` 의 ALIVE/STALE/UNKNOWN 라벨 + warnings 섹션이 위 표를 그대로 따른다. STALE/UNKNOWN 이 뜨면 status warnings 가 정확한 복구 명령을 함께 출력한다 (`yule run-service <id>` / `systemctl restart …` / `yule runtime up`).
 
