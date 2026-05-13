@@ -2394,14 +2394,24 @@ async def _handle_join_or_append(
 
     if thread_continuation_fn is None:
         return None
-    continuation = await _maybe_await(
-        thread_continuation_fn(
-            message=message,
-            prompt=intake_prompt,
-            write_requested=outcome.write_requested,
-            thread_topic=outcome.thread_topic,
+    # P0-E (#134 후속): JOIN/APPEND 의 thread lookup + resume 도 long-running
+    # path (Discord API 조회 + 세션 hydration). conversation_fn wrap 과 동일
+    # 6s interval 로 typing 유지 — 끊김 race 방지.
+    from .typing_indicator import typing_keepalive
+
+    async with typing_keepalive(
+        getattr(message, "channel", None),
+        interval=6.0,
+        label="gateway:thread-continuation",
+    ):
+        continuation = await _maybe_await(
+            thread_continuation_fn(
+                message=message,
+                prompt=intake_prompt,
+                write_requested=outcome.write_requested,
+                thread_topic=outcome.thread_topic,
+            )
         )
-    )
     if continuation is None:
         return None
 
