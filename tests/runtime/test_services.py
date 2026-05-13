@@ -30,8 +30,9 @@ from yule_orchestrator.runtime.services import (
 class EngineeringProfileTests(unittest.TestCase):
     def test_engineering_profile_lists_all_required_services(self) -> None:
         ids = {spec.service_id for spec in ENGINEERING_PROFILE}
-        # Spec: 11 always-on workers + 1 opt-in coding executor (#73) + 1 discord
-        # gateway + 1 F13 digest scheduler (#122) = 14 total.
+        # Spec: 11 always-on workers + 1 opt-in coding executor (#73)
+        # + 1 discord gateway + 1 F13 digest scheduler (#122) + 7 P0-C
+        # member bots (#132) = 21 total.
         required = {
             "eng-supervisor-watch",
             "eng-research-worker",
@@ -47,6 +48,14 @@ class EngineeringProfileTests(unittest.TestCase):
             "eng-coding-executor",
             "eng-discord-gateway",
             "eng-digest-scheduler",
+            # P0-C (#132): 7 member bots, one per engineering role.
+            "eng-member-tech-lead",
+            "eng-member-backend-engineer",
+            "eng-member-qa-engineer",
+            "eng-member-devops-engineer",
+            "eng-member-ai-engineer",
+            "eng-member-frontend-engineer",
+            "eng-member-product-designer",
         }
         self.assertEqual(ids, required)
 
@@ -62,8 +71,32 @@ class EngineeringProfileTests(unittest.TestCase):
 
     def test_non_role_workers_have_no_role_filter(self) -> None:
         for spec in ENGINEERING_PROFILE:
-            if spec.kind != ServiceKind.ROLE_WORKER:
-                self.assertIsNone(spec.role)
+            # P0-C (#132): DISCORD_MEMBER_BOT services also carry a
+            # role filter (one bot per role). All other non-role kinds
+            # leave the field None.
+            if spec.kind in (
+                ServiceKind.ROLE_WORKER,
+                ServiceKind.DISCORD_MEMBER_BOT,
+            ):
+                continue
+            self.assertIsNone(spec.role)
+
+    def test_member_bots_carry_role_filter(self) -> None:
+        # P0-C (#132) — every DISCORD_MEMBER_BOT row pins a role short id
+        # that matches the trailing component of its service_id.
+        roles = set()
+        for spec in ENGINEERING_PROFILE:
+            if spec.kind != ServiceKind.DISCORD_MEMBER_BOT:
+                continue
+            self.assertIsNotNone(
+                spec.role,
+                f"{spec.service_id} DISCORD_MEMBER_BOT missing role filter",
+            )
+            self.assertTrue(spec.service_id.endswith(spec.role or ""))
+            self.assertTrue(spec.service_id.startswith("eng-member-"))
+            self.assertTrue(spec.auto_spawn)
+            roles.add(spec.role)
+        self.assertEqual(len(roles), 7)
 
     def test_service_ids_are_unique(self) -> None:
         ids = [spec.service_id for spec in ENGINEERING_PROFILE]

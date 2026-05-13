@@ -86,18 +86,31 @@ class _FakeProcess:
 class DryRunPlanTests(unittest.TestCase):
     def test_dry_run_lists_every_auto_spawn_service(self) -> None:
         plan = build_dry_run_plan(profile="engineering")
-        # Every auto_spawn engineering service is in the plan. M6.1b-2
-        # flipped the gateway to implemented (12 services). #73 added
-        # eng-coding-executor as opt-in (auto_spawn=False) — so it is
-        # NOT in the spawn plan even though it is implemented. Total
-        # auto-spawn count remains 12.
+        # Every auto_spawn engineering service is in the plan. History:
+        # M6.1b-2 flipped the gateway to implemented (12 services).
+        # #73 added eng-coding-executor as opt-in (auto_spawn=False) —
+        # NOT in the spawn plan even though it is implemented.
+        # F13 #122 added eng-digest-scheduler (13). P0-C #132 added 7
+        # eng-member-* member bots (20 auto-spawn). Total auto-spawn
+        # count is now 20; opt-in (coding executor) stays out.
         ids = {entry[0] for entry in plan.services}
-        self.assertEqual(len(plan.services), 13)
+        self.assertEqual(len(plan.services), 20)
         self.assertNotIn("eng-coding-executor", ids)
         self.assertIn("eng-research-worker", ids)
         self.assertIn("eng-role-tech-lead", ids)
         self.assertIn("eng-supervisor-watch", ids)
         self.assertIn("eng-discord-gateway", ids)
+        # P0-C: every member bot in the spawn plan.
+        for role in (
+            "tech-lead",
+            "backend-engineer",
+            "qa-engineer",
+            "devops-engineer",
+            "ai-engineer",
+            "frontend-engineer",
+            "product-designer",
+        ):
+            self.assertIn(f"eng-member-{role}", ids)
         # cmd shape — ``yule run-service <id>``.
         for service_id, _description, cmd in plan.services:
             self.assertEqual(cmd[:2], ("yule", "run-service"))
@@ -122,8 +135,10 @@ class DryRunPlanTests(unittest.TestCase):
         plan = build_dry_run_plan(profile="engineering")
         rendered = render_dry_run_plan(plan)
         self.assertIn("profile: engineering", rendered)
-        # 13 specs total; 1 opt-in (coding executor) → 12 spawned.
-        self.assertIn("services to start: 13", rendered)
+        # 21 specs total; 1 opt-in (coding executor) → 20 spawned.
+        # The remaining 20 = 1 supervisor + 1 research + 7 role workers
+        # + 1 approval + 1 obsidian + 1 gateway + 1 digest + 7 member.
+        self.assertIn("services to start: 20", rendered)
         self.assertIn("eng-research-worker", rendered)
         self.assertIn("eng-discord-gateway", rendered)
         # No reserved block now that gateway is implemented.
@@ -203,14 +218,24 @@ class SpawnAndSuperviseTests(unittest.TestCase):
 
         rc = _run(driver())
         self.assertEqual(rc, 0)
-        # 12 auto-spawn services exactly once each. M6.1b-2 flipped the
-        # gateway to implemented (12 total). #73 added eng-coding-executor
-        # as opt-in (auto_spawn=False) so it is NOT spawned by default —
-        # spawn count remains 12.
+        # Auto-spawn count history: 12 (M6.1b-2) → 13 (F13 #122 digest)
+        # → 20 (P0-C #132 added 7 eng-member-* member bots).
+        # eng-coding-executor stays out as opt-in (auto_spawn=False).
         spawned_ids = [cmd[-1] for cmd in spawned]
-        self.assertEqual(len(spawned_ids), 13)
+        self.assertEqual(len(spawned_ids), 20)
         self.assertIn("eng-discord-gateway", spawned_ids)
         self.assertNotIn("eng-coding-executor", spawned_ids)
+        # P0-C: every member bot was spawned exactly once.
+        for role in (
+            "tech-lead",
+            "backend-engineer",
+            "qa-engineer",
+            "devops-engineer",
+            "ai-engineer",
+            "frontend-engineer",
+            "product-designer",
+        ):
+            self.assertEqual(spawned_ids.count(f"eng-member-{role}"), 1)
         # Every fake process received terminate() during drain.
         self.assertTrue(all(evt.is_set() for evt in terminate_events))
 

@@ -153,6 +153,9 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
     if spec.kind == ServiceKind.DISCORD_GATEWAY:
         return await _run_discord_gateway(spec, shutdown_event=shutdown_event)
 
+    if spec.kind == ServiceKind.DISCORD_MEMBER_BOT:
+        return await _run_discord_member_bot(spec, shutdown_event=shutdown_event)
+
     if spec.kind == ServiceKind.DIGEST_SCHEDULER:
         from ..agents.digest.scheduler import run_scheduler
 
@@ -232,6 +235,88 @@ async def _run_discord_gateway(
             shutdown_event=shutdown_event,
             bot_factory=lambda: build_engineering_gateway_bot(repo_root),
             token=token,
+        )
+    except KeyboardInterrupt:
+        return EXIT_OK
+    return EXIT_OK
+
+
+async def _run_discord_member_bot(
+    spec: ServiceSpec,
+    *,
+    shutdown_event: asyncio.Event,
+) -> int:
+    """Run a single engineering member bot under ``run-service``. (P0-C #132)
+
+    Hard rails (matching docs/operations.md §0.1 promise):
+
+      * ``spec.role`` must be set — enforced by the inventory schema.
+      * Token lookup uses :func:`member_bots.env_key_for` so the env
+        contract stays identical to ``yule discord up`` (one source
+        of truth).
+      * Graceful disable on missing / placeholder-shape token:
+        emit a stderr line with the env_key + reason, return
+        :data:`EXIT_UNKNOWN_SERVICE` (78). Both the subprocess
+        supervisor and systemd unit treat 78 as "stop, don't
+        restart" so the rest of the company keeps running.
+      * Valid token → drive the bot through the SIGTERM-aware
+        :func:`run_member_bot_until_shutdown` so the runtime's
+        shutdown event translates into a graceful Discord disconnect.
+
+    The function never mutates ``os.environ`` because the per-role
+    token already lives at its dedicated env_key — the bot reads it
+    directly via the resolved profile, no override layering needed.
+    """
+
+    if not spec.role:
+        sys.stderr.write(
+            f"yule run-service: {spec.service_id} is DISCORD_MEMBER_BOT "
+            "but spec.role is empty; cannot resolve the member token.\n"
+        )
+        return EXIT_UNKNOWN_SERVICE
+
+    from ..discord.member_bot import run_member_bot_until_shutdown
+    from ..discord.member_bots import (
+        env_key_for,
+        looks_like_real_discord_token,
+        MemberBotProfile,
+    )
+    import os
+
+    env_key = env_key_for("engineering-agent", spec.role)
+    raw = os.environ.get(env_key)
+    token = raw.strip() if isinstance(raw, str) and raw.strip() else None
+
+    if not token:
+        sys.stderr.write(
+            f"yule run-service: {spec.service_id} graceful-disable — "
+            f"{env_key} is empty. Add the bot token to .env.local then "
+            f"'yule run-service {spec.service_id}' (or 'yule runtime up') "
+            "to bring this role bot online.\n"
+        )
+        return EXIT_UNKNOWN_SERVICE
+
+    if not looks_like_real_discord_token(token):
+        sys.stderr.write(
+            f"yule run-service: {spec.service_id} graceful-disable — "
+            f"{env_key} is set but doesn't match the Discord bot token "
+            "shape (placeholder or wrong format). Regenerate the token "
+            "in the Discord developer portal and update .env.local.\n"
+        )
+        return EXIT_UNKNOWN_SERVICE
+
+    profile = MemberBotProfile(
+        agent_id="engineering-agent",
+        role=spec.role,
+        env_key=env_key,
+        token=token,
+        display_label=f"engineering-agent/{spec.role}",
+    )
+
+    try:
+        await run_member_bot_until_shutdown(
+            profile=profile,
+            shutdown_event=shutdown_event,
         )
     except KeyboardInterrupt:
         return EXIT_OK
