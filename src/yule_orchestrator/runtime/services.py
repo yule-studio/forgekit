@@ -51,6 +51,14 @@ class ServiceKind(str, Enum):
     CODING_EXECUTOR = "coding_executor"
     SUPERVISOR = "supervisor"
     DISCORD_GATEWAY = "discord_gateway"
+    # P0-C (#132) — engineering member bot (per role) running as a
+    # first-class runtime service. ``runtime up`` spawns one per
+    # ``_ENGINEERING_ROLES`` entry; missing/placeholder tokens
+    # graceful-disable that one bot only (exit 78), not the whole
+    # company. The bot consumes no SQLite queue — its event loop is
+    # the Discord WebSocket — so the kind maps to ``None`` in
+    # ``_KIND_TO_JOB_TYPE``.
+    DISCORD_MEMBER_BOT = "discord_member_bot"
     # F13 #122 — 부서별 자동 이슈 수집 (RSS/release crawler + dept dispatch).
     DIGEST_SCHEDULER = "digest_scheduler"
     # Kept for backward compatibility — older inventory dumps may
@@ -215,6 +223,27 @@ def _build_engineering_profile(
             ),
         )
     )
+    # P0-C (#132) — engineering member bots, one per role. Each bot is
+    # a distinct Discord identity that posts as ``tech-lead`` /
+    # ``backend-engineer`` etc. to ``#운영-리서치`` threads. ``runtime
+    # up`` spawns all 7 in parallel; a role with no env-key token is
+    # graceful-disabled in ``run_service`` (exit 78) so the rest of
+    # the company keeps running.
+    for role in _ENGINEERING_ROLES:
+        rows.append(
+            ServiceSpec(
+                service_id=f"eng-member-{role}",
+                kind=ServiceKind.DISCORD_MEMBER_BOT,
+                description=(
+                    f"engineering member bot (role={role}) — Discord "
+                    "identity that consumes role_take research turns + "
+                    "posts deliberation takes to #운영-리서치 thread. "
+                    "Graceful-disabled (exit 78) when its per-role "
+                    "token env is empty or a placeholder."
+                ),
+                role=role,
+            )
+        )
     rows.append(
         ServiceSpec(
             service_id="eng-digest-scheduler",
