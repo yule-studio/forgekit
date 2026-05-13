@@ -559,17 +559,30 @@ async def route_engineering_message(
 
     attachments = extract_message_attachments(message)
     user_links = extract_user_links_from_message(message, prompt_text)
-    raw_outcome = await _maybe_await(
-        conversation_fn(
-            message_text=prompt_text,
-            author_user_id=getattr(message.author, "id", None),
-            channel_id=getattr(getattr(message, "channel", None), "id", None),
-            bot_user=bot_user,
-            attachments=attachments,
-            user_links=user_links,
-            auto_collect=True,
+    # P0-D (#134): conversation_fn 가 auto_collect 를 돌리면 collector +
+    # research_pack 적재까지 long-running (수 초 ~ 십수 초). 그 동안
+    # 사용자에게 "처리 중" 신호가 끊겨 봇이 죽은 것처럼 보이던 문제.
+    # typing_keepalive 가 ~6s 마다 typing event 재발사 → 첫 visible
+    # reply (send_chunks) 까지 끊김 없이 유지. ignored / non-actionable /
+    # bot-echo 분기는 본 라인 *전*에 이미 return 했으므로 silence 보존.
+    from .typing_indicator import typing_keepalive
+
+    async with typing_keepalive(
+        getattr(message, "channel", None),
+        interval=6.0,
+        label="gateway:conversation",
+    ):
+        raw_outcome = await _maybe_await(
+            conversation_fn(
+                message_text=prompt_text,
+                author_user_id=getattr(message.author, "id", None),
+                channel_id=getattr(getattr(message, "channel", None), "id", None),
+                bot_user=bot_user,
+                attachments=attachments,
+                user_links=user_links,
+                auto_collect=True,
+            )
         )
-    )
     outcome = _coerce_outcome(raw_outcome, prompt_text=prompt_text)
 
     if outcome.content:
