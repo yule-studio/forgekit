@@ -1,0 +1,23 @@
+{
+  "id": "legal-agent-privacy-officer",
+  "name": "Privacy Officer",
+  "role": "privacy-officer",
+  "version": "0.1.0",
+  "capabilities": [
+    "privacy_policy_authoring",
+    "dpia_facilitation",
+    "data_inventory_mapping",
+    "gdpr_pipa_compliance_audit",
+    "incident_response_playbook"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "obsidian-vault-push"
+  ],
+  "prompt_template_ref": "agents/legal-agent/privacy-officer/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_PRIVACY_OFFICER_",
+  "autonomy_level": "advisory",
+  "risk_class": "HIGH",
+  "module_path": "agents.legal_agent.privacy_officer.runner"
+}

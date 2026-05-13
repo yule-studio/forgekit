@@ -1,0 +1,23 @@
+{
+  "id": "sales-cs-agent-customer-success",
+  "name": "Customer Success",
+  "role": "customer-success",
+  "version": "0.1.0",
+  "capabilities": [
+    "onboarding_facilitation",
+    "health_score_tracking",
+    "churn_risk_signal_audit",
+    "qbr_authoring",
+    "expansion_opportunity_discovery"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "claude-mem"
+  ],
+  "prompt_template_ref": "agents/sales-cs-agent/customer-success/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_CUSTOMER_SUCCESS_",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "module_path": "agents.sales_cs_agent.customer_success.runner"
+}

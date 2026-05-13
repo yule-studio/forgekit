@@ -1,0 +1,23 @@
+{
+  "id": "legal-agent-contract-reviewer",
+  "name": "Contract Reviewer",
+  "role": "contract-reviewer",
+  "version": "0.1.0",
+  "capabilities": [
+    "contract_clause_review",
+    "msa_nda_drafting",
+    "vendor_dpa_audit",
+    "risk_flagging",
+    "redline_proposal"
+  ],
+  "plugins_required": [
+    "paste-guard",
+    "hookify",
+    "obsidian-vault-push"
+  ],
+  "prompt_template_ref": "agents/legal-agent/contract-reviewer/prompt.md",
+  "github_app_env_prefix": "YULE_GITHUB_APP_CONTRACT_REVIEWER_",
+  "autonomy_level": "advisory",
+  "risk_class": "HIGH",
+  "module_path": "agents.legal_agent.contract_reviewer.runner"
+}
