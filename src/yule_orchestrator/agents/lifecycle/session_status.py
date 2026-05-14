@@ -105,6 +105,18 @@ class SessionStatusReport:
     coding_job_status: Optional[str] = None
     coding_executor_role: Optional[str] = None
     coding_write_scope: Tuple[str, ...] = ()
+    # P0-H stage 2 status surface — gateway 가 session.extra 에 박아 둔
+    # work_mode / topology / scope / github_target / repo_contract 결과를
+    # 그대로 노출. 모두 optional default 라 기존 caller 무회귀.
+    repository: Optional[str] = None  # "owner/repo"
+    work_mode: Optional[str] = None
+    topology: Optional[str] = None
+    scope_mode: Optional[str] = None
+    branch_name: Optional[str] = None
+    pull_request_number: Optional[int] = None
+    repo_contract_detected: bool = False
+    repo_contract_summary: Optional[str] = None
+    obsidian_mirror_path: Optional[str] = None
     signals: Tuple[SessionStatusSignal, ...] = field(default_factory=tuple)
 
     def has_signal(self, code: str) -> bool:
@@ -232,6 +244,46 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
         if isinstance(raw_scope, (list, tuple)):
             coding_write_scope = tuple(str(item) for item in raw_scope if item)
 
+    # P0-H stage 2 — surface gateway-decided fields from session.extra.
+    github_target_payload = extra.get("github_target")
+    repository: Optional[str] = None
+    pull_request_number: Optional[int] = None
+    branch_name: Optional[str] = None
+    if isinstance(github_target_payload, Mapping) and github_target_payload:
+        owner = _coerce_str(github_target_payload.get("owner"))
+        repo = _coerce_str(github_target_payload.get("repo"))
+        if owner and repo:
+            repository = f"{owner}/{repo}"
+        kind = _coerce_str(github_target_payload.get("kind"))
+        if kind == "pull_request":
+            pull_request_number = _coerce_int(github_target_payload.get("number"))
+        branch_name = _coerce_str(github_target_payload.get("branch_or_sha"))
+    # explicit branch override stored separately wins over tree/blob derive.
+    explicit_branch = _coerce_str(extra.get("branch_name"))
+    if explicit_branch:
+        branch_name = explicit_branch
+    # explicit PR number override (e.g. work item not pasted via URL).
+    explicit_pr = _coerce_int(extra.get("pull_request_number"))
+    if explicit_pr is not None:
+        pull_request_number = explicit_pr
+
+    work_mode = _coerce_str(extra.get("work_mode"))
+    topology = _coerce_str(extra.get("topology"))
+    scope_mode = _coerce_str(extra.get("scope"))
+
+    repo_contract_payload = extra.get("repo_contract")
+    repo_contract_detected = False
+    repo_contract_summary: Optional[str] = None
+    if isinstance(repo_contract_payload, Mapping) and repo_contract_payload:
+        repo_contract_detected = not bool(repo_contract_payload.get("fallback"))
+        # Prefer the precomputed summary stored alongside the contract
+        # so the renderer doesn't need to import the helper.
+        repo_contract_summary = _coerce_str(
+            extra.get("repo_contract_summary")
+        ) or _coerce_str(repo_contract_payload.get("summary_line"))
+
+    obsidian_mirror_path = _coerce_str(extra.get("obsidian_mirror_path"))
+
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value)
 
@@ -281,6 +333,15 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
         coding_job_status=coding_job_status,
         coding_executor_role=coding_executor_role,
         coding_write_scope=coding_write_scope,
+        repository=repository,
+        work_mode=work_mode,
+        topology=topology,
+        scope_mode=scope_mode,
+        branch_name=branch_name,
+        pull_request_number=pull_request_number,
+        repo_contract_detected=repo_contract_detected,
+        repo_contract_summary=repo_contract_summary,
+        obsidian_mirror_path=obsidian_mirror_path,
         signals=signals,
     )
 

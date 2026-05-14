@@ -301,47 +301,26 @@ def _strip_or_none(value: Optional[str]) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # GitHub URL parsing (network-free)
 # ---------------------------------------------------------------------------
-
-
-_GITHUB_ISSUE_RE = re.compile(
-    r"^https?://github\.com/(?P<owner>[\w.\-]+)/(?P<repo>[\w.\-]+)/issues/(?P<number>\d+)",
-    re.IGNORECASE,
-)
-_GITHUB_PR_RE = re.compile(
-    r"^https?://github\.com/(?P<owner>[\w.\-]+)/(?P<repo>[\w.\-]+)/pull/(?P<number>\d+)",
-    re.IGNORECASE,
-)
+#
+# Legacy thin wrapper. The canonical parser now lives in
+# ``agents/git/github_url.py`` and supports the full set of shapes
+# (repo / issue / PR / commit / compare / tree / blob). Issue/PR
+# callers keep the old ``{kind, owner, repo, number}`` shape via the
+# delegated wrapper below.
 
 
 def parse_github_url(url: Optional[str]) -> Optional[Mapping[str, Any]]:
-    """Extract ``{kind, owner, repo, number}`` from a GitHub issue/PR URL.
+    """Issue/PR URL parser preserved for collector callers.
 
-    Returns ``None`` for any other URL (including repo root, commit, etc.)
-    so callers can fall through to generic classification.
+    Delegates to ``agents.git.github_url.parse_github_url`` which keeps
+    the historical ``{kind, owner, repo, number}`` shape for issue and
+    pull_request URLs. Returns ``None`` for any other shape so the
+    surrounding source-classification fall-through is unchanged.
     """
 
-    if not url:
-        return None
-    text = str(url).strip()
-    issue_match = _GITHUB_ISSUE_RE.match(text)
-    if issue_match:
-        groups = issue_match.groupdict()
-        return {
-            "kind": "issue",
-            "owner": groups["owner"],
-            "repo": groups["repo"],
-            "number": int(groups["number"]),
-        }
-    pr_match = _GITHUB_PR_RE.match(text)
-    if pr_match:
-        groups = pr_match.groupdict()
-        return {
-            "kind": "pull_request",
-            "owner": groups["owner"],
-            "repo": groups["repo"],
-            "number": int(groups["number"]),
-        }
-    return None
+    from ..git.github_url import parse_github_url as _delegate
+
+    return _delegate(url)
 
 
 # ---------------------------------------------------------------------------

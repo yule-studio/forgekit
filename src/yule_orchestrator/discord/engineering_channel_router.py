@@ -835,6 +835,14 @@ async def route_engineering_message(
     # see the same set without re-running the rule bank.
     session = _persist_role_selection(session, intake_prompt)
     session = _persist_lifecycle_mode(session, intake_prompt)
+    # P0-H stage 2 — gateway 가 prepare 한 work_mode / topology / scope /
+    # github_target / repo_contract / coding_handoff_packet 를 session.extra
+    # 에 stash. 이미 mode 가 박혀 있으면 helper 가 재질문 안 함.
+    session = _persist_coding_session_context(
+        session,
+        message_text=prompt_text or intake_prompt,
+        user_links=user_links,
+    )
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -995,6 +1003,14 @@ async def _drive_clarification_create_new_work(
     # consume it.
     session = _persist_role_selection(session, canonical_prompt)
     session = _persist_lifecycle_mode(session, canonical_prompt)
+    # P0-H stage 2 — coding session context (same wiring as the
+    # primary intake path above). The clarification path doesn't have
+    # a pre-extracted user_links list — re-extract from the message.
+    session = _persist_coding_session_context(
+        session,
+        message_text=canonical_prompt,
+        user_links=extract_user_links_from_message(message, canonical_prompt),
+    )
     session_id = getattr(session, "session_id", None)
 
     if intake_message:
@@ -1313,6 +1329,56 @@ def _persist_role_selection(
     if not selection_updates:
         return session
     return _persist_extra_keys(session, selection_updates)
+
+
+def _persist_coding_session_context(
+    session: Any,
+    *,
+    message_text: str,
+    user_links: Sequence[str] = (),
+) -> Any:
+    """P0-H stage 2 — store gateway-prepared coding session context.
+
+    Calls :func:`prepare_coding_session_context` to compute the
+    work_mode / topology / scope / github_target / repo_contract /
+    coding_handoff_packet extras for *session*, then merges them in.
+
+    Ask-once contract: if the session already has work_mode set, the
+    helper does not re-prompt and does not overwrite.
+
+    Best-effort — any failure leaves the session untouched so partial
+    install / missing gh CLI never blocks intake.
+    """
+
+    if session is None:
+        return session
+    try:
+        from ..agents.coding.coding_session_context import (
+            prepare_coding_session_context,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return session
+
+    try:
+        existing_extra = dict(getattr(session, "extra", None) or {})
+    except Exception:  # noqa: BLE001
+        existing_extra = {}
+
+    try:
+        context = prepare_coding_session_context(
+            message_text=message_text or "",
+            user_links=tuple(user_links or ()),
+            existing_extra=existing_extra,
+            existing_session_id=getattr(session, "session_id", None),
+            # discover_contract=False until vault/workspace clone wiring lands.
+            # The contract still records its own fallback line in extras.
+        )
+    except Exception:  # noqa: BLE001
+        return session
+
+    if not context.extras_update:
+        return session
+    return _persist_extra_keys(session, context.extras_update)
 
 
 def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
