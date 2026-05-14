@@ -41,7 +41,7 @@ def _coerce_research_loop_report(raw: Any) -> EngineeringResearchLoopReport:
     .reporting in P0-P step 10). Until then research_loop calls it
     through this thin shim to avoid a circular import."""
 
-    from ._legacy import _coerce_research_loop_report as _impl
+    from .main import _coerce_research_loop_report as _impl
 
     return _impl(raw)
 

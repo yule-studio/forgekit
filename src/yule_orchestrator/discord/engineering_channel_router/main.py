@@ -1,14 +1,31 @@
-"""Routing logic for the engineering #업무-접수 channel.
+"""engineering_channel_router — main orchestration entry.
 
-The Discord bot's planning conversation layer is preserved as-is; this
-router handles the *engineering* path: free conversation in the intake
-channel (or a thread under it), and — when the user signals confirmation
-— a workflow intake plus a thread kickoff message.
+Hosts the three remaining "orchestration core" functions after the
+P0-P decomposition (steps 1-11) extracted everything else into
+responsibility-aligned siblings:
 
-The module is pure-Python: all I/O dependencies (engineering conversation
-provider, workflow intake, thread kickoff, message sender) are injected
-as callables so unit tests can drive the router without spinning up
-discord.py. ``bot.py`` wires the production callables.
+- :func:`route_engineering_message` — the public router entry.
+  Walks the message through (1) channel check, (2) coding gate,
+  (3) Obsidian gate, (4) explicit-session-id join, (5) clarification
+  CREATE branch, (6) runtime preflight, (7) ``conversation_fn``
+  + intake / kickoff / research loop / work report.
+- :func:`_drive_clarification_create_new_work` — drives intake +
+  kickoff + research_loop with the cached canonical_prompt when
+  the user picked "새 작업으로 진행" after a clarification.
+- :func:`_handle_clarification_selection` — drives JOIN via the
+  legacy join helper when the user picked an existing candidate.
+
+Every other concern (models, utils, intent_detection, coding_gate,
+obsidian_gate, session_persistence, research_loop, reporting,
+runtime_preflight, clarification cache) lives in its own module —
+see ``docs/p0p-engineering-channel-router-decomposition.md`` for the
+full responsibility map.
+
+The module is pure-Python: all I/O dependencies (engineering
+conversation provider, workflow intake, thread kickoff, message
+sender) are injected as callables so unit tests can drive the router
+without spinning up discord.py. ``bot.py`` wires the production
+callables.
 """
 
 from __future__ import annotations
