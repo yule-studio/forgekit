@@ -65,6 +65,13 @@ from .intent_detection import (  # noqa: F401 — facade re-export
     should_continue_existing_thread,
     should_start_new_thread,
 )
+# session.extra mutations + load helpers live in .session_persistence (P0-P step 6).
+from .session_persistence import (  # noqa: F401 — facade re-export
+    _load_session_by_id,
+    _most_recent_session,
+    _persist_lifecycle_mode,
+    _persist_thread_id,
+)
 
 from ._legacy import *  # noqa: F401,F403 — facade re-export
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
