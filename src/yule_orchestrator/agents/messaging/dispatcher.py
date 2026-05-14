@@ -21,6 +21,11 @@ from .registry import ParticipantsPool
 class TaskType(str, Enum):
     BACKEND_FEATURE = "backend-feature"
     FRONTEND_FEATURE = "frontend-feature"
+    # P0-J (#145) — Next.js+NestJS+Postgres+Docker Compose 같은 full-stack
+    # 요청을 Docker 한 단어로 platform-infra 분류하던 회귀 차단용. 다중
+    # application tier (frontend+backend+database 등) 동시 발견 + write
+    # intent 시 분류.
+    FULL_STACK_APP = "full-stack-app"
     LANDING_PAGE = "landing-page"
     ONBOARDING_FLOW = "onboarding-flow"
     VISUAL_POLISH = "visual-polish"
@@ -102,6 +107,15 @@ TASK_ROLE_SEQUENCE: Mapping[TaskType, Sequence[str]] = {
         "backend-engineer",
         "qa-engineer",
         "devops-engineer",
+    ),
+    TaskType.FULL_STACK_APP: (
+        "tech-lead",
+        "ai-engineer",
+        "product-designer",
+        "backend-engineer",
+        "frontend-engineer",
+        "devops-engineer",
+        "qa-engineer",
     ),
     TaskType.UNKNOWN: (
         "tech-lead",

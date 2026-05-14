@@ -908,9 +908,14 @@ _TASK_TYPE_KEYWORDS: tuple[tuple[TaskType, tuple[str, ...]], ...] = (
     ),
     (TaskType.LANDING_PAGE, ("landing", "랜딩", "marketing page", "히어로")),
     (TaskType.QA_TEST, ("regression", "회귀", "qa", "test plan", "테스트 시나리오")),
+    # P0-J (#145): PLATFORM_INFRA 키워드에서 단독으로 흔히 등장하는 "docker"
+    # 제거. Docker / Docker Compose / K8s 가 *full-stack 요청 안에서* 언급되면
+    # 본 매칭 전에 stack_detector 의 is_full_stack 가 우선해 FULL_STACK_APP 분류.
+    # 본 platform-infra 매칭은 deploy/terraform/github actions 같은 *genuine
+    # infra* 신호만 남김.
     (
         TaskType.PLATFORM_INFRA,
-        ("infra", "deploy", "ci ", " ci", "docker", "k8s", "terraform", "github action"),
+        ("infra", "deploy", "ci ", " ci", "terraform", "github action"),
     ),
     (
         TaskType.FRONTEND_FEATURE,
@@ -924,7 +929,39 @@ _TASK_TYPE_KEYWORDS: tuple[tuple[TaskType, tuple[str, ...]], ...] = (
 
 
 def _suggest_task_type(message_text: str) -> Optional[str]:
+    """Classify task type — P0-J (#145) refined.
+
+    Order:
+
+      1. **Stack detector** — if message mentions ≥2 distinct
+         application tiers (frontend / backend / database / cache /
+         queue / auth) → ``full-stack-app``. This precedes the
+         keyword table so "Docker Compose + Next.js + NestJS +
+         Postgres" never falls into ``platform-infra``.
+      2. **Stack detector — pure infra** — when *only* infra tier is
+         detected (terraform / k8s / github actions / docker alone)
+         → ``platform-infra``. Keeps the existing classification for
+         genuine infra requests.
+      3. **Keyword table** — legacy fallback for short messages.
+      4. None.
+    """
+
     normalized = _normalize(message_text)
+    if not normalized:
+        return None
+
+    try:
+        from ..agents.coding.stack_detector import detect_stacks
+    except Exception:  # noqa: BLE001 - partial install fallback
+        detect_stacks = None  # type: ignore[assignment]
+
+    if detect_stacks is not None:
+        detection = detect_stacks(message_text)
+        if detection.is_full_stack:
+            return TaskType.FULL_STACK_APP.value
+        if detection.is_infra_only:
+            return TaskType.PLATFORM_INFRA.value
+
     for task_type, keywords in _TASK_TYPE_KEYWORDS:
         for keyword in keywords:
             if keyword in normalized:
@@ -1795,6 +1832,10 @@ _REQUIRED_SOURCE_TYPES_BY_TASK_TYPE: Mapping[str, tuple[str, ...]] = {
     TaskType.BACKEND_FEATURE.value: (SOURCE_TYPE_OFFICIAL_DOCS, SOURCE_TYPE_GITHUB_ISSUE),
     TaskType.QA_TEST.value: (SOURCE_TYPE_GITHUB_ISSUE, SOURCE_TYPE_CODE_CONTEXT),
     TaskType.PLATFORM_INFRA.value: (SOURCE_TYPE_OFFICIAL_DOCS, SOURCE_TYPE_CODE_CONTEXT),
+    # P0-J (#145): full-stack 앱은 docs + code context 둘 다 권장하지만
+    # github_target / write intent 가 있으면 commit 5 의 coding bootstrap
+    # 우회가 insufficiency 를 막아줌. 본 표는 정보 제공용.
+    TaskType.FULL_STACK_APP.value: (SOURCE_TYPE_OFFICIAL_DOCS, SOURCE_TYPE_CODE_CONTEXT),
 }
 
 
