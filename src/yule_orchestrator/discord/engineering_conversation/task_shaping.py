@@ -26,7 +26,7 @@ from ...agents.messaging.dispatcher import TaskType
 
 
 def _looks_like_multiple_tasks(message_text: str) -> bool:
-    from ._legacy import split_task_branches  # noqa: WPS433 — TODO: move to intent_detection
+    from .intent_detection import split_task_branches
 
     branches = split_task_branches(message_text)
     if len(branches) < 2:
@@ -37,7 +37,7 @@ def _looks_like_multiple_tasks(message_text: str) -> bool:
 
 
 def _looks_like_write_request(message_text: str) -> bool:
-    from ._legacy import _normalize  # noqa: WPS433 — TODO: move to intent_detection
+    from .intent_detection import _normalize
 
     normalized = _normalize(message_text)
     write_signals = (
@@ -124,7 +124,7 @@ def _suggest_task_type(message_text: str) -> Optional[str]:
       4. None.
     """
 
-    from ._legacy import _normalize  # noqa: WPS433 — TODO: move to intent_detection
+    from .intent_detection import _normalize
 
     normalized = _normalize(message_text)
     if not normalized:

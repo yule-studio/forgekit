@@ -69,10 +69,15 @@ from .status_responses import (  # noqa: F401 — facade re-export
     format_session_list_response,
     format_status_diagnostic_response,
 )
+# Intent classification + phrase matchers live in .intent_detection (P0-L step 6).
+from .intent_detection import (  # noqa: F401 — facade re-export
+    detect_engineering_intent,
+    split_task_branches,
+)
 
-# Remaining content (intent_detection / research_bootstrap /
-# response_formatters) is still in _legacy.py — re-export until the
-# remaining 3 modules are extracted in the subsequent commits.
+# Remaining content (research_bootstrap / response_formatters) is still
+# in _legacy.py — re-export until the remaining 2 modules are extracted
+# in the subsequent commits.
 from ._legacy import *  # noqa: F401,F403 — facade re-export
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
     ResearchCandidate,
@@ -81,9 +86,7 @@ from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysi
     classify_attachment,
     classify_url,
     collect_research_candidates_from_message,
-    detect_engineering_intent,
     format_insufficient_research_prompt,
-    split_task_branches,
     suggest_role_research_assignments,
 )
 

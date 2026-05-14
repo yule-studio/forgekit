@@ -757,7 +757,7 @@ _MEMBER_BOT_PHRASES = (
 
 
 def _asks_about_member_bots(message_text: str) -> bool:
-    from ._legacy import _normalize  # noqa: WPS433 — TODO: move to intent_detection
+    from .intent_detection import _normalize
 
     normalized = _normalize(message_text)
     return any(phrase in normalized for phrase in _MEMBER_BOT_PHRASES)
