@@ -33,14 +33,25 @@ from __future__ import annotations
 # from the legacy single-file body so existing callers (and tests) keep
 # working verbatim. Subsequent commits replace these wildcard imports
 # with explicit per-module imports as content moves out of ``_legacy``.
-from ._legacy import *  # noqa: F401,F403 — facade re-export
-from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+# Canonical dataclasses + type aliases live in .models (P0-P step 3).
+from .models import (  # noqa: F401 — facade re-export
+    ConversationFn,
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
     EngineeringRouteResult,
     EngineeringThreadContinuation,
     EngineeringThreadKickoff,
+    ExtractPromptFn,
+    IntakeFn,
+    ResearchLoopFn,
+    SendChunksFn,
+    ThreadContinuationFn,
+    ThreadKickoffFn,
+)
+
+from ._legacy import *  # noqa: F401,F403 — facade re-export
+from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
     _GATEWAY_CLARIFICATION_CONTEXT,
     _attach_recall_coverage,
     _can_save_to_obsidian,
