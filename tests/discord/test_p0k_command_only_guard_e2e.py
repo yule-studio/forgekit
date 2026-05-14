@@ -264,6 +264,38 @@ class ResumedThreadResolveTests(unittest.TestCase):
         )
         self.assertIsNone(resolved)
 
+    def test_p0n3_session_thread_id_fallback_for_work_thread_role_change(
+        self,
+    ) -> None:
+        # P0-N3 (live bug #3): a fresh session created by
+        # ``thread_kickoff_fn`` has ``session.thread_id`` set but no
+        # ``research_forum_thread_id`` (forum publish is later) and no
+        # ``resumed_thread_id`` (not resumed). Role-change in this work
+        # thread must still resolve so the active-role update lands.
+        message = _fake_message(channel_id=4444)
+        session = SimpleNamespace(extra={}, thread_id=4444)
+        resolved = _resolve_session_for_forum_thread(
+            message=message, session_lister=lambda limit: [session]
+        )
+        self.assertIs(resolved, session)
+
+    def test_p0n3_session_thread_id_does_not_override_primary_lookup(
+        self,
+    ) -> None:
+        # Primary (research_forum_thread_id) and last-resort
+        # (session.thread_id) might both match different sessions; the
+        # primary anchor must still win.
+        message = _fake_message(channel_id=4444)
+        primary = SimpleNamespace(
+            extra={"research_forum_thread_id": 4444}, thread_id=9999
+        )
+        secondary = SimpleNamespace(extra={}, thread_id=4444)
+        resolved = _resolve_session_for_forum_thread(
+            message=message,
+            session_lister=lambda limit: [secondary, primary],
+        )
+        self.assertIs(resolved, primary)
+
 
 # ---------------------------------------------------------------------------
 # P0-N2 audit — comprehensive command-only leak surface coverage

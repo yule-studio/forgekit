@@ -473,6 +473,24 @@ def _resolve_session_for_forum_thread(*, message, session_lister):
                 return session
         except (TypeError, ValueError):
             continue
+
+    # P0-N3 (live bug #3) — last-resort: ``session.thread_id``. The
+    # work thread created by thread_kickoff_fn carries its own thread
+    # id on the session row, but a fresh session has no
+    # ``research_forum_thread_id`` (forum publish happens later) and
+    # no ``resumed_thread_id`` (not resumed). Role-change typed in
+    # this work thread previously fell through to "no session" and
+    # surfaced ``RESPONSE_ROLE_CHANGE_NO_SESSION``. Resolve against
+    # ``session.thread_id`` so the role update lands.
+    for session in sessions or ():
+        thread_id_attr = getattr(session, "thread_id", None)
+        if thread_id_attr is None:
+            continue
+        try:
+            if int(thread_id_attr) == int(channel_id):
+                return session
+        except (TypeError, ValueError):
+            continue
     return None
 
 
