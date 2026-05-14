@@ -56,14 +56,25 @@ from .models import (  # noqa: F401 — facade re-export
     STATUS_DIAGNOSTIC,
     TASK_INTAKE_CANDIDATE,
 )
+# task_type / write-intent heuristics live in .task_shaping (P0-L step 4).
+from .task_shaping import (  # noqa: F401 — facade re-export
+    _suggest_task_type,
+)
+# Status / read-only responders live in .status_responses (P0-L step 5).
+from .status_responses import (  # noqa: F401 — facade re-export
+    format_blocked_reason_response,
+    format_change_direction_response,
+    format_continue_existing_response,
+    format_session_count_response,
+    format_session_list_response,
+    format_status_diagnostic_response,
+)
 
-# Everything else is still in _legacy.py — re-export until the
-# remaining 5 modules (intent_detection / task_shaping /
-# status_responses / research_bootstrap / response_formatters) are
-# extracted in the subsequent commits.
+# Remaining content (intent_detection / research_bootstrap /
+# response_formatters) is still in _legacy.py — re-export until the
+# remaining 3 modules are extracted in the subsequent commits.
 from ._legacy import *  # noqa: F401,F403 — facade re-export
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
-    _suggest_task_type,
     ResearchCandidate,
     ResearchCollectionResult,
     build_engineering_conversation_response,
@@ -71,13 +82,7 @@ from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysi
     classify_url,
     collect_research_candidates_from_message,
     detect_engineering_intent,
-    format_blocked_reason_response,
-    format_change_direction_response,
-    format_continue_existing_response,
     format_insufficient_research_prompt,
-    format_session_count_response,
-    format_session_list_response,
-    format_status_diagnostic_response,
     split_task_branches,
     suggest_role_research_assignments,
 )
