@@ -97,8 +97,8 @@ class DiscordBotRuntimeTestCase(unittest.TestCase):
         )
         self.assertEqual(load_daily_plan_snapshot_mock.call_count, 2)
 
-    @patch("yule_orchestrator.discord.bot._legacy.build_due_checkpoints")
-    @patch("yule_orchestrator.discord.bot._legacy.load_prefetched_due_checkpoints")
+    @patch("yule_orchestrator.discord.bot.scheduling.build_due_checkpoints")
+    @patch("yule_orchestrator.discord.bot.scheduling.load_prefetched_due_checkpoints")
     def test_resolve_due_checkpoints_prefers_prefetched_snapshots(
         self,
         load_prefetched_due_checkpoints_mock,
