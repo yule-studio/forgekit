@@ -32,14 +32,14 @@ from datetime import datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 from urllib.parse import urlparse
 
-from ..agents.messaging.dispatcher import TaskType
-from ..agents.research.pack import (
+from ...agents.messaging.dispatcher import TaskType
+from ...agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,
     extract_urls,
 )
-from ..agents.lifecycle.session_status import (
+from ...agents.lifecycle.session_status import (
     diagnose_session,
     render_member_bot_summary,
 )
@@ -180,7 +180,7 @@ def build_engineering_conversation_response(
     # echoed text. Status questions are exempt because the diagnostic
     # responder reads existing state, not the message body.
     try:
-        from ..agents.routing import is_bot_echo_phrase as _is_bot_echo
+        from ...agents.routing import is_bot_echo_phrase as _is_bot_echo
     except Exception:  # noqa: BLE001 - never fail conversation on import wiring
         _is_bot_echo = None
     if (
@@ -312,7 +312,7 @@ def build_engineering_conversation_response(
     # the approval and stop (never create new intake / research / forum).
     if intent.intent_id == APPROVAL_ACTION:
         try:
-            from ..agents.routing import is_non_actionable_prompt as _approval_guard
+            from ...agents.routing import is_non_actionable_prompt as _approval_guard
         except Exception:  # noqa: BLE001
             _approval_guard = None  # type: ignore[assignment]
         proposed_is_substantive = (
@@ -346,7 +346,7 @@ def build_engineering_conversation_response(
         # last_proposed_prompt directly into CONFIRM_INTAKE. Refuse
         # to use a command-only intake_prompt.
         try:
-            from ..agents.routing import is_non_actionable_prompt
+            from ...agents.routing import is_non_actionable_prompt
         except Exception:  # noqa: BLE001 - partial install safe-side
             is_non_actionable_prompt = None  # type: ignore[assignment]
         if (
@@ -443,7 +443,7 @@ def build_engineering_conversation_response(
     # acknowledgement so the gateway proceeds to coding handoff.
     bootstrap_outcome = None
     try:
-        from ..agents.coding.coding_bootstrap import (
+        from ...agents.coding.coding_bootstrap import (
             STATUS_BYPASS,
             evaluate_coding_bootstrap,
         )
@@ -612,13 +612,13 @@ def _maybe_run_auto_collect(
     # repeat. See ``routing.is_non_actionable_prompt`` for the
     # canonical predicate.
     try:
-        from ..agents.routing import is_non_actionable_prompt as _is_blocked
+        from ...agents.routing import is_non_actionable_prompt as _is_blocked
     except Exception:  # noqa: BLE001 - never block conversation on import wiring
         _is_blocked = None
     if _is_blocked is not None and _is_blocked(message_text):
         return None
     try:
-        from ..agents.research.collector import (
+        from ...agents.research.collector import (
             CollectorConfig as _CollectorConfig,
             auto_collect_or_request_more_input,
         )
@@ -1339,7 +1339,7 @@ def _suggest_task_type(message_text: str) -> Optional[str]:
         return None
 
     try:
-        from ..agents.coding.stack_detector import detect_stacks
+        from ...agents.coding.stack_detector import detect_stacks
     except Exception:  # noqa: BLE001 - partial install fallback
         detect_stacks = None  # type: ignore[assignment]
 
@@ -1450,7 +1450,7 @@ def format_blocked_reason_response(
             "확인할 session id 를 알려주시거나, 이어갈 thread 안에서 다시 말씀해 주세요."
         )
     try:
-        from ..agents.lifecycle.session_status import diagnose_session
+        from ...agents.lifecycle.session_status import diagnose_session
 
         report = diagnose_session(session)
     except Exception:  # noqa: BLE001
@@ -1526,7 +1526,7 @@ def _safe_list_sessions(lister):
 
     if lister is None:
         try:
-            from ..agents.workflow_state import list_sessions as _list
+            from ...agents.workflow_state import list_sessions as _list
 
             lister = _list
         except Exception:  # noqa: BLE001
@@ -1741,7 +1741,7 @@ def format_status_diagnostic_response(
     growth_ledger = extra.get("growth_ledger")
     if isinstance(growth_ledger, list) and growth_ledger:
         try:
-            from ..agents.lifecycle.growth_ledger import summarize_for_status
+            from ...agents.lifecycle.growth_ledger import summarize_for_status
 
             growth_line = summarize_for_status(extra)
         except Exception:  # noqa: BLE001
@@ -2184,7 +2184,7 @@ def _pretty_task_type(value: Optional[str]) -> str:
     """
 
     try:
-        from ..agents.research.collector import pretty_task_type
+        from ...agents.research.collector import pretty_task_type
     except Exception:  # noqa: BLE001
         return value or "일반"
     return pretty_task_type(value)
@@ -2194,7 +2194,7 @@ def _pretty_provider(name: Optional[str]) -> str:
     """Delegate to the centralised provider label map."""
 
     try:
-        from ..agents.research.collector import pretty_provider
+        from ...agents.research.collector import pretty_provider
     except Exception:  # noqa: BLE001
         return name or "알 수 없음"
     return pretty_provider(name)
