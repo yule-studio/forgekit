@@ -1342,6 +1342,89 @@ class P0MClarificationCreatePrecedenceTests(unittest.TestCase):
         self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
 
 
+class P0N4ClarificationCacheTTLTests(unittest.TestCase):
+    """P0-N4 (live bug #5): clarification cache must auto-expire so a
+    stale canonical from an abandoned clarification never becomes
+    ``session.prompt`` on a much later turn."""
+
+    def setUp(self) -> None:
+        from yule_orchestrator.discord.engineering import (
+            clarification as clarification_module,
+        )
+
+        clarification_module.GATEWAY_CLARIFICATION_CONTEXT.clear()
+        self._module = clarification_module
+
+    def _fake_message(self, channel_id: int = 111, user_id: int = 4242):
+        return FakeMessage(
+            content="dummy",
+            channel=FakeChannel(channel_id=channel_id, name="업무-접수"),
+        )
+
+    def test_recall_returns_canonical_within_ttl(self) -> None:
+        message = self._fake_message()
+        message.author = type("A", (), {"id": 4242})()
+        self._module.remember_clarification_candidates(
+            message,
+            (),
+            canonical_prompt="[Research] 결제 멱등성 회귀 정리",
+        )
+        canonical = self._module.recall_clarification_canonical_prompt(message)
+        self.assertEqual(canonical, "[Research] 결제 멱등성 회귀 정리")
+
+    def test_recall_returns_none_for_expired_entry(self) -> None:
+        message = self._fake_message()
+        message.author = type("A", (), {"id": 4242})()
+        self._module.remember_clarification_candidates(
+            message,
+            (),
+            canonical_prompt="[Research] stale task",
+        )
+        # Force the entry to look ancient. created_at sits in the
+        # payload dict alongside canonical_prompt.
+        key = self._module.clarification_context_key(message)
+        self._module.GATEWAY_CLARIFICATION_CONTEXT[key]["created_at"] = (
+            self._module.GATEWAY_CLARIFICATION_CONTEXT[key]["created_at"]
+            - self._module.CLARIFICATION_CACHE_TTL_SECONDS
+            - 60
+        )
+        canonical = self._module.recall_clarification_canonical_prompt(message)
+        self.assertIsNone(canonical)
+        # Side-effect: stale entry was evicted from the cache.
+        self.assertNotIn(key, self._module.GATEWAY_CLARIFICATION_CONTEXT)
+
+    def test_candidates_recall_also_respects_ttl(self) -> None:
+        message = self._fake_message()
+        message.author = type("A", (), {"id": 4242})()
+        self._module.remember_clarification_candidates(
+            message,
+            (
+                type(
+                    "Cand",
+                    (),
+                    {
+                        "session_id": "abc",
+                        "title": "stale",
+                        "score": 0.5,
+                        "thread_id": None,
+                        "forum_thread_id": None,
+                        "task_type": "research",
+                    },
+                )(),
+            ),
+            canonical_prompt="[Research] also stale",
+        )
+        key = self._module.clarification_context_key(message)
+        self._module.GATEWAY_CLARIFICATION_CONTEXT[key]["created_at"] = (
+            self._module.GATEWAY_CLARIFICATION_CONTEXT[key]["created_at"]
+            - self._module.CLARIFICATION_CACHE_TTL_SECONDS
+            - 1
+        )
+        self.assertEqual(
+            self._module.recall_clarification_candidates(message), ()
+        )
+
+
 class CanonicalPromptVsCommandOnlyAppendTests(unittest.TestCase):
     """User-spec regression: when the user replies with an explicit
     `기존 세션 <id>` after a clarification, the append payload must be

@@ -26,10 +26,12 @@ without modification.
 from __future__ import annotations
 
 import re
+import time
 from typing import Any, Optional, Sequence
 
 
 __all__ = (
+    "CLARIFICATION_CACHE_TTL_SECONDS",
     "GATEWAY_CLARIFICATION_CONTEXT",
     "clarification_context_key",
     "remember_clarification_candidates",
@@ -39,6 +41,15 @@ __all__ = (
     "try_select_candidate",
     "looks_like_new_work_selection",
 )
+
+
+# P0-N4 (live bug #5) — clarification cache TTL. Without a TTL the
+# cache lives until the next explicit clear, so an abandoned
+# clarification turn (user types something unrelated, then returns
+# hours later with "새 작업으로 진행") can spawn a session whose
+# canonical_prompt is stale. 30 min covers active back-and-forth
+# while keeping the canonical attached to the actual conversation.
+CLARIFICATION_CACHE_TTL_SECONDS: int = 30 * 60
 
 
 # Cached value shape:
@@ -186,11 +197,36 @@ def remember_clarification_candidates(
         payload["canonical_prompt"] = cleaned_canonical
     if not payload:
         return
+    # P0-N4: stamp write time so reads can drop expired entries.
+    # Preserve existing created_at if the call only refreshed canonical
+    # — the TTL measures clarification age, not last write.
+    payload["created_at"] = existing.get("created_at") or time.time()
     GATEWAY_CLARIFICATION_CONTEXT[key] = payload
 
 
+def _fetch_fresh_cache_entry(key: tuple) -> Optional[Any]:
+    """Return cache value at *key* dropping stale entries first.
+
+    Bare tuple values (older test fixtures) bypass the TTL because
+    they predate the dict shape. Dict entries with a missing
+    ``created_at`` are treated as "just written" so we don't lose
+    legitimate in-flight clarifications during the upgrade window.
+    """
+
+    cached = GATEWAY_CLARIFICATION_CONTEXT.get(key)
+    if cached is None:
+        return None
+    if isinstance(cached, dict):
+        created_at = cached.get("created_at")
+        if isinstance(created_at, (int, float)):
+            if time.time() - float(created_at) > CLARIFICATION_CACHE_TTL_SECONDS:
+                GATEWAY_CLARIFICATION_CONTEXT.pop(key, None)
+                return None
+    return cached
+
+
 def recall_clarification_candidates(message: Any) -> tuple[dict, ...]:
-    cached = GATEWAY_CLARIFICATION_CONTEXT.get(clarification_context_key(message))
+    cached = _fetch_fresh_cache_entry(clarification_context_key(message))
     if cached is None:
         return ()
     # Backward-compat: older callers (and a couple of test fixtures)
@@ -208,14 +244,14 @@ def recall_clarification_canonical_prompt(message: Any) -> Optional[str]:
     """Return the actionable task text captured at clarification time.
 
     Returns ``None`` when no clarification cache exists for this
-    channel/user pair, or when the cache was populated without a
+    channel/user pair, when the cache was populated without a
     canonical_prompt (older entries before the canonical prompt
-    handoff fix). Callers must refuse to spawn a new session in that
-    case — falling back to the routing-command phrase as
-    session.prompt is the bug we are guarding against.
+    handoff fix), or when the cache has aged past
+    :data:`CLARIFICATION_CACHE_TTL_SECONDS` (P0-N4 — stale canonical
+    on a long-abandoned clarification must never become session.prompt).
     """
 
-    cached = GATEWAY_CLARIFICATION_CONTEXT.get(clarification_context_key(message))
+    cached = _fetch_fresh_cache_entry(clarification_context_key(message))
     if not isinstance(cached, dict):
         return None
     raw = cached.get("canonical_prompt")
