@@ -17,16 +17,16 @@ import os
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
-from ..agents.coding.authorization import (
+from ...agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
     recommend_authorization,
 )
-from ..agents.coding.job import (
+from ...agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
-from ..agents.obsidian.approval import (
+from ...agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     execute_pending_proposal,
@@ -35,8 +35,8 @@ from ..agents.obsidian.approval import (
     is_obsidian_save_request,
     store_pending_proposal,
 )
-from ..agents.research.persistence import persist_research_artifacts
-from ..agents.routing import (
+from ...agents.research.persistence import persist_research_artifacts
+from ...agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
     ACTION_CREATE,
@@ -49,7 +49,7 @@ from ..agents.routing import (
     is_non_actionable_prompt,
     list_open_sessions,
 )
-from ..agents.runtime import (
+from ...agents.runtime import (
     ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,
@@ -447,7 +447,7 @@ async def route_engineering_message(
         explicit_session_id = _explicit_session_request(prompt_text)
         if explicit_session_id:
             try:
-                from ..agents.workflow_state import load_session as _load_session
+                from ...agents.workflow_state import load_session as _load_session
                 target_session = _load_session(explicit_session_id)
             except Exception:  # noqa: BLE001 - lookup failures fall through to legacy flow
                 target_session = None
@@ -586,7 +586,7 @@ async def route_engineering_message(
     # typing_keepalive 가 ~6s 마다 typing event 재발사 → 첫 visible
     # reply (send_chunks) 까지 끊김 없이 유지. ignored / non-actionable /
     # bot-echo 분기는 본 라인 *전*에 이미 return 했으므로 silence 보존.
-    from .typing_indicator import typing_keepalive
+    from ..typing_indicator import typing_keepalive
 
     async with typing_keepalive(
         getattr(message, "channel", None),
@@ -969,7 +969,7 @@ _PREFLIGHT_SHORT_CIRCUIT_INTENTS = frozenset(
 # stays focused on flow orchestration. The router-prefixed (``_``)
 # names below are kept as aliases so existing tests / callers that
 # import from ``engineering_channel_router`` keep working.
-from .engineering.clarification import (
+from ..engineering.clarification import (
     GATEWAY_CLARIFICATION_CONTEXT as _GATEWAY_CLARIFICATION_CONTEXT,
     clarification_context_key as _clarification_context_key,
     clear_clarification_context as _clear_clarification_context,
@@ -1156,7 +1156,7 @@ async def _handle_clarification_selection(
 # the historical underscore-prefixed names so existing tests / callers
 # (e.g. ``engineering_channel_router.is_coding_approval_phrase``) keep
 # working.
-from .engineering.phrase_detect import (
+from ..engineering.phrase_detect import (
     CODING_APPROVAL_PHRASES as _CODING_APPROVAL_PHRASES,
     CODING_PROPOSAL_REQUEST_PHRASES as _CODING_PROPOSAL_REQUEST_PHRASES,
     CONTINUATION_RESEARCH_KEYWORDS as _CONTINUATION_RESEARCH_KEYWORDS,
@@ -1324,7 +1324,7 @@ def _persist_role_selection(
     if session is None:
         return session
     try:
-        from ..agents.lifecycle.role_selection import (
+        from ...agents.lifecycle.role_selection import (
             apply_role_selection_to_extra,
             recommend_active_roles,
         )
@@ -1387,7 +1387,7 @@ def _persist_coding_session_context(
     if session is None:
         return session
     try:
-        from ..agents.coding.coding_session_context import (
+        from ...agents.coding.coding_session_context import (
             prepare_coding_session_context,
         )
     except Exception:  # noqa: BLE001 - partial install fallback
@@ -1416,7 +1416,7 @@ def _persist_coding_session_context(
     # the *post-update* extras so the validator sees github_target /
     # work_mode / handoff packet that this very call just persisted.
     try:
-        from ..agents.coding.tracking_enforcement import (
+        from ...agents.coding.tracking_enforcement import (
             validate_tracking_chain,
         )
 
@@ -1456,7 +1456,7 @@ def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
     if session is None:
         return session
     try:
-        from ..agents.coding.authorization import (
+        from ...agents.coding.authorization import (
             LIFECYCLE_MODE_IMPLEMENTATION,
             LIFECYCLE_MODE_RESEARCH_ONLY,
             recommend_authorization,
@@ -1549,7 +1549,7 @@ async def _emit_work_report_preview(
     if session is None:
         return
     try:
-        from ..agents.reports.work_report import (
+        from ...agents.reports.work_report import (
             build_work_report,
             format_work_report_markdown,
         )
@@ -1622,7 +1622,7 @@ def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
         from dataclasses import replace as _dc_replace
         from datetime import datetime as _dt
 
-        from ..agents.workflow_state import update_session
+        from ...agents.workflow_state import update_session
     except Exception as exc:  # noqa: BLE001
         _record_persistence_failure(
             session,
@@ -1704,7 +1704,7 @@ def _persist_thread_id(
     sequence is consolidated upstream.
     """
 
-    from ..agents.lifecycle.persistence import persist_thread_link
+    from ...agents.lifecycle.persistence import persist_thread_link
 
     result = persist_thread_link(session, thread_id)
     return result.session
@@ -1882,7 +1882,7 @@ async def _run_coding_authorization_gate(
 # share one canonical implementation. The router-private alias is
 # kept for backward compat with internal callers (and the runtime
 # preflight ``_explicit_session_id`` substring check).
-from ..agents.lifecycle.resolver import (
+from ...agents.lifecycle.resolver import (
     _EXPLICIT_SESSION_ID_RE as _EXPLICIT_SESSION_ID_RE,
     extract_explicit_session_id as _extract_session_id_from_router_text,
 )
@@ -1905,7 +1905,7 @@ def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
     # helper so the router, work_report builder, and Discord status
     # diagnostic all share one set of "can we save?" rules. The block
     # reasons stay identical to keep operator-visible messages stable.
-    from ..agents.lifecycle.status import can_write_obsidian_record
+    from ...agents.lifecycle.status import can_write_obsidian_record
 
     return can_write_obsidian_record(session)
 
@@ -1956,7 +1956,7 @@ async def _run_obsidian_approval_gate(
     candidate: Optional[Any] = None
     if explicit_id:
         try:
-            from ..agents.workflow_state import load_session as _load_session
+            from ...agents.workflow_state import load_session as _load_session
 
             candidate = _load_session(explicit_id)
         except Exception:  # noqa: BLE001 - lookup failure falls through
@@ -2438,7 +2438,7 @@ def _observation_for_runtime(input_: RuntimeInput):
     runtime loop's default observe (keeps the router's import surface
     small)."""
 
-    from ..agents.runtime.models import RuntimeObservation
+    from ...agents.runtime.models import RuntimeObservation
 
     text = input_.message_text or ""
     return RuntimeObservation(
@@ -2516,7 +2516,7 @@ async def _handle_join_or_append(
     # P0-E (#134 후속): JOIN/APPEND 의 thread lookup + resume 도 long-running
     # path (Discord API 조회 + 세션 hydration). conversation_fn wrap 과 동일
     # 6s interval 로 typing 유지 — 끊김 race 방지.
-    from .typing_indicator import typing_keepalive
+    from ..typing_indicator import typing_keepalive
 
     async with typing_keepalive(
         getattr(message, "channel", None),
@@ -2667,7 +2667,7 @@ def _research_loop_blocked_by_command_only(prompt_text: Optional[str]) -> bool:
     if not prompt_text:
         return False
     try:
-        from ..agents.routing import is_non_actionable_prompt
+        from ...agents.routing import is_non_actionable_prompt
     except Exception:  # noqa: BLE001 - partial install safe-side
         return False
     return bool(is_non_actionable_prompt(prompt_text))
@@ -2716,8 +2716,8 @@ async def _run_research_loop_hook(
     # user saw long silent gaps. Wrap the work in ``typing_keepalive``
     # so "입력 중..." stays visible from the moment we start collecting
     # until the loop returns a follow-up message (or an error).
-    from .typing_indicator import typing_keepalive
-    from ..agents.job_queue import (
+    from ..typing_indicator import typing_keepalive
+    from ...agents.job_queue import (
         HeartbeatStore,
         JobQueue,
         ResearchWorker,
@@ -2840,7 +2840,7 @@ def persist_research_forum_status(
     # Behaviour is identical; the helper covers the dataclass replace,
     # in-place test-stub fallback, structured persistence_error stamp,
     # and stale-error cleanup that this function used to inline.
-    from ..agents.lifecycle.persistence import persist_research_forum_link
+    from ...agents.lifecycle.persistence import persist_research_forum_link
 
     open_call_posted = report.kickoff_posted if report.forum_comment_mode == "member-bots" else None
     open_call_error = report.kickoff_error if report.forum_comment_mode == "member-bots" else None
@@ -2916,7 +2916,7 @@ async def make_default_research_loop(
     # without depending on env state.
     if forum_comment_mode is None:
         try:
-            from ..agents.research.collector import resolve_forum_comment_mode
+            from ...agents.research.collector import resolve_forum_comment_mode
         except Exception:  # noqa: BLE001
             forum_comment_mode = "member-bots"
         else:
@@ -2958,7 +2958,7 @@ async def make_default_research_loop(
             and session is not None
         ):
             try:
-                from .engineering_team_runtime import research_open_call_directive
+                from ..engineering_team_runtime import research_open_call_directive
             except Exception:  # noqa: BLE001
                 kickoff = None
             else:
@@ -2972,7 +2972,7 @@ async def make_default_research_loop(
                     "추가 조사하고, 필요한 take를 독립적으로 남깁니다.\n\n"
                     f"{kickoff}"
                 )
-                from .research_forum import chunk_for_discord_message
+                from ..research_forum import chunk_for_discord_message
                 pieces = chunk_for_discord_message(kickoff_message) or (
                     kickoff_message,
                 )
@@ -3041,7 +3041,7 @@ async def make_default_research_loop(
                 synthesis_text = _optional_str(
                     getattr(deliberation_result, "synthesis_text", None)
                 )
-                from .research_forum import chunk_for_discord_message
+                from ..research_forum import chunk_for_discord_message
                 try:
                     for record in rendered:
                         text = _optional_str(getattr(record, "rendered", None))
@@ -3227,7 +3227,7 @@ def extract_user_links_from_message(
     if not text:
         return ()
     try:
-        from ..agents.research.collector import extract_urls
+        from ...agents.research.collector import extract_urls
     except Exception:  # noqa: BLE001
         return ()
     return tuple(extract_urls(text))
