@@ -693,12 +693,54 @@ def _format_research_only_message(proposal: CodingAuthorizationProposal) -> str:
     return "\n".join(lines)
 
 
+def proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProposal:
+    """Re-hydrate a :class:`CodingAuthorizationProposal` from session.extra.
+
+    The Discord coding gate persists proposals via ``to_dict`` (mirror in
+    ``discord/engineering_channel_router/session_persistence.py``). Both
+    the Discord chat approval path AND the ``/engineer_approve`` slash
+    command need to rebuild the proposal to derive the executor coding_job,
+    so the factory lives in the agents layer rather than duplicated per
+    caller.
+
+    Defaults are deliberate:
+    - ``executor_role`` falls back to ``tech-lead`` for implementation
+      mode (matches the recommender's default reviewer-as-executor stub)
+      and to empty string for research-only (no executor by contract).
+    - ``approval_required`` defaults True because dropping an unset value
+      to False would unsafely loosen the user-approval gate.
+    """
+
+    lifecycle_mode = str(payload.get("lifecycle_mode") or LIFECYCLE_MODE_IMPLEMENTATION)
+    raw_executor = payload.get("executor_role")
+    if lifecycle_mode == LIFECYCLE_MODE_RESEARCH_ONLY:
+        executor_role = str(raw_executor or "")
+    else:
+        executor_role = str(raw_executor or "tech-lead")
+    return CodingAuthorizationProposal(
+        session_id=payload.get("session_id"),
+        user_request=str(payload.get("user_request") or ""),
+        executor_role=executor_role,
+        review_roles=tuple(payload.get("review_roles") or ()),
+        participant_roles=tuple(payload.get("participant_roles") or ()),
+        write_scope=tuple(payload.get("write_scope") or ()),
+        forbidden_scope=tuple(payload.get("forbidden_scope") or ()),
+        reason=str(payload.get("reason") or ""),
+        safety_rules=tuple(payload.get("safety_rules") or ()),
+        approval_required=bool(payload.get("approval_required", True)),
+        metadata=dict(payload.get("metadata") or {}),
+        lifecycle_mode=lifecycle_mode,
+        research_leads=tuple(payload.get("research_leads") or ()),
+    )
+
+
 __all__ = (
     "CodingAuthorizationProposal",
     "LIFECYCLE_MODE_IMPLEMENTATION",
     "LIFECYCLE_MODE_RESEARCH_ONLY",
     "format_authorization_message",
     "load_role_profile",
+    "proposal_from_dict",
     "recommend_authorization",
     "reset_role_profile_cache",
 )

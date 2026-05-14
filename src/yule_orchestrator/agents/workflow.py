@@ -11,11 +11,14 @@ only path that flips a write-requested session into ``approved``.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
+from .coding.authorization import proposal_from_dict
+from .coding.job import STATUS_READY, build_coding_job_from_proposal
 from .messaging.dispatcher import Dispatcher, DispatchPlan, DispatchRequest, TaskType
 from .review_loop import (
     ReviewFeedback,
@@ -34,6 +37,9 @@ from .workflow_state import (
     save_session,
     update_session,
 )
+
+
+_logger = logging.getLogger(__name__)
 
 
 _URL_PATTERN = re.compile(r"https?://[\w\-./?=&%#:+,@!~*'();$]+", re.IGNORECASE)
@@ -152,6 +158,7 @@ class WorkflowOrchestrator:
             state=WorkflowState.APPROVED,
             write_blocked_reason=None,
         )
+        approved = _promote_coding_proposal_to_ready_job(approved, now=self.now_fn())
         return update_session(approved, now=self.now_fn())
 
     def reject(self, session_id: str, *, reason: str) -> WorkflowSession:
@@ -475,3 +482,66 @@ def _format_used_reference(item: Mapping[str, Any]) -> str:
     if rationale:
         head += f"\n  ↪ {rationale}"
     return head
+
+
+def _promote_coding_proposal_to_ready_job(
+    session: WorkflowSession,
+    *,
+    now: datetime,
+) -> WorkflowSession:
+    """If the approve()-time session carries a pending coding_proposal,
+    synthesise a ``coding_job`` with ``status="ready"`` into ``session.extra``.
+
+    Why: the engineering-agent has TWO approval paths — the Discord chat
+    phrase gate (which already writes ``coding_job=ready`` via
+    ``_persist_coding_job``) and the ``/engineer_approve`` slash command
+    (which only flipped the workflow state). Without this promotion the
+    slash command leaves ``coding_job`` either missing or still
+    ``pending-approval``, so the autonomy producer's dispatcher
+    (``iter_ready_coding_jobs``) never sees the session and no
+    ``coding_execute`` row ever lands on the queue. Result: ``ALIVE``
+    executor + ``approved`` session + zero progress notes — exactly the
+    bug surfaced by session ``3163b5cf6c9b``.
+
+    Idempotent: when ``coding_job`` is already present with
+    ``status == "ready"`` we leave it untouched so the Discord chat
+    approval path (which may run first) keeps its own audit fields like
+    ``approved_at`` rather than being overwritten.
+    """
+
+    extra = dict(getattr(session, "extra", {}) or {})
+    proposal_payload = extra.get("coding_proposal")
+    if not isinstance(proposal_payload, Mapping) or not proposal_payload:
+        return session
+
+    existing_job = extra.get("coding_job")
+    if isinstance(existing_job, Mapping):
+        existing_status = str(existing_job.get("status") or "").strip().lower()
+        if existing_status == STATUS_READY:
+            return session
+
+    try:
+        proposal = proposal_from_dict(proposal_payload)
+        job = build_coding_job_from_proposal(
+            proposal,
+            status=STATUS_READY,
+            approved_at=_coerce_utc(now),
+        )
+    except Exception:  # noqa: BLE001 - never block approve() on coding_job synth
+        _logger.warning(
+            "approve(): failed to synthesise coding_job from coding_proposal "
+            "(session=%s); state still flips to approved but dispatcher will "
+            "skip this session until coding_job is repaired",
+            getattr(session, "session_id", "?"),
+            exc_info=True,
+        )
+        return session
+
+    extra["coding_job"] = job.to_dict()
+    return replace(session, extra=extra)
+
+
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)

@@ -395,28 +395,7 @@ def _proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, obj
         "research_leads": list(proposal.research_leads),
     }
 
-def _proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProposal:
-    lifecycle_mode = str(payload.get("lifecycle_mode") or "implementation")
-    raw_executor = payload.get("executor_role")
-    if lifecycle_mode == "research_only":
-        executor_role = str(raw_executor or "")
-    else:
-        executor_role = str(raw_executor or "tech-lead")
-    return CodingAuthorizationProposal(
-        session_id=payload.get("session_id"),
-        user_request=str(payload.get("user_request") or ""),
-        executor_role=executor_role,
-        review_roles=tuple(payload.get("review_roles") or ()),
-        participant_roles=tuple(payload.get("participant_roles") or ()),
-        write_scope=tuple(payload.get("write_scope") or ()),
-        forbidden_scope=tuple(payload.get("forbidden_scope") or ()),
-        reason=str(payload.get("reason") or ""),
-        safety_rules=tuple(payload.get("safety_rules") or ()),
-        approval_required=bool(payload.get("approval_required", True)),
-        metadata=dict(payload.get("metadata") or {}),
-        lifecycle_mode=lifecycle_mode,
-        research_leads=tuple(payload.get("research_leads") or ()),
-    )
+from ...agents.coding.authorization import proposal_from_dict as _proposal_from_dict  # noqa: E402,F401 — canonical factory now lives in agents layer
 
 def _load_session_by_id(
     list_sessions_fn: Callable[..., Sequence[Any]],
