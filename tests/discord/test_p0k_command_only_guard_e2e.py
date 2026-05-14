@@ -265,5 +265,115 @@ class ResumedThreadResolveTests(unittest.TestCase):
         self.assertIsNone(resolved)
 
 
+# ---------------------------------------------------------------------------
+# P0-N2 audit — comprehensive command-only leak surface coverage
+# ---------------------------------------------------------------------------
+
+
+class P0N2CommandOnlyLeakSurfaceAuditTests(unittest.TestCase):
+    """P0-N2 (live bug #4): pin the 4 critical write sites against the
+    full command-only phrase set so future regressions can't reintroduce
+    "[Reference] 진행 해줘" thread spam, command-only session.prompt,
+    or research-loop queries against routing phrases.
+
+    Audited surfaces:
+
+      1. ``derive_research_topic`` — refuses command-only title/summary
+         and falls back to ``engineering 작업``.
+      2. ``_research_loop_blocked_by_command_only`` — short-circuits the
+         research loop when ``prompt_text`` is non-actionable.
+      3. ``build_engineering_conversation_response`` — refuses to set
+         ``ready_to_intake=True`` when intake_prompt is non-actionable,
+         downgrading to APPROVAL_ACTION ack.
+      4. ``routing.is_non_actionable_prompt`` — the canonical predicate
+         every guard consults. Phrase set audit lives here.
+    """
+
+    # Expanded set covering legacy P0-K examples + P0-N1 yes/no progress
+    # questions (which are STATUS_DIAGNOSTIC, not command-only — they
+    # MUST NOT trip is_non_actionable_prompt) + compound phrases.
+    COMMAND_ONLY_PHRASES = (
+        "진행 해줘",
+        "이대로 진행",
+        "작업 승인 할게 진행 해줘",
+        "승인하고 진행해",
+        "오케이 진행",
+        "승인할게",
+        "계속 해",
+        "이어서 해",
+        "그대로 진행",
+        "기존 세션으로 진행",
+    )
+
+    SUBSTANTIVE_PHRASES = (
+        "Next.js 회원가입 페이지 만들어줘",
+        "로그인 말고 검색부터 먼저 구현해",
+        "백엔드도 포함시켜줘",
+        "결제 모듈 멱등성 회귀 정리해줘",
+    )
+
+    STATUS_QUESTION_PHRASES = (
+        # P0-N1 added these — status questions, not command-only. They
+        # must NOT be flagged as non-actionable (a false positive would
+        # make the status diagnostic surface refuse to answer).
+        "작업 진행하고 있는 거야?",
+        "지금 작업 진행하고 있는 거야?",
+        "잘 돌아가고 있어?",
+    )
+
+    def test_research_topic_falls_back_for_all_command_only(self) -> None:
+        for phrase in self.COMMAND_ONLY_PHRASES:
+            with self.subTest(phrase=phrase):
+                pack = SimpleNamespace(
+                    title=phrase, summary="", tags=(), request=None
+                )
+                self.assertEqual(
+                    derive_research_topic(pack), "engineering 작업"
+                )
+
+    def test_research_loop_blocked_for_all_command_only(self) -> None:
+        for phrase in self.COMMAND_ONLY_PHRASES:
+            with self.subTest(phrase=phrase):
+                self.assertTrue(_research_loop_blocked_by_command_only(phrase))
+
+    def test_research_loop_not_blocked_for_substantive(self) -> None:
+        for phrase in self.SUBSTANTIVE_PHRASES + self.STATUS_QUESTION_PHRASES:
+            with self.subTest(phrase=phrase):
+                self.assertFalse(_research_loop_blocked_by_command_only(phrase))
+
+    def test_intake_refused_for_all_command_only(self) -> None:
+        # When the conversation layer is called with a bare command-only
+        # phrase and no substantive last_proposed_prompt, it must NEVER
+        # emit ``ready_to_intake=True`` — that's the precondition for
+        # the gateway to call ``intake_fn`` with the routing-command
+        # phrase as session.prompt. Some phrases (e.g. "기존 세션으로
+        # 진행") legitimately route as TASK_INTAKE_CANDIDATE at the
+        # conversation layer and are caught by the router-level
+        # ``is_non_actionable_prompt(intake_prompt)`` firewall — so we
+        # assert only the write-protection invariant here.
+        for phrase in self.COMMAND_ONLY_PHRASES:
+            with self.subTest(phrase=phrase):
+                response = build_engineering_conversation_response(phrase)
+                self.assertFalse(
+                    response.ready_to_intake,
+                    f"{phrase!r} produced ready_to_intake=True",
+                )
+
+    def test_is_non_actionable_phrase_set_covers_yes_no_status_false_positives(
+        self,
+    ) -> None:
+        # Status questions must NOT be classified as non-actionable —
+        # otherwise the status diagnostic responder would refuse to
+        # answer. This pins P0-N1 + P0-N2 against each other.
+        from yule_orchestrator.agents.routing import is_non_actionable_prompt
+
+        for phrase in self.STATUS_QUESTION_PHRASES:
+            with self.subTest(phrase=phrase):
+                self.assertFalse(
+                    is_non_actionable_prompt(phrase),
+                    f"status question {phrase!r} mis-flagged as non-actionable",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()

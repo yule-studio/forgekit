@@ -180,6 +180,12 @@ def _normalize(text: str) -> str:
 _CONFIRMATION_PHRASES = (
     "이대로 진행",
     "이대로 등록",
+    # P0-N2 (live bug #4) — "그대로" 변형. routing.is_non_actionable_prompt
+    # 는 이미 잡지만 intent_detection 은 못 잡아서 TASK_INTAKE_CANDIDATE
+    # 로 떨어지고 새 세션을 만들었다. 이제 CONFIRM_INTAKE → P0-K 가드 →
+    # APPROVAL_ACTION ack 경로로 흘러간다.
+    "그대로 진행",
+    "그대로 등록",
     "이걸로 등록",
     "이걸로 진행",
     "그럼 이걸로",
