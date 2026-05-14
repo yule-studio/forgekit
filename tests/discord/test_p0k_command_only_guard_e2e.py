@@ -407,5 +407,102 @@ class P0N2CommandOnlyLeakSurfaceAuditTests(unittest.TestCase):
                 )
 
 
+# ---------------------------------------------------------------------------
+# P0-N5 audit — gateway message ↔ action consistency
+# ---------------------------------------------------------------------------
+
+
+class P0N5MessageActionConsistencyAuditTests(unittest.TestCase):
+    """P0-N5 (live bug #6): when the gateway *says* "새 리서치 thread 는
+    만들지 않습니다" or "새 intake / research thread 를 만들지 않" in a
+    response body, the envelope must carry the matching invariant flags
+    that prevent the router from spawning a session.
+
+    These checks pin the operator-facing promise to the actual
+    EngineeringConversationResponse contract — without them, a future
+    refactor could change the text without changing the flags (or vice
+    versa) and produce gateway lies.
+
+    Invariant: if the body promises "no new thread / no new intake",
+    the envelope must satisfy ``ready_to_intake=False`` AND
+    ``is_status_query=True`` so:
+
+      1. ``_handle_join_or_append`` is never entered (router checks
+         is_status_query and short-circuits at the conversation reply).
+      2. ``intake_fn`` is never invoked because ready_to_intake=False
+         prevents the route from advancing to the CREATE branch.
+    """
+
+    PROMISE_PHRASES = (
+        "새 리서치 thread 는 만들지 않습니다",
+        "새 intake / research thread 를 만들지 않",
+        "기존 작업 흐름을 이어갑니다",
+    )
+
+    PROMISE_BEARING_TEXTS = (
+        # APPROVAL_ACTION ack (P0-K).
+        "진행 해줘",
+        "이대로 진행",
+        "그대로 진행",
+        "승인할게",
+        "오케이 진행",
+        # CONTINUE_EXISTING_WORK / CHANGE_DIRECTION read-only intents.
+        "이전 작업 이어서 해줘",
+        "방향 수정",
+        # STATUS_DIAGNOSTIC (P0-N1 yes/no variants stay read-only).
+        "작업 진행하고 있는 거야?",
+        "지금 잘 돌아가고 있어?",
+    )
+
+    def test_promise_phrases_imply_no_intake_invariant(self) -> None:
+        for text in self.PROMISE_BEARING_TEXTS:
+            with self.subTest(text=text):
+                response = build_engineering_conversation_response(text)
+                if not any(p in response.content for p in self.PROMISE_PHRASES):
+                    # Body doesn't make the "no new thread" promise →
+                    # nothing to enforce here.
+                    continue
+                self.assertFalse(
+                    response.ready_to_intake,
+                    f"{text!r} promises no new thread but ready_to_intake=True",
+                )
+                self.assertTrue(
+                    response.is_status_query,
+                    f"{text!r} promises no new thread but is_status_query=False — "
+                    "router would still proceed to intake",
+                )
+
+    def test_read_only_intents_carry_is_status_query_flag(self) -> None:
+        # READ_ONLY_INTENTS is the canonical hard-blocklist. Every
+        # intent in it must produce ``is_status_query=True`` envelopes
+        # so the router's preflight short-circuit fires.
+        from yule_orchestrator.discord.engineering_conversation import (
+            READ_ONLY_INTENTS,
+        )
+
+        text_for_intent = {
+            "status_diagnostic": "지금 뭐 하는 중이야?",
+            "session_count_query": "지금 열려 있는 세션 작업들 몇 개 있어?",
+            "session_list_query": "오픈 세션 뭐뭐 있어?",
+            "blocked_reason_query": "왜 멈췄어?",
+            "continue_existing_work": "이전 작업 이어서 해줘",
+            "change_direction": "방향 수정",
+            "approval_action": "진행 해줘",
+        }
+        for intent_id in READ_ONLY_INTENTS:
+            text = text_for_intent.get(intent_id)
+            self.assertIsNotNone(
+                text, f"missing fixture text for read-only intent {intent_id!r}"
+            )
+            with self.subTest(intent_id=intent_id):
+                response = build_engineering_conversation_response(text)
+                self.assertEqual(response.intent_id, intent_id)
+                self.assertTrue(
+                    response.is_status_query,
+                    f"intent {intent_id!r} missing is_status_query=True",
+                )
+                self.assertFalse(response.ready_to_intake)
+
+
 if __name__ == "__main__":
     unittest.main()
