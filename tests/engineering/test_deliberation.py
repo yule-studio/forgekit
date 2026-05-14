@@ -1463,11 +1463,11 @@ class SynthesizeThreadPipesMemoryTestCase(unittest.TestCase):
             return TechLeadSynthesis(consensus="stub", todos=())
 
         with patch(
-            "yule_orchestrator.discord.engineering_team_runtime."
+            "yule_orchestrator.discord.engineering_team_runtime._legacy."
             "_retrieve_memory_for_role",
             side_effect=stub_retrieve,
         ), patch(
-            "yule_orchestrator.discord.engineering_team_runtime.synthesize",
+            "yule_orchestrator.discord.engineering_team_runtime._legacy.synthesize",
             side_effect=fake_synthesize,
         ):
             synthesize_thread(session, role_takes=())

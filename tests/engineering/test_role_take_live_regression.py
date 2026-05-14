@@ -47,7 +47,7 @@ from yule_orchestrator.agents.workflow_state import (
     load_session,
     save_session,
 )
-from yule_orchestrator.discord import engineering_team_runtime as etr
+from yule_orchestrator.discord.engineering_team_runtime import _legacy as etr
 
 
 SESSION_ID = "live-m4-sess1"

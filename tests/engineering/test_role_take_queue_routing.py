@@ -182,7 +182,12 @@ class OpenCallExceptionFailsRetryableTests(_Fixture):
         # Patch the open-call body builder so it raises. We do this
         # via attribute replacement so we don't hit the real
         # _build_open_call_outcome which is widely tested elsewhere.
-        from yule_orchestrator.discord import engineering_team_runtime as etr
+        # P0-Q: package facade re-exports the symbol but the call site
+        # lives inside ``_legacy.py`` — patch the legacy module so the
+        # local binding is what gets replaced.
+        from yule_orchestrator.discord.engineering_team_runtime import (
+            _legacy as etr,
+        )
 
         original = etr._build_open_call_outcome
 
