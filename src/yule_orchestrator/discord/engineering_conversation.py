@@ -374,14 +374,47 @@ def build_engineering_conversation_response(
             collection_outcome=collection,
         )
 
+    # P0-J (#145) — coding bootstrap bypass. When the user has a GitHub
+    # repo target + stack mention + write intent, the collector's
+    # "자료 부족" surface is wrong (the *anchor* material is the repo
+    # itself). Replace the NEEDS_USER_INPUT body with a bootstrap
+    # acknowledgement so the gateway proceeds to coding handoff.
+    bootstrap_outcome = None
+    try:
+        from ..agents.coding.coding_bootstrap import (
+            STATUS_BYPASS,
+            evaluate_coding_bootstrap,
+        )
+
+        bootstrap_outcome = evaluate_coding_bootstrap(
+            message_text=message_text,
+            user_links=user_links,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        bootstrap_outcome = None
+
     # default: TASK_INTAKE_CANDIDATE
     if collection is not None:
-        body = _format_intake_with_collection(
-            message_text=message_text,
-            suggested_task_type=suggested,
-            write_likely=write_likely,
-            collection=collection,
-        )
+        # P0-J: if collector reported NEEDS_USER_INPUT but bootstrap
+        # says bypass, swap the body to the bootstrap announcement.
+        collection_mode = getattr(getattr(collection, "mode", None), "value", "")
+        if (
+            collection_mode == "needs_user_input"
+            and bootstrap_outcome is not None
+            and bootstrap_outcome.status == STATUS_BYPASS
+        ):
+            body = _format_coding_bootstrap_body(
+                message_text=message_text,
+                bootstrap=bootstrap_outcome,
+                suggested_task_type=suggested,
+            )
+        else:
+            body = _format_intake_with_collection(
+                message_text=message_text,
+                suggested_task_type=suggested,
+                write_likely=write_likely,
+                collection=collection,
+            )
     else:
         body = _format_intake_candidate_question(
             message_text=message_text,
@@ -550,6 +583,44 @@ def _maybe_run_auto_collect(
         )
     except Exception:  # noqa: BLE001
         return None
+
+
+def _format_coding_bootstrap_body(
+    *,
+    message_text: str,
+    bootstrap: Any,
+    suggested_task_type: Optional[str],
+) -> str:
+    """P0-J (#145) — replace 'NEEDS_USER_INPUT' surface with bootstrap ack.
+
+    When the gateway has repo + stack + write intent, the autonomous
+    collector's "자료 부족" follow-up is wrong: the *anchor* is the
+    repo itself. This body explains what the gateway will do next
+    (seed docs + coding handoff) so the user knows we're proceeding,
+    not stalling.
+    """
+
+    topic = _summarize_topic(message_text)
+    stacks = ", ".join(getattr(bootstrap, "stacks_mentioned", ()) or ())
+    seeded = ", ".join(getattr(bootstrap, "seeded_docs", ()) or ())
+    task_label = (
+        _pretty_task_type(suggested_task_type) if suggested_task_type else None
+    )
+    paragraphs: list[str] = [
+        "🚀 coding bootstrap 활성 — repo target + stack mention + write intent 조합으로 "
+        "추가 자료 요청 없이 coding handoff 로 진행합니다.",
+        f"이번 요청은 “{topic}” 으로 이해했고,"
+        + (f" `{task_label}` 작업으로 분류했어요." if task_label else ""),
+    ]
+    if stacks:
+        paragraphs.append(f"📚 감지된 스택: {stacks}")
+    if seeded:
+        paragraphs.append(f"📖 official docs 자동 seed: {seeded}")
+    paragraphs.append(
+        "코드 컨텍스트는 repo target 으로부터 부트스트랩될 예정입니다. "
+        "다른 자료가 필요해지면 그때 다시 알려주세요."
+    )
+    return "\n\n".join(paragraphs)
 
 
 def _format_collection_announcement(collection: Any) -> str:

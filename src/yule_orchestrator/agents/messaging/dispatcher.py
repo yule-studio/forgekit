@@ -140,6 +140,11 @@ TASK_EXECUTOR_ROLE: Mapping[TaskType, str] = {
     TaskType.EMAIL_CAMPAIGN: "frontend-engineer",
     TaskType.QA_TEST: "qa-engineer",
     TaskType.PLATFORM_INFRA: "backend-engineer",
+    # P0-J (#145): full-stack-app 의 default executor 는 backend-engineer
+    # (스키마 + auth + API 가 보통 첫 implementation 이며, frontend 는
+    # 두 번째 implementation 라운드로 이어진다). 필요 시 tech-lead 가
+    # 작업 분배 시점에 override 가능.
+    TaskType.FULL_STACK_APP: "backend-engineer",
     TaskType.UNKNOWN: "tech-lead",
 }
 
