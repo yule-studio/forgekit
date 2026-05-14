@@ -47,20 +47,48 @@ action 을 추가할 때는 반드시 본 표 + `autonomy_policy._DEFAULT_LEVELS
 | **merge** | **L4** | `branch_merge` |
 | **deploy** | **L4** | `deploy` |
 
-## 3. Vault (Obsidian)
+## 3. Vault (Obsidian) — 통합 commit/push 매트릭스 (P0-G 1차 SSoT)
 
-| Action | Level | 비고 |
+본 §3 은 vault 작업의 **단일 출처 (SSoT)**. autonomy-policy.md 의 L1~L4 카탈로그가 *행동* 을 정의하고, 본 표가 *vault 작업별 mapping* 을 결정한다.
+
+핵심 원칙 (P0-G 1차 정착):
+
+- **vault commit 은 기본 자동 (L2).** `vault_research_log_commit` / `local_commit` 모두 자동. audit 는 필수.
+- **vault push 는 mode 결정.** [`docs/autonomy-policy.md`](autonomy-policy.md) §0.1 의 work mode 가 `approval_required` 면 vault remote push 도 승인 후 (L3). `autonomous_merge` 면 사용자가 인가한 범위에서 자동 가능. mode 결정은 세션 첫 응답 ask-once.
+- **코드 repo push 와 vault push 는 분리 기록.** 한 audit 묶음에 섞지 않는다. session.extra 에 `code_push_audit` / `vault_push_audit` 분리.
+- **canonical / decision finalize 는 mode 무관 L3.** 학습 미러의 SSoT 가 사용자 인지 없이 굳어지면 회귀 식별이 어려워진다.
+
+| Action | Level | mode 영향 | 비고 |
+| --- | --- | --- | --- |
+| vault 파일 읽기 | L0 | 없음 | `local_file_read` |
+| research-log 자동 저장 | L1 | 없음 | `research_log_save` |
+| agent-ops audit 자동 기록 | L1 | 없음 | `agent_ops_record` |
+| failure-postmortem 자동 작성 | L2 | 없음 | `failure_postmortem_create` |
+| self-improvement proposal | L2 | 없음 | `self_improvement_proposal` |
+| blog draft 작성 | L2 | 없음 | `blog_draft_create` |
+| vault research-log branch 자동 commit | L2 | 없음 | `vault_research_log_commit` — 로컬 commit. push 별도. |
+| **canonical knowledge 확정 저장** | **L3** | mode 무관 | `knowledge_note_finalize` — 항상 사용자 명시 승인. |
+| **decision-record 확정** | **L3** | mode 무관 | `decision_record_finalize` — 항상 사용자 명시 승인. |
+| **vault remote push** | **L3** ↔ **L2 (autonomous_merge)** | **mode 적용** | `vault_remote_push`. `approval_required` 시 L3. `autonomous_merge` + 사용자 인가 범위 시 L2 자동. audit 는 `vault_push_audit` 로 별도 기록. |
+| **vault main merge** | **L4** | mode 무관 | `branch_merge` 와 동일. mode 무관 영구 hard rail. |
+
+### 3.1 코드 repo vs vault repo 분리
+
+| 비교 | 코드 repo (예: yule-studio-agent) | vault repo (예: yule-agent-vault) |
 | --- | --- | --- |
-| vault 파일 읽기 | L0 | `local_file_read` |
-| research-log 자동 저장 | L1 | `research_log_save` |
-| agent-ops audit 자동 기록 | L1 | `agent_ops_record` |
-| failure-postmortem 자동 작성 | L2 | `failure_postmortem_create` |
-| self-improvement proposal | L2 | `self_improvement_proposal` |
-| blog draft 작성 | L2 | `blog_draft_create` |
-| vault research-log branch 자동 commit | L2 | `vault_research_log_commit` |
-| **canonical knowledge 확정 저장** | **L3** | `knowledge_note_finalize` |
-| **vault remote push** | **L3** | `vault_remote_push` |
-| **vault main merge** | **L4** | `branch_merge` 와 동일 정책 |
+| commit | L2 (`local_commit`) | L2 (`vault_research_log_commit`) |
+| feature branch push | L3 `push_to_shared_repo` | L3 `vault_remote_push` (또는 mode 적용 시 L2) |
+| main merge | L4 `branch_merge` | L4 `branch_merge` (vault 도 동일 hard rail) |
+| audit key | `session.extra["code_push_audit"]` | `session.extra["vault_push_audit"]` |
+| 회귀 test | 본 레포 `tests/` | mirror 노트는 본 레포에 land 되므로 `tests/engineering/` |
+
+### 3.2 vault repo workspace 부재 시
+
+operator 의 실제 vault repo (`yule-agent-vault`) 가 현재 workspace 에 클론되지 않은 상태에서는:
+
+- 본 레포 `notes/vault-mirror/` 에 mirror 만 land. operator 가 sync.
+- `vault_remote_push` 자체는 미실행 — 코드 land 는 P0-G 3차 (#141) scope.
+- 본 정책 (§3 표) 은 vault repo 가 존재할 때를 가정한 *contract*. 없으면 contract 만 land, write 자체는 미구현 — fake success 금지.
 
 ## 4. Runtime / Infra
 

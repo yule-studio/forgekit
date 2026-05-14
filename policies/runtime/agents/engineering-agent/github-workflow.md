@@ -141,17 +141,54 @@ issue 진행 코멘트는 **5 섹션 모두 필수**.
 
 ## 5. 커밋 분할 + GitHub Apps + push
 
-### 5.1 커밋 분할
+### 5.1 커밋 / PR 분할 — semantic CRUD-like slices (P0-G refine)
 
-- 1 PR 안에 **최소 3 commit, 권장 5 commit** 의 논리 단위 분할.
-- 모든 변경을 1 commit 으로 뭉치는 것 금지.
-- 분할 기준 (예시):
-  1. 선행 산출물 분석 / Obsidian 노트
-  2. 첫 정책 layer (Obsidian / wikilink / naming)
-  3. 두 번째 정책 layer (write ownership / authoring)
-  4. 세 번째 정책 layer (GitHub workflow / docs)
-  5. 정책 회귀 test
+PR / 커밋 분할의 *목적* 은 literal CRUD 4 분할 강제가 아니라 **리뷰어가 5분 안에 목적을 설명 가능 + 롤백이 독립 가능 + 테스트 포인트가 한 덩어리** 인 단위로 자르는 것이다.
+
+기본 원칙 (한 PR / 한 commit 모두 적용):
+
+1. **한 PR = 한 책임.** 한 PR 안에 의도가 다른 변경이 섞이지 않는다.
+2. **5분 룰.** 리뷰어가 PR title + body §✨ 만 보고 5 분 안에 목적을 설명 가능해야 한다. 안 되면 분할.
+3. **롤백 독립.** revert 했을 때 다른 의도 변경까지 같이 되돌아가면 안 된다.
+4. **테스트 포인트가 한 덩어리.** 한 PR 의 변경은 단일 acceptance / regression test 묶음으로 보호 가능해야 한다.
+
+**Semantic slice 분류 — C / R / U / D + 예외 4 종.**
+
+| 분류 | 의미 | 대표 예시 |
+| --- | --- | --- |
+| **C** (Create / Construct) | 새 구조·새 기능·새 정책 신설 | 신규 모듈 / 신규 정책 파일 / 신규 dataclass / 신규 worker. |
+| **R** (Read / Reveal) | 조회 / 진단 / 가시화 / 계측 | 신규 status command / 신규 metric / observability surface / 새 audit log shape. |
+| **U** (Update / Upgrade) | 기존 동작·기존 정책 업데이트 | 정책 §X.Y 의 규칙 갱신 / 기존 endpoint contract 강화 / 기존 surface 의 표현 정정. |
+| **D** (Delete / Decommission) | 제거 / 정리 / deprecated / cleanup | 더 이상 쓰이지 않는 helper 제거 / dead-flag drop / 정책 supersede. |
+
+**예외 4 종.** 다음은 본 정책의 5분 룰 / 한 PR = 한 책임 을 *지키되 분류 강제 X*:
+
+- **hotfix.** 인시던트 / live 회귀의 즉시 차단. 분류 표기 무관. PR title 에 `hotfix:` prefix 명시.
+- **docs-only.** 정책 / docs 만 land. 분류 강제 안 함. 단, 같은 PR 에 코드 변경이 함께 들어가면 분할.
+- **test-only.** 회귀 test 만 추가. 코드 동작 변경 없음. 분류 강제 안 함.
+- **tiny config fix.** ≤ 10 줄, 단일 env / config 정정. 분류 강제 안 함. PR body §✨ 에 "tiny config" 한 줄.
+
+**한 PR 안의 commit 분할.**
+
+- 한 PR 안에 **최소 3 commit, 권장 5 commit** 의 논리 단위 분할.
+- 모든 변경을 1 commit 으로 뭉치는 것 금지 (예외 4 종은 예외).
+- 분할 기준 (정책 PR 의 예시):
+  1. C — 선행 산출물 분석 / Obsidian 노트 / audit doc
+  2. C — 첫 정책 layer (예: Obsidian / wikilink / naming)
+  3. C / U — 두 번째 정책 layer (write ownership / authoring)
+  4. C / U — 세 번째 정책 layer (GitHub workflow / docs)
+  5. C — 정책 회귀 test
+- 코드 PR 의 예시:
+  1. C — 신규 모듈 (pure unit)
+  2. U — 기존 caller 의 wire-in
+  3. C — 회귀 test
 - 커밋 메시지 = [`policies/reference/COMMIT_CONVENTION.md`](../../../reference/COMMIT_CONVENTION.md) 의 한국어 3 섹션 (`변경 이유` / `주요 변경 사항` / `비고`) 엄격 준수. 비어 있는 섹션은 `- 없음` 한 줄.
+
+**PR 사이즈 가이드.**
+
+- 정책 PR: doc 만이면 5~8 commit, code 동반이면 7~10.
+- 코드 PR: 단일 책임이면 3~6 commit. 그 이상 필요하면 **PR 분할 검토**.
+- 단일 PR 의 diff 가 **> 800 줄 (test 제외)** 이면 분할 권장 — 리뷰어 5분 룰 위반.
 
 ### 5.2 GitHub Apps 우선 사용
 
@@ -174,10 +211,11 @@ issue 진행 코멘트는 **5 섹션 모두 필수**.
 - §2 PR 4 섹션 + Audit 헤딩 존재
 - §3 실재 label 표 / 추천 label 표 모두 존재
 - §4 progress 5 섹션 모두 본문에 명시
-- §5 커밋 분할 / push 정책 키워드 존재
+- §5 커밋 분할 / push 정책 키워드 존재 + §5.1 의 semantic CRUD-like slice 표 존재
 
 ## 7. 변경 이력
 
 | 일자 | 변경 |
 | --- | --- |
 | 2026-05-08 | 초안 (Issue #69 — D-69-10 ~ D-69-14 결정 반영. PR template fix `a19b718` 결과 활용.) |
+| 2026-05-14 | P0-G 1차 (Issue #139 / parent #138) — §5.1 을 semantic CRUD-like slices 로 refine. C/R/U/D + 예외 4 종 (hotfix / docs-only / test-only / tiny config). 5 분 룰 / 롤백 독립 / 테스트 포인트 한 덩어리 원칙 명시. PR 사이즈 가이드 (800 줄) 추가. |

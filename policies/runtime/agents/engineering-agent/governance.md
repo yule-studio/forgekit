@@ -4,13 +4,21 @@
 > **목적:** Obsidian / write ownership / GitHub workflow 의 부서 공통 정책을 한 곳에서 cross-link 한다.
 > **출처:** Issue #69 (parent #20). 통합 입력 = 완료된 #25 / #48 / #59. 14 개 결정 (D-69-1 ~ D-69-14).
 
-본 문서는 *umbrella* — 실제 정책 본문은 다음 3 문서가 책임진다.
+본 문서는 *umbrella* — 실제 정책 본문은 다음 6 문서가 책임진다 (P0-G 1차 land 에서 3 → 6 으로 확장).
 
 | layer | 문서 | 책임 영역 |
 | --- | --- | --- |
-| Obsidian | [`obsidian-governance.md`](obsidian-governance.md) | 노트 naming / `## 관련 문서` 강제 / wikilink 정확성 / cross-link 정책 |
+| Obsidian | [`obsidian-governance.md`](obsidian-governance.md) | 노트 naming / `## 관련 문서` 강제 / wikilink 정확성 / cross-link 정책 + (P0-G) GitHub-실행기록 vs Obsidian-학습미러 role separation |
 | Write ownership | [`write-ownership.md`](write-ownership.md) | 3-mode authoring (`role-owned` / `tech-lead-mediated` / `gateway-mediated`) + 결정 트리 + 7 역할 surface 매트릭스 |
-| GitHub workflow | [`github-workflow.md`](github-workflow.md) | issue / PR template / label / progress comment / 커밋 분할 / GitHub Apps / push 정책 |
+| GitHub workflow | [`github-workflow.md`](github-workflow.md) | issue / PR template / label / progress comment / 커밋 분할 (semantic CRUD-like slices) / GitHub Apps / push 정책 |
+| Repo contract | [`repo-contract-discovery.md`](repo-contract-discovery.md) | 외부 repo 의 ISSUE/PR template / CONTRIBUTING / CODEOWNERS / workflows discovery + Yule 기본 규칙 fallback |
+| Growth loop | [`growth-loop.md`](growth-loop.md) | resources / projects / daily 정리 + 반복 패턴의 정책 승격 lifecycle |
+| Design-to-code | [`design-to-code-assets.md`](design-to-code-assets.md) | product-designer 자산 (icon / logo / favicon) 정의 + frontend-engineer SVG/컴포넌트 구현 + raster 경계 |
+
+추가 cross-link (운영자 docs):
+
+- [`docs/autonomy-policy.md`](../../../../docs/autonomy-policy.md) — work mode / topology / scope (session-start ask-once) + 5-tier autonomy ladder.
+- [`docs/approval-matrix.md`](../../../../docs/approval-matrix.md) — 통합 vault commit/push gating 매트릭스.
 
 ## 1. 부서 governance 의 4 원칙
 
@@ -94,6 +102,17 @@ surface 별 최종 author subject:
 
 위 항목은 사용자 명시 승인이 있어도 **본 정책 자체로는 풀리지 않는다** — 별도의 hard-rail 변경 PR + 사용자 결정이 필요.
 
+## 6.5 P0-G — 외부 repo 작업 + 자산 정책 + 학습 미러 정착 (2026-05-14)
+
+본 umbrella 가 묶는 정책이 3 → 6 으로 확장되며 다음 책임이 추가된다:
+
+- **외부 repo 작업** — [`repo-contract-discovery.md`](repo-contract-discovery.md) 가 외부 repo 의 자체 규칙 (issue/PR template, CONTRIBUTING, CODEOWNERS, workflows) 을 수집해 우선 적용한다. 본 레포 (`yule-studio-agent`) 자체에는 적용 안 됨.
+- **PR splitting (semantic CRUD-like slices)** — [`github-workflow.md`](github-workflow.md) §5.1 가 literal CRUD 4 분할 강제가 아닌 *semantic slice* 분류 (C/R/U/D + 예외 4 종) 로 정착.
+- **GitHub vs Obsidian role separation** — GitHub = 실행 기록, Obsidian = 학습/판단/회고 미러. 두 surface 는 backlink 로 연결되지만 책임이 다르다. [`obsidian-governance.md`](obsidian-governance.md) §0 / §10 + 본 umbrella §4 가 책임.
+- **Vault commit/push 통합** — [`docs/approval-matrix.md`](../../../../docs/approval-matrix.md) §3 (Vault) 가 vault commit (L2 auto) vs vault push (L3 approval) 단일 SSoT 표로 정착. 코드 repo push 와 vault push 는 분리 기록.
+- **Growth loop** — [`growth-loop.md`](growth-loop.md) 가 resources / projects / daily 의 3-구조 lifecycle 정의. 같은 아쉬움/실수가 반복되면 *개인 메모 → 정책 승격* 가이드.
+- **Design-to-code asset** — [`design-to-code-assets.md`](design-to-code-assets.md) 가 product-designer 의 의미/형태/컬러/비율 정의 → frontend-engineer 의 SVG/컴포넌트 구현 분리. raster 와 SVG source-of-truth 경계.
+
 ## 7. 검증
 
 | 검증 | 위치 |
@@ -110,3 +129,4 @@ surface 별 최종 author subject:
 | 일자 | 변경 |
 | --- | --- |
 | 2026-05-08 | 초안 (Issue #69 — D-69-1 ~ D-69-14 통합. #25/#48/#59 산출물을 부서 governance 로 정착.) |
+| 2026-05-14 | P0-G 1차 (Issue #139 / parent #138) — umbrella 가 묶는 정책 3 → 6 으로 확장 (repo-contract-discovery / growth-loop / design-to-code-assets 신설). §6.5 변경 요약 추가. |
