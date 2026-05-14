@@ -38,13 +38,8 @@ How this differs from ``discord/conversation.py`` (planning-agent):
 
 from __future__ import annotations
 
-# Until commits 3-7 fully extract each module, re-export everything from
-# the legacy single-file body so existing callers (and tests) keep working
-# verbatim. Subsequent commits replace these wildcard imports with
-# explicit per-module imports as content moves out of _legacy.py.
-from ._legacy import *  # noqa: F401,F403 — facade re-export
-from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
-    _suggest_task_type,
+# Canonical dataclasses + intent ID constants live in .models (P0-L step 3).
+from .models import (  # noqa: F401 — facade re-export
     APPROVAL_ACTION,
     BLOCKED_REASON_QUERY,
     CHANGE_DIRECTION,
@@ -55,13 +50,22 @@ from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysi
     GENERAL_ENGINEERING_HELP,
     NEEDS_CLARIFICATION,
     READ_ONLY_INTENTS,
-    ResearchCandidate,
-    ResearchCollectionResult,
     SESSION_COUNT_QUERY,
     SESSION_LIST_QUERY,
     SPLIT_TASK_PROPOSAL,
     STATUS_DIAGNOSTIC,
     TASK_INTAKE_CANDIDATE,
+)
+
+# Everything else is still in _legacy.py — re-export until the
+# remaining 5 modules (intent_detection / task_shaping /
+# status_responses / research_bootstrap / response_formatters) are
+# extracted in the subsequent commits.
+from ._legacy import *  # noqa: F401,F403 — facade re-export
+from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+    _suggest_task_type,
+    ResearchCandidate,
+    ResearchCollectionResult,
     build_engineering_conversation_response,
     classify_attachment,
     classify_url,
