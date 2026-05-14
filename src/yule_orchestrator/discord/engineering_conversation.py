@@ -56,6 +56,25 @@ NEEDS_CLARIFICATION = "needs_clarification"
 CONFIRM_INTAKE = "confirm_intake"
 SPLIT_TASK_PROPOSAL = "split_task_proposal"
 STATUS_DIAGNOSTIC = "status_diagnostic"
+# P0-J (#146) — read-only intents. STATUS/SESSION_*/BLOCKED_REASON/
+# CONTINUE/CHANGE_DIRECTION 류는 절대 _maybe_run_auto_collect 호출 금지
+# (hard rule). commit 7 의 build_engineering_conversation_response
+# 라우팅 분기가 이 상수들을 hard-blocklist 로 사용.
+SESSION_COUNT_QUERY = "session_count_query"
+SESSION_LIST_QUERY = "session_list_query"
+BLOCKED_REASON_QUERY = "blocked_reason_query"
+CONTINUE_EXISTING_WORK = "continue_existing_work"
+CHANGE_DIRECTION = "change_direction"
+
+# Hard-blocklist for the auto_collect path (commit 7 enforcement).
+READ_ONLY_INTENTS: tuple = (
+    STATUS_DIAGNOSTIC,
+    SESSION_COUNT_QUERY,
+    SESSION_LIST_QUERY,
+    BLOCKED_REASON_QUERY,
+    CONTINUE_EXISTING_WORK,
+    CHANGE_DIRECTION,
+)
 
 
 @dataclass(frozen=True)
@@ -538,6 +557,41 @@ def detect_engineering_intent(message_text: str) -> EngineeringIntentMatch:
             confidence="high",
         )
 
+    # P0-J (#146) — read-only intent precedence. session_count /
+    # session_list / blocked_reason / continue_existing_work /
+    # change_direction 은 STATUS_DIAGNOSTIC 보다 먼저 매칭해 절대
+    # auto_collect 경로로 흘러가지 않게 한다.
+    if _is_session_count_query(normalized):
+        return EngineeringIntentMatch(
+            intent_id=SESSION_COUNT_QUERY,
+            label="세션 개수 질의",
+            confidence="high",
+        )
+    if _is_session_list_query(normalized):
+        return EngineeringIntentMatch(
+            intent_id=SESSION_LIST_QUERY,
+            label="세션 목록 질의",
+            confidence="high",
+        )
+    if _is_blocked_reason_query(normalized):
+        return EngineeringIntentMatch(
+            intent_id=BLOCKED_REASON_QUERY,
+            label="막힘 원인 질의",
+            confidence="high",
+        )
+    if _is_change_direction(normalized):
+        return EngineeringIntentMatch(
+            intent_id=CHANGE_DIRECTION,
+            label="방향 수정",
+            confidence="high",
+        )
+    if _is_continue_existing_work(normalized):
+        return EngineeringIntentMatch(
+            intent_id=CONTINUE_EXISTING_WORK,
+            label="기존 작업 이어가기",
+            confidence="high",
+        )
+
     # Status / diagnostic intent must be checked BEFORE confirmation.
     # "왜 안 됐어?", "운영 리서치는 안 열어?", "지금 뭐 하는 중?" must
     # NOT be promoted to a new intake or read as a go-ahead.
@@ -799,6 +853,115 @@ def _is_status_diagnostic(normalized: str) -> bool:
     return any(phrase in normalized for phrase in _STATUS_DIAGNOSTIC_PHRASES)
 
 
+# ---------------------------------------------------------------------------
+# P0-J (#146) read-only intent matchers
+# ---------------------------------------------------------------------------
+
+
+_SESSION_COUNT_PHRASES = (
+    "세션 몇 개",
+    "세션 몇개",
+    "세션 작업들 몇",
+    "세션들 몇",
+    "열린 작업 몇 개",
+    "열린 작업 몇개",
+    "열린 작업들 몇",
+    "오픈 세션 몇",
+    "open session count",
+    "how many open sessions",
+    "현재 세션 수",
+    "활성 세션 수",
+    "진행 중인 세션 몇",
+    "진행 중인 세션이 몇",
+)
+
+_SESSION_LIST_PHRASES = (
+    "세션 목록",
+    "세션 리스트",
+    "오픈 세션 뭐",
+    "오픈 세션 뭐뭐",
+    "열린 세션 목록",
+    "열린 작업 목록",
+    "진행 중인 세션 목록",
+    "open session list",
+    "list open sessions",
+    "세션 다 보여줘",
+    "열린 작업 보여줘",
+)
+
+_BLOCKED_REASON_PHRASES = (
+    "왜 멈췄",
+    "왜 멈춰",
+    "뭐가 막혔",
+    "뭐가 막혀",
+    "왜 안 됐",
+    "왜 안돼",
+    "왜 안 돼",
+    "왜 안되",
+    "왜 막혔",
+    "왜 막혀",
+    "어디서 막혔",
+    "stuck",
+    "blocked",
+    "blocking",
+    "왜 진행 안",
+    "왜 진척 안",
+)
+
+_CONTINUE_EXISTING_PHRASES = (
+    "이전 작업 이어",
+    "이어서 해",
+    "이어서 진행",
+    "이어서 작업",
+    "그 세션 계속",
+    "그 작업 계속",
+    "계속 진행해",
+    "continue existing",
+    "resume session",
+    "기존 세션 이어",
+    "그 세션 이어",
+    "원래 작업 이어",
+)
+
+_CHANGE_DIRECTION_PHRASES = (
+    "방향 수정",
+    "방향 바꿔",
+    "방향 변경",
+    "직진 말고",
+    "리서치 말고 구현",
+    "검색 말고",
+    "조사 말고 구현",
+    "자료 추가가 아니라 방향",
+    "자료 추가 아니라 방향",
+    "그쪽 말고",
+    "방향 틀어",
+    "redirect",
+    "change direction",
+    "pivot",
+    "다른 쪽으로",
+)
+
+
+def _is_session_count_query(normalized: str) -> bool:
+    return any(phrase in normalized for phrase in _SESSION_COUNT_PHRASES)
+
+
+def _is_session_list_query(normalized: str) -> bool:
+    return any(phrase in normalized for phrase in _SESSION_LIST_PHRASES)
+
+
+def _is_blocked_reason_query(normalized: str) -> bool:
+    return any(phrase in normalized for phrase in _BLOCKED_REASON_PHRASES)
+
+
+def _is_continue_existing_work(normalized: str) -> bool:
+    return any(phrase in normalized for phrase in _CONTINUE_EXISTING_PHRASES)
+
+
+def _is_change_direction(normalized: str) -> bool:
+    return any(phrase in normalized for phrase in _CHANGE_DIRECTION_PHRASES)
+
+
 _GENERAL_HELP_PHRASES = (
     "engineering-agent",
     "엔지니어링 에이전트",
@@ -972,6 +1135,184 @@ def _suggest_task_type(message_text: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 # Response body formatters
 # ---------------------------------------------------------------------------
+
+
+def _open_states_set() -> set:
+    """States considered 'open' for session count/list responses."""
+
+    return {"new", "queued", "in_progress", "needs_research", "awaiting_review"}
+
+
+def format_session_count_response(session_lister=None) -> str:
+    """Render a count-only answer for the session_count_query intent.
+
+    *session_lister* is the injected ``list_sessions``-style callable
+    (production: ``agents.workflow_state.list_sessions``). Returns
+    a single-line Korean answer.
+    """
+
+    sessions = _safe_list_sessions(session_lister)
+    if sessions is None:
+        return "ℹ️ 세션 카운트를 조회할 수 없어요 (workflow state 미연결)."
+    open_set = _open_states_set()
+    open_count = sum(
+        1
+        for s in sessions
+        if _coerce_str(getattr(getattr(s, "state", None), "value", getattr(s, "state", None)))
+        in open_set
+    )
+    total = len(sessions)
+    return f"현재 열려 있는 engineering-agent 세션은 **{open_count}개** 입니다 (전체 캐시 {total}개)."
+
+
+def format_session_list_response(
+    session_lister=None, *, limit: int = 10
+) -> str:
+    """Render a list of open sessions for the session_list_query intent.
+
+    Shows id / state / task_type / updated_at + thread/PR if present.
+    """
+
+    sessions = _safe_list_sessions(session_lister)
+    if sessions is None:
+        return "ℹ️ 세션 목록을 조회할 수 없어요 (workflow state 미연결)."
+    open_set = _open_states_set()
+    rows: list[str] = []
+    for s in sessions:
+        state_value = _coerce_str(
+            getattr(getattr(s, "state", None), "value", getattr(s, "state", None))
+        )
+        if state_value not in open_set:
+            continue
+        sid = _coerce_str(getattr(s, "session_id", None)) or "?"
+        task = _coerce_str(getattr(s, "task_type", None)) or "?"
+        updated = _coerce_str(getattr(s, "updated_at", None)) or ""
+        extra = getattr(s, "extra", None) or {}
+        thread_id = (
+            extra.get("research_forum_thread_id")
+            or extra.get("forum_thread_id")
+            or getattr(s, "thread_id", None)
+        )
+        pr_n = extra.get("pull_request_number")
+        anchors: list[str] = []
+        if thread_id is not None:
+            anchors.append(f"thread `{thread_id}`")
+        if pr_n is not None:
+            anchors.append(f"PR #{pr_n}")
+        anchor_text = (" · " + " · ".join(anchors)) if anchors else ""
+        rows.append(
+            f"- `{sid}` · {state_value} · {task} · {updated}{anchor_text}"
+        )
+        if len(rows) >= limit:
+            break
+    if not rows:
+        return "현재 열려 있는 engineering-agent 세션이 없어요."
+    return "현재 열려 있는 engineering-agent 세션 목록:\n\n" + "\n".join(rows)
+
+
+def format_blocked_reason_response(
+    session: Optional[Any] = None,
+) -> str:
+    """Surface the blocked reason / signals for the active session.
+
+    Reuses ``diagnose_session`` to derive signals + tracking blocked
+    reason. When no session is provided, returns a hint to specify.
+    """
+
+    if session is None:
+        return (
+            "현재 채널에 매칭되는 열린 세션이 없어 막힘 원인을 특정할 수 없어요.\n"
+            "확인할 session id 를 알려주시거나, 이어갈 thread 안에서 다시 말씀해 주세요."
+        )
+    try:
+        from ..agents.lifecycle.session_status import diagnose_session
+
+        report = diagnose_session(session)
+    except Exception:  # noqa: BLE001
+        report = None
+
+    sid = _coerce_str(getattr(session, "session_id", None)) or "?"
+    lines: list[str] = [f"세션 `{sid}` 의 막힘 원인 진단:"]
+
+    blocked_reason = None
+    extra = getattr(session, "extra", None) or {}
+    if isinstance(extra, Mapping):
+        blocked_reason = _coerce_str(extra.get("tracking_blocked_reason"))
+    if blocked_reason:
+        lines.append(f"- tracking blocked: {blocked_reason}")
+    if report is not None and getattr(report, "signals", None):
+        for signal in report.signals[:5]:
+            code = getattr(signal, "code", "?")
+            title = getattr(signal, "title", "")
+            detail = getattr(signal, "detail", "")
+            severity = getattr(signal, "severity", "?")
+            tail = f" — {detail}" if detail else ""
+            lines.append(f"- [{severity}] {code}: {title}{tail}")
+    if len(lines) == 1:
+        lines.append("- 감지된 막힘 신호가 없어요. 상태는 정상 흐름으로 보여요.")
+    return "\n".join(lines)
+
+
+def format_continue_existing_response(session: Optional[Any] = None) -> str:
+    """Ack continue_existing_work — do NOT create a new intake."""
+
+    if session is None:
+        return (
+            "이어갈 세션을 찾지 못했어요. session id 또는 thread 를 명시해 주세요. "
+            "(새 세션을 만들지 않고 기존 세션 위에서 진행합니다.)"
+        )
+    sid = _coerce_str(getattr(session, "session_id", None)) or "?"
+    state = _coerce_str(
+        getattr(getattr(session, "state", None), "value", getattr(session, "state", None))
+    ) or "?"
+    return (
+        f"✅ 세션 `{sid}` 을 이어서 진행할게요. (state: {state})\n"
+        "새 intake / research thread 를 만들지 않습니다."
+    )
+
+
+def format_change_direction_response(
+    session: Optional[Any] = None,
+    *,
+    user_text: str = "",
+) -> str:
+    """Ack change_direction — same session update, no new intake."""
+
+    sid = _coerce_str(getattr(session, "session_id", None)) if session else None
+    head = "✅ 방향 수정 신호를 받았어요."
+    sid_line = f" 세션 `{sid}` 위에서 진행 방향을 갱신합니다." if sid else ""
+    note = (
+        f"\n새 받아온 방향 메모: {user_text.strip()[:200]}" if user_text else ""
+    )
+    return (
+        f"{head}{sid_line}\n"
+        "새 intake / research thread 를 만들지 않고 기존 세션의 prompt/scope 만 "
+        "업데이트합니다." + note
+    )
+
+
+# ---------------------------------------------------------------------------
+# Internals — list_sessions helper
+# ---------------------------------------------------------------------------
+
+
+def _safe_list_sessions(lister):
+    """Call the injected lister; return None on failure (caller surfaces hint)."""
+
+    if lister is None:
+        try:
+            from ..agents.workflow_state import list_sessions as _list
+
+            lister = _list
+        except Exception:  # noqa: BLE001
+            return None
+    try:
+        try:
+            return tuple(lister(limit=100))
+        except TypeError:
+            return tuple(lister())
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _format_general_help() -> str:

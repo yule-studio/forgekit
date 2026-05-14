@@ -54,12 +54,13 @@ def _session(**overrides: Any) -> WorkflowSession:
 
 class StatusDiagnosticIntentDetectionTests(unittest.TestCase):
     def test_detects_korean_research_status_questions(self) -> None:
+        # P0-J (#146): "왜 안 됐어?" / "왜 멈췄어" / "뭐가 막혔어" 는 더
+        # 구체적인 BLOCKED_REASON_QUERY intent 로 분리됨. 본 test 는
+        # 그 외 status_diagnostic 케이스만 보호.
         cases = (
             "운영 리서치는 안 열어?",
             "운영-리서치는 왜 안 열렸어?",
             "리서치 왜 실패했어?",
-            "왜 안 됐어?",
-            "왜 멈췄어",
             "지금 뭐 하는 중이야?",
             "현재 상태 알려줘",
             "진행 상황 어떻게 되고 있어?",
@@ -73,14 +74,14 @@ class StatusDiagnosticIntentDetectionTests(unittest.TestCase):
 
     def test_detects_expanded_phrases_added_in_polish(self) -> None:
         # New phrasings the user asked us to cover; each must NOT be
-        # promoted to a new intake or read as a confirm phrase.
+        # promoted to a new intake or read as a confirm phrase. P0-J
+        # (#146): "뭐가 막혔어" / "왜 안 열렸어" 류는 BLOCKED_REASON_QUERY
+        # 로 더 구체화 — 별도 test 에서 검증.
         cases = (
             "어떻게 됐어?",
             "어떻게 되고 있어?",
             "진행상황 좀",
             "어디까지 갔어?",
-            "뭐가 막혔어",
-            "왜 안 열렸어",
             "운영-리서치 왜 안 열려",
             "상태 체크 좀",
             "다시 한번 확인해줘",
@@ -334,8 +335,11 @@ class BuildResponseStatusQueryTests(unittest.TestCase):
         self.assertIn("열린 engineering-agent 세션이 보이지 않아요", response.content)
 
     def test_status_query_with_no_loader_falls_back_to_no_session(self) -> None:
+        # P0-J (#146): "왜 안 됐어?" 는 BLOCKED_REASON_QUERY 로 분리됨.
+        # 본 test 는 status_diagnostic 분기 자체 — pure status phrase 로
+        # 유지하면서 loader 없을 때 fall-back 동작 검증.
         response = build_engineering_conversation_response(
-            "왜 안 됐어?",
+            "지금 뭐 하는 중이야?",
             status_session_loader=None,
         )
         self.assertTrue(response.is_status_query)
