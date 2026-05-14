@@ -57,6 +57,14 @@ from .utils import (  # noqa: F401 — facade re-export
     extract_message_attachments,
     extract_user_links_from_message,
 )
+# Channel + confirmation + continuation predicates live in .intent_detection
+# (P0-P step 5).
+from .intent_detection import (  # noqa: F401 — facade re-export
+    detect_confirmation_signal,
+    is_engineering_channel,
+    should_continue_existing_thread,
+    should_start_new_thread,
+)
 
 from ._legacy import *  # noqa: F401,F403 — facade re-export
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
