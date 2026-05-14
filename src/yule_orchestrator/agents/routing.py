@@ -257,16 +257,113 @@ _COMMAND_ONLY_PROMPTS: frozenset[str] = frozenset(
         "여기서 이어가",
         "확정",
         "진행",
+        "진행해",
+        "진행해줘",
+        "진행 해줘",
+        "이대로 진행해줘",
+        "이대로 진행 해줘",
         "승인",
+        "승인할게",
+        "승인 할게",
+        "승인해줘",
+        "승인 해줘",
+        "승인했어",
         "수정 승인",
+        "오케이",
+        "오케이 진행",
+        "오케이 진행해줘",
         "ok",
+        "okay",
+        "예",
+        "네",
+        "계속",
+        "계속 해",
+        "계속해",
+        "계속 진행",
+        "계속 진행해",
+        "이어서",
+        "이어서 해",
+        "이어서 진행",
+        "이어서 진행해",
+        # 합성 phrase — 사용자 보고된 P0-K 예시.
+        "승인하고 진행해",
+        "승인하고 진행",
+        "작업 승인 할게 진행 해줘",
+        "작업 승인 할게",
+        "작업 승인할게",
+        "작업 승인",
     }
+)
+
+
+# Approval/proceed token fragments — used by the substring sweep in
+# :func:`is_command_only_prompt` to catch compound command-only
+# phrases that aren't in the exact set above (P0-K). These are *tokens
+# inside* command-only messages, not standalone task verbs. Removing
+# them from the normalized text should leave nothing substantive.
+_COMMAND_ONLY_TOKEN_FRAGMENTS: tuple[str, ...] = (
+    "이대로",
+    "그대로",
+    "여기서",
+    "기존",
+    "세션",
+    "세션으로",
+    "thread",
+    "작업",
+    "작업으로",
+    "진행해줘",
+    "진행 해줘",
+    "진행해",
+    "진행할게",
+    "진행",
+    "승인하고",
+    "승인할게",
+    "승인 할게",
+    "승인해줘",
+    "승인 해줘",
+    "승인했어",
+    "승인",
+    "확정해줘",
+    "확정",
+    "계속해",
+    "계속 진행",
+    "계속",
+    "이어서",
+    "이어가",
+    "이어",
+    "오케이",
+    "okay",
+    "ok",
+    "go ahead",
+    "go",
+    "yes",
+    "proceed",
+    "approve",
+    "approved",
+    "continue",
+    "할게",
+    "해줘",
+    "해라",
+    "해",
 )
 
 
 def is_command_only_prompt(value: object) -> bool:
     """True when *value* is just a confirmation/command phrase rather
     than a real task description.
+
+    Three matching layers (most specific → most permissive):
+
+      1. exact normalised match against :data:`_COMMAND_ONLY_PROMPTS`.
+      2. very short input (≤2 chars).
+      3. **P0-K substring sweep** — strip every
+         :data:`_COMMAND_ONLY_TOKEN_FRAGMENTS` and Korean particle
+         from the normalized text; if ≤2 chars remain the whole
+         message was approval/proceed boilerplate.
+
+    The sweep is what catches compound forms like
+    ``작업 승인 할게 진행 해줘`` that aren't in the exact set but
+    decompose entirely into command-only fragments.
 
     Used in two places:
       • routing/recall scoring — sessions whose prompt is itself a
@@ -284,7 +381,33 @@ def is_command_only_prompt(value: object) -> bool:
         return True
     if len(normalised) <= 2:
         return True
-    return normalised in _COMMAND_ONLY_PROMPTS
+    if normalised in _COMMAND_ONLY_PROMPTS:
+        return True
+    # P0-K substring sweep — fragment-by-fragment stripping.
+    return _strips_to_empty(normalised)
+
+
+def _strips_to_empty(normalised: str) -> bool:
+    """Return True iff *normalised* reduces to ≤2 chars after removing
+    every command-only fragment + Korean particle + punctuation."""
+
+    text = normalised
+    # Strip exact fragments (longest first to avoid partial overlaps).
+    for fragment in sorted(_COMMAND_ONLY_TOKEN_FRAGMENTS, key=len, reverse=True):
+        if fragment in text:
+            text = text.replace(fragment, " ")
+    # Strip standalone Korean particles / punctuation that often glue
+    # command-only fragments together.
+    for particle in (
+        " 을 ", " 를 ", " 도 ", " 는 ", " 은 ", " 이 ", " 가 ",
+        " 의 ", " 에 ", " 와 ", " 과 ", " 만 ", " 좀 ",
+    ):
+        text = text.replace(particle, " ")
+    # Drop punctuation residue.
+    for char in (",", ".", "!", "?", "~", "·", "/", "\\", "'", "\""):
+        text = text.replace(char, " ")
+    text = " ".join(text.split())
+    return len(text) <= 2
 
 
 # Distinct phrases the bot itself emits in its intake / sufficiency

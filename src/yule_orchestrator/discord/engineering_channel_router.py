@@ -877,17 +877,24 @@ async def route_engineering_message(
 
     research_loop_report: Optional[EngineeringResearchLoopReport] = None
     if research_loop_fn is not None and session is not None:
-        research_loop_report = await _run_research_loop_hook(
-            research_loop_fn=research_loop_fn,
-            message=message,
-            session=session,
-            prompt_text=intake_prompt,
-            send_chunks=send_chunks,
-            collection_outcome=outcome.collection_outcome,
-            research_pack=outcome.research_pack,
-            role_for_research=outcome.role_for_research,
-            thread_id=thread_id,
-        )
+        # P0-K (#148) — never let a command-only prompt drive the
+        # research loop. The loop's first action is to query against
+        # ``prompt_text``; queries like "진행 해줘" surface canned hits
+        # whose title becomes the new forum thread name.
+        if _research_loop_blocked_by_command_only(intake_prompt):
+            research_loop_report = None
+        else:
+            research_loop_report = await _run_research_loop_hook(
+                research_loop_fn=research_loop_fn,
+                message=message,
+                session=session,
+                prompt_text=intake_prompt,
+                send_chunks=send_chunks,
+                collection_outcome=outcome.collection_outcome,
+                research_pack=outcome.research_pack,
+                role_for_research=outcome.role_for_research,
+                thread_id=thread_id,
+            )
 
     # Phase 4: post a deterministic work report once the research +
     # synthesis pass closes. Always best-effort; a failure here keeps
@@ -1042,14 +1049,18 @@ async def _drive_clarification_create_new_work(
 
     research_loop_report = None
     if research_loop_fn is not None and session is not None and kickoff is not None:
-        research_loop_report = await _run_research_loop_hook(
-            research_loop_fn=research_loop_fn,
-            message=message,
-            session=session,
-            prompt_text=canonical_prompt,
-            send_chunks=send_chunks,
-            thread_id=thread_id,
-        )
+        # P0-K (#148) — guard parity with the primary intake path.
+        if _research_loop_blocked_by_command_only(canonical_prompt):
+            research_loop_report = None
+        else:
+            research_loop_report = await _run_research_loop_hook(
+                research_loop_fn=research_loop_fn,
+                message=message,
+                session=session,
+                prompt_text=canonical_prompt,
+                send_chunks=send_chunks,
+                thread_id=thread_id,
+            )
 
     # Phase 4: post the deterministic work report at lifecycle close.
     await _emit_work_report_preview(
@@ -2515,8 +2526,14 @@ async def _handle_join_or_append(
 
     research_loop_report: Optional[EngineeringResearchLoopReport] = None
     is_append_only = decision.action == ACTION_APPEND_CONTEXT
+    # P0-K (#148) — the continuation path is the very site that
+    # produced "[Reference] 진행 해줘" thread spam. Block the research
+    # loop whenever intake_prompt is a command-only operational
+    # phrase.
+    blocked_by_command_only = _research_loop_blocked_by_command_only(intake_prompt)
     if (
         not is_append_only
+        and not blocked_by_command_only
         and research_loop_fn is not None
         and continued_session is not None
     ):
@@ -2611,6 +2628,28 @@ def _maybe_persist_research_pack(
         research_pack,
         collection_outcome=collection_outcome,
     )
+
+
+def _research_loop_blocked_by_command_only(prompt_text: Optional[str]) -> bool:
+    """P0-K (#148) — True when *prompt_text* is a bare approval/proceed
+    phrase like "진행 해줘" / "이대로 진행" / "작업 승인 할게 진행 해줘".
+
+    The research loop's first action is to query against ``prompt_text``;
+    queries like "진행 해줘" surface canned hits whose title becomes the
+    new forum thread name (``[Reference] 진행 해줘``). Block the loop
+    rather than let the operational phrase reach the collector.
+
+    Returns False when ``prompt_text`` is None / empty / substantive
+    so the existing legitimate research path is unaffected.
+    """
+
+    if not prompt_text:
+        return False
+    try:
+        from ..agents.routing import is_non_actionable_prompt
+    except Exception:  # noqa: BLE001 - partial install safe-side
+        return False
+    return bool(is_non_actionable_prompt(prompt_text))
 
 
 async def _run_research_loop_hook(

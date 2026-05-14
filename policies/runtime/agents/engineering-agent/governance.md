@@ -14,6 +14,7 @@
 | Repo contract | [`repo-contract-discovery.md`](repo-contract-discovery.md) | 외부 repo 의 ISSUE/PR template / CONTRIBUTING / CODEOWNERS / workflows discovery + Yule 기본 규칙 fallback |
 | Growth loop | [`growth-loop.md`](growth-loop.md) | resources / projects / daily 정리 + 반복 패턴의 정책 승격 lifecycle |
 | Design-to-code | [`design-to-code-assets.md`](design-to-code-assets.md) | product-designer 자산 (icon / logo / favicon) 정의 + frontend-engineer SVG/컴포넌트 구현 + raster 경계 |
+| Diagram conventions | [`diagram-conventions.md`](diagram-conventions.md) | 시스템 토폴로지 / 시퀀스 / ERD / 상태 전이 도식을 Mermaid 로 그리기. README / docs / Obsidian mirror 일관. (P0-K 추가) |
 
 추가 cross-link (운영자 docs):
 

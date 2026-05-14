@@ -136,17 +136,43 @@ def derive_research_topic(pack: "ResearchPack") -> str:
         if question:
             candidates.append(_first_sentence(question))
 
+    # P0-K (#148) — last-line defense: reject any candidate that
+    # decomposes to a command-only operational phrase like "진행 해줘"
+    # or "이대로 진행". These were leaking into pack.title / summary
+    # via the legacy continuation path (which now guards at the write
+    # site), but this filter ensures even legacy data + future regressions
+    # never surface as a thread title. Fall through to the literal
+    # default instead.
+    try:
+        from ..agents.routing import is_non_actionable_prompt
+    except Exception:  # noqa: BLE001 - partial install safe-side
+        is_non_actionable_prompt = None  # type: ignore[assignment]
+
+    def _is_command_only(text: str) -> bool:
+        if is_non_actionable_prompt is None:
+            return False
+        return bool(is_non_actionable_prompt(text))
+
     for candidate in candidates:
         compact = _compact_topic(candidate)
-        if compact and len(compact) <= TOPIC_BUDGET:
+        if not compact:
+            continue
+        if _is_command_only(compact):
+            continue
+        if len(compact) <= TOPIC_BUDGET:
             return compact
 
     # Fall back to a hard-trimmed version of the first non-empty
     # candidate — title preferred. Final fallback keeps a sensible
-    # anchor so create_thread_fn never sees blank.
+    # anchor so create_thread_fn never sees blank. P0-K: same
+    # command-only filter applies here.
     for candidate in candidates:
-        if candidate:
-            return _compact_topic(candidate)[:TOPIC_BUDGET]
+        if not candidate:
+            continue
+        compact = _compact_topic(candidate)
+        if _is_command_only(compact):
+            continue
+        return compact[:TOPIC_BUDGET]
     return "engineering 작업"
 
 

@@ -440,6 +440,7 @@ def _resolve_session_for_forum_thread(*, message, session_lister):
     except Exception:  # noqa: BLE001
         return None
 
+    # P0-K (#148) — primary lookup: research_forum_thread_id.
     for session in sessions or ():
         extra = getattr(session, "extra", None) or {}
         if not isinstance(extra, dict):
@@ -449,6 +450,26 @@ def _resolve_session_for_forum_thread(*, message, session_lister):
             continue
         try:
             if int(forum_thread_id) == int(channel_id):
+                return session
+        except (TypeError, ValueError):
+            continue
+
+    # P0-K (#148) — fallback: resumed_thread_id. When the user
+    # continues a session via "기존 세션 X 이어가자" and later asks
+    # for a role-change in the resumed thread ("백엔드도 포함시켜"),
+    # the resumed thread channel doesn't carry the original
+    # research_forum_thread_id. Look up sessions whose extra
+    # ``resumed_thread_id`` matches the current channel so the
+    # role-change branch can resolve and update the right session.
+    for session in sessions or ():
+        extra = getattr(session, "extra", None) or {}
+        if not isinstance(extra, dict):
+            continue
+        resumed_thread_id = extra.get("resumed_thread_id")
+        if resumed_thread_id is None:
+            continue
+        try:
+            if int(resumed_thread_id) == int(channel_id):
                 return session
         except (TypeError, ValueError):
             continue

@@ -71,22 +71,88 @@ production 권장 경로 = `yule runtime up` 또는 systemd 기반 `yule run-ser
 
 ## 아키텍처 한눈에 보기
 
+> 다이어그램은 Mermaid 로 직접 그린다 — flowchart / sequence / ERD 모두. 정책: [policies/runtime/agents/engineering-agent/diagram-conventions.md](policies/runtime/agents/engineering-agent/diagram-conventions.md).
+
+### 시스템 토폴로지
+
+```mermaid
+flowchart LR
+  User[운영자]
+  Discord[Discord]
+  Planning[planning-bot]
+  Gateway[engineering-gateway]
+  Member[engineering-member × 7]
+  Runtime[yule runtime up]
+  Queue[SQLite cache + job queue]
+  Vault[Obsidian vault mirror]
+  Github[GitHub repo + Apps]
+
+  User --> Discord
+  Discord --> Planning
+  Discord --> Gateway
+  Discord --> Member
+  Gateway --> Runtime
+  Member --> Runtime
+  Planning --> Runtime
+  Runtime --> Queue
+  Runtime --> Github
+  Queue --> Vault
+  Runtime --> Vault
 ```
-[Discord]
-  ├─ planning-bot         (daily plan / checkpoint)
-  ├─ engineering-gateway  (#업무-접수 / 라우팅 / 상태 응답)
-  └─ engineering-member × 7  (역할별 turn / 운영-리서치 forum 댓글)
-        │
-        ▼
-   shared SQLite (.cache/yule/cache.sqlite3)
-        │
-        ▼
-   Obsidian vault   ← 결정 / 리서치 / 회의록 결정적 export
+
+### Gateway 라우팅 — front-door semantics
+
+```mermaid
+flowchart TB
+  Msg[user message]
+  Intent{detect_engineering_intent}
+  ReadOnly[READ_ONLY_INTENTS<br/>status / session_count / session_list /<br/>blocked_reason / continue / change_direction /<br/>APPROVAL_ACTION]
+  Confirm{CONFIRM_INTAKE<br/>+ substantive last_proposed_prompt?}
+  Intake[TASK_INTAKE_CANDIDATE<br/>+ auto_collect]
+  Coding{coding_bootstrap<br/>repo+stack+write?}
+  Approval[short ack — no new intake / forum]
+  Promote[promote last_proposed_prompt → intake]
+  Bootstrap[coding handoff packet<br/>skip insufficiency]
+  Collect[autonomous collector]
+
+  Msg --> Intent
+  Intent -->|read-only| ReadOnly
+  Intent -->|confirm phrase| Confirm
+  Intent -->|substantive| Intake
+  ReadOnly --> Approval
+  Confirm -->|yes| Promote
+  Confirm -->|no — bare command-only| Approval
+  Intake --> Coding
+  Coding -->|bypass| Bootstrap
+  Coding -->|no signal| Collect
+```
+
+### Continuation path + P0-K 가드 (4 critical site)
+
+```mermaid
+flowchart TB
+  Cont[continuation prompt]
+  Cmd{is_command_only_prompt?}
+  A1["site A — bot.py:_record_engineering_continuation<br/>(canonical_prompt_override / latest_continuation_prompt)"]
+  B1["site B — engineering_channel_router._run_research_loop_hook<br/>(3 호출 사이트)"]
+  C1["site C — research_forum.derive_research_topic<br/>(thread title source)"]
+  D1["site D — engineering_conversation.CONFIRM_INTAKE<br/>(intake_prompt 가드)"]
+  Skip[skip — no overwrite / no research loop /<br/>no forum thread / APPROVAL_ACTION ack]
+  Continue[normal continuation flow]
+
+  Cont --> Cmd
+  Cmd -->|yes — block all 4 sites| A1
+  A1 --> B1
+  B1 --> C1
+  C1 --> D1
+  D1 --> Skip
+  Cmd -->|no — substantive| Continue
 ```
 
 - 역할 봇은 각자 독립 프로세스로 운영된다.
 - 모든 작업 상태는 SQLite 에 저장되고, Discord 메시지는 신호일 뿐이다.
 - Engineering 런타임 lifecycle 정책: [policies/runtime/agents/engineering-agent/lifecycle-mvp.md](policies/runtime/agents/engineering-agent/lifecycle-mvp.md).
+- P0-K command-only 가드 정책: [docs/p0k-command-only-research-thread-guard.md](docs/p0k-command-only-research-thread-guard.md).
 
 ## 문서 안내
 

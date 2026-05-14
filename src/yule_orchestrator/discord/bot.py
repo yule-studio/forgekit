@@ -2197,6 +2197,21 @@ def _record_engineering_continuation(
     if not cleaned_prompt:
         return session
 
+    # P0-K (#148) — never let a command-only operational phrase
+    # ("진행 해줘" / "이대로 진행" / "작업 승인 할게 진행 해줘") become
+    # latest_continuation_prompt or canonical_prompt_override. The
+    # research loop + forum thread title reader treat those keys as
+    # *task* prompts; persisting the operational phrase causes
+    # "[Reference] 진행 해줘" thread spam.
+    try:
+        from ..agents.routing import is_non_actionable_prompt
+    except Exception:  # noqa: BLE001 - partial install safe-side
+        is_non_actionable_prompt = None  # type: ignore[assignment]
+    prompt_is_command_only = bool(
+        is_non_actionable_prompt is not None
+        and is_non_actionable_prompt(cleaned_prompt)
+    )
+
     extra = dict(getattr(session, "extra", {}) or {})
 
     history = list(extra.get("continuation_requests") or ())
@@ -2205,6 +2220,7 @@ def _record_engineering_continuation(
             "prompt": cleaned_prompt,
             "thread_id": resumed_thread_id,
             "recorded_at": datetime.now().astimezone().isoformat(),
+            "is_command_only": prompt_is_command_only,
         }
     )
     # Cap the history so a single long-running session doesn't bloat
@@ -2212,14 +2228,25 @@ def _record_engineering_continuation(
     if len(history) > 20:
         history = history[-20:]
     extra["continuation_requests"] = history
-    extra["latest_continuation_prompt"] = cleaned_prompt
     if resumed_thread_id is not None:
         extra["resumed_thread_id"] = resumed_thread_id
-    if _is_command_only_prompt(getattr(session, "prompt", None)):
-        # The original prompt was a command, not a task description —
-        # let downstream readers prefer the continuation as the
-        # canonical record.
-        extra["canonical_prompt_override"] = cleaned_prompt
+
+    if prompt_is_command_only:
+        # P0-K — record the *event* (history above) so audit + status
+        # can show the user pressed approval/proceed, but do NOT
+        # overwrite latest_continuation_prompt / canonical_prompt_override
+        # with the command-only phrase. Existing values stay intact.
+        extra.setdefault("command_only_continuation_count", 0)
+        extra["command_only_continuation_count"] = (
+            extra["command_only_continuation_count"] + 1
+        )
+    else:
+        extra["latest_continuation_prompt"] = cleaned_prompt
+        if _is_command_only_prompt(getattr(session, "prompt", None)):
+            # The original prompt was a command, not a task description —
+            # let downstream readers prefer the continuation as the
+            # canonical record.
+            extra["canonical_prompt_override"] = cleaned_prompt
 
     try:
         from dataclasses import replace
