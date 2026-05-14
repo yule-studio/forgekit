@@ -165,7 +165,7 @@ class ValidTokenDispatchTests(unittest.TestCase):
         sys.stderr = self._original_stderr
 
     def test_valid_token_invokes_runner(self) -> None:
-        from yule_orchestrator.discord import member_bot as member_bot_mod
+        from yule_orchestrator.discord.member import bot as member_bot_mod
 
         captured: dict = {}
 

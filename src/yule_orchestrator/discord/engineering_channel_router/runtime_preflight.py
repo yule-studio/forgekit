@@ -461,7 +461,7 @@ async def _handle_join_or_append(
     # P0-E (#134 후속): JOIN/APPEND 의 thread lookup + resume 도 long-running
     # path (Discord API 조회 + 세션 hydration). conversation_fn wrap 과 동일
     # 6s interval 로 typing 유지 — 끊김 race 방지.
-    from ..typing_indicator import typing_keepalive
+    from ..ui.typing_indicator import typing_keepalive
 
     async with typing_keepalive(
         getattr(message, "channel", None),

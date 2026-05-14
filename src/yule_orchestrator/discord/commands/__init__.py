@@ -7,26 +7,26 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from ..agents import (
+from ...agents import (
     Dispatcher,
     TaskType,
     WorkflowError,
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from ..agents.review_loop import (
+from ...agents.review_loop import (
     ReviewFeedback,
     ReviewSeverity,
     ReviewSource,
 )
-from .formatter import (
+from ..ui.formatter import (
     format_checkpoints_message,
     format_plan_today_message,
     format_snapshot_regenerating_message,
     format_snapshot_regeneration_failed_message,
     split_discord_message,
 )
-from .planning_runtime import build_due_checkpoints, load_plan_today_snapshot
+from ..runtime.planning import build_due_checkpoints, load_plan_today_snapshot
 
 
 def register_discord_commands(

@@ -48,11 +48,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from ..agents.coding.authorization import (
+from ...agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
 )
-from ..agents.discussion import (
+from ...agents.discussion import (
     ContextPack,
     ContextPackBuilder,
     DiscussionHandoff,

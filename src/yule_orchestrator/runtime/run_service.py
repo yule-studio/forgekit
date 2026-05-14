@@ -275,8 +275,8 @@ async def _run_discord_member_bot(
         )
         return EXIT_UNKNOWN_SERVICE
 
-    from ..discord.member_bot import run_member_bot_until_shutdown
-    from ..discord.member_bots import (
+    from ..discord.member.bot import run_member_bot_until_shutdown
+    from ..discord.member.bots import (
         env_key_for,
         looks_like_real_discord_token,
         MemberBotProfile,

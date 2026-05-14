@@ -23,8 +23,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.member_bot import _dispatch_member_message
-from yule_orchestrator.discord.member_bots import MemberBotProfile
+from yule_orchestrator.discord.member.bot import _dispatch_member_message
+from yule_orchestrator.discord.member.bots import MemberBotProfile
 
 
 class _CountingChannel:
@@ -89,8 +89,8 @@ class MemberBotKeepaliveTests(unittest.TestCase):
         # _dispatch_member_message call path — we can't directly inject,
         # but we *can* patch typing_keepalive globally for this test to
         # use a very short interval that proves the refresh loop fires.
-        from yule_orchestrator.discord import member_bot as mb
-        from yule_orchestrator.discord.typing_indicator import (
+        from yule_orchestrator.discord.member import bot as mb
+        from yule_orchestrator.discord.ui.typing_indicator import (
             typing_keepalive as original,
         )
 
@@ -122,7 +122,7 @@ class IgnoredPathSilenceTests(unittest.TestCase):
         channel = _CountingChannel()
         message = SimpleNamespace(content="[research-turn:s other-role] go", channel=channel)
 
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         with patch.object(
             mb, "handle_research_turn_message", return_value=None
@@ -147,7 +147,7 @@ class GatewayKeepaliveSmokeTests(unittest.TestCase):
         from yule_orchestrator.discord.engineering_channel_router import (
             _maybe_await,
         )
-        from yule_orchestrator.discord.typing_indicator import typing_keepalive
+        from yule_orchestrator.discord.ui.typing_indicator import typing_keepalive
 
         self.assertTrue(callable(typing_keepalive))
         # No-op channel → graceful fallthrough.

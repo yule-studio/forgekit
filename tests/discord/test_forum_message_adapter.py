@@ -32,7 +32,7 @@ except ModuleNotFoundError:
 from yule_orchestrator.agents.job_queue.approval_worker import ApprovalWorker
 from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
 from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.forum_message_adapter import (
+from yule_orchestrator.discord.forum.message_adapter import (
     RESPONSE_ROLE_ADDED,
     RESPONSE_ROLE_ALL_TEAM,
     RESPONSE_ROLE_CHANGE_NO_SESSION,

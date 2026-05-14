@@ -26,7 +26,7 @@ from yule_orchestrator.agents.research.pack import (
     ResearchRequest,
     ResearchSource,
 )
-from yule_orchestrator.discord.formatter import split_discord_message
+from yule_orchestrator.discord.ui.formatter import split_discord_message
 from yule_orchestrator.discord.research_forum import (
     DISCORD_MESSAGE_REPLY_LIMIT,
     FORUM_STARTER_CONTENT_LIMIT,
@@ -339,7 +339,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
 
     def test_team_turn_long_post_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_orchestrator.discord.member_bot import _post_team_turn
+        from yule_orchestrator.discord.member.bot import _post_team_turn
 
         long_post = "라" * 5000
 
@@ -356,7 +356,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
                 captured.append(content)
 
         # Avoid touching the real session cache from the persistence helper.
-        from yule_orchestrator.discord import member_bot as member_bot_mod
+        from yule_orchestrator.discord.member import bot as member_bot_mod
 
         original_persist = member_bot_mod._mark_team_turn_persisted
         member_bot_mod._mark_team_turn_persisted = lambda *_a, **_kw: None
@@ -371,7 +371,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
 
     def test_research_turn_long_post_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_orchestrator.discord.member_bot import _post_research_turn
+        from yule_orchestrator.discord.member.bot import _post_research_turn
 
         long_message = "z" * 4500
         outcome = SimpleNamespace(message=long_message)

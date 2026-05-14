@@ -48,7 +48,7 @@ from yule_orchestrator.agents.job_queue.github_work_order import (
 )
 from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
 from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.github_workos_adapter import (
+from yule_orchestrator.discord.integrations.github_workos_adapter import (
     SKIPPED_DUPLICATE_APPROVAL,
     SKIPPED_NO_CODING_INTENT,
     SKIPPED_OBSIDIAN_INTENT,

@@ -265,7 +265,7 @@ async def handle_forum_followup(
 def _default_conversation_fn(**kwargs):
     """Lazy import wrapper so tests don't pay the cost when injecting."""
 
-    from .engineering_conversation import build_engineering_conversation_response
+    from ..engineering_conversation import build_engineering_conversation_response
 
     return build_engineering_conversation_response(**kwargs)
 

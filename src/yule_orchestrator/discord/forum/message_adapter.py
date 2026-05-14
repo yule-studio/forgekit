@@ -138,7 +138,7 @@ async def route_forum_message(
     # Branch 1 — Obsidian save request → ApprovalRequest producer.
     # ------------------------------------------------------------------
 
-    from ..agents.job_queue.forum_obsidian_handoff import (
+    from ...agents.job_queue.forum_obsidian_handoff import (
         SKIPPED_NOT_SAVE_REQUEST,
         render_handoff_response,
         route_forum_obsidian_save_request,
@@ -190,7 +190,7 @@ async def route_forum_message(
     # Branch 2 — role-change request ("QA도 참여시켜").
     # ------------------------------------------------------------------
 
-    from ..agents.lifecycle.role_selection import (
+    from ...agents.lifecycle.role_selection import (
         ROLE_TECH_LEAD,
         apply_role_change,
         append_role_change_audit,
@@ -321,16 +321,16 @@ def _resolve_queue_deps(*, queue, approval_worker, session_lister):
 
     if queue is not None and approval_worker is not None and session_lister is not None:
         return queue, approval_worker, session_lister
-    from ..agents.job_queue import (
+    from ...agents.job_queue import (
         ApprovalWorker,
         HeartbeatStore,
         JobQueue,
     )
-    from ..agents.job_queue.approval_discord_poster import (
+    from ...agents.job_queue.approval_discord_poster import (
         build_approval_channel_resolver,
         build_production_post_fn,
     )
-    from ..agents.workflow_state import list_sessions as _list_sessions
+    from ...agents.workflow_state import list_sessions as _list_sessions
 
     q = queue or JobQueue()
     if approval_worker is None:
@@ -366,8 +366,8 @@ def _resolve_obsidian_writer_worker(*, obsidian_writer_worker, queue):
     if obsidian_writer_worker is not None:
         return obsidian_writer_worker
     try:
-        from ..agents.job_queue import HeartbeatStore
-        from ..agents.job_queue.obsidian_writer_worker import (
+        from ...agents.job_queue import HeartbeatStore
+        from ...agents.job_queue.obsidian_writer_worker import (
             ObsidianWriterWorker,
             default_render_fn,
             default_vault_root_resolver,
@@ -395,7 +395,7 @@ def _resolve_session_persistence(*, session_loader, session_updater):
     if session_loader is not None and session_updater is not None:
         return session_loader, session_updater
     try:
-        from ..agents.workflow_state import (
+        from ...agents.workflow_state import (
             load_session as _load,
             update_session as _update,
         )
@@ -594,7 +594,7 @@ async def _route_forum_followup(
     when the follow-up helper itself declines to respond.
     """
 
-    from .forum_conversation_adapter import (
+    from ..forum.conversation_adapter import (
         ForumFollowupResult,
         handle_forum_followup,
     )

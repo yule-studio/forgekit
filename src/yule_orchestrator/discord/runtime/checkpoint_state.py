@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Sequence
 
-from ..planning.models import PlanningCheckpoint
-from ..storage import (
+from ...planning.models import PlanningCheckpoint
+from ...storage import (
     TaskCompletionEvent,
     load_json_cache,
     record_task_completion_event,

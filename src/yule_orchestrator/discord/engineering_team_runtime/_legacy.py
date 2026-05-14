@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Tuple
 
-from ..agents.deliberation import (
+from ...agents.deliberation import (
     DeliberationContext,
     RoleTake,
     TechLeadSynthesis,
@@ -37,8 +37,8 @@ from ..agents.deliberation import (
     run_role_deliberation,
     synthesize,
 )
-from ..agents.research.pack import ResearchPack
-from ..agents.workflow_state import WorkflowSession, load_session
+from ...agents.research.pack import ResearchPack
+from ...agents.workflow_state import WorkflowSession, load_session
 
 
 TEAM_CONVERSATION_KEY = "team_conversation"
@@ -286,7 +286,7 @@ def build_turn_plan(session: WorkflowSession) -> Tuple[TeamTurn, ...]:
     # A-M7.5 — gate the plan to the effective active-roles set.
     # Without this gate, every role in role_sequence renders even when
     # the user-driven role-selection narrowed participation.
-    from ..agents.lifecycle.role_selection import get_effective_active_roles
+    from ...agents.lifecycle.role_selection import get_effective_active_roles
 
     active = set(get_effective_active_roles(session))
     plan: list[TeamTurn] = []
@@ -598,7 +598,7 @@ def handle_research_turn_message(
         # and the audit persistence; we just hand it the captured
         # session + pack_loader.
         def _synthesis_runner() -> Optional[ResearchTurnOutcome]:
-            from ..agents.job_queue.standalone_runners import (
+            from ...agents.job_queue.standalone_runners import (
                 _default_build_synthesis_outcome,
             )
 
@@ -823,7 +823,7 @@ def _render_role_runtime_preface(
     """
 
     try:
-        from ..agents.runtime import (
+        from ...agents.runtime import (
             RuntimeInput,
             role_policy_for,
             run_runtime_loop,
@@ -898,7 +898,7 @@ def _render_role_runtime_preface(
     # template in front of them. Truncated to 6 sections to keep the
     # preface compact when a role lists more.
     try:
-        from ..agents.role_profiles import output_template_for_role
+        from ...agents.role_profiles import output_template_for_role
     except Exception:  # noqa: BLE001 - registry optional in partial installs
         output_sections: tuple = ()
     else:
@@ -1035,7 +1035,7 @@ def _collect_role_research_pack(
     )
 
     try:
-        from ..agents.research.collector import auto_collect_or_request_more_input
+        from ...agents.research.collector import auto_collect_or_request_more_input
     except Exception as exc:  # noqa: BLE001
         record = _build_role_research_record(
             query=role_query,
@@ -1244,7 +1244,7 @@ def _apply_role_runner_for_open_or_turn(
     if dispatch is None or outcome is None:
         return outcome
     try:
-        from ..agents.job_queue.standalone_runners import (
+        from ...agents.job_queue.standalone_runners import (
             apply_role_runner_to_outcome,
         )
     except Exception:  # noqa: BLE001 - partial install fallback
@@ -1294,7 +1294,7 @@ def _run_role_take_via_queue(
         return None
 
     try:
-        from ..agents.job_queue import (
+        from ...agents.job_queue import (
             HeartbeatStore,
             JobQueue,
             RoleTakeWorker,
@@ -1415,7 +1415,7 @@ def record_role_turn_event(
     try:
         from dataclasses import replace as _replace
         from datetime import datetime as _dt
-        from ..agents.workflow_state import (
+        from ...agents.workflow_state import (
             load_session as _load,
             update_session as _update,
         )
@@ -1506,7 +1506,7 @@ def _load_session_for_record(session_id: str) -> Optional[WorkflowSession]:
     if not session_id:
         return None
     try:
-        from ..agents.workflow_state import load_session as _load
+        from ...agents.workflow_state import load_session as _load
     except Exception:  # noqa: BLE001 - partial install fallback
         return None
     try:
@@ -1529,7 +1529,7 @@ def _persist_session_extra_update(
 
     try:
         from dataclasses import replace as _replace
-        from ..agents.workflow_state import update_session as _update
+        from ...agents.workflow_state import update_session as _update
     except Exception:  # noqa: BLE001
         return
     try:
@@ -1745,7 +1745,7 @@ def _load_synthesis_text_from_session_extra(session: WorkflowSession) -> Optiona
     if not isinstance(raw, dict):
         return None
     try:
-        from ..agents.deliberation import render_synthesis, synthesis_from_dict
+        from ...agents.deliberation import render_synthesis, synthesis_from_dict
     except Exception:  # noqa: BLE001 - best-effort restore
         return None
     try:
@@ -1770,7 +1770,7 @@ def _load_pack_from_session_extra(session: WorkflowSession) -> Any:
     if not isinstance(raw, dict) or not raw:
         return None
     try:
-        from ..agents.research.pack import pack_from_dict
+        from ...agents.research.pack import pack_from_dict
     except Exception:  # noqa: BLE001
         return None
     try:
@@ -1977,7 +1977,7 @@ def _retrieve_memory_for_role(
     """Best-effort memory retrieval — never raises into the caller."""
 
     try:
-        from ..memory.retrieval import fetch_role_context
+        from ...memory.retrieval import fetch_role_context
     except Exception:  # noqa: BLE001 - memory layer optional
         return ()
     query_parts: list[str] = []
@@ -2022,7 +2022,7 @@ def synthesize_thread(
     # Stamp citation IDs once so the synthesis text and any later
     # observability hook (e.g. format_memory_block) refer to the same
     # labels.
-    from ..agents.deliberation import assign_citation_ids
+    from ...agents.deliberation import assign_citation_ids
 
     memory_context = assign_citation_ids(raw_memory) if raw_memory else ()
     synth = synthesize(

@@ -40,7 +40,7 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
 )
 from yule_orchestrator.agents.job_queue.state_machine import JobState
 from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.approval_reply_router import (
+from yule_orchestrator.discord.approval.reply_router import (
     RESPONSE_APPROVED,
     RESPONSE_DUPLICATE,
     RESPONSE_HOLD_OR_UNCLEAR,
