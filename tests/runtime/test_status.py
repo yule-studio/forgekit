@@ -311,14 +311,34 @@ class QueueSummaryTests(_StatusFixture):
             report.warnings,
         )
 
-    def test_empty_queue_yields_no_job_types(self) -> None:
+    def test_empty_queue_yields_zero_row_canonical_job_types(self) -> None:
+        # Previously this asserted ``report.job_types == ()`` — meaning the
+        # operator surface hid every job type until it had work. That
+        # made "executor wired but idle" indistinguishable from "executor
+        # missing", which is the exact ambiguity the coding_execute
+        # operator-surface fix targets. Canonical job types are now always
+        # surfaced with zero rows.
         report = build_runtime_status(
             profile=self.PROFILE_NAME,
             queue=self.queue,
             heartbeats=self.heartbeats,
             now=_FIXED_NOW,
         )
-        self.assertEqual(report.job_types, ())
+        types_seen = {jt.job_type for jt in report.job_types}
+        self.assertTrue(
+            {
+                "research_collect",
+                "role_take",
+                "approval_post",
+                "obsidian_write",
+                "coding_execute",
+            }.issubset(types_seen),
+            msg=f"missing canonical job types: {types_seen}",
+        )
+        for jt in report.job_types:
+            self.assertEqual(jt.queued, 0)
+            self.assertEqual(jt.in_progress, 0)
+            self.assertEqual(jt.failed_terminal, 0)
 
 
 # ---------------------------------------------------------------------------

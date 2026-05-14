@@ -68,10 +68,24 @@ _KIND_TO_JOB_TYPE: Mapping[ServiceKind, Optional[str]] = {
     ServiceKind.ROLE_WORKER: "role_take",
     ServiceKind.APPROVAL_WORKER: "approval_post",
     ServiceKind.OBSIDIAN_WRITER: "obsidian_write",
+    ServiceKind.CODING_EXECUTOR: "coding_execute",
     ServiceKind.SUPERVISOR: None,
     ServiceKind.DISCORD_GATEWAY: None,
     ServiceKind.RESERVED_DISCORD_GATEWAY: None,
 }
+
+
+# Job types we always surface in the queue summary, even when the row
+# count is zero, so operators can distinguish "executor up + nothing to
+# do" from "this job type isn't wired at all". Reflects the canonical
+# 4-worker set this runtime ships with.
+_ALWAYS_VISIBLE_JOB_TYPES: Tuple[str, ...] = (
+    "research_collect",
+    "role_take",
+    "approval_post",
+    "obsidian_write",
+    "coding_execute",
+)
 
 
 @dataclass(frozen=True)
@@ -226,6 +240,29 @@ class CompletionFunnelSummary:
 
 
 @dataclass(frozen=True)
+class CodingDispatchSummary:
+    """Approved-coding sessions waiting for the dispatcher.
+
+    ``ready_sessions`` counts sessions whose ``coding_proposal`` has
+    been promoted to ``coding_job=ready`` AND whose ``coding_execute``
+    dispatch hasn't fired yet. ``dispatched_sessions`` counts the ones
+    that already have a dispatch marker (so operators can confirm the
+    producer tick is actually running).
+
+    Used by operators to tell apart the two failure modes the user
+    hit on session ``3163b5cf6c9b``:
+
+    * executor ALIVE + 0 ready / 0 dispatched → no eligible work
+    * executor ALIVE + N>0 ready / 0 dispatched → producer tick missing
+    * executor ALIVE + 0 ready / N>0 dispatched → all caught up
+    """
+
+    ready_sessions: int = 0
+    dispatched_sessions: int = 0
+    sample_session_ids: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RuntimeStatusReport:
     """Top-level snapshot returned by :func:`build_runtime_status`."""
 
@@ -239,6 +276,7 @@ class RuntimeStatusReport:
     autonomy_recent: Tuple[AutonomyTickSummary, ...] = ()
     completion_funnel_recent: Tuple[CompletionFunnelSummary, ...] = ()
     autonomy_locks_held: Tuple[str, ...] = ()
+    coding_dispatch: CodingDispatchSummary = CodingDispatchSummary()
 
 
 # ---------------------------------------------------------------------------
@@ -994,6 +1032,8 @@ def build_runtime_status(
         completion_funnel_recent=funnel_recent,
     )
 
+    coding_dispatch = _build_coding_dispatch_summary()
+
     return RuntimeStatusReport(
         profile=profile,
         generated_at=now_ts,
@@ -1005,6 +1045,44 @@ def build_runtime_status(
         autonomy_recent=autonomy_recent,
         completion_funnel_recent=funnel_recent,
         autonomy_locks_held=locks_held,
+        coding_dispatch=coding_dispatch,
+    )
+
+
+def _build_coding_dispatch_summary() -> CodingDispatchSummary:
+    """Count approved-coding sessions waiting for / already-dispatched to executor.
+
+    Best-effort: any exception from the workflow store falls back to a
+    zero summary so the rest of the status report still renders. The
+    operator surface treats "no data" as "no signal" rather than as
+    "executor up + no work" — see ``_build_warnings`` for the explicit
+    warning thresholds.
+    """
+
+    try:
+        from ..agents.job_queue.coding_execute_dispatcher import iter_ready_coding_jobs
+    except Exception:  # noqa: BLE001 - missing module shouldn't crash status
+        return CodingDispatchSummary()
+
+    ready_ids: list[str] = []
+    dispatched_ids: list[str] = []
+    try:
+        for ready in iter_ready_coding_jobs(include_dispatched=True):
+            session_id = str(ready.session_id or "")
+            if not session_id:
+                continue
+            if ready.has_been_dispatched():
+                dispatched_ids.append(session_id)
+            else:
+                ready_ids.append(session_id)
+    except Exception:  # noqa: BLE001 - cache hiccup shouldn't crash status
+        return CodingDispatchSummary()
+
+    sample = tuple(ready_ids[:5]) if ready_ids else tuple(dispatched_ids[:5])
+    return CodingDispatchSummary(
+        ready_sessions=len(ready_ids),
+        dispatched_sessions=len(dispatched_ids),
+        sample_session_ids=sample,
     )
 
 
@@ -1073,6 +1151,12 @@ def _build_job_type_summaries(
     oldest = queue.oldest_queued_at_per_type()
 
     job_types_seen: set[str] = {jt for (jt, _state) in counts.keys()}
+    # Always surface the canonical workers' job types so operators can
+    # tell "executor wired + idle" from "executor missing". Without this
+    # `runtime status` hides ``coding_execute`` (and the others) until
+    # the first row lands, making the absence indistinguishable from a
+    # mis-configured runtime.
+    job_types_seen.update(_ALWAYS_VISIBLE_JOB_TYPES)
     summaries: list[JobTypeSummary] = []
     for job_type in sorted(job_types_seen):
         queued = counts.get((job_type, JobState.QUEUED.value), 0)
