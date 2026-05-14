@@ -1112,6 +1112,68 @@ def format_status_diagnostic_response(
     if obsidian_mirror_path:
         lines.append(f"- Obsidian mirror: `{obsidian_mirror_path}`")
 
+    # P0-I stage 3 — enforcement surface. 값 없으면 라인 자체 생략.
+    tracking_payload = extra.get("tracking_validation")
+    if isinstance(tracking_payload, Mapping) and tracking_payload:
+        status_value = _coerce_str(tracking_payload.get("status"))
+        blocked = bool(tracking_payload.get("blocked"))
+        missing = tracking_payload.get("missing_links") or ()
+        allowed_ex = bool(tracking_payload.get("allowed_via_contract_exception"))
+        if status_value == "ok":
+            lines.append("- tracking chain: ✅ complete")
+        elif status_value == "standalone_no_target":
+            lines.append(
+                "- tracking chain: ℹ️ GitHub target 없음 (research/discussion only)"
+            )
+        else:
+            flag = "⚠️" if blocked else "ℹ️"
+            missing_text = (
+                ", ".join(str(m) for m in missing) if missing else "unknown"
+            )
+            suffix = " (RepoContract 예외 적용)" if allowed_ex else ""
+            lines.append(
+                f"- tracking chain: {flag} missing {missing_text}{suffix}"
+            )
+
+    growth_ledger = extra.get("growth_ledger")
+    if isinstance(growth_ledger, list) and growth_ledger:
+        try:
+            from ..agents.lifecycle.growth_ledger import summarize_for_status
+
+            growth_line = summarize_for_status(extra)
+        except Exception:  # noqa: BLE001
+            growth_line = f"🌱 growth ledger: {len(growth_ledger)} events"
+        if growth_line:
+            lines.append(f"- {growth_line}")
+
+    pr_slice_payload = extra.get("pr_slice_classification")
+    if isinstance(pr_slice_payload, Mapping) and pr_slice_payload:
+        primary = _coerce_str(pr_slice_payload.get("primary_slice"))
+        warning = bool(pr_slice_payload.get("size_warning"))
+        if primary:
+            warning_tag = " ⚠️ size > 800 lines" if warning else ""
+            lines.append(f"- PR slice: `{primary}`{warning_tag}")
+
+    vault_push_audit = extra.get("vault_push_audit")
+    if isinstance(vault_push_audit, list) and vault_push_audit:
+        last = vault_push_audit[-1]
+        if isinstance(last, Mapping):
+            status_value = _coerce_str(last.get("status")) or "unknown"
+            action = _coerce_str(last.get("action")) or "vault_action"
+            if status_value == "not_configured":
+                reason = (
+                    _coerce_str(last.get("not_configured_reason"))
+                    or _coerce_str(extra.get("vault_push_not_configured_reason"))
+                    or "unknown"
+                )
+                lines.append(
+                    f"- vault {action}: ⚠️ not configured ({reason})"
+                )
+            elif status_value == "queued_for_approval":
+                lines.append(f"- vault {action}: 📬 queued for approval")
+            elif status_value == "queued_auto":
+                lines.append(f"- vault {action}: 📦 queued (auto)")
+
     coding_status_line = _format_coding_status_line(
         coding_proposal_payload, coding_job_payload
     )

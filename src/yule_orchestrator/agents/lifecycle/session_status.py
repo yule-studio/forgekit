@@ -117,6 +117,16 @@ class SessionStatusReport:
     repo_contract_detected: bool = False
     repo_contract_summary: Optional[str] = None
     obsidian_mirror_path: Optional[str] = None
+    # P0-I stage 3 — enforcement-layer surface fields. 모두 optional.
+    tracking_status: Optional[str] = None  # ok / needs_issue / needs_branch / ...
+    tracking_blocked: bool = False
+    tracking_summary: Optional[str] = None  # status_summary_line text
+    growth_ledger_summary: Optional[str] = None
+    growth_promotion_candidate_count: int = 0
+    vault_push_audit_count: int = 0
+    vault_push_not_configured_reason: Optional[str] = None
+    pr_slice_primary: Optional[str] = None
+    pr_size_warning: bool = False
     signals: Tuple[SessionStatusSignal, ...] = field(default_factory=tuple)
 
     def has_signal(self, code: str) -> bool:
@@ -284,6 +294,61 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
 
     obsidian_mirror_path = _coerce_str(extra.get("obsidian_mirror_path"))
 
+    # P0-I stage 3 — enforcement surface from session.extra.
+    tracking_payload = extra.get("tracking_validation")
+    tracking_status: Optional[str] = None
+    tracking_blocked = False
+    tracking_summary: Optional[str] = None
+    if isinstance(tracking_payload, Mapping) and tracking_payload:
+        tracking_status = _coerce_str(tracking_payload.get("status"))
+        tracking_blocked = bool(tracking_payload.get("blocked"))
+        # Rebuild a one-line summary cheaply without importing the
+        # validator module (caller may not need it loaded).
+        missing = tracking_payload.get("missing_links") or ()
+        allowed_ex = bool(tracking_payload.get("allowed_via_contract_exception"))
+        if tracking_status == "ok":
+            tracking_summary = "✅ tracking chain complete"
+        elif tracking_status == "standalone_no_target":
+            tracking_summary = "ℹ️ tracking chain: GitHub target 없음 (research/discussion only)"
+        else:
+            flag = "⚠️" if tracking_blocked else "ℹ️"
+            missing_text = (
+                ", ".join(str(m) for m in missing) if missing else "unknown"
+            )
+            suffix = " (RepoContract 예외 적용)" if allowed_ex else ""
+            tracking_summary = (
+                f"{flag} tracking chain: missing {missing_text}{suffix}"
+            )
+
+    growth_ledger = extra.get("growth_ledger")
+    growth_ledger_summary: Optional[str] = None
+    growth_promotion_candidate_count = 0
+    if isinstance(growth_ledger, list) and growth_ledger:
+        # Cheap inline counts; full helper imported only when present.
+        try:
+            from .growth_ledger import summarize_for_status
+
+            growth_ledger_summary = summarize_for_status(extra)
+        except Exception:  # noqa: BLE001
+            growth_ledger_summary = f"🌱 growth ledger: {len(growth_ledger)} events"
+        candidates = extra.get("growth_promotion_candidates") or ()
+        growth_promotion_candidate_count = len(candidates) if isinstance(candidates, list) else 0
+
+    vault_push_audit = extra.get("vault_push_audit")
+    vault_push_audit_count = (
+        len(vault_push_audit) if isinstance(vault_push_audit, list) else 0
+    )
+    vault_push_not_configured_reason = _coerce_str(
+        extra.get("vault_push_not_configured_reason")
+    )
+
+    pr_slice_payload = extra.get("pr_slice_classification")
+    pr_slice_primary: Optional[str] = None
+    pr_size_warning = False
+    if isinstance(pr_slice_payload, Mapping) and pr_slice_payload:
+        pr_slice_primary = _coerce_str(pr_slice_payload.get("primary_slice"))
+        pr_size_warning = bool(pr_slice_payload.get("size_warning"))
+
     state_value = getattr(session, "state", None)
     state_label = getattr(state_value, "value", state_value)
 
@@ -342,6 +407,15 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
         repo_contract_detected=repo_contract_detected,
         repo_contract_summary=repo_contract_summary,
         obsidian_mirror_path=obsidian_mirror_path,
+        tracking_status=tracking_status,
+        tracking_blocked=tracking_blocked,
+        tracking_summary=tracking_summary,
+        growth_ledger_summary=growth_ledger_summary,
+        growth_promotion_candidate_count=growth_promotion_candidate_count,
+        vault_push_audit_count=vault_push_audit_count,
+        vault_push_not_configured_reason=vault_push_not_configured_reason,
+        pr_slice_primary=pr_slice_primary,
+        pr_size_warning=pr_size_warning,
         signals=signals,
     )
 
