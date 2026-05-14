@@ -1337,11 +1337,13 @@ def _persist_coding_session_context(
     message_text: str,
     user_links: Sequence[str] = (),
 ) -> Any:
-    """P0-H stage 2 — store gateway-prepared coding session context.
+    """P0-H stage 2 + P0-I stage 3 — store gateway-prepared coding session context.
 
     Calls :func:`prepare_coding_session_context` to compute the
     work_mode / topology / scope / github_target / repo_contract /
     coding_handoff_packet extras for *session*, then merges them in.
+    Additionally (P0-I) runs the **tracking enforcement validator** and
+    stores the result for the status surface to display.
 
     Ask-once contract: if the session already has work_mode set, the
     helper does not re-prompt and does not overwrite.
@@ -1376,9 +1378,28 @@ def _persist_coding_session_context(
     except Exception:  # noqa: BLE001
         return session
 
-    if not context.extras_update:
+    extras_update = dict(context.extras_update or {})
+
+    # P0-I stage 3 — tracking enforcement validation. Run it against
+    # the *post-update* extras so the validator sees github_target /
+    # work_mode / handoff packet that this very call just persisted.
+    try:
+        from ..agents.coding.tracking_enforcement import (
+            validate_tracking_chain,
+        )
+
+        post_update_extra = dict(existing_extra)
+        post_update_extra.update(extras_update)
+        tracking = validate_tracking_chain(post_update_extra)
+        extras_update["tracking_validation"] = dict(tracking.to_dict())
+        if tracking.blocked and tracking.blocked_reason:
+            extras_update["tracking_blocked_reason"] = tracking.blocked_reason
+    except Exception:  # noqa: BLE001
+        pass
+
+    if not extras_update:
         return session
-    return _persist_extra_keys(session, context.extras_update)
+    return _persist_extra_keys(session, extras_update)
 
 
 def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
