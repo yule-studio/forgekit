@@ -228,10 +228,14 @@ class ObsidianSaveRequestRouteTests(_AdapterFixture):
             result.approval_job_id, self.sent_thread_replies[0]
         )
 
-    def test_unrelated_forum_message_falls_through_to_role_branch(
+    def test_unrelated_forum_message_routed_to_followup_branch(
         self,
     ) -> None:
-        # Forum thread, no save request, no role change → not handled.
+        # P0-F: forum thread, no save request, no role change → now
+        # falls into branch 3 (forum conversational follow-up). With
+        # a thread-anchored session and the conversation helper
+        # finding *some* response, branch 3 returns handled=True
+        # — no longer dropped silently.
         session = _open_session()
         msg = _forum_message(content="이 자료 어떻게 봐?")
         result = _run(
@@ -246,9 +250,9 @@ class ObsidianSaveRequestRouteTests(_AdapterFixture):
                 session_updater=self.session_updater,
             )
         )
-        self.assertFalse(result.handled)
+        # Branch 3 picked it up; approval branch did not.
+        self.assertTrue(result.handled)
         self.assertEqual(self.posted_cards, [])
-        self.assertEqual(self.sent_thread_replies, [])
 
 
 # ---------------------------------------------------------------------------
