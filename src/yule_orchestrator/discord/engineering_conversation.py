@@ -225,6 +225,80 @@ def build_engineering_conversation_response(
             is_status_query=True,
         )
 
+    # P0-J (#146) — read-only intents hard rule. NEVER call
+    # _maybe_run_auto_collect / NEVER set ready_to_intake=True.
+    if intent.intent_id == SESSION_COUNT_QUERY:
+        body = format_session_count_response()
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=SESSION_COUNT_QUERY,
+            mention_user_id=mention_user_id,
+            is_status_query=True,
+        )
+
+    if intent.intent_id == SESSION_LIST_QUERY:
+        body = format_session_list_response()
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=SESSION_LIST_QUERY,
+            mention_user_id=mention_user_id,
+            is_status_query=True,
+        )
+
+    if intent.intent_id == BLOCKED_REASON_QUERY:
+        session = None
+        if callable(status_session_loader):
+            try:
+                try:
+                    session = status_session_loader(message_text=message_text)
+                except TypeError:
+                    session = status_session_loader()
+            except Exception:  # noqa: BLE001 - loader failure must not crash
+                session = None
+        body = format_blocked_reason_response(session)
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=BLOCKED_REASON_QUERY,
+            mention_user_id=mention_user_id,
+            is_status_query=True,
+        )
+
+    if intent.intent_id == CONTINUE_EXISTING_WORK:
+        session = None
+        if callable(status_session_loader):
+            try:
+                try:
+                    session = status_session_loader(message_text=message_text)
+                except TypeError:
+                    session = status_session_loader()
+            except Exception:  # noqa: BLE001
+                session = None
+        body = format_continue_existing_response(session)
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=CONTINUE_EXISTING_WORK,
+            mention_user_id=mention_user_id,
+            is_status_query=True,
+        )
+
+    if intent.intent_id == CHANGE_DIRECTION:
+        session = None
+        if callable(status_session_loader):
+            try:
+                try:
+                    session = status_session_loader(message_text=message_text)
+                except TypeError:
+                    session = status_session_loader()
+            except Exception:  # noqa: BLE001
+                session = None
+        body = format_change_direction_response(session, user_text=message_text)
+        return EngineeringConversationResponse(
+            content=_prepend_mention(body, mention_user_id),
+            intent_id=CHANGE_DIRECTION,
+            mention_user_id=mention_user_id,
+            is_status_query=True,
+        )
+
     if intent.intent_id == CONFIRM_INTAKE:
         intake_prompt = last_proposed_prompt or message_text
         suggested = _suggest_task_type(intake_prompt)
