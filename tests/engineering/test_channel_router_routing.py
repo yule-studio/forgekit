@@ -591,7 +591,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router._legacy.decide_routing",
+            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
             wraps=__import__(
                 "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
             ).decide_routing,
@@ -639,7 +639,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router._legacy.decide_routing",
+            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
             wraps=__import__(
                 "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
             ).decide_routing,
@@ -681,7 +681,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router._legacy.decide_routing",
+            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
             wraps=__import__(
                 "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
             ).decide_routing,
@@ -734,7 +734,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
         kickoff_fn = AsyncMock(side_effect=AssertionError("kickoff should not run"))
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router._legacy.decide_routing",
+            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
             return_value=EngineeringRoutingDecision(
                 action="join_existing_work",
                 matched_session_id="open-1",
@@ -781,7 +781,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
         loop_fn = AsyncMock(side_effect=AssertionError("loop should not run"))
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router._legacy.decide_routing",
+            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
             return_value=EngineeringRoutingDecision(
                 action="ask_for_clarification",
                 reason="후보 두 건이 비슷합니다",

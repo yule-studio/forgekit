@@ -99,7 +99,7 @@ def _handle_clarification_selection(*args, **kwargs):
     """Defer to ``_legacy._handle_clarification_selection`` (final
     extraction lives in P0-P step 12 inside main.py)."""
 
-    from ._legacy import _handle_clarification_selection as _impl
+    from .main import _handle_clarification_selection as _impl
 
     return _impl(*args, **kwargs)
 

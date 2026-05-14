@@ -1,7 +1,7 @@
-"""Engineering channel router — package facade (P0-P decomposition).
+"""Engineering channel router — package facade (P0-P decomposition complete).
 
 Historical monolith (``engineering_channel_router.py``, 3316 lines)
-is being split into 11 responsibility-aligned modules per the audit at
+split into 11 responsibility-aligned modules per the audit at
 ``docs/p0p-engineering-channel-router-decomposition.md``. Each module
 owns one slice of the gateway orchestration:
 
@@ -18,8 +18,8 @@ owns one slice of the gateway orchestration:
   * :mod:`.runtime_preflight`   — runtime intent + recall short-circuit.
   * :mod:`..engineering.clarification` (already extracted in P0-N4) —
                                     clarification cache + TTL + selection.
-  * :mod:`.main`                — `route_engineering_message` orchestration
-                                    + clarification CREATE driver.
+  * :mod:`.main`                — ``route_engineering_message`` orchestration
+                                    + clarification CREATE/JOIN drivers.
 
 This ``__init__.py`` is the **thin facade** — re-exports the public API
 so ``from yule_orchestrator.discord.engineering_channel_router import X``
@@ -29,10 +29,10 @@ supervisor.py, all test fixtures) without source changes.
 
 from __future__ import annotations
 
-# Until commits 3-12 fully extract each module, re-export everything
-# from the legacy single-file body so existing callers (and tests) keep
-# working verbatim. Subsequent commits replace these wildcard imports
-# with explicit per-module imports as content moves out of ``_legacy``.
+# Per-module explicit re-exports. The main module owns
+# ``route_engineering_message`` plus the two clarification drivers; all
+# other facade symbols pull directly from their responsibility-aligned
+# siblings so import-time graph stays clean (no wildcard imports).
 # Canonical dataclasses + type aliases live in .models (P0-P step 3).
 from .models import (  # noqa: F401 — facade re-export
     ConversationFn,
@@ -106,9 +106,9 @@ from .runtime_preflight import (  # noqa: F401 — facade re-export
     _run_runtime_preflight,
 )
 
-from ._legacy import *  # noqa: F401,F403 — facade re-export
-# Symbols still owned by _legacy until step 12 finishes extraction.
-from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+# Main orchestration entry + clarification drivers (P0-P step 12).
+from .main import (  # noqa: F401 — facade re-export
+    _drive_clarification_create_new_work,
     _handle_clarification_selection,
     is_coding_approval_phrase,
     is_coding_proposal_request,
