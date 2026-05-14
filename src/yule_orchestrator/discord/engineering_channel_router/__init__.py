@@ -86,6 +86,13 @@ from .obsidian_gate import (  # noqa: F401 — facade re-export
     _can_save_to_obsidian,
     _run_obsidian_approval_gate,
 )
+# Research loop hook + P0-K guard + forum status persistence (P0-P step 9).
+from .research_loop import (  # noqa: F401 — facade re-export
+    _research_loop_blocked_by_command_only,
+    _run_research_loop_hook,
+    make_default_research_loop,
+    persist_research_forum_status,
+)
 
 from ._legacy import *  # noqa: F401,F403 — facade re-export
 # Symbols still owned by _legacy until steps 9-12 finish extraction.
