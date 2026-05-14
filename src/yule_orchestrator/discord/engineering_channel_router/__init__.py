@@ -94,27 +94,27 @@ from .research_loop import (  # noqa: F401 — facade re-export
     persist_research_forum_status,
 )
 
+# Work report + clarification display + outcome coercion (P0-P step 10).
+from .reporting import (  # noqa: F401 — facade re-export
+    _coerce_outcome,
+    _emit_work_report_preview,
+)
+
 from ._legacy import *  # noqa: F401,F403 — facade re-export
-# Symbols still owned by _legacy until steps 9-12 finish extraction.
+# Symbols still owned by _legacy until steps 11-12 finish extraction.
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
     _GATEWAY_CLARIFICATION_CONTEXT,
     _clarification_context_key,
     _clear_clarification_context,
-    _coerce_outcome,
-    _emit_work_report_preview,
     _handle_clarification_selection,
     _handle_join_or_append,
     _looks_like_new_work_selection,
     _recall_clarification_candidates,
     _recall_clarification_canonical_prompt,
     _remember_clarification_candidates,
-    _research_loop_blocked_by_command_only,
-    _run_research_loop_hook,
     _run_runtime_preflight,
     _try_select_candidate,
     is_coding_approval_phrase,
     is_coding_proposal_request,
-    make_default_research_loop,
-    persist_research_forum_status,
     route_engineering_message,
 )
