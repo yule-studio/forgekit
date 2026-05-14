@@ -96,6 +96,27 @@ class StatusDiagnosticIntentDetectionTests(unittest.TestCase):
                 intent = detect_engineering_intent(text)
                 self.assertEqual(intent.intent_id, STATUS_DIAGNOSTIC, text)
 
+    def test_p0n1_yes_no_progress_questions_are_status_diagnostic(self) -> None:
+        # P0-N1 (live bug #2): yes/no shaped "지금 진행 중이야?" 류 가
+        # 새 작업으로 오인되던 회귀. 모두 STATUS_DIAGNOSTIC 로 잡혀야
+        # 하고, auto_collect/intake 를 절대 트리거하면 안 된다.
+        cases = (
+            "작업 진행하고 있는 거야?",
+            "지금 작업 진행하고 있는 거야?",
+            "작업 잘 진행 중이야?",
+            "진행하고 있어?",
+            "지금 잘 돌아가고 있어?",
+            "지금 작업 잘 돌아가고 있어요?",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                intent = detect_engineering_intent(text)
+                self.assertEqual(intent.intent_id, STATUS_DIAGNOSTIC, text)
+                response = build_engineering_conversation_response(text)
+                self.assertEqual(response.intent_id, STATUS_DIAGNOSTIC)
+                self.assertFalse(response.ready_to_intake)
+                self.assertTrue(response.is_status_query)
+
     def test_force_new_work_phrase_is_not_status_diagnostic(self) -> None:
         # "새 작업으로 진행" is the explicit override into a fresh
         # session — must remain a confirmation, not a status query.

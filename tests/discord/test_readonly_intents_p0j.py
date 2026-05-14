@@ -126,7 +126,7 @@ class NoAutoCollectHardRuleTests(unittest.TestCase):
 
     def _assert_no_collect_called(self, text: str) -> None:
         with patch(
-            "yule_orchestrator.discord.engineering_conversation._maybe_run_auto_collect"
+            "yule_orchestrator.discord.engineering_conversation.response_formatters._maybe_run_auto_collect"
         ) as mock_collect:
             response = build_engineering_conversation_response(text)
         # Hard rule: auto_collect must not have been called.
@@ -176,7 +176,7 @@ class GenuineNewWorkStillRunsCollectTests(unittest.TestCase):
 
     def test_intake_candidate_still_runs_auto_collect(self) -> None:
         with patch(
-            "yule_orchestrator.discord.engineering_conversation._maybe_run_auto_collect",
+            "yule_orchestrator.discord.engineering_conversation.response_formatters._maybe_run_auto_collect",
             return_value=None,
         ) as mock_collect:
             response = build_engineering_conversation_response(
