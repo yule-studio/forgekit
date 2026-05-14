@@ -10,34 +10,34 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
-from ..agents import (
+from ...agents import (
     Dispatcher,
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from ..agents.workflow_state import (
+from ...agents.workflow_state import (
     find_latest_open_session,
     list_sessions as workflow_list_sessions,
     load_session,
     update_session,
 )
-from ..integrations.calendar import list_naver_calendar_items
-from ..integrations.calendar.models import build_fallback_item_uid
-from ..integrations.github.issues import list_open_issues
-from ..integrations.github.pulls import list_open_pull_requests
-from ..observability import RuntimeStepMetric, save_runtime_metric_run
-from ..planning import build_daily_plan, collect_planning_inputs, load_reminder_items, save_daily_plan_snapshot
-from ..planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
-from ..planning.models import PlanningCheckpoint, PlanningScheduledBriefing
-from ..storage import load_json_cache, save_json_cache
-from .checkpoint_state import (
+from ...integrations.calendar import list_naver_calendar_items
+from ...integrations.calendar.models import build_fallback_item_uid
+from ...integrations.github.issues import list_open_issues
+from ...integrations.github.pulls import list_open_pull_requests
+from ...observability import RuntimeStepMetric, save_runtime_metric_run
+from ...planning import build_daily_plan, collect_planning_inputs, load_reminder_items, save_daily_plan_snapshot
+from ...planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
+from ...planning.models import PlanningCheckpoint, PlanningScheduledBriefing
+from ...storage import load_json_cache, save_json_cache
+from ..checkpoint_state import (
     filter_unresponded_checkpoints,
     save_checkpoint_pending_response,
 )
-from .commands import register_discord_commands
-from .conversation import build_conversation_response_envelope
-from .config import DiscordBotConfig
-from .engineering_channel_router import (
+from ..commands import register_discord_commands
+from ..conversation import build_conversation_response_envelope
+from ..config import DiscordBotConfig
+from ..engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
@@ -47,28 +47,28 @@ from .engineering_channel_router import (
     should_continue_existing_thread,
     should_start_new_thread,
 )
-from .research_forum import (
+from ..research_forum import (
     FORUM_STARTER_CONTENT_LIMIT,
     ResearchForumContext,
     chunk_for_discord_message,
     truncate_for_starter_message,
 )
-from .typing_indicator import (
+from ..typing_indicator import (
     typing_context,
     typing_keepalive,
     wrap_send_chunks_with_typing,
 )
-from ..agents.research.loop import (
+from ...agents.research.loop import (
     publish_research_loop_to_forum,
     run_research_loop,
 )
-from ..agents.research.collector import resolve_forum_comment_mode
-from ..agents.deliberation import synthesis_to_dict
-from ..agents.research.pack import pack_to_dict
-from ..agents.research.persistence import persist_research_artifacts
-from ..agents.research.profiles import format_research_hints_block
-from .engineering_team_runtime import kickoff_directive
-from .formatter import (
+from ...agents.research.collector import resolve_forum_comment_mode
+from ...agents.deliberation import synthesis_to_dict
+from ...agents.research.pack import pack_to_dict
+from ...agents.research.persistence import persist_research_artifacts
+from ...agents.research.profiles import format_research_hints_block
+from ..engineering_team_runtime import kickoff_directive
+from ..formatter import (
     format_checkpoints_message,
     format_plan_today_message,
     format_scheduled_briefing_message,
@@ -76,9 +76,9 @@ from .formatter import (
     format_snapshot_regeneration_failed_message,
     split_discord_message,
 )
-from .planning_runtime import build_due_checkpoints, load_plan_today_snapshot
-from .planning_runtime import build_due_briefings, load_prefetched_due_checkpoints, prefetch_checkpoint_snapshots
-from .snapshot_refresh import regenerate_today_snapshot
+from ..planning_runtime import build_due_checkpoints, load_plan_today_snapshot
+from ..planning_runtime import build_due_briefings, load_prefetched_due_checkpoints, prefetch_checkpoint_snapshots
+from ..snapshot_refresh import regenerate_today_snapshot
 
 CHECKPOINT_NOTIFICATION_NAMESPACE = "discord-checkpoint-notifications"
 BRIEFING_NOTIFICATION_NAMESPACE = "discord-scheduled-briefings"
@@ -1006,7 +1006,7 @@ def _install_engineering_role_runner_dispatch_for_gateway() -> None:
     """
 
     try:
-        from ..agents.runners.bootstrap import (
+        from ...agents.runners.bootstrap import (
             install_engineering_role_runner_dispatch,
         )
     except Exception as exc:  # noqa: BLE001 - partial install fallback
@@ -1682,7 +1682,7 @@ async def _route_forum_thread_message(
     ):
         return None
 
-    from .forum_message_adapter import route_forum_message
+    from ..forum_message_adapter import route_forum_message
 
     return await route_forum_message(
         message=message,
@@ -1714,7 +1714,7 @@ async def _route_engineering_approval_reply(
     """
 
     import os
-    from .approval_reply_router import (
+    from ..approval_reply_router import (
         is_approval_channel_message,
         route_approval_channel_message,
     )
@@ -1742,7 +1742,7 @@ async def _route_engineering_approval_reply(
     ):
         return None
 
-    from ..agents.job_queue import (
+    from ...agents.job_queue import (
         HeartbeatStore,
         JobQueue,
         ObsidianWriterWorker,
@@ -1750,7 +1750,7 @@ async def _route_engineering_approval_reply(
         default_vault_root_resolver,
         default_write_fn,
     )
-    from ..agents.workflow_state import list_sessions as _list_sessions
+    from ...agents.workflow_state import list_sessions as _list_sessions
 
     queue = JobQueue()
     obsidian_worker = ObsidianWriterWorker(
@@ -1849,7 +1849,7 @@ def _default_engineering_conversation_fn(
     """
 
     try:
-        from . import engineering_conversation  # type: ignore
+        from .. import engineering_conversation  # type: ignore
     except ImportError:
         return EngineeringConversationOutcome(
             content=(
@@ -2204,7 +2204,7 @@ def _record_engineering_continuation(
     # *task* prompts; persisting the operational phrase causes
     # "[Reference] 진행 해줘" thread spam.
     try:
-        from ..agents.routing import is_non_actionable_prompt
+        from ...agents.routing import is_non_actionable_prompt
     except Exception:  # noqa: BLE001 - partial install safe-side
         is_non_actionable_prompt = None  # type: ignore[assignment]
     prompt_is_command_only = bool(
@@ -2250,7 +2250,7 @@ def _record_engineering_continuation(
 
     try:
         from dataclasses import replace
-        from ..agents.workflow_state import update_session
+        from ...agents.workflow_state import update_session
 
         updated = replace(session, extra=extra)
     except Exception:  # noqa: BLE001 - degrade gracefully for stub sessions
@@ -2923,7 +2923,7 @@ def _build_kickoff_routing_summary(session: Any) -> Optional[str]:
     if not isinstance(selected, (list, tuple)) or not selected:
         return None
     try:
-        from ..agents.lifecycle.role_selection import (
+        from ...agents.lifecycle.role_selection import (
             ROLE_TECH_LEAD,
             RoleSelection,
             SOURCE_USER_ALL_TEAM,
