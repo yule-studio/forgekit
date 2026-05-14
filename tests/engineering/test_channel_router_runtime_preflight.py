@@ -1130,6 +1130,218 @@ class ClarificationCanonicalPromptHandoffTests(unittest.TestCase):
         self.assertEqual(captured.get("prompt"), canonical)
 
 
+class P0MClarificationCreatePrecedenceTests(unittest.TestCase):
+    """P0-M regression — clarification-create-new-work MUST win over the
+    runtime preflight and the conversation-layer APPROVAL_ACTION
+    downgrade.
+
+    User-reported failure flow (pre-fix):
+
+      1. user types a new task body
+      2. gateway sends candidate-vs-new-work clarification (cache
+         populated with canonical_prompt)
+      3. user replies "새 작업으로 진행"
+      4. expected: drive_clarification_create_new_work runs with the
+         cached canonical → new session
+      5. actual: the message lands in conversation_fn → CONFIRM_INTAKE
+         is downgraded to APPROVAL_ACTION ("승인 반영했습니다") because
+         "새 작업으로 진행" is non-actionable → no new session.
+
+    The fix moves the new-work-selection block above the runtime
+    preflight so the cached canonical drives the CREATE path regardless
+    of what the runtime classifier would have inferred.
+    """
+
+    def setUp(self) -> None:
+        _isolate_cache_for_test(self)
+        self.context = EngineeringRouteContext(
+            intake_channel_id=111, intake_channel_name="업무-접수"
+        )
+        self.send_chunks = AsyncMock()
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        router._GATEWAY_CLARIFICATION_CONTEXT.clear()
+
+    def _seed_canonical(self, *, canonical_prompt: str, scope_key: tuple) -> None:
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
+            "candidates": (
+                {
+                    "session_id": "old-1",
+                    "title": "stale candidate",
+                    "score": 0.4,
+                    "thread_id": None,
+                    "forum_thread_id": None,
+                    "task_type": "research",
+                },
+            ),
+            "canonical_prompt": canonical_prompt,
+        }
+
+    def _route(
+        self,
+        *,
+        message,
+        intake_fn,
+        kickoff_fn,
+        list_sessions_fn,
+        research_loop_fn=None,
+    ):
+        return _run(
+            route_engineering_message(
+                message=message,
+                bot_user=object(),
+                route_context=self.context,
+                extract_prompt=_extract_prompt,
+                conversation_fn=AsyncMock(
+                    side_effect=AssertionError(
+                        "conversation_fn must NOT run when the "
+                        "clarification-create branch handles the message"
+                    )
+                ),
+                intake_fn=intake_fn,
+                thread_kickoff_fn=kickoff_fn,
+                send_chunks=self.send_chunks,
+                research_loop_fn=research_loop_fn,
+                thread_continuation_fn=AsyncMock(
+                    side_effect=AssertionError(
+                        "thread_continuation must NOT run when clarification "
+                        "create takes precedence"
+                    )
+                ),
+                list_sessions_fn=list_sessions_fn,
+            )
+        )
+
+    def test_new_work_with_canonical_wins_over_runtime_preflight(self) -> None:
+        # Recall-rich session list — preflight would happily classify
+        # the bare phrase as CONTINUE_EXISTING_WORK and attempt a JOIN
+        # via thread_continuation_fn. The clarification-create branch
+        # must intercept first, drive intake_fn with the canonical,
+        # and never invoke thread_continuation.
+        canonical = (
+            "[Research] 결제 모듈 멱등성 검증 흐름을 백엔드에 추가하고 "
+            "관련 회귀 시나리오 정리"
+        )
+        scope_key = (111, 9090)
+        self._seed_canonical(canonical_prompt=canonical, scope_key=scope_key)
+
+        sessions = [
+            RuntimeFakeSession(
+                session_id="ambig-1",
+                prompt="결제 멱등성 점검",
+                updated_at=_now(-15),
+                extra={"research_pack": {"title": "결제"}},
+            ),
+            RuntimeFakeSession(
+                session_id="ambig-2",
+                prompt="결제 모듈 회귀",
+                updated_at=_now(-30),
+                extra={"research_pack": {"title": "결제"}},
+            ),
+        ]
+
+        intake_calls: dict = {}
+
+        async def intake_fn(**kwargs):
+            intake_calls.update(kwargs)
+            return FakeIntakeResult(
+                session=LegacyFakeSession(
+                    session_id="new-pm", task_type="feature"
+                ),
+                plan=FakePlan(),
+                message="**[engineering-agent] 새 작업 접수**",
+            )
+
+        kickoff_fn = AsyncMock(
+            return_value=EngineeringThreadKickoff(
+                thread_id=8081, message="kickoff"
+            )
+        )
+
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 9090})()
+
+        result = self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+            list_sessions_fn=lambda **_kw: sessions,
+        )
+
+        # 1) New session created with the canonical Research원문, not the
+        #    routing-command phrase.
+        self.assertTrue(result.handled)
+        self.assertEqual(result.session_id, "new-pm")
+        self.assertEqual(intake_calls.get("prompt"), canonical)
+        # 2) APPROVAL_ACTION ack template never reached the user.
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertNotIn("승인 반영했습니다", sent)
+        # 3) Cache cleared so a follow-up turn doesn't reuse the same
+        #    canonical against an unrelated reply.
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
+
+    def test_new_work_with_cache_but_missing_canonical_yields_error(self) -> None:
+        # Cache present but canonical_prompt key is missing (older
+        # entry). The router must refuse with a clear error instead of
+        # falling through to APPROVAL_ACTION ack.
+        from yule_orchestrator.discord import engineering_channel_router as router
+
+        scope_key = (111, 9191)
+        router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
+            "candidates": (
+                {
+                    "session_id": "stale",
+                    "title": "stale",
+                    "score": 0.1,
+                    "thread_id": None,
+                    "forum_thread_id": None,
+                    "task_type": "research",
+                },
+            ),
+            # canonical_prompt deliberately absent
+        }
+
+        intake_fn = AsyncMock(
+            side_effect=AssertionError(
+                "intake_fn must NOT run when canonical_prompt is missing"
+            )
+        )
+        kickoff_fn = AsyncMock(
+            side_effect=AssertionError(
+                "kickoff_fn must NOT run when canonical_prompt is missing"
+            )
+        )
+
+        message = FakeMessage(
+            content="새 작업으로 진행",
+            channel=FakeChannel(channel_id=111, name="업무-접수"),
+        )
+        message.author = type("A", (), {"id": 9191})()
+
+        result = self._route(
+            message=message,
+            intake_fn=intake_fn,
+            kickoff_fn=kickoff_fn,
+            list_sessions_fn=lambda **_kw: [],
+        )
+        self.assertTrue(result.handled)
+        # No new session.
+        self.assertIsNone(result.session_id)
+        # Clear refusal message — not the APPROVAL_ACTION ack.
+        sent = "\n".join(str(c.args[1]) for c in self.send_chunks.await_args_list)
+        self.assertIn("원문 task 본문을 찾지 못했어요", sent)
+        self.assertNotIn("승인 반영했습니다", sent)
+        # Cache cleared.
+        self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
+
+
 class CanonicalPromptVsCommandOnlyAppendTests(unittest.TestCase):
     """User-spec regression: when the user replies with an explicit
     `기존 세션 <id>` after a clarification, the append payload must be

@@ -495,6 +495,69 @@ async def route_engineering_message(
                         _clear_clarification_context(message)
                         return explicit_result
 
+    # Clarification follow-up CREATE branch — P0-M (#151 followup).
+    # MUST run before the runtime preflight so a "새 작업으로 진행"
+    # reply with a cached canonical_prompt never gets intercepted by
+    # the runtime classifier (which would route it as
+    # CONTINUE_EXISTING_WORK / JOIN_SESSION) and never falls through
+    # to ``conversation_fn`` (which would classify the routing-command
+    # phrase as CONFIRM_INTAKE → P0-K downgrades it to APPROVAL_ACTION
+    # ack, leaving no new session — the user-reported regression).
+    #
+    # We only intercept when a clarification cache exists for this
+    # channel/user pair. Without a cache, "새 작업으로 진행" might
+    # still be a legitimate confirmation tied to a conversation-layer
+    # ``last_proposed_prompt`` (long_task fixture in
+    # ``test_long_research_prompt_followed_by_saejakeop_persists_real_prompt``)
+    # — let the legacy flow handle that path so ``intake_fn`` still
+    # gets called with the substantive prompt.
+    if _looks_like_new_work_selection(prompt_text):
+        clarification_canonical = _recall_clarification_canonical_prompt(message)
+        clarification_candidates = _recall_clarification_candidates(message)
+        clarification_cache_present = (
+            _clarification_context_key(message) in _GATEWAY_CLARIFICATION_CONTEXT
+        )
+        if clarification_canonical:
+            create_result = await _drive_clarification_create_new_work(
+                message=message,
+                canonical_prompt=clarification_canonical,
+                intake_fn=intake_fn,
+                thread_kickoff_fn=thread_kickoff_fn,
+                send_chunks=send_chunks,
+                research_loop_fn=research_loop_fn,
+            )
+            _clear_clarification_context(message)
+            # ``_drive_clarification_create_new_work`` always returns
+            # an ``EngineeringRouteResult`` (success / error / refusal
+            # via the non-actionable canonical guard). Return it
+            # unconditionally so we never fall through to the
+            # conversation layer and accidentally downgrade to
+            # APPROVAL_ACTION ack.
+            if create_result is not None:
+                return create_result
+            return EngineeringRouteResult(handled=True)
+        if clarification_candidates or clarification_cache_present:
+            # Cache present but canonical missing (older entry from
+            # before the canonical_prompt fix, or candidates lost
+            # during truncation) — refuse to spawn a session with the
+            # routing-command phrase as ``session.prompt``.
+            await send_chunks(
+                message.channel,
+                (
+                    "직전 clarification 캐시에서 원문 task 본문을 찾지 못했어요.\n"
+                    "진행할 업무 원문을 다시 알려주세요. \"새 작업으로 진행\"은 "
+                    "routing 명령이라 작업 본문으로 사용할 수 없어요."
+                ),
+            )
+            _clear_clarification_context(message)
+            return EngineeringRouteResult(handled=True)
+        # No clarification cache — fall through to the legacy flow.
+        # The bot-echo guard below + the ``is_non_actionable_prompt``
+        # firewall at the routing stage already handle the bare-phrase
+        # case (refuse with "진행할 업무 원문을 다시 알려주세요"), and
+        # the conversation layer's ``last_proposed_prompt`` mechanism
+        # still routes substantive confirmations correctly.
+
     # Runtime preflight — opt-in via ``list_sessions_fn``. The production
     # gateway in bot.py wires this to ``workflow_state.list_sessions`` so
     # auto_collect-first traffic for "어제 작업 이어서 요약해줘" and
@@ -514,48 +577,6 @@ async def route_engineering_message(
         )
         if preflight is not None:
             return preflight
-
-    # Clarification follow-up CREATE branch — when the prior turn
-    # showed candidates and the user replied "새 작업으로 진행" (or a
-    # verbose paraphrase like "기존 후보들은 다 제거해주고 새 작업으로
-    # 진행해줘"), the cached canonical_prompt is the actionable
-    # Research원문 — NOT the user's routing-command reply. Drive
-    # intake + kickoff + research_loop with the canonical so
-    # session.prompt / forum body / role-bot context all see the real
-    # task. Without a cached canonical we refuse outright (no zombie
-    # session whose prompt is the routing-command phrase).
-    if _looks_like_new_work_selection(prompt_text):
-        clarification_canonical = _recall_clarification_canonical_prompt(message)
-        clarification_candidates = _recall_clarification_candidates(message)
-        clarification_cache_present = (
-            _clarification_context_key(message) in _GATEWAY_CLARIFICATION_CONTEXT
-        )
-        if clarification_canonical:
-            create_result = await _drive_clarification_create_new_work(
-                message=message,
-                canonical_prompt=clarification_canonical,
-                intake_fn=intake_fn,
-                thread_kickoff_fn=thread_kickoff_fn,
-                send_chunks=send_chunks,
-                research_loop_fn=research_loop_fn,
-            )
-            if create_result is not None:
-                _clear_clarification_context(message)
-                return create_result
-        elif clarification_candidates or clarification_cache_present:
-            # Older cache entry from before the canonical_prompt fix
-            # (or candidates lost during truncation) — refuse to spawn
-            # a session with the routing-command phrase as session.prompt.
-            await send_chunks(
-                message.channel,
-                (
-                    "직전 clarification 캐시에서 원문 task 본문을 찾지 못했어요.\n"
-                    "진행할 업무 원문을 다시 알려주세요. \"새 작업으로 진행\"은 "
-                    "routing 명령이라 작업 본문으로 사용할 수 없어요."
-                ),
-            )
-            _clear_clarification_context(message)
-            return EngineeringRouteResult(handled=True)
 
     attachments = extract_message_attachments(message)
     user_links = extract_user_links_from_message(message, prompt_text)
