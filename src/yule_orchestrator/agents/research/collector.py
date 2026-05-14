@@ -578,17 +578,52 @@ def build_query_for_role(
 
     Strategy:
     - Take the first line of the prompt (avoid runaway sentences).
+    - **P0-F**: Run the first line through the engineering-domain
+      ``canonicalize_query`` so typos / case variants / aliases
+      (``dRAG`` → ``RAG``, ``ci cd`` → ``CI/CD``, ``알엠`` → ``LLM``)
+      get rewritten before the collector and recall pipelines see them.
+      Raw prompt is left untouched; only the query token is normalized.
     - Append task_type as a keyword (e.g. ``landing-page``).
     - Append role-specific booster terms (`UI reference`, `official docs`).
     - Dedup tokens to keep the query short.
+
+    See :func:`build_canonical_query_for_role` for the version that
+    also returns the :class:`CanonicalQuery` audit envelope.
     """
+
+    return build_canonical_query_for_role(
+        role=role,
+        prompt=prompt,
+        task_type=task_type,
+        extra_keywords=extra_keywords,
+    )[0]
+
+
+def build_canonical_query_for_role(
+    *,
+    role: str,
+    prompt: str,
+    task_type: Optional[str] = None,
+    extra_keywords: Sequence[str] = (),
+) -> Tuple[str, Any]:
+    """Build the role-aware query *plus* return the canonicalization audit.
+
+    Returns ``(query_str, CanonicalQuery)``. Callers that want to log
+    or surface normalization metadata (raw vs canonical, confidence,
+    applied replacements) use this; thin shims that just need the
+    query string use :func:`build_query_for_role`.
+    """
+
+    from .query_canonicalizer import canonicalize_query
 
     short = short_role(role)
     base = (prompt or "").strip().splitlines()[0:1]
     base_text = base[0].strip() if base else ""
+    canonical = canonicalize_query(base_text)
+
     parts: list[str] = []
-    if base_text:
-        parts.append(base_text)
+    if canonical.canonical:
+        parts.append(canonical.canonical)
     if task_type:
         parts.append(task_type.strip())
     parts.extend(s for s in (extra_keywords or ()) if s and s.strip())
@@ -600,7 +635,7 @@ def build_query_for_role(
         if cleaned and cleaned.lower() not in seen:
             seen[cleaned.lower()] = None
 
-    return " ".join(seen.keys()).strip()
+    return " ".join(seen.keys()).strip(), canonical
 
 
 # ---------------------------------------------------------------------------
@@ -1702,6 +1737,17 @@ class CollectionOutcome:
     # Surfaced so the gateway / Discord preview / Obsidian work-report
     # can show *who* participated without re-running role_selection.
     active_roles: Tuple[str, ...] = ()
+    # P0-F query canonicalization metadata.
+    raw_query: str = ""
+    canonical_query: str = ""
+    normalization_applied: bool = False
+    normalization_confidence: float = 1.0
+    # P0-F guard: True when a low-confidence canonicalization landed
+    # on a mock-fallback collector. Gateway treats this as "do not
+    # publish to forum without user clarification" — the canned
+    # mock result for a typo'd query is almost never what the user
+    # actually wanted.
+    suppress_auto_publish: bool = False
 
 
 def auto_collect_or_request_more_input(
@@ -1801,7 +1847,20 @@ def auto_collect_or_request_more_input(
         1 for source in pack.sources if (source.extra or {}).get("provider")
     )
 
-    query = build_query_for_role(role=role, prompt=prompt, task_type=task_type)
+    query, canonical = build_canonical_query_for_role(
+        role=role, prompt=prompt, task_type=task_type
+    )
+
+    # P0-F: mock-fallback + low-confidence typo correction = do not
+    # auto-publish to forum. The mock provider returns canned hits
+    # keyed off the query token, so a fuzzy-rewritten typo will
+    # surface plausible-looking but unrelated references.
+    collector_is_mock = chosen.name == "mock"
+    suppress_auto_publish = (
+        collector_is_mock
+        and canonical.normalization_applied
+        and canonical.confidence < 0.7
+    )
 
     common_extras = {
         "budget_tier": policy.tier,
@@ -1811,6 +1870,11 @@ def auto_collect_or_request_more_input(
         "stop_reason": stop_reason,
         "under_covered_roles": under_covered,
         "active_roles": tuple(r for r in (active_roles or ()) if r),
+        "raw_query": canonical.raw,
+        "canonical_query": canonical.canonical,
+        "normalization_applied": canonical.normalization_applied,
+        "normalization_confidence": canonical.confidence,
+        "suppress_auto_publish": suppress_auto_publish,
     }
 
     if auto_collected_count > 0:
