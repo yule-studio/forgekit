@@ -34,7 +34,7 @@ from ..runtime.checkpoint_state import (
     filter_unresponded_checkpoints,
     save_checkpoint_pending_response,
 )
-from ..commands import register_discord_commands
+from ..commands import register_discord_commands, resolve_bot_role_set_from_env
 from ..conversation import build_conversation_response_envelope
 from ..config import DiscordBotConfig
 from ..engineering_channel_router import (
@@ -158,10 +158,17 @@ def run_discord_bot(repo_root: Path) -> None:
                     f"configured={config.application_id}, actual={actual_application_id}. "
                     "The token-linked application will be used."
                 )
+            # Role-scoped registration: planning-bot subprocess registers
+            # only planning commands, engineering gateway only ``/engineer_*``.
+            # The follow-up ``tree.sync`` PUTs the resulting set on Discord
+            # so any stale commands from a previous boot (e.g. ``/engineer_*``
+            # left over on planning-bot) get cleared.
+            bot_role_set = resolve_bot_role_set_from_env()
             register_discord_commands(
                 self,
                 guild_id=config.guild_id,
                 notify_user_id=config.notify_user_id,
+                role_set=bot_role_set,
             )
             guild = discord.Object(id=config.guild_id)
             await self.tree.sync(guild=guild)
