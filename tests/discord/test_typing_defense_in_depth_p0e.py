@@ -258,7 +258,7 @@ class InactiveRoleSkipsTypingTests(unittest.TestCase):
 
         self.assertEqual(channel.sent, ["posted"])
         # Gate let the wrap fire — exactly one keepalive entry for research-turn.
-        self.assertEqual(keepalive_calls, ["member:research-turn"])
+        self.assertEqual(keepalive_calls, ["member:dispatch"])
 
     def test_legacy_session_no_metadata_keeps_typing(self) -> None:
         # active_research_roles 메타 없음 → helper 가 None → legacy fallback
@@ -296,7 +296,7 @@ class InactiveRoleSkipsTypingTests(unittest.TestCase):
 
         self.assertEqual(channel.sent, ["posted"])
         # Legacy → wrap fires.
-        self.assertEqual(keepalive_calls, ["member:research-turn"])
+        self.assertEqual(keepalive_calls, ["member:dispatch"])
 
 
 if __name__ == "__main__":

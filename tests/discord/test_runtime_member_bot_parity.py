@@ -136,7 +136,7 @@ class ResearchTurnDispatchTests(unittest.TestCase):
 
     def test_handler_raises_logs_warning_and_falls_through(self) -> None:
         channel = _FakeChannel()
-        message = SimpleNamespace(content="[research-turn:s t] go", channel=channel)
+        message = SimpleNamespace(content="[research-turn:s tech-lead] go", channel=channel)
 
         original_stderr = sys.stderr
         import io
@@ -163,7 +163,7 @@ class ResearchTurnDispatchTests(unittest.TestCase):
 
     def test_post_raises_surfaces_fallback_message(self) -> None:
         channel = _FakeChannel()
-        message = SimpleNamespace(content="[research-turn:s t] go", channel=channel)
+        message = SimpleNamespace(content="[research-turn:s tech-lead] go", channel=channel)
         sentinel = SimpleNamespace(comment="x", session_id="s")
 
         async def failing_post(ch, outcome):

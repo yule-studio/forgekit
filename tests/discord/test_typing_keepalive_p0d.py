@@ -77,7 +77,7 @@ class MemberBotKeepaliveTests(unittest.TestCase):
         # asyncio.sleep(0.2) but with a tight typing_keepalive interval so
         # we can observe at least 2 enters within the test's wall clock.
         channel = _CountingChannel()
-        message = SimpleNamespace(content="[research-turn:s t] go", channel=channel)
+        message = SimpleNamespace(content="[research-turn:s tech-lead] go", channel=channel)
         sentinel = SimpleNamespace(comment="x", session_id="s")
 
         async def slow_post(ch, outcome):
