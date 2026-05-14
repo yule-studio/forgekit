@@ -49,6 +49,14 @@ from .models import (  # noqa: F401 — facade re-export
     ThreadContinuationFn,
     ThreadKickoffFn,
 )
+# Env + coercion + message parsing + recall coverage live in .utils (P0-P step 4).
+from .utils import (  # noqa: F401 — facade re-export
+    _attach_recall_coverage,
+    _maybe_await,
+    _optional_bool_env,
+    extract_message_attachments,
+    extract_user_links_from_message,
+)
 
 from ._legacy import *  # noqa: F401,F403 — facade re-export
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis

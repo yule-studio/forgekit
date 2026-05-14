@@ -53,9 +53,10 @@ class EngineeringRouteContext:
 
     @property
     def configured(self) -> bool:
-        # Lazy import to avoid a circular dep with utils (which will be
-        # extracted in P0-P step 4). Keeps models a true leaf module.
-        from ._legacy import _normalize_channel_name
+        # Lazy import: ``utils`` is a sibling leaf module; importing at
+        # method call time keeps ``models`` itself fully leaf so other
+        # router modules can import it without dragging utils.
+        from .utils import _normalize_channel_name
 
         return self.intake_channel_id is not None or bool(
             _normalize_channel_name(self.intake_channel_name)
@@ -63,7 +64,7 @@ class EngineeringRouteContext:
 
     @classmethod
     def from_env(cls) -> "EngineeringRouteContext":
-        from ._legacy import (
+        from .utils import (
             _optional_bool_env,
             _optional_int_env,
             _optional_string_env,
