@@ -57,11 +57,15 @@ Obsidian vault (`yule-agent-vault/obsidian-vault/10-projects/yule-studio-agent/`
 
 | 문서 버전 | 작성일 | 작성자 | 주요 변경 사항 |
 | --- | --- | --- | --- |
-| v.1.0.0 | YYYY-MM-DD | <부서>/<역할> | 최초 ... |
+| v1.0.0 | YYYY-MM-DD | <부서>/<역할> | 최초 ... |
 ```
 
 후속 개정마다 행 추가 (위쪽이 최신). 이 표가 파일명에서 빠진 날짜·버전
 정보를 보존한다.
+
+**버전 bump 규칙**: `policies/runtime/vault/documentation-versioning.md`
+(v1.0.0+) 가 semver 기반 Major / Minor / Patch 규칙을 정의.
+naming-convention 이 *파일명* 규칙이라면 그쪽이 *내용 버전* 규칙.
 
 ## frontmatter 표준
 
