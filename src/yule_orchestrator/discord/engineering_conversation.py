@@ -1053,6 +1053,65 @@ def format_status_diagnostic_response(
         f"- research_pack: {'있음' if research_pack else '없음'}",
     ]
 
+    # P0-H stage 2 — gateway 가 박은 repo / mode / topology / branch /
+    # PR / RepoContract / Obsidian mirror 정보. 값이 없으면 라인 자체 생략.
+    github_target_payload = extra.get("github_target")
+    repository = None
+    pr_number = None
+    branch_name = None
+    if isinstance(github_target_payload, Mapping) and github_target_payload:
+        owner = _coerce_str(github_target_payload.get("owner"))
+        repo = _coerce_str(github_target_payload.get("repo"))
+        if owner and repo:
+            repository = f"{owner}/{repo}"
+        if _coerce_str(github_target_payload.get("kind")) == "pull_request":
+            pr_number = github_target_payload.get("number")
+        branch_name = _coerce_str(
+            github_target_payload.get("branch_or_sha")
+        )
+    explicit_branch = _coerce_str(extra.get("branch_name"))
+    if explicit_branch:
+        branch_name = explicit_branch
+    explicit_pr = extra.get("pull_request_number")
+    if explicit_pr is not None:
+        pr_number = explicit_pr
+
+    repo_value = _coerce_str(extra.get("repository")) or repository
+    if repo_value:
+        lines.append(f"- repo: `{repo_value}`")
+
+    work_mode_value = _coerce_str(extra.get("work_mode"))
+    if work_mode_value:
+        lines.append(f"- mode: `{work_mode_value}`")
+    topology_value = _coerce_str(extra.get("topology"))
+    if topology_value:
+        lines.append(f"- topology: `{topology_value}`")
+    scope_value = _coerce_str(extra.get("scope"))
+    if scope_value:
+        lines.append(f"- scope: `{scope_value}`")
+
+    if branch_name:
+        lines.append(f"- branch: `{branch_name}`")
+    if pr_number is not None:
+        lines.append(f"- PR: #{pr_number}")
+
+    repo_contract_payload = extra.get("repo_contract")
+    if isinstance(repo_contract_payload, Mapping) and repo_contract_payload:
+        detected = not bool(repo_contract_payload.get("fallback"))
+        summary = _coerce_str(
+            extra.get("repo_contract_summary")
+        ) or _coerce_str(repo_contract_payload.get("summary_line"))
+        if summary:
+            lines.append(f"- repo contract: {summary}")
+        else:
+            lines.append(
+                f"- repo contract detected: {'예' if detected else '아니오 (Yule 기본 규칙)'}"
+            )
+
+    obsidian_mirror_path = _coerce_str(extra.get("obsidian_mirror_path"))
+    if obsidian_mirror_path:
+        lines.append(f"- Obsidian mirror: `{obsidian_mirror_path}`")
+
     coding_status_line = _format_coding_status_line(
         coding_proposal_payload, coding_job_payload
     )
