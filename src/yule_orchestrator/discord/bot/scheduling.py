@@ -22,7 +22,7 @@ from ...planning.day_profile import DayProfile, DayProfileBriefingSlot
 from ...planning.models import PlanningCheckpoint, PlanningScheduledBriefing
 from ...storage import load_json_cache, save_json_cache
 from ..config import DiscordBotConfig
-from ..planning_runtime import (
+from ..runtime.planning import (
     build_due_briefings,
     build_due_checkpoints,
     load_prefetched_due_checkpoints,

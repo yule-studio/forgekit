@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Sequence, Tuple
 
-from ..core.context_loader import ContextError, load_agent_context
+from ...core.context_loader import ContextError, load_agent_context
 
 
 GATEWAY_ROLE_KEY = "gateway"

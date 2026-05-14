@@ -22,11 +22,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.member_bot import (
+from yule_orchestrator.discord.member.bot import (
     _dispatch_member_message,
     _resolve_active_roles_for_typing_gate,
 )
-from yule_orchestrator.discord.member_bots import MemberBotProfile
+from yule_orchestrator.discord.member.bots import MemberBotProfile
 
 
 class _CountingChannel:
@@ -102,7 +102,7 @@ class ThreadContinuationKeepaliveTests(unittest.TestCase):
 
         # patch typing_keepalive locally to use a 0.05s interval so we
         # can witness ≥2 enters during the 0.12s continuation work.
-        from yule_orchestrator.discord.typing_indicator import (
+        from yule_orchestrator.discord.ui.typing_indicator import (
             typing_keepalive as original_keepalive,
         )
 
@@ -115,7 +115,7 @@ class ThreadContinuationKeepaliveTests(unittest.TestCase):
         # The router module imports typing_keepalive *inside* the
         # function bodies, so we patch the typing_indicator module
         # symbol it pulls in.
-        from yule_orchestrator.discord import typing_indicator as ti_mod
+        from yule_orchestrator.discord.ui import typing_indicator as ti_mod
 
         with patch.object(ti_mod, "typing_keepalive", fast_keepalive):
             _run(
@@ -148,7 +148,7 @@ class ActiveRolesGateTests(unittest.TestCase):
 
     def test_load_session_failure_returns_none(self) -> None:
         # load_session 예외 → 절대 raise 안 함, None 반환.
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         def boom(_):
             raise RuntimeError("db down")
@@ -158,7 +158,7 @@ class ActiveRolesGateTests(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_session_without_metadata_returns_none(self) -> None:
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         session = SimpleNamespace(extra={})
         with patch.object(mb, "load_session", return_value=session):
@@ -166,7 +166,7 @@ class ActiveRolesGateTests(unittest.TestCase):
         self.assertIsNone(result)
 
     def test_session_with_persisted_roles_returns_tuple(self) -> None:
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         session = SimpleNamespace(
             extra={"active_research_roles": ["tech-lead", "ai-engineer"]}
@@ -180,7 +180,7 @@ class InactiveRoleSkipsTypingTests(unittest.TestCase):
     """active_research_roles 에 없는 role 은 typing 안 켜지지만 post 는 유지."""
 
     def test_inactive_role_posts_without_typing(self) -> None:
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         channel = _CountingChannel()
         message = SimpleNamespace(
@@ -222,7 +222,7 @@ class InactiveRoleSkipsTypingTests(unittest.TestCase):
 
     def test_active_role_keeps_typing(self) -> None:
         # 같은 session 에서 active 인 role (ai-engineer) 으로 dispatch → keepalive wrap 진입.
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         channel = _CountingChannel()
         message = SimpleNamespace(
@@ -263,7 +263,7 @@ class InactiveRoleSkipsTypingTests(unittest.TestCase):
     def test_legacy_session_no_metadata_keeps_typing(self) -> None:
         # active_research_roles 메타 없음 → helper 가 None → legacy fallback
         # (will_type=True) → keepalive wrap 진입.
-        from yule_orchestrator.discord import member_bot as mb
+        from yule_orchestrator.discord.member import bot as mb
 
         channel = _CountingChannel()
         message = SimpleNamespace(

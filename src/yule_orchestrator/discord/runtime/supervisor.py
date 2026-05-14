@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Mapping, Optional, Sequence, Tuple
 
-from .member_bots import (
+from ..member.bots import (
     GATEWAY_ROLE_KEY,
     MemberBotConfig,
     MemberBotProfile,
@@ -242,7 +242,7 @@ def _build_planning_entry(env_map: Mapping[str, str]) -> BotEntry:
 def _build_member_entry(profile: MemberBotProfile, env_map: Mapping[str, str]) -> BotEntry:
     # ``profile.token`` was filled from ``os.environ`` at load time; for tests
     # we re-resolve against the supplied env to keep injection consistent.
-    from .member_bots import looks_like_real_discord_token
+    from ..member.bots import looks_like_real_discord_token
 
     raw = env_map.get(profile.env_key, "")
     raw_stripped = raw.strip() if isinstance(raw, str) else ""
@@ -313,7 +313,7 @@ def _target_callable(bot: BotEntry) -> tuple[Callable[..., None], tuple]:
 
 
 def _run_planning_in_subprocess(repo_root_str: str) -> None:  # pragma: no cover - subprocess only
-    from .bot import run_discord_bot
+    from ..bot import run_discord_bot
 
     _apply_env_overrides(
         {
@@ -331,8 +331,8 @@ def _run_engineering_gateway_in_subprocess(
     repo_root_str: str,
     gateway_token_env_key: str,
 ) -> None:  # pragma: no cover - subprocess only
-    from ..runtime.gateway_env import build_gateway_env_overrides
-    from .bot import run_discord_bot
+    from ...runtime.gateway_env import build_gateway_env_overrides
+    from ..bot import run_discord_bot
 
     gateway_token = os.environ.get(gateway_token_env_key, "").strip()
     if not gateway_token:
@@ -346,7 +346,7 @@ def _run_engineering_gateway_in_subprocess(
 
 
 def _run_member_in_subprocess(profile: MemberBotProfile) -> None:  # pragma: no cover - subprocess only
-    from .member_bot import run_member_bot
+    from ..member.bot import run_member_bot
 
     run_member_bot(profile)
 

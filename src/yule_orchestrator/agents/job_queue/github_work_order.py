@@ -22,7 +22,7 @@ artifacts:
 
 This module is **pure-Python**: no Discord client, no GitHub API calls,
 no LLM hooks. The Discord-side wiring lives in
-:mod:`yule_orchestrator.discord.github_workos_adapter`; the executor
+:mod:`yule_orchestrator.discord.integrations.github_workos_adapter`; the executor
 service that drains :data:`JOB_TYPE_GITHUB_WORK_ORDER` rows is the
 sibling G3 work stream's responsibility — this module exposes the row
 shape so G3 can decode it without importing the discord layer.

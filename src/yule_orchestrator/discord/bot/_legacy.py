@@ -30,7 +30,7 @@ from ...planning import build_daily_plan, collect_planning_inputs, load_reminder
 from ...planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
 from ...planning.models import PlanningCheckpoint, PlanningScheduledBriefing
 from ...storage import load_json_cache, save_json_cache
-from ..checkpoint_state import (
+from ..runtime.checkpoint_state import (
     filter_unresponded_checkpoints,
     save_checkpoint_pending_response,
 )
@@ -53,7 +53,7 @@ from ..research_forum import (
     chunk_for_discord_message,
     truncate_for_starter_message,
 )
-from ..typing_indicator import (
+from ..ui.typing_indicator import (
     typing_context,
     typing_keepalive,
     wrap_send_chunks_with_typing,
@@ -68,7 +68,7 @@ from ...agents.research.pack import pack_to_dict
 from ...agents.research.persistence import persist_research_artifacts
 from ...agents.research.profiles import format_research_hints_block
 from ..engineering_team_runtime import kickoff_directive
-from ..formatter import (
+from ..ui.formatter import (
     format_checkpoints_message,
     format_plan_today_message,
     format_scheduled_briefing_message,
@@ -76,9 +76,9 @@ from ..formatter import (
     format_snapshot_regeneration_failed_message,
     split_discord_message,
 )
-from ..planning_runtime import build_due_checkpoints, load_plan_today_snapshot
-from ..planning_runtime import build_due_briefings, load_prefetched_due_checkpoints, prefetch_checkpoint_snapshots
-from ..snapshot_refresh import regenerate_today_snapshot
+from ..runtime.planning import build_due_checkpoints, load_plan_today_snapshot
+from ..runtime.planning import build_due_briefings, load_prefetched_due_checkpoints, prefetch_checkpoint_snapshots
+from ..runtime.snapshot_refresh import regenerate_today_snapshot
 from .channels import _channel_target_text, _normalize_channel_name
 from .startup import (
     _channel_configuration_warnings,
@@ -1349,7 +1349,7 @@ async def _route_forum_thread_message(
     ):
         return None
 
-    from ..forum_message_adapter import route_forum_message
+    from ..forum.message_adapter import route_forum_message
 
     return await route_forum_message(
         message=message,
@@ -1381,7 +1381,7 @@ async def _route_engineering_approval_reply(
     """
 
     import os
-    from ..approval_reply_router import (
+    from ..approval.reply_router import (
         is_approval_channel_message,
         route_approval_channel_message,
     )

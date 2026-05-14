@@ -29,9 +29,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
-from ..agents.job_queue.approval_reply import find_replyable_approval
-from ..agents.job_queue.approval_worker import ApprovalRequest, ApprovalWorker
-from ..agents.job_queue.pr_approval import (
+from ...agents.job_queue.approval_reply import find_replyable_approval
+from ...agents.job_queue.approval_worker import ApprovalRequest, ApprovalWorker
+from ...agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeProposal,
     render_pr_merge_summary,

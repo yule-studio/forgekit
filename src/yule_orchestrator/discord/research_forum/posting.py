@@ -193,7 +193,7 @@ def chunk_for_discord_message(
 
     if not text:
         return ()
-    from ..formatter import split_discord_message
+    from ..ui.formatter import split_discord_message
 
     return tuple(split_discord_message(text, limit=limit))
 

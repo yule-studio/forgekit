@@ -10,7 +10,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 from yule_orchestrator.discord.bot import _extract_conversation_prompt, _should_handle_message
-from yule_orchestrator.discord.checkpoint_state import (
+from yule_orchestrator.discord.runtime.checkpoint_state import (
     CHECKPOINT_RESPONSE_STATUS_DONE,
     CHECKPOINT_RESPONSE_STATUS_SKIPPED,
     CheckpointPendingResponse,

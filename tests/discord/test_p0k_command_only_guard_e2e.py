@@ -34,7 +34,7 @@ from yule_orchestrator.discord.engineering_conversation import (
     TASK_INTAKE_CANDIDATE,
     build_engineering_conversation_response,
 )
-from yule_orchestrator.discord.forum_message_adapter import (
+from yule_orchestrator.discord.forum.message_adapter import (
     _resolve_session_for_forum_thread,
 )
 from yule_orchestrator.discord.research_forum import (

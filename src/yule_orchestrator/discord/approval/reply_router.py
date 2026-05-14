@@ -30,15 +30,15 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, Optional, Sequence
 
-from ..agents.job_queue.approval_reply import (
+from ...agents.job_queue.approval_reply import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalIntent,
     ApprovalReplyOutcome,
     handle_approval_reply,
     parse_approval_intent,
 )
-from ..agents.job_queue.obsidian_writer_worker import ObsidianWriterWorker
-from ..agents.job_queue.store import JobQueue
+from ...agents.job_queue.obsidian_writer_worker import ObsidianWriterWorker
+from ...agents.job_queue.store import JobQueue
 
 
 logger = logging.getLogger(__name__)

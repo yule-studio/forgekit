@@ -22,7 +22,7 @@ from yule_orchestrator.discord.bot import (
     _next_checkpoint_scan,
     _resolve_due_checkpoints,
 )
-from yule_orchestrator.discord.planning_runtime import (
+from yule_orchestrator.discord.runtime.planning import (
     build_due_checkpoints,
     load_prefetched_due_checkpoints,
     prefetch_checkpoint_snapshots,
@@ -73,7 +73,7 @@ class DiscordBotRuntimeTestCase(unittest.TestCase):
 
         self.assertEqual([checkpoint.checkpoint_id for checkpoint in unsent], ["checkpoint-2"])
 
-    @patch("yule_orchestrator.discord.planning_runtime.load_daily_plan_snapshot")
+    @patch("yule_orchestrator.discord.runtime.planning.load_daily_plan_snapshot")
     def test_build_due_checkpoints_scans_across_midnight(
         self,
         load_daily_plan_snapshot_mock,
@@ -115,7 +115,7 @@ class DiscordBotRuntimeTestCase(unittest.TestCase):
         self.assertEqual([item.checkpoint_id for item in resolved], ["checkpoint-1"])
         build_due_checkpoints_mock.assert_not_called()
 
-    @patch("yule_orchestrator.discord.planning_runtime.build_daily_checkpoints_for_date")
+    @patch("yule_orchestrator.discord.runtime.planning.build_daily_checkpoints_for_date")
     def test_prefetch_checkpoint_snapshots_can_be_loaded_without_live_fetch(
         self,
         build_daily_checkpoints_for_date_mock,

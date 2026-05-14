@@ -6,10 +6,10 @@ from datetime import datetime
 import sys
 from typing import Any, Optional, Sequence
 
-from ..agents.workflow_state import load_session, update_session
-from .config import DiscordBotConfig
-from .engineering_channel_router import EngineeringRouteContext
-from .engineering_team_runtime import (
+from ...agents.workflow_state import load_session, update_session
+from ..config import DiscordBotConfig
+from ..engineering_channel_router import EngineeringRouteContext
+from ..engineering_team_runtime import (
     ROLE_TURN_KIND_OPEN,
     ROLE_TURN_KIND_SYNTHESIS,
     ROLE_TURN_KIND_TURN,
@@ -25,9 +25,9 @@ from .engineering_team_runtime import (
     parse_research_open_marker,
     record_role_turn_event,
 )
-from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
-from .research_forum import ResearchForumContext, chunk_for_discord_message
-from .typing_indicator import (
+from ..member.bots import GATEWAY_ROLE_KEY, MemberBotProfile
+from ..research_forum import ResearchForumContext, chunk_for_discord_message
+from ..ui.typing_indicator import (
     should_type_for_member_research,
     typing_context,
     typing_keepalive,

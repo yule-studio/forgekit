@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from ..integrations.calendar import list_naver_calendar_items
-from ..integrations.github.issues import list_open_issues
-from ..integrations.github.pulls import list_open_pull_requests
-from ..planning import (
+from ...integrations.calendar import list_naver_calendar_items
+from ...integrations.github.issues import list_open_issues
+from ...integrations.github.pulls import list_open_pull_requests
+from ...planning import (
     build_daily_plan,
     collect_planning_inputs,
     load_reminder_items,

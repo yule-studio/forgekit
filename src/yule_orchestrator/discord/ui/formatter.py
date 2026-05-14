@@ -4,10 +4,10 @@ import re
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence
 
-from ..core.timezone import now_local
-from ..planning.briefings import normalize_paragraph_spacing
-from ..planning.models import DailyPlanEnvelope, PlanningCheckpoint, PlanningScheduledBriefing
-from ..planning.snapshots import DailyPlanSnapshot
+from ...core.timezone import now_local
+from ...planning.briefings import normalize_paragraph_spacing
+from ...planning.models import DailyPlanEnvelope, PlanningCheckpoint, PlanningScheduledBriefing
+from ...planning.snapshots import DailyPlanSnapshot
 
 DISCORD_MESSAGE_LIMIT = 1900
 

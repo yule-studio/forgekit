@@ -382,7 +382,7 @@ async def route_engineering_message(
     # typing_keepalive 가 ~6s 마다 typing event 재발사 → 첫 visible
     # reply (send_chunks) 까지 끊김 없이 유지. ignored / non-actionable /
     # bot-echo 분기는 본 라인 *전*에 이미 return 했으므로 silence 보존.
-    from ..typing_indicator import typing_keepalive
+    from ..ui.typing_indicator import typing_keepalive
 
     async with typing_keepalive(
         getattr(message, "channel", None),

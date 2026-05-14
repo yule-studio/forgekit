@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.typing_indicator import (
+from yule_orchestrator.discord.ui.typing_indicator import (
     should_type_for_gateway_action,
     should_type_for_member_research,
 )

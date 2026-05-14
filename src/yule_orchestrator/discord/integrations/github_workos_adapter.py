@@ -61,13 +61,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
-from ..agents.job_queue.approval_reply import find_replyable_approval
-from ..agents.job_queue.approval_worker import (
+from ...agents.job_queue.approval_reply import find_replyable_approval
+from ...agents.job_queue.approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from ..agents.job_queue.github_work_order import (
+from ...agents.job_queue.github_work_order import (
     APPROVAL_KIND_GITHUB_WORK_ORDER,
     GitHubWorkOrder,
     GitHubWorkOrderDispatchOutcome,
@@ -77,7 +77,7 @@ from ..agents.job_queue.github_work_order import (
     detect_coding_intent,
     dispatch_github_work_order,
 )
-from ..agents.job_queue.store import JobQueue
+from ...agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------

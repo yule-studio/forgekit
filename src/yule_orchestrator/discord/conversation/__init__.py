@@ -4,12 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Sequence
 
-from ..planning.briefings import normalize_paragraph_spacing
-from ..planning.ollama import generate_ollama_text, validate_conversation_response
-from ..planning.ollama_config import load_ollama_conversation_config
-from ..planning.snapshots import DailyPlanSnapshot
-from ..storage import load_json_cache, save_json_cache
-from .checkpoint_state import (
+from ...planning.briefings import normalize_paragraph_spacing
+from ...planning.ollama import generate_ollama_text, validate_conversation_response
+from ...planning.ollama_config import load_ollama_conversation_config
+from ...planning.snapshots import DailyPlanSnapshot
+from ...storage import load_json_cache, save_json_cache
+from ..runtime.checkpoint_state import (
     CHECKPOINT_RESPONSE_STATUS_DONE,
     CHECKPOINT_RESPONSE_STATUS_SKIPPED,
     CheckpointPendingResponse,
@@ -17,11 +17,11 @@ from .checkpoint_state import (
     load_checkpoint_pending_response,
     mark_checkpoint_responded,
 )
-from .formatter import (
+from ..ui.formatter import (
     format_plan_today_message,
     format_snapshot_regenerating_message,
 )
-from .planning_runtime import build_due_checkpoints, load_plan_today_snapshot
+from ..runtime.planning import build_due_checkpoints, load_plan_today_snapshot
 
 PENDING_CONFIRMATION_NAMESPACE = "discord-conversation-pending-confirmations"
 PENDING_CONFIRMATION_TTL_SECONDS = 30 * 60

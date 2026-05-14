@@ -139,7 +139,7 @@ async def _run_research_loop_hook(
     # user saw long silent gaps. Wrap the work in ``typing_keepalive``
     # so "입력 중..." stays visible from the moment we start collecting
     # until the loop returns a follow-up message (or an error).
-    from ..typing_indicator import typing_keepalive
+    from ..ui.typing_indicator import typing_keepalive
     from ...agents.job_queue import (
         HeartbeatStore,
         JobQueue,

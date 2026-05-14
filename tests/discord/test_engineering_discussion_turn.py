@@ -23,7 +23,7 @@ from yule_orchestrator.agents.discussion import (
     RelevantMemorySelector,
     ThreadMessage,
 )
-from yule_orchestrator.discord.engineering_discussion_turn import (
+from yule_orchestrator.discord.engineering.discussion_turn import (
     OPERATOR_STATE_BLOCKED,
     OPERATOR_STATE_CLARIFICATION,
     OPERATOR_STATE_NEEDS_APPROVAL,
@@ -172,7 +172,7 @@ class OperatorStatusSurfaceTestCase(unittest.TestCase):
         # retry_ready 상태로 surface 되어야 한다. 분류기와 권한 레이어가
         # 서로 다른 시그널을 보는 분기를 시뮬레이션하기 위해 _build_operator_status
         # 를 직접 호출한다.
-        from yule_orchestrator.discord.engineering_discussion_turn import (
+        from yule_orchestrator.discord.engineering.discussion_turn import (
             _build_operator_status,
         )
         from yule_orchestrator.agents.discussion import (
