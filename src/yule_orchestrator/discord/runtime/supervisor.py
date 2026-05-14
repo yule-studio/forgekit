@@ -322,6 +322,13 @@ def _run_planning_in_subprocess(repo_root_str: str) -> None:  # pragma: no cover
             # yule-eng-gateway account.
             "DISCORD_ENGINEERING_INTAKE_CHANNEL_ID": "",
             "DISCORD_ENGINEERING_INTAKE_CHANNEL_NAME": "",
+            # Slash command ownership: planning-bot must NOT register
+            # /engineer_* commands. Without this discriminator the bot's
+            # setup_hook registers every command, planning-bot's app gets
+            # picked for /engineer_intake, and Discord shows
+            # "애플리케이션이 응답하지 않았어요" because no orchestrator
+            # is wired into this process.
+            "DISCORD_BOT_ROLE": "planning",
         }
     )
     run_discord_bot(repo_root=Path(repo_root_str))
@@ -341,6 +348,9 @@ def _run_engineering_gateway_in_subprocess(
     overrides = build_gateway_env_overrides(
         gateway_token=gateway_token, base_env={}
     )
+    # Engineering gateway owns ``/engineer_*`` and nothing else (planning
+    # commands like ``/plan_today`` stay on the planning-bot process).
+    overrides["DISCORD_BOT_ROLE"] = "engineering-gateway"
     _apply_env_overrides(overrides)
     run_discord_bot(repo_root=Path(repo_root_str))
 
