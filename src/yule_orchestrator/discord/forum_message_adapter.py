@@ -200,6 +200,24 @@ async def route_forum_message(
 
     change = parse_role_change_request(text)
     if change is None:
+        # ------------------------------------------------------------------
+        # Branch 3 — conversational follow-up (P0-F).
+        # ------------------------------------------------------------------
+        followup_outcome = await _route_forum_followup(
+            message=message,
+            text=text,
+            discord_module=discord_module,
+            send_chunks_factory=send_chunks_factory,
+            session_lister=session_lister,
+            session_loader=session_loader,
+            session_updater=session_updater,
+        )
+        if followup_outcome.handled:
+            return ForumMessageRouteResult(
+                handled=True,
+                response_sent=followup_outcome.response_sent,
+                skipped_reason=followup_outcome.skipped_reason,
+            )
         return ForumMessageRouteResult(
             handled=False, skipped_reason=SKIPPED_NO_INTENT
         )
@@ -516,6 +534,61 @@ def _format_role_change_response(*, change, outcome, active) -> str:
     # active / nothing matched. Surface the current state so the
     # operator knows the system saw the request.
     return RESPONSE_ROLE_NO_CHANGE.format(active=", ".join(active))
+
+
+async def _route_forum_followup(
+    *,
+    message: Any,
+    text: str,
+    discord_module: Any,
+    send_chunks_factory: Optional[Callable[[Any], Callable[..., Awaitable[Any]]]],
+    session_lister: Any,
+    session_loader: Any,
+    session_updater: Any,
+):
+    """P0-F branch 3 — conversational follow-up.
+
+    Resolves the thread's existing session (same helper the
+    role-change branch uses) and delegates to
+    :func:`forum_conversation_adapter.handle_forum_followup`. Drops
+    silently when there is no session anchored to the thread or
+    when the follow-up helper itself declines to respond.
+    """
+
+    from .forum_conversation_adapter import (
+        ForumFollowupResult,
+        handle_forum_followup,
+    )
+
+    _, _, session_lister_fn = _resolve_queue_deps(
+        queue=None,
+        approval_worker=None,
+        session_lister=session_lister,
+    )
+    _, session_updater_fn = _resolve_session_persistence(
+        session_loader=session_loader,
+        session_updater=session_updater,
+    )
+    session = _resolve_session_for_forum_thread(
+        message=message,
+        session_lister=session_lister_fn,
+    )
+    sender = _resolve_send_chunks(
+        discord_module=discord_module,
+        send_chunks_factory=send_chunks_factory,
+    )
+    if session is None:
+        return ForumFollowupResult(
+            handled=False,
+            skipped_reason="no_session_for_thread",
+        )
+    return await handle_forum_followup(
+        message=message,
+        text=text,
+        session=session,
+        session_updater=session_updater_fn,
+        send_chunks=sender,
+    )
 
 
 __all__ = (

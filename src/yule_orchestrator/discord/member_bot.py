@@ -20,6 +20,9 @@ from .engineering_team_runtime import (
     handle_research_turn_message,
     handle_team_turn_message,
     mark_turn_played,
+    parse_dispatch_marker,
+    parse_research_dispatch_marker,
+    parse_research_open_marker,
     record_role_turn_event,
 )
 from .member_bots import GATEWAY_ROLE_KEY, MemberBotProfile
@@ -277,105 +280,147 @@ async def _dispatch_member_message(
 
     text = message.content or ""
 
-    # Research-turn (운영-리서치 forum thread) takes precedence
-    # because research markers and team markers can both land in
-    # threads the bot can see. We process whichever shows up.
-    try:
-        research_outcome = handle_research_turn_message(
-            role=profile.role,
-            text=text,
-        )
-    except Exception as exc:  # noqa: BLE001
-        research_outcome = None
-        print(
-            f"warning: member bot '{profile.display_label}' "
-            f"research handler failed: {exc}",
-            file=sys.stderr,
-        )
-    if research_outcome is not None:
-        # P0-E (#134 후속): explicit defense-in-depth gate for typing.
-        # Even though the handler already returned non-None (=will_post),
-        # we cross-check that profile.role is in the session's persisted
-        # active_research_roles before showing typing. If the helper
-        # says False (e.g., the handler returned an outcome for a role
-        # that's not in the active set — should never happen, but if
-        # it does we don't want a stale typing indicator), the post
-        # still goes through, just without the typing wrap.
-        active_roles = _resolve_active_roles_for_typing_gate(
-            getattr(research_outcome, "session_id", None)
-        )
-        will_type = should_type_for_member_research(
-            role=profile.role,
-            active_roles=active_roles,
-            will_post=True,
-        )
-        try:
-            if will_type:
-                # P0-D (#134): typing_keepalive 가 ~6s 마다 Discord typing
-                # event 재발사. 1-shot typing_context 는 Discord ~10s 만료
-                # 안에 _post_research_turn 의 chained synthesis (8-15s)
-                # 가 끝나지 않으면 typing 사라짐. interval=6.0s → 4s 버퍼.
-                async with typing_keepalive(
-                    message.channel, interval=6.0, label="member:research-turn"
-                ):
-                    await _post_research_turn(
-                        message.channel, research_outcome
-                    )
-            else:
-                await _post_research_turn(
-                    message.channel, research_outcome
-                )
-        except Exception as exc:  # noqa: BLE001
-            try:
-                await message.channel.send(
-                    f"⚠️ {profile.display_label} 댓글 게시 실패: {exc}"
-                )
-            except Exception:  # noqa: BLE001
-                pass
+    # P0-F: cheap pre-parse → identify which dispatch path *might*
+    # fire and bail early for ignored / not-for-me messages. The
+    # parse_*_marker helpers are simple regex (~microseconds) so we
+    # can run all three before deciding. This pre-gate is what
+    # lets us wrap the *entire* expensive handler in typing_keepalive
+    # (the handlers load_session + run deliberation + queue
+    # synthesis — easily 5-15s — so wrapping only the post means
+    # the indicator stays dark for most of that time).
+    research_marker = parse_research_dispatch_marker(text)
+    research_open_sid = parse_research_open_marker(text)
+    team_marker = parse_dispatch_marker(text)
+
+    # `(session_id, role_or_None)` shape for the two role-specific markers.
+    # research-open is role-less so the bot processes every open
+    # broadcast for its session_id; the handler then enforces the
+    # active_research_roles guard.
+    research_role = research_marker[1] if research_marker else None
+    team_role = team_marker[1] if team_marker else None
+
+    pre_gate_research = (
+        research_marker is not None
+        and (research_role is None or research_role == profile.role)
+    ) or research_open_sid is not None
+    pre_gate_team = (
+        team_marker is not None
+        and (team_role is None or team_role == profile.role)
+    )
+    if not pre_gate_research and not pre_gate_team:
+        # No marker for us — silent (typing not shown).
         return
 
-    try:
-        team_outcome = handle_team_turn_message(
-            role=profile.role,
-            text=text,
-        )
-    except Exception as exc:  # noqa: BLE001
-        team_outcome = None
-        print(
-            f"warning: member bot '{profile.display_label}' "
-            f"team handler failed: {exc}",
-            file=sys.stderr,
-        )
-    if team_outcome is None:
-        return
+    # Resolve session anchor for the defense-in-depth typing gate
+    # (P0-E). Cheap session_id extraction from the matched marker.
+    session_id_for_gate: Optional[str] = None
+    if research_marker is not None:
+        session_id_for_gate = research_marker[0]
+    elif research_open_sid is not None:
+        session_id_for_gate = research_open_sid
+    elif team_marker is not None:
+        session_id_for_gate = team_marker[0]
 
-    # P0-E (#134 후속): defense-in-depth gate matching the research-turn
-    # branch. team_outcome.turn.session_id is the canonical anchor.
-    team_session_id = getattr(getattr(team_outcome, "turn", None), "session_id", None)
-    active_roles = _resolve_active_roles_for_typing_gate(team_session_id)
+    active_roles = _resolve_active_roles_for_typing_gate(session_id_for_gate)
     will_type = should_type_for_member_research(
         role=profile.role,
         active_roles=active_roles,
         will_post=True,
     )
-    try:
-        if will_type:
-            # P0-D (#134): same keepalive rationale as research-turn above —
-            # handle_team_turn_message 의 deliberation re-render 가 8-15s
-            # 걸리는 경우 1-shot typing 으로는 fade 발생.
-            async with typing_keepalive(
-                message.channel, interval=6.0, label="member:team-turn"
-            ):
-                await _post_team_turn(message.channel, team_outcome)
-        else:
-            await _post_team_turn(message.channel, team_outcome)
-    except Exception as exc:  # noqa: BLE001
-        try:
-            await message.channel.send(
-                f"⚠️ {profile.display_label} take 게시 실패: {exc}"
+
+    # P0-F: typing_keepalive now wraps the *entire* expensive path
+    # (handler invocation + post). Previously it only wrapped the
+    # post itself, so the 8-15s deliberation / synthesis re-render
+    # inside handle_*_turn_message ran with no typing indicator.
+    if will_type:
+        async with typing_keepalive(
+            message.channel,
+            interval=6.0,
+            label="member:dispatch",
+        ):
+            await _run_member_dispatch(
+                profile=profile,
+                message=message,
+                text=text,
+                try_research=pre_gate_research,
+                try_team=pre_gate_team,
             )
-        except Exception:  # noqa: BLE001
-            pass
+    else:
+        await _run_member_dispatch(
+            profile=profile,
+            message=message,
+            text=text,
+            try_research=pre_gate_research,
+            try_team=pre_gate_team,
+        )
+
+
+async def _run_member_dispatch(
+    *,
+    profile: MemberBotProfile,
+    message: Any,
+    text: str,
+    try_research: bool,
+    try_team: bool,
+) -> None:
+    """Run the actual handlers + posts. Caller owns the typing wrap.
+
+    The pre-gate in :func:`_dispatch_member_message` already decided
+    which markers might apply; here we just invoke the matching
+    handlers and post. Errors land as ⚠️ messages in the same
+    channel so a user never sees a frozen typing indicator.
+    """
+
+    # Research-turn first — marker takes precedence when both land.
+    if try_research:
+        try:
+            research_outcome = handle_research_turn_message(
+                role=profile.role,
+                text=text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            research_outcome = None
+            print(
+                f"warning: member bot '{profile.display_label}' "
+                f"research handler failed: {exc}",
+                file=sys.stderr,
+            )
+        if research_outcome is not None:
+            try:
+                await _post_research_turn(message.channel, research_outcome)
+            except Exception as exc:  # noqa: BLE001
+                try:
+                    await message.channel.send(
+                        f"⚠️ {profile.display_label} 댓글 게시 실패: {exc}"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            return
+
+    if try_team:
+        try:
+            team_outcome = handle_team_turn_message(
+                role=profile.role,
+                text=text,
+            )
+        except Exception as exc:  # noqa: BLE001
+            team_outcome = None
+            print(
+                f"warning: member bot '{profile.display_label}' "
+                f"team handler failed: {exc}",
+                file=sys.stderr,
+            )
+        if team_outcome is None:
+            return
+        try:
+            await _post_team_turn(message.channel, team_outcome)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                await message.channel.send(
+                    f"⚠️ {profile.display_label} take 게시 실패: {exc}"
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
 
 def _resolve_active_roles_for_typing_gate(
