@@ -247,6 +247,8 @@ A-M10c 추가:
 
 ## 관련 문서
 
-- [approval-matrix.md](approval-matrix.md) — action × level 매트릭스 표
+- [approval-matrix.md](approval-matrix.md) — action × level 매트릭스 표 (vault 통합 §3 P0-G SSoT 포함)
 - [engineering.md](engineering.md) — engineering-agent 전체 아키텍처
 - [operations.md](operations.md) — runtime / supervisor / heartbeat
+- [`policies/runtime/agents/engineering-agent/obsidian-governance.md`](../policies/runtime/agents/engineering-agent/obsidian-governance.md) §0 — GitHub vs Obsidian role separation (P0-G 1차)
+- [`policies/runtime/agents/engineering-agent/repo-contract-discovery.md`](../policies/runtime/agents/engineering-agent/repo-contract-discovery.md) — 외부 repo 의 자체 컨벤션 우선 적용 (multi_repo topology 시)

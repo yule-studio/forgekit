@@ -6,6 +6,40 @@
 
 본 정책은 `policies/runtime/agents/engineering-agent/obsidian-memory.md` (v0 contract) 의 *상위 운영 규칙* 이다. v0 contract 가 정의한 path / frontmatter 는 그대로 유지되며, 본 정책은 *어떻게 노트를 서로 연결할지* 만 추가한다.
 
+## 0. GitHub vs Obsidian — role separation (P0-G 1차)
+
+본 부서가 두 surface 를 함께 쓰는 이유:
+
+- **GitHub = 실행 기록.** issue / PR / merge / tag / CI / deploy 의 *기록* 이 일어나는 곳. *지금 무엇이 머지됐는지* 가 정답. 의사 결정의 산출물 (코드 / 정책 / 회귀 test) 이 SSoT 로 박힌다.
+- **Obsidian = 학습 / 판단 / 회고 미러.** 같은 사건을 *해상도가 다른* 시점에서 다시 기록 — 왜 그렇게 결정했는지 / 무엇이 어려웠는지 / 어떤 패턴이 반복되는지. *결정의 맥락* 이 사는 곳.
+
+두 surface 는 backlink 로 연결되지만 **책임이 다르다.** 같은 정보를 두 surface 에 *동일하게* 쓰지 않는다. 같은 사건을 *다른 해상도로* 쓴다.
+
+### 0.1 어디에 무엇을 쓰는가
+
+| 정보 종류 | GitHub | Obsidian |
+| --- | --- | --- |
+| 작업의 *목적* (왜 이 PR 을 만드는가) | issue body §어떤 기능, PR body §✨ | research/decision 노트의 §변경 이유 |
+| 작업의 *결과* (무엇이 머지됐는지) | PR title / merged sha / CI / tag | task-log 노트의 §어떻게 했는가 |
+| 결정의 *맥락* (왜 그 결정인가) | issue / PR 의 짧은 설명 | decision 노트의 §고민 / §대안 / §회고 |
+| 반복 패턴 / 학습 | 안 씀 (PR 본문이 부적합) | resource / pattern 노트 — [`growth-loop.md`](growth-loop.md) 참조 |
+| audit (실패 / 재시도 / dedup) | 일부 progress comment | `agent-ops` 노트 / `failure-postmortem` |
+| secret / credential | **절대 금지** (모든 surface) | **절대 금지** |
+
+### 0.2 backlink contract
+
+- **GitHub → Obsidian.** issue / PR 의 progress comment 가 *모든* 관련 Obsidian 노트 path 를 §4 (Obsidian 노트 경로) 에 명시. 노트 basename 은 [`obsidian-memory.md`](obsidian-memory.md) 의 v0 contract 와 본 정책 §2 의 컨벤션을 따른다.
+- **Obsidian → GitHub.** 노트의 frontmatter / 본문에 GitHub issue 번호 / PR URL 을 backlink. 본 정책 §3 의 `## 관련 문서` 가 wikilink 만 책임; PR URL 등 외부 link 는 본문 §어떻게 했는가 또는 §회고 에 명시.
+- backlink 는 **양방향** 이어야 학습 미러가 의미를 가진다. PR 만 있고 Obsidian 노트가 없으면 = 학습 누락. Obsidian 노트만 있고 PR 이 없으면 = 실행 누락 (또는 정책 변경 only PR — 명시 필요).
+
+### 0.3 Obsidian repo workspace 부재 시
+
+본 레포 (`yule-studio-agent`) 의 `notes/vault-mirror/` 는 *Obsidian 의 mirror* 다. 실제 vault repo (operator 의 `yule-agent-vault`) 가 현재 workspace 에 클론되어 있지 않으면:
+
+- mirror 노트 자체는 본 레포 안에서 land. 운영자가 vault repo 로 sync.
+- mirror write 자체를 코드로 자동화하는 작업은 vault repo workspace 가용성 확인 후 (P0-G 3차 / #141 scope).
+- 본 commit / 본 정책 land 시점에는 mirror 노트 path 정책만 정의 — vault remote push 자체는 본 정책의 책임 아님 (그건 [`docs/approval-matrix.md`](../../../../docs/approval-matrix.md) §3 + [`docs/autonomy-policy.md`](../../../../docs/autonomy-policy.md) L3 `vault_remote_push` 가 책임).
+
 ## 1. 적용 범위
 
 - 모든 신규 / 수정 노트 (research / decision / task-log / report / reference / meeting / knowledge).
@@ -113,3 +147,4 @@ backlink 는 **추가만**. 기존 링크 / 문구는 보존.
 | 일자 | 변경 |
 | --- | --- |
 | 2026-05-08 | 초안 (Issue #69 — D-69-6 ~ D-69-9 결정 반영) |
+| 2026-05-14 | P0-G 1차 (Issue #139 / parent #138) — §0 신설: GitHub=실행기록 / Obsidian=학습미러 role separation 명시. 어디에 무엇을 쓰는가 표 + 양방향 backlink contract + vault workspace 부재 대응. |
