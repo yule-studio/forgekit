@@ -17,16 +17,16 @@ import os
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
-from ..agents.coding.authorization import (
+from ...agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
     recommend_authorization,
 )
-from ..agents.coding.job import (
+from ...agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
-from ..agents.obsidian.approval import (
+from ...agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     execute_pending_proposal,
@@ -35,8 +35,8 @@ from ..agents.obsidian.approval import (
     is_obsidian_save_request,
     store_pending_proposal,
 )
-from ..agents.research.persistence import persist_research_artifacts
-from ..agents.routing import (
+from ...agents.research.persistence import persist_research_artifacts
+from ...agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
     ACTION_CREATE,
@@ -49,7 +49,7 @@ from ..agents.routing import (
     is_non_actionable_prompt,
     list_open_sessions,
 )
-from ..agents.runtime import (
+from ...agents.runtime import (
     ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,
@@ -67,296 +67,33 @@ from ..agents.runtime import (
     make_recall_fn,
 )
 
-
-# Single-source confirmation lexicon; the engineering conversation layer
-# may also detect intent and pre-set ``confirmed=True`` itself, in which
-# case the router trusts that signal.
-_CONFIRMATION_KEYWORDS: tuple[str, ...] = (
-    "확정",
-    "진행",
-    "시작해",
-    "시작하자",
-    "시작할게",
-    "시작합시다",
-    "고고",
-    "ㄱㄱ",
-    "ㄱㄱㄱ",
-    "맞아 진행",
-    "그대로 진행",
-    "그대로 가",
-    "오케이 진행",
-    "오케 진행",
-    "go ahead",
-    "let's go",
-    "lets go",
-    "kick off",
-    "kickoff",
-    "proceed",
-    "approve and start",
+# P0-P step 3: dataclasses + type aliases extracted to .models.
+from .models import (  # noqa: E402,F401 — re-export for back-compat
+    ConversationFn,
+    EngineeringConversationOutcome,
+    EngineeringResearchLoopReport,
+    EngineeringRouteContext,
+    EngineeringRouteResult,
+    EngineeringThreadContinuation,
+    EngineeringThreadKickoff,
+    ExtractPromptFn,
+    IntakeFn,
+    ResearchLoopFn,
+    SendChunksFn,
+    ThreadContinuationFn,
+    ThreadKickoffFn,
 )
 
 
-@dataclass(frozen=True)
-class EngineeringRouteContext:
-    """Where the engineering intake channel lives.
-
-    Both ``intake_channel_id`` and ``intake_channel_name`` are optional
-    individually — if either one matches the message channel (or its
-    parent, for a thread), the message is treated as engineering.
-
-    F16 (issue #128) added ``prefer_recall_first_gateway`` — an opt-in
-    flag that, when set, lets the router call ``decide_gateway`` (the
-    new 7-action recall-first decision) for **any** intent. While off
-    (default), the router keeps the legacy preflight short-circuit
-    behaviour so all pre-F16 contracts hold. The coverage scorer is
-    attached to recall results unconditionally — it is **derived**
-    metadata and changes no existing behaviour, but lets observability
-    and future routing tap into it without re-running recall.
-    """
-
-    intake_channel_id: Optional[int] = None
-    intake_channel_name: Optional[str] = None
-    prefer_recall_first_gateway: bool = False
-
-    @property
-    def configured(self) -> bool:
-        return self.intake_channel_id is not None or bool(
-            _normalize_channel_name(self.intake_channel_name)
-        )
-
-    @classmethod
-    def from_env(cls) -> "EngineeringRouteContext":
-        return cls(
-            intake_channel_id=_optional_int_env("DISCORD_ENGINEERING_INTAKE_CHANNEL_ID"),
-            intake_channel_name=_optional_string_env(
-                "DISCORD_ENGINEERING_INTAKE_CHANNEL_NAME"
-            ),
-            prefer_recall_first_gateway=_optional_bool_env(
-                "YULE_GATEWAY_RECALL_FIRST_ENABLED", default=False
-            ),
-        )
-
-
-@dataclass(frozen=True)
-class EngineeringConversationOutcome:
-    """The shape returned by the engineering free-conversation layer.
-
-    ``confirmed=True`` means the user just expressed intent to start
-    a real intake; ``intake_prompt`` is the canonicalised request for
-    the workflow.  The conversation layer is free to omit those fields
-    — the router falls back to a keyword-based confirmation check on
-    the original user text.
-
-    ``research_pack`` and ``collection_outcome`` carry the autonomous
-    research collector's result through to the research-loop hook
-    (forum publisher / deliberation kickoff). ``role_for_research``
-    lets the conversation layer signal which role profile drove the
-    collection so downstream code can render labels accordingly.
-    """
-
-    content: str
-    confirmed: bool = False
-    intake_prompt: Optional[str] = None
-    write_requested: bool = False
-    thread_topic: Optional[str] = None
-    research_pack: Any = None
-    collection_outcome: Any = None
-    role_for_research: Optional[str] = None
-    # When True the conversation already answered a status/diagnostic
-    # question. The router must NOT route to intake/decide/auto_collect
-    # — the user wasn't filing new work, they were asking what's going
-    # on with existing work.
-    is_status_query: bool = False
-
-
-@dataclass(frozen=True)
-class EngineeringThreadKickoff:
-    """Result of creating a working thread and posting kickoff."""
-
-    thread_id: Optional[int] = None
-    message: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class EngineeringThreadContinuation:
-    """Result of continuing an already-open workflow thread."""
-
-    session: Any
-    thread_id: Optional[int] = None
-    message: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class EngineeringResearchLoopReport:
-    """What the research loop hook reported back to the router.
-
-    ``follow_up_message`` is sent to the user when the loop decided the
-    research pack is too thin (e.g. no URL, no attachment for a
-    landing-page task). ``forum_status_message`` is the operator-facing
-    summary line ("운영-리서치 forum thread 게시: …") posted after a
-    successful publish. ``error`` is filled when the hook itself raised;
-    callers display it as a `⚠️` line and continue.
-    """
-
-    follow_up_message: Optional[str] = None
-    forum_status_message: Optional[str] = None
-    forum_thread_id: Optional[int] = None
-    forum_thread_url: Optional[str] = None
-    insufficient: bool = False
-    error: Optional[str] = None
-    # member-bots vs gateway publication mode signal — populated by the
-    # research-loop hook from the publication outcome so status /
-    # diagnostic responses can describe the live setup correctly.
-    forum_comment_mode: Optional[str] = None
-    # member-bots mode only: did the gateway successfully post the
-    # ``[research-open:<session_id>]`` open-call directive that each
-    # member bot is supposed to react to? ``None`` in gateway mode.
-    kickoff_posted: Optional[bool] = None
-    # member-bots mode only: stringified error from the open-call
-    # directive post when ``kickoff_posted`` is False; otherwise None.
-    kickoff_error: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class EngineeringRouteResult:
-    """What the router did with one Discord message.
-
-    ``handled=False`` means this message is *not* an engineering channel
-    message; the bot should fall through to its planning conversation
-    path.  ``handled=True`` means the router has already replied (and
-    optionally created an intake/thread), so the bot must not double-reply.
-    """
-
-    handled: bool
-    conversation_message: Optional[str] = None
-    intake_message: Optional[str] = None
-    kickoff_message: Optional[str] = None
-    session_id: Optional[str] = None
-    thread_id: Optional[int] = None
-    research_loop_report: Optional[EngineeringResearchLoopReport] = None
-    error: Optional[str] = None
-    routing_decision: Optional[EngineeringRoutingDecision] = None
-
-
-SendChunksFn = Callable[[Any, str], Awaitable[None]]
-ExtractPromptFn = Callable[..., str]
-ConversationFn = Callable[..., Union[
-    EngineeringConversationOutcome,
-    Awaitable[EngineeringConversationOutcome],
-    str,
-    Awaitable[str],
-]]
-IntakeFn = Callable[..., Any]
-ThreadKickoffFn = Callable[..., Awaitable[EngineeringThreadKickoff]]
-ThreadContinuationFn = Callable[..., Union[
-    Optional[EngineeringThreadContinuation],
-    Awaitable[Optional[EngineeringThreadContinuation]],
-]]
-ResearchLoopFn = Callable[..., Union[
-    EngineeringResearchLoopReport,
-    Awaitable[EngineeringResearchLoopReport],
-]]
-
-
-def is_engineering_channel(
-    *,
-    message: Any,
-    route_context: EngineeringRouteContext,
-) -> bool:
-    if not route_context.configured:
-        return False
-
-    channel = getattr(message, "channel", None)
-    if channel is None:
-        return False
-
-    channel_id = getattr(channel, "id", None)
-    parent = getattr(channel, "parent", None)
-    parent_id = getattr(parent, "id", None) or getattr(channel, "parent_id", None)
-    channel_name = _normalize_channel_name(getattr(channel, "name", None))
-    parent_name = _normalize_channel_name(getattr(parent, "name", None))
-
-    target_id = route_context.intake_channel_id
-    target_name = _normalize_channel_name(route_context.intake_channel_name)
-
-    if target_id is not None:
-        if channel_id is not None and channel_id == target_id:
-            return True
-        if parent_id is not None and parent_id == target_id:
-            return True
-    if target_name:
-        if channel_name == target_name:
-            return True
-        if parent_name == target_name:
-            return True
-    return False
-
-
-def detect_confirmation_signal(text: str) -> bool:
-    """Heuristic confirmation detector used when the conversation layer
-    does not pre-classify intent.  Matches Korean and English go-ahead
-    phrases conservatively — short ack words like ``yes``/``네`` are
-    excluded so casual chat isn't promoted to a workflow intake."""
-
-    if not text:
-        return False
-    normalized = " ".join(text.lower().split())
-    if not normalized:
-        return False
-    return any(keyword in normalized for keyword in _CONFIRMATION_KEYWORDS)
-
-
-def should_continue_existing_thread(*texts: str) -> bool:
-    """True when the user asked to reuse an existing workflow thread/session."""
-
-    normalized = " ".join(
-        " ".join(str(text or "").lower().split()) for text in texts
-    )
-    if not normalized.strip():
-        return False
-    continuation_signals = (
-        "새로 등록하지 말고",
-        "새로 만들지 말고",
-        "새 스레드 만들지",
-        "새 thread 만들지",
-        "새로운 스레드",
-        "새 thread",
-        "기존 스레드",
-        "기존 thread",
-        "열려 있는 스레드",
-        "열려있는 스레드",
-        "열려 있는 thread",
-        "열려있는 thread",
-        "이어가",
-        "이어 가",
-        "이어서",
-        "continue existing",
-        "reuse thread",
-        "same thread",
-        "do not create a new thread",
-        "don't create a new thread",
-    )
-    return any(signal in normalized for signal in continuation_signals)
-
-
-def should_start_new_thread(text: str) -> bool:
-    """True when the latest user turn explicitly overrides continuation."""
-
-    normalized = " ".join(str(text or "").lower().split())
-    if not normalized:
-        return False
-    force_new_signals = (
-        "새 작업으로 진행",
-        "새 작업으로 시작",
-        "새로 등록해",
-        "새로 등록",
-        "새 스레드로",
-        "새 thread로",
-        "새 세션으로",
-        "new thread",
-        "new session",
-    )
-    return any(signal in normalized for signal in force_new_signals)
+# P0-P step 5: channel + confirmation + continuation predicates
+# extracted to .intent_detection.
+from .intent_detection import (  # noqa: E402,F401 — re-export for back-compat
+    _CONFIRMATION_KEYWORDS,
+    detect_confirmation_signal,
+    is_engineering_channel,
+    should_continue_existing_thread,
+    should_start_new_thread,
+)
 
 
 async def route_engineering_message(
@@ -447,7 +184,7 @@ async def route_engineering_message(
         explicit_session_id = _explicit_session_request(prompt_text)
         if explicit_session_id:
             try:
-                from ..agents.workflow_state import load_session as _load_session
+                from ...agents.workflow_state import load_session as _load_session
                 target_session = _load_session(explicit_session_id)
             except Exception:  # noqa: BLE001 - lookup failures fall through to legacy flow
                 target_session = None
@@ -586,7 +323,7 @@ async def route_engineering_message(
     # typing_keepalive 가 ~6s 마다 typing event 재발사 → 첫 visible
     # reply (send_chunks) 까지 끊김 없이 유지. ignored / non-actionable /
     # bot-echo 분기는 본 라인 *전*에 이미 return 했으므로 silence 보존.
-    from .typing_indicator import typing_keepalive
+    from ..typing_indicator import typing_keepalive
 
     async with typing_keepalive(
         getattr(message, "channel", None),
@@ -969,7 +706,7 @@ _PREFLIGHT_SHORT_CIRCUIT_INTENTS = frozenset(
 # stays focused on flow orchestration. The router-prefixed (``_``)
 # names below are kept as aliases so existing tests / callers that
 # import from ``engineering_channel_router`` keep working.
-from .engineering.clarification import (
+from ..engineering.clarification import (
     GATEWAY_CLARIFICATION_CONTEXT as _GATEWAY_CLARIFICATION_CONTEXT,
     clarification_context_key as _clarification_context_key,
     clear_clarification_context as _clear_clarification_context,
@@ -1156,7 +893,7 @@ async def _handle_clarification_selection(
 # the historical underscore-prefixed names so existing tests / callers
 # (e.g. ``engineering_channel_router.is_coding_approval_phrase``) keep
 # working.
-from .engineering.phrase_detect import (
+from ..engineering.phrase_detect import (
     CODING_APPROVAL_PHRASES as _CODING_APPROVAL_PHRASES,
     CODING_PROPOSAL_REQUEST_PHRASES as _CODING_PROPOSAL_REQUEST_PHRASES,
     CONTINUATION_RESEARCH_KEYWORDS as _CONTINUATION_RESEARCH_KEYWORDS,
@@ -1275,254 +1012,37 @@ def _find_latest_open_session(
     return _most_recent_session(open_sessions)
 
 
-def _is_terminal(session: Any) -> bool:
-    state = getattr(session, "state", None)
-    state_value = getattr(state, "value", state)
-    return str(state_value).lower() in {"completed", "rejected"}
+# P0-P step 6: session.extra mutations + load helpers extracted to .session_persistence.
+from .session_persistence import (  # noqa: E402,F401 — re-export for back-compat
+    _is_terminal,
+    _load_session_by_id,
+    _most_recent_session,
+    _persist_coding_job,
+    _persist_coding_proposal,
+    _persist_coding_session_context,
+    _persist_extra_keys,
+    _persist_lifecycle_mode,
+    _persist_role_selection,
+    _persist_thread_id,
+    _proposal_from_dict,
+    _proposal_to_dict,
+    _record_persistence_failure,
+    _work_report_to_dict,
+)
 
 
-def _persist_coding_proposal(
-    session: Any,
-    proposal: CodingAuthorizationProposal,
-) -> Any:
-    """Stash a fresh proposal under ``session.extra['coding_proposal']``."""
-
-    return _persist_extra_keys(
-        session,
-        {
-            "coding_proposal": _proposal_to_dict(proposal),
-            "coding_job": None,  # supersedes any prior pending job copy
-        },
-    )
 
 
-def _persist_coding_job(session: Any, job_payload: Mapping[str, object]) -> Any:
-    """Replace any pending proposal with the approved coding job payload."""
-
-    return _persist_extra_keys(
-        session,
-        {
-            "coding_job": dict(job_payload),
-            "coding_proposal": None,  # consumed
-        },
-    )
 
 
-def _persist_role_selection(
-    session: Any,
-    canonical_prompt: str,
-) -> Any:
-    """Run :func:`role_selection.recommend_active_roles` against
-    *canonical_prompt* and stash the result on ``session.extra``.
-
-    Best-effort: import or persistence failures simply skip — the
-    legacy "all roles" fallback path remains operational. Used right
-    after intake so the work-report builder + research scoping see a
-    populated ``active_research_roles`` from turn one.
-    """
-
-    if session is None:
-        return session
-    try:
-        from ..agents.lifecycle.role_selection import (
-            apply_role_selection_to_extra,
-            recommend_active_roles,
-        )
-    except Exception:  # noqa: BLE001
-        return session
-    try:
-        hint_sequence = tuple(getattr(session, "role_sequence", ()) or ())
-    except Exception:  # noqa: BLE001
-        hint_sequence = ()
-    try:
-        selection = recommend_active_roles(
-            user_prompt=canonical_prompt or "",
-            hint_role_sequence=hint_sequence,
-        )
-    except Exception:  # noqa: BLE001
-        return session
-    try:
-        existing = dict(getattr(session, "extra", {}) or {})
-    except Exception:  # noqa: BLE001
-        existing = {}
-    merged = apply_role_selection_to_extra(existing, selection)
-    # Only forward the four selection-specific keys to _persist_extra_keys
-    # so we don't accidentally rewrite unrelated extras with stale copies.
-    selection_updates = {
-        key: merged[key]
-        for key in (
-            "active_research_roles",
-            "excluded_research_roles",
-            "role_selection_source",
-            "role_selection_reasons",
-        )
-        if key in merged
-    }
-    if not selection_updates:
-        return session
-    return _persist_extra_keys(session, selection_updates)
 
 
-def _persist_coding_session_context(
-    session: Any,
-    *,
-    message_text: str,
-    user_links: Sequence[str] = (),
-) -> Any:
-    """P0-H stage 2 + P0-I stage 3 — store gateway-prepared coding session context.
-
-    Calls :func:`prepare_coding_session_context` to compute the
-    work_mode / topology / scope / github_target / repo_contract /
-    coding_handoff_packet extras for *session*, then merges them in.
-    Additionally (P0-I) runs the **tracking enforcement validator** and
-    stores the result for the status surface to display.
-
-    Ask-once contract: if the session already has work_mode set, the
-    helper does not re-prompt and does not overwrite.
-
-    Best-effort — any failure leaves the session untouched so partial
-    install / missing gh CLI never blocks intake.
-    """
-
-    if session is None:
-        return session
-    try:
-        from ..agents.coding.coding_session_context import (
-            prepare_coding_session_context,
-        )
-    except Exception:  # noqa: BLE001 - partial install fallback
-        return session
-
-    try:
-        existing_extra = dict(getattr(session, "extra", None) or {})
-    except Exception:  # noqa: BLE001
-        existing_extra = {}
-
-    try:
-        context = prepare_coding_session_context(
-            message_text=message_text or "",
-            user_links=tuple(user_links or ()),
-            existing_extra=existing_extra,
-            existing_session_id=getattr(session, "session_id", None),
-            # discover_contract=False until vault/workspace clone wiring lands.
-            # The contract still records its own fallback line in extras.
-        )
-    except Exception:  # noqa: BLE001
-        return session
-
-    extras_update = dict(context.extras_update or {})
-
-    # P0-I stage 3 — tracking enforcement validation. Run it against
-    # the *post-update* extras so the validator sees github_target /
-    # work_mode / handoff packet that this very call just persisted.
-    try:
-        from ..agents.coding.tracking_enforcement import (
-            validate_tracking_chain,
-        )
-
-        post_update_extra = dict(existing_extra)
-        post_update_extra.update(extras_update)
-        tracking = validate_tracking_chain(post_update_extra)
-        extras_update["tracking_validation"] = dict(tracking.to_dict())
-        if tracking.blocked and tracking.blocked_reason:
-            extras_update["tracking_blocked_reason"] = tracking.blocked_reason
-    except Exception:  # noqa: BLE001
-        pass
-
-    if not extras_update:
-        return session
-    return _persist_extra_keys(session, extras_update)
 
 
-def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
-    """Mark *session* as research-only when the prompt signals that.
-
-    Live regression: the gateway used to advertise an executor role
-    ("실행 후보 backend-engineer") even on a request like "오늘은 코드
-    수정 없이 자료 수집이 목표야". Phase 2 fixes that by stashing the
-    lifecycle mode at intake so every downstream consumer (work_report
-    builder, status diagnostic, member-bot research path) reads the
-    same answer.
-
-    The session.extra layout matches the spec's bullet 5:
-        lifecycle_mode: "research_only" | "implementation"
-        executor_role:  null when research-only
-        research_leads: list[str]   roles leading the investigation
-
-    Best-effort — any import or persistence failure leaves the session
-    untouched so a partial agent layout cannot block intake.
-    """
-
-    if session is None:
-        return session
-    try:
-        from ..agents.coding.authorization import (
-            LIFECYCLE_MODE_IMPLEMENTATION,
-            LIFECYCLE_MODE_RESEARCH_ONLY,
-            recommend_authorization,
-        )
-    except Exception:  # noqa: BLE001
-        return session
-
-    try:
-        proposal = recommend_authorization(user_request=canonical_prompt or "")
-    except Exception:  # noqa: BLE001
-        return session
-
-    if proposal.lifecycle_mode == LIFECYCLE_MODE_RESEARCH_ONLY:
-        updates = {
-            "lifecycle_mode": LIFECYCLE_MODE_RESEARCH_ONLY,
-            "executor_role": None,
-            "research_leads": list(proposal.research_leads),
-        }
-    else:
-        updates = {
-            "lifecycle_mode": LIFECYCLE_MODE_IMPLEMENTATION,
-        }
-    return _persist_extra_keys(session, updates)
 
 
-def _work_report_to_dict(report: Any) -> dict:
-    """Serialise a :class:`agents.reports.work_report.WorkReport` into a plain
-    JSON-friendly dict so the workflow store can persist it under
-    ``session.extra['work_report']``."""
 
-    return {
-        "session_id": getattr(report, "session_id", None),
-        "title": getattr(report, "title", "") or "",
-        "canonical_prompt": getattr(report, "canonical_prompt", "") or "",
-        "executive_summary": getattr(report, "executive_summary", "") or "",
-        "research_summary": getattr(report, "research_summary", "") or "",
-        "tech_lead_recommendation": getattr(
-            report, "tech_lead_recommendation", ""
-        )
-        or "",
-        "role_decisions": dict(getattr(report, "role_decisions", {}) or {}),
-        "risks": list(getattr(report, "risks", ()) or ()),
-        "proposed_next_steps": list(
-            getattr(report, "proposed_next_steps", ()) or ()
-        ),
-        "requires_code_change": bool(
-            getattr(report, "requires_code_change", False)
-        ),
-        "recommended_executor_role": getattr(
-            report, "recommended_executor_role", None
-        ),
-        "approval_request": getattr(report, "approval_request", None),
-        "participants": list(getattr(report, "participants", ()) or ()),
-        "reference_count": int(getattr(report, "reference_count", 0) or 0),
-        "research_stop_reason": getattr(report, "research_stop_reason", None),
-        "under_covered_roles": list(
-            getattr(report, "under_covered_roles", ()) or ()
-        ),
-        # Phase 3 status gate fields.
-        "status": getattr(report, "status", "interim"),
-        "missing_roles": list(getattr(report, "missing_roles", ()) or ()),
-        "has_research_pack": bool(
-            getattr(report, "has_research_pack", False)
-        ),
-        "has_synthesis": bool(getattr(report, "has_synthesis", False)),
-    }
+
 
 
 async def _emit_work_report_preview(
@@ -1549,7 +1069,7 @@ async def _emit_work_report_preview(
     if session is None:
         return
     try:
-        from ..agents.reports.work_report import (
+        from ...agents.reports.work_report import (
             build_work_report,
             format_work_report_markdown,
         )
@@ -1600,156 +1120,14 @@ async def _emit_work_report_preview(
             pass
 
 
-def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
-    """Merge *updates* into ``session.extra`` and persist via ``update_session``.
-
-    Always mutates the live ``extra`` dict when one is present, so test
-    fixtures using mutable dataclass stubs observe the new keys without
-    having to capture the returned session. Production WorkflowSession
-    is frozen — for that path we rely on ``dataclasses.replace`` +
-    ``update_session`` to land the change in SQLite.
-
-    Stabilisation Phase 1: persistence failures used to be silently
-    swallowed, which made live debugging impossible. We now stamp a
-    ``persistence_error`` entry on the session's live extra dict (when
-    available) so the status diagnostic + supervisor can surface
-    "왜 저장이 안 됐어?" without having to grep logs. The user-visible
-    reply chain is still kept intact (no exception leaks past this
-    helper).
-    """
-
-    try:
-        from dataclasses import replace as _dc_replace
-        from datetime import datetime as _dt
-
-        from ..agents.workflow_state import update_session
-    except Exception as exc:  # noqa: BLE001
-        _record_persistence_failure(
-            session,
-            step="import update_session",
-            reason=str(exc),
-            updates=updates,
-        )
-        return session
-
-    # Try in-place mutation first so test stubs (plain dataclasses with
-    # a regular dict ``extra``) observe the change directly. Production
-    # WorkflowSession holds an immutable mapping; this no-ops there.
-    live = getattr(session, "extra", None)
-    if isinstance(live, dict):
-        for key, value in updates.items():
-            live[key] = value
-
-    existing = dict(getattr(session, "extra", {}) or {})
-    merged = {**existing, **dict(updates)}
-    try:
-        updated = _dc_replace(session, extra=merged)
-    except TypeError:
-        # Non-dataclass stub — in-place mutation above already covered it.
-        return session
-    try:
-        update_session(updated, now=_dt.now().astimezone())
-    except Exception as exc:  # noqa: BLE001
-        _record_persistence_failure(
-            updated,
-            step="update_session",
-            reason=str(exc),
-            updates=updates,
-        )
-    return updated
 
 
-def _record_persistence_failure(
-    session: Any,
-    *,
-    step: str,
-    reason: str,
-    updates: Mapping[str, object],
-) -> None:
-    """Stamp a persistence failure note on the live ``session.extra``.
-
-    Best-effort — the session.extra mutation is wrapped so even
-    pathological stubs never raise out of this helper. The note keeps
-    the offending step + reason + the keys that were being written so
-    the diagnostic responder can show the operator exactly which
-    update silently failed during the live MVP loop.
-    """
-
-    if session is None:
-        return
-    try:
-        live = getattr(session, "extra", None)
-        if isinstance(live, dict):
-            live["persistence_error"] = {
-                "step": step,
-                "reason": reason,
-                "keys": sorted(str(k) for k in (updates or {}).keys()),
-            }
-    except Exception:  # noqa: BLE001
-        return
 
 
-def _persist_thread_id(
-    session: Any,
-    thread_id: Optional[int],
-) -> Any:
-    """Write the Discord work-thread id back to ``session.thread_id``.
-
-    MVP closure refactor: delegates to
-    :func:`agents.lifecycle.persistence.persist_thread_link` so the
-    router and any other caller (member-bot, supervisor cleanup)
-    follow the same persistence contract — including the structured
-    ``persistence_error`` stamp on failure. Behaviour is identical to
-    the prior inline implementation; only the import/replace
-    sequence is consolidated upstream.
-    """
-
-    from ..agents.lifecycle.persistence import persist_thread_link
-
-    result = persist_thread_link(session, thread_id)
-    return result.session
 
 
-def _proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, object]:
-    return {
-        "session_id": proposal.session_id,
-        "user_request": proposal.user_request,
-        "executor_role": proposal.executor_role,
-        "review_roles": list(proposal.review_roles),
-        "participant_roles": list(proposal.participant_roles),
-        "write_scope": list(proposal.write_scope),
-        "forbidden_scope": list(proposal.forbidden_scope),
-        "reason": proposal.reason,
-        "safety_rules": list(proposal.safety_rules),
-        "approval_required": bool(proposal.approval_required),
-        "metadata": dict(proposal.metadata),
-        "lifecycle_mode": proposal.lifecycle_mode,
-        "research_leads": list(proposal.research_leads),
-    }
 
 
-def _proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProposal:
-    lifecycle_mode = str(payload.get("lifecycle_mode") or "implementation")
-    raw_executor = payload.get("executor_role")
-    if lifecycle_mode == "research_only":
-        executor_role = str(raw_executor or "")
-    else:
-        executor_role = str(raw_executor or "tech-lead")
-    return CodingAuthorizationProposal(
-        session_id=payload.get("session_id"),
-        user_request=str(payload.get("user_request") or ""),
-        executor_role=executor_role,
-        review_roles=tuple(payload.get("review_roles") or ()),
-        participant_roles=tuple(payload.get("participant_roles") or ()),
-        write_scope=tuple(payload.get("write_scope") or ()),
-        forbidden_scope=tuple(payload.get("forbidden_scope") or ()),
-        reason=str(payload.get("reason") or ""),
-        safety_rules=tuple(payload.get("safety_rules") or ()),
-        approval_required=bool(payload.get("approval_required", True)),
-        metadata=dict(payload.get("metadata") or {}),
-        lifecycle_mode=lifecycle_mode,
-        research_leads=tuple(payload.get("research_leads") or ()),
-    )
 
 
 async def _run_coding_authorization_gate(
@@ -1882,7 +1260,7 @@ async def _run_coding_authorization_gate(
 # share one canonical implementation. The router-private alias is
 # kept for backward compat with internal callers (and the runtime
 # preflight ``_explicit_session_id`` substring check).
-from ..agents.lifecycle.resolver import (
+from ...agents.lifecycle.resolver import (
     _EXPLICIT_SESSION_ID_RE as _EXPLICIT_SESSION_ID_RE,
     extract_explicit_session_id as _extract_session_id_from_router_text,
 )
@@ -1905,7 +1283,7 @@ def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
     # helper so the router, work_report builder, and Discord status
     # diagnostic all share one set of "can we save?" rules. The block
     # reasons stay identical to keep operator-visible messages stable.
-    from ..agents.lifecycle.status import can_write_obsidian_record
+    from ...agents.lifecycle.status import can_write_obsidian_record
 
     return can_write_obsidian_record(session)
 
@@ -1956,7 +1334,7 @@ async def _run_obsidian_approval_gate(
     candidate: Optional[Any] = None
     if explicit_id:
         try:
-            from ..agents.workflow_state import load_session as _load_session
+            from ...agents.workflow_state import load_session as _load_session
 
             candidate = _load_session(explicit_id)
         except Exception:  # noqa: BLE001 - lookup failure falls through
@@ -2158,40 +1536,8 @@ def _find_session_with_pending_proposal(
     return _most_recent_session(candidates_with_proposal)
 
 
-def _load_session_by_id(
-    list_sessions_fn: Callable[..., Sequence[Any]],
-    session_id: Optional[str],
-) -> Optional[Any]:
-    if not session_id:
-        return None
-    try:
-        try:
-            sessions = list_sessions_fn(limit=50)
-        except TypeError:
-            sessions = list_sessions_fn()
-    except Exception:  # noqa: BLE001
-        return None
-    for session in sessions or ():
-        if getattr(session, "session_id", None) == session_id:
-            return session
-    return None
 
 
-def _most_recent_session(sessions: Sequence[Any]) -> Optional[Any]:
-    if not sessions:
-        return None
-
-    def _sort_key(s: Any):
-        ts = getattr(s, "updated_at", None)
-        if ts is None:
-            return (0, 0)
-        try:
-            epoch = ts.timestamp()
-        except Exception:  # noqa: BLE001
-            epoch = 0
-        return (1, epoch)
-
-    return max(sessions, key=_sort_key)
 
 
 async def _run_runtime_preflight(
@@ -2438,7 +1784,7 @@ def _observation_for_runtime(input_: RuntimeInput):
     runtime loop's default observe (keeps the router's import surface
     small)."""
 
-    from ..agents.runtime.models import RuntimeObservation
+    from ...agents.runtime.models import RuntimeObservation
 
     text = input_.message_text or ""
     return RuntimeObservation(
@@ -2516,7 +1862,7 @@ async def _handle_join_or_append(
     # P0-E (#134 후속): JOIN/APPEND 의 thread lookup + resume 도 long-running
     # path (Discord API 조회 + 세션 hydration). conversation_fn wrap 과 동일
     # 6s interval 로 typing 유지 — 끊김 race 방지.
-    from .typing_indicator import typing_keepalive
+    from ..typing_indicator import typing_keepalive
 
     async with typing_keepalive(
         getattr(message, "channel", None),
@@ -2667,7 +2013,7 @@ def _research_loop_blocked_by_command_only(prompt_text: Optional[str]) -> bool:
     if not prompt_text:
         return False
     try:
-        from ..agents.routing import is_non_actionable_prompt
+        from ...agents.routing import is_non_actionable_prompt
     except Exception:  # noqa: BLE001 - partial install safe-side
         return False
     return bool(is_non_actionable_prompt(prompt_text))
@@ -2716,8 +2062,8 @@ async def _run_research_loop_hook(
     # user saw long silent gaps. Wrap the work in ``typing_keepalive``
     # so "입력 중..." stays visible from the moment we start collecting
     # until the loop returns a follow-up message (or an error).
-    from .typing_indicator import typing_keepalive
-    from ..agents.job_queue import (
+    from ..typing_indicator import typing_keepalive
+    from ...agents.job_queue import (
         HeartbeatStore,
         JobQueue,
         ResearchWorker,
@@ -2840,7 +2186,7 @@ def persist_research_forum_status(
     # Behaviour is identical; the helper covers the dataclass replace,
     # in-place test-stub fallback, structured persistence_error stamp,
     # and stale-error cleanup that this function used to inline.
-    from ..agents.lifecycle.persistence import persist_research_forum_link
+    from ...agents.lifecycle.persistence import persist_research_forum_link
 
     open_call_posted = report.kickoff_posted if report.forum_comment_mode == "member-bots" else None
     open_call_error = report.kickoff_error if report.forum_comment_mode == "member-bots" else None
@@ -2916,7 +2262,7 @@ async def make_default_research_loop(
     # without depending on env state.
     if forum_comment_mode is None:
         try:
-            from ..agents.research.collector import resolve_forum_comment_mode
+            from ...agents.research.collector import resolve_forum_comment_mode
         except Exception:  # noqa: BLE001
             forum_comment_mode = "member-bots"
         else:
@@ -2958,7 +2304,7 @@ async def make_default_research_loop(
             and session is not None
         ):
             try:
-                from .engineering_team_runtime import research_open_call_directive
+                from ..engineering_team_runtime import research_open_call_directive
             except Exception:  # noqa: BLE001
                 kickoff = None
             else:
@@ -2972,7 +2318,7 @@ async def make_default_research_loop(
                     "추가 조사하고, 필요한 take를 독립적으로 남깁니다.\n\n"
                     f"{kickoff}"
                 )
-                from .research_forum import chunk_for_discord_message
+                from ..research_forum import chunk_for_discord_message
                 pieces = chunk_for_discord_message(kickoff_message) or (
                     kickoff_message,
                 )
@@ -3041,7 +2387,7 @@ async def make_default_research_loop(
                 synthesis_text = _optional_str(
                     getattr(deliberation_result, "synthesis_text", None)
                 )
-                from .research_forum import chunk_for_discord_message
+                from ..research_forum import chunk_for_discord_message
                 try:
                     for record in rendered:
                         text = _optional_str(getattr(record, "rendered", None))
@@ -3141,20 +2487,8 @@ def _coerce_research_loop_report(raw: Any) -> EngineeringResearchLoopReport:
     )
 
 
-def _optional_str(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-def _safe_int(value: Any) -> Optional[int]:
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+# P0-P step 4: value coercion helpers extracted to .utils.
+from .utils import _optional_str, _safe_int  # noqa: E402,F401 — re-export
 
 
 def _coerce_outcome(
@@ -3206,111 +2540,14 @@ def _coerce_outcome(
     )
 
 
-async def _maybe_await(value: Any) -> Any:
-    if hasattr(value, "__await__"):
-        return await value
-    return value
-
-
-def extract_user_links_from_message(
-    message: Any,
-    prompt_text: Optional[str] = None,
-) -> tuple[str, ...]:
-    """Pull URLs out of the user's message body.
-
-    Lazily delegates to :func:`research_collector.extract_urls` so we get
-    the same regex + dedup the collector uses internally. Returns an empty
-    tuple if the helper isn't importable (e.g. during a partial install).
-    """
-
-    text = (prompt_text or getattr(message, "content", "") or "")
-    if not text:
-        return ()
-    try:
-        from ..agents.research.collector import extract_urls
-    except Exception:  # noqa: BLE001
-        return ()
-    return tuple(extract_urls(text))
-
-
-def extract_message_attachments(message: Any) -> tuple[Any, ...]:
-    """Return the message's attachments as a stable tuple, discord.py-agnostic.
-
-    discord.py exposes ``message.attachments`` as a list of ``Attachment``
-    objects, but tests pass plain dataclasses or dicts. We accept any iterable
-    and drop ``None`` entries so the engineering conversation layer can rely
-    on a clean sequence regardless of the Discord shape.
-    """
-
-    raw = getattr(message, "attachments", None)
-    if raw is None:
-        return ()
-    if isinstance(raw, (list, tuple)):
-        return tuple(item for item in raw if item is not None)
-    try:
-        return tuple(item for item in raw if item is not None)
-    except TypeError:
-        return ()
-
-
-def _normalize_channel_name(value: object | None) -> str:
-    if value is None:
-        return ""
-    return str(value).strip().lstrip("#").lower()
-
-
-def _optional_int_env(name: str) -> Optional[int]:
-    raw = os.environ.get(name)
-    if raw is None or not raw.strip():
-        return None
-    value = raw.strip()
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise ValueError(
-            f"{name} must be an integer value, got: {value!r}"
-        ) from exc
-
-
-def _optional_string_env(name: str) -> Optional[str]:
-    raw = os.environ.get(name)
-    if raw is None:
-        return None
-    value = raw.strip()
-    return value or None
-
-
-def _optional_bool_env(name: str, *, default: bool = False) -> bool:
-    """Parse a boolean envvar — empty/unset returns ``default``.
-
-    Accepted truthy values: ``"true"``, ``"1"``, ``"yes"``, ``"on"``
-    (case-insensitive). Anything else is treated as the default. Used
-    by F16 ``EngineeringRouteContext.prefer_recall_first_gateway`` so
-    operators can opt into the recall-first gateway path without code
-    changes.
-    """
-
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    value = raw.strip().lower()
-    if not value:
-        return default
-    return value in {"true", "1", "yes", "on"}
-
-
-def _attach_recall_coverage(recall: RuntimeRecallResult) -> RuntimeRecallResult:
-    """F16 — replace ``recall`` with a copy whose ``coverage`` is scored.
-
-    The scorer is **defensive**: any failure (None, malformed hits)
-    degrades to ``RecallCoverage(level=low, stale=True)``. Legacy
-    callers that ignore ``coverage`` see no behaviour change.
-    """
-
-    try:
-        coverage = compute_recall_coverage(recall)
-    except Exception:  # noqa: BLE001
-        coverage = RecallCoverage(
-            level="low", stale=True, sources=(), reason="scorer raised"
-        )
-    return replace(recall, coverage=coverage)
+# P0-P step 4: async + message-parsing + env + recall coverage extracted to .utils.
+from .utils import (  # noqa: E402,F401 — re-export for back-compat
+    _attach_recall_coverage,
+    _maybe_await,
+    _normalize_channel_name,
+    _optional_bool_env,
+    _optional_int_env,
+    _optional_string_env,
+    extract_message_attachments,
+    extract_user_links_from_message,
+)

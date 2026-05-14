@@ -168,7 +168,7 @@ class PersistResearchArtifactsTests(unittest.TestCase):
 
         with patch(
             "yule_orchestrator.discord.engineering_channel_router."
-            "persist_research_artifacts"
+            "_legacy.persist_research_artifacts"
         ) as persist_spy:
             persist_spy.side_effect = lambda session, *_a, **_kw: session
             result = self._route(
@@ -202,7 +202,7 @@ class PersistResearchArtifactsTests(unittest.TestCase):
 
         with patch(
             "yule_orchestrator.discord.engineering_channel_router."
-            "persist_research_artifacts"
+            "_legacy.persist_research_artifacts"
         ) as persist_spy:
             persist_spy.side_effect = lambda session, *_a, **_kw: session
             result = self._route(
@@ -236,7 +236,7 @@ class PersistResearchArtifactsTests(unittest.TestCase):
 
         with patch(
             "yule_orchestrator.discord.engineering_channel_router."
-            "persist_research_artifacts"
+            "_legacy.persist_research_artifacts"
         ) as persist_spy:
             self._route(
                 message=message,
