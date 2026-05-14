@@ -168,11 +168,20 @@ class ResponseEnvelopeTestCase(unittest.TestCase):
         self.assertTrue(envelope.ready_to_intake)
         self.assertIn("작업을 등록할게요", envelope.content)
 
-    def test_confirm_without_last_prompt_uses_message_text(self) -> None:
+    def test_confirm_without_last_prompt_downgrades_to_approval_action(self) -> None:
+        # P0-K (#148) — "이대로 진행" alone (no substantive last_proposed_prompt)
+        # must NEVER become the session prompt. Used to be CONFIRM_INTAKE +
+        # ready_to_intake=True with intake_prompt="이대로 진행" → that
+        # routed the confirmation phrase itself into research loop +
+        # forum thread title. Now downgrades to APPROVAL_ACTION ack.
+        from yule_orchestrator.discord.engineering_conversation import (
+            APPROVAL_ACTION,
+        )
+
         envelope = build_engineering_conversation_response("이대로 진행")
-        self.assertEqual(envelope.intent_id, CONFIRM_INTAKE)
-        self.assertTrue(envelope.ready_to_intake)
-        self.assertEqual(envelope.intake_prompt, "이대로 진행")
+        self.assertEqual(envelope.intent_id, APPROVAL_ACTION)
+        self.assertFalse(envelope.ready_to_intake)
+        self.assertTrue(envelope.is_status_query)
 
     def test_mention_prefix_only_when_requested(self) -> None:
         with_mention = build_engineering_conversation_response(
@@ -785,10 +794,16 @@ class BotEchoAndCommandOnlyGuardTests(unittest.TestCase):
         self.assertIn("gateway가 보낸 안내문", response.content)
 
     def test_bare_command_only_phrase_does_not_trigger_collector(self) -> None:
-        # "새 작업으로 진행" is a CONFIRM_INTAKE intent — it should
-        # NOT enter the default TASK_INTAKE_CANDIDATE branch and so
-        # _maybe_run_auto_collect must never run. This is the
-        # second-line defence against the auto-collect loop.
+        # P0-K (#148) — "새 작업으로 진행" alone (no substantive
+        # last_proposed_prompt) used to route as CONFIRM_INTAKE +
+        # ready_to_intake=True with intake_prompt = the phrase itself.
+        # That caused the bare command-only phrase to feed the research
+        # loop + forum thread title. Now it downgrades to
+        # APPROVAL_ACTION and the collector still must not run.
+        from yule_orchestrator.discord.engineering_conversation import (
+            APPROVAL_ACTION,
+        )
+
         class _Boom:
             def __call__(self, *_args, **_kwargs):
                 raise AssertionError("collector must not run for confirm phrase")
@@ -799,7 +814,8 @@ class BotEchoAndCommandOnlyGuardTests(unittest.TestCase):
             last_proposed_prompt=None,
             auto_collect=True,
         )
-        self.assertEqual(response.intent_id, CONFIRM_INTAKE)
+        self.assertEqual(response.intent_id, APPROVAL_ACTION)
+        self.assertFalse(response.ready_to_intake)
 
 
 if __name__ == "__main__":

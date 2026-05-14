@@ -65,6 +65,11 @@ SESSION_LIST_QUERY = "session_list_query"
 BLOCKED_REASON_QUERY = "blocked_reason_query"
 CONTINUE_EXISTING_WORK = "continue_existing_work"
 CHANGE_DIRECTION = "change_direction"
+# P0-K (#148) — approval/proceed-only operator phrase. Acks the
+# existing session forward; never creates a new intake / forum
+# thread / research loop. Distinct from CONFIRM_INTAKE which
+# *promotes* a previously-proposed task into intake.
+APPROVAL_ACTION = "approval_action"
 
 # Hard-blocklist for the auto_collect path (commit 7 enforcement).
 READ_ONLY_INTENTS: tuple = (
@@ -74,6 +79,7 @@ READ_ONLY_INTENTS: tuple = (
     BLOCKED_REASON_QUERY,
     CONTINUE_EXISTING_WORK,
     CHANGE_DIRECTION,
+    APPROVAL_ACTION,
 )
 
 
@@ -299,8 +305,64 @@ def build_engineering_conversation_response(
             is_status_query=True,
         )
 
+    # P0-K (#148) — APPROVAL_ACTION early match. When detect returned
+    # APPROVAL_ACTION because the message text was a bare proceed/
+    # approval phrase, we upgrade to CONFIRM_INTAKE *only* when there's
+    # a substantive last_proposed_prompt to confirm. Otherwise we ack
+    # the approval and stop (never create new intake / research / forum).
+    if intent.intent_id == APPROVAL_ACTION:
+        try:
+            from ..agents.routing import is_non_actionable_prompt as _approval_guard
+        except Exception:  # noqa: BLE001
+            _approval_guard = None  # type: ignore[assignment]
+        proposed_is_substantive = (
+            bool(last_proposed_prompt)
+            and (_approval_guard is None or not _approval_guard(last_proposed_prompt))
+        )
+        if proposed_is_substantive:
+            # Upgrade — fall through to CONFIRM_INTAKE handling below.
+            intent = EngineeringIntentMatch(
+                intent_id=CONFIRM_INTAKE,
+                label="진행 확정",
+                confidence="high",
+            )
+        else:
+            body = (
+                "✅ 승인 반영했습니다. 기존 작업 흐름을 이어갑니다.\n"
+                "새 리서치 thread 는 만들지 않습니다."
+            )
+            return EngineeringConversationResponse(
+                content=_prepend_mention(body, mention_user_id),
+                intent_id=APPROVAL_ACTION,
+                mention_user_id=mention_user_id,
+                is_status_query=True,
+            )
+
     if intent.intent_id == CONFIRM_INTAKE:
         intake_prompt = last_proposed_prompt or message_text
+        # P0-K (#148) — defense-in-depth. The APPROVAL_ACTION branch
+        # above usually catches bare confirms, but a future caller
+        # might pass a command-only message_text + no
+        # last_proposed_prompt directly into CONFIRM_INTAKE. Refuse
+        # to use a command-only intake_prompt.
+        try:
+            from ..agents.routing import is_non_actionable_prompt
+        except Exception:  # noqa: BLE001 - partial install safe-side
+            is_non_actionable_prompt = None  # type: ignore[assignment]
+        if (
+            is_non_actionable_prompt is not None
+            and is_non_actionable_prompt(intake_prompt)
+        ):
+            body = (
+                "✅ 승인 반영했습니다. 기존 작업 흐름을 이어갑니다.\n"
+                "새 리서치 thread 는 만들지 않습니다."
+            )
+            return EngineeringConversationResponse(
+                content=_prepend_mention(body, mention_user_id),
+                intent_id=APPROVAL_ACTION,
+                mention_user_id=mention_user_id,
+                is_status_query=True,
+            )
         suggested = _suggest_task_type(intake_prompt)
         write_likely = _looks_like_write_request(intake_prompt)
         if (
@@ -822,6 +884,7 @@ _CONFIRMATION_PHRASES = (
     "그렇게 등록",
     "그렇게 진행",
     "진행해줘",
+    "진행 해줘",
     "진행해 주세요",
     "등록해줘",
     "등록해 주세요",
@@ -830,6 +893,23 @@ _CONFIRMATION_PHRASES = (
     "go 진행",
     "확정",
     "확정해",
+    # P0-K (#148) — 새 command-only 합성. CONFIRM_INTAKE → APPROVAL_ACTION
+    # 다운그레이드 (build_engineering_conversation_response 의 가드) 로
+    # 흘러가서 새 intake/research 절대 안 만듦.
+    "작업 승인 할게",
+    "작업 승인할게",
+    "작업 승인",
+    "승인 할게",
+    "승인할게",
+    "승인하고 진행해",
+    "승인하고 진행",
+    "승인해줘",
+    "승인 해줘",
+    "계속 해",
+    "계속해",
+    "계속 진행",
+    "이어서 해",
+    "이어서 진행",
 )
 
 _CONFIRMATION_STANDALONE = frozenset(
