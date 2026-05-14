@@ -72,24 +72,32 @@ from .session_persistence import (  # noqa: F401 — facade re-export
     _persist_lifecycle_mode,
     _persist_thread_id,
 )
+# Backward-compat alias: tests + bot.py imported the legacy alias that
+# pointed at lifecycle.resolver.extract_explicit_session_id.
+from ...agents.lifecycle.resolver import (  # noqa: F401 — facade re-export
+    extract_explicit_session_id as _extract_session_id_from_router_text,
+)
+# Coding 권한 / 승인 gate (P0-P step 7).
+from .coding_gate import (  # noqa: F401 — facade re-export
+    _run_coding_authorization_gate,
+)
+# Obsidian 저장 gate (P0-P step 8).
+from .obsidian_gate import (  # noqa: F401 — facade re-export
+    _can_save_to_obsidian,
+    _run_obsidian_approval_gate,
+)
 
 from ._legacy import *  # noqa: F401,F403 — facade re-export
+# Symbols still owned by _legacy until steps 9-12 finish extraction.
 from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
     _GATEWAY_CLARIFICATION_CONTEXT,
-    _attach_recall_coverage,
-    _can_save_to_obsidian,
     _clarification_context_key,
     _clear_clarification_context,
     _coerce_outcome,
     _emit_work_report_preview,
-    _extract_session_id_from_router_text,
     _handle_clarification_selection,
     _handle_join_or_append,
     _looks_like_new_work_selection,
-    _maybe_await,
-    _optional_bool_env,
-    _persist_lifecycle_mode,
-    _persist_thread_id,
     _recall_clarification_candidates,
     _recall_clarification_canonical_prompt,
     _remember_clarification_candidates,
@@ -97,14 +105,9 @@ from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysi
     _run_research_loop_hook,
     _run_runtime_preflight,
     _try_select_candidate,
-    detect_confirmation_signal,
-    extract_message_attachments,
     is_coding_approval_phrase,
     is_coding_proposal_request,
-    is_engineering_channel,
     make_default_research_loop,
     persist_research_forum_status,
     route_engineering_message,
-    should_continue_existing_thread,
-    should_start_new_thread,
 )
