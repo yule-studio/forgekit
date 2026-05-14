@@ -17,6 +17,58 @@ A-M10 부터는 모든 행동을 다음 5 단계 자율성 사다리(autonomy la
 [`agents/lifecycle/agent_ops_log.py`](../src/yule_orchestrator/agents/lifecycle/agent_ops_log.py)
 의 `AgentOpsEntry` 로 audit 가 남는다.
 
+## 0. Work mode / topology — session-start ask-once (P0-G 1차)
+
+5-tier ladder 가 *행동 단위* 의 자율성을 결정한다면, **work mode / topology / scope 는 세션 단위** 의 운영 frame 을 결정한다. 새 coding session 이 시작될 때 gateway 가 *한 번만* 묻고 세션 메모리에 저장한다 — **반복 질문 금지**.
+
+### 0.1 mode — 머지 자율성
+
+| mode | 의미 | 상호작용 |
+| --- | --- | --- |
+| `autonomous_merge` | 사용자가 미리 인가한 범위에서 자율 merge 가능. CI green + 회귀 OK 시 self-merge. | autonomy ladder 의 L3 `branch_merge` 가 *해당 범위에서* 자동 가능. 단, L4 (main 직접 push / deploy / secret) 는 여전히 금지. |
+| `approval_required` | 모든 merge 가 사용자 명시 승인 후. | autonomy ladder 의 L3 / L4 행동은 모두 `#승인-대기` 카드. |
+
+기본 = `approval_required`. `autonomous_merge` 는 사용자가 *명시적으로* 요청한 작업에 한해서만 (예: "F1~F8 사이클 self-merge 권한 부여").
+
+### 0.2 topology — repo 구조
+
+| topology | 의미 |
+| --- | --- |
+| `single_repo` | 본 작업이 한 repo 안에서만 일어난다. |
+| `multi_repo` | 본 작업이 둘 이상 repo 에 걸친다. 외부 repo 가 들어오면 [`repo-contract-discovery`](../policies/runtime/agents/engineering-agent/repo-contract-discovery.md) 정책으로 contract 수집. |
+
+기본 = `single_repo`. `multi_repo` 진입 시 각 repo 의 RepoContract 를 세션 메모리에 보관 (`session.extra["repo_contracts"]` dict).
+
+### 0.3 scope — 변경 범위
+
+| scope | 의미 |
+| --- | --- |
+| `single_scope` | 하나의 책임 단위 (예: gateway typing fix). |
+| `full_stack_single_repo` | 같은 repo 안에서 frontend + backend 등 여러 layer 동시. |
+| `layer_scoped` | 특정 layer 안에서만 (예: backend-only / docs-only). |
+| `cross_repo_program` | 여러 repo + 여러 layer 의 프로그램. 본 scope 면 PR 분할 / 회귀 plan 이 program-level 로 올라간다. |
+
+기본 = `single_scope`. 더 큰 scope 가 필요하면 첫 응답에 한 번만 확인.
+
+### 0.4 session 메모리 contract
+
+gateway 는 첫 응답에서 다음을 묻거나 추론한다. 사용자가 묻지 않은 항목은 기본값으로 채우고 *세션 응답에 명시*. 한 세션 안에서 mode / topology / scope 가 결정되면 그 세션 안에서는 **다시 묻지 않는다**.
+
+```text
+session.extra["work_mode"] = "autonomous_merge" | "approval_required"
+session.extra["topology"]  = "single_repo" | "multi_repo"
+session.extra["scope"]     = "single_scope" | "full_stack_single_repo" |
+                              "layer_scoped" | "cross_repo_program"
+session.extra["mode_decided_at"] = iso8601 UTC
+session.extra["mode_decided_by"] = "user_explicit" | "gateway_inferred"
+```
+
+세션 중간에 mode 가 바뀌어야 하면 사용자가 명시 변경. gateway 는 추측으로 변경하지 않는다.
+
+### 0.5 5-tier ladder 와의 관계
+
+mode / topology / scope 는 *행동의 자율성 등급* 자체를 바꾸지 않는다. L3 / L4 의 hard rail (main 직접 push / deploy / secret 등) 은 mode 가 `autonomous_merge` 여도 풀리지 않는다. mode 는 **L3 의 일부 행동 (예: `branch_merge`) 을 미리 인가** 하는 역할만 한다.
+
 ## 5-tier ladder
 
 | Level | 이름 | 의미 |
