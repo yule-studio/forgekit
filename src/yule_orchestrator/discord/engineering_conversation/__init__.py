@@ -74,20 +74,23 @@ from .intent_detection import (  # noqa: F401 — facade re-export
     detect_engineering_intent,
     split_task_branches,
 )
-
-# Remaining content (research_bootstrap / response_formatters) is still
-# in _legacy.py — re-export until the remaining 2 modules are extracted
-# in the subsequent commits.
-from ._legacy import *  # noqa: F401,F403 — facade re-export
-from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+# Research candidate classification + collector wiring + intake body
+# formatters live in .research_bootstrap (P0-L step 7).
+from .research_bootstrap import (  # noqa: F401 — facade re-export
     ResearchCandidate,
     ResearchCollectionResult,
-    build_engineering_conversation_response,
     classify_attachment,
     classify_url,
     collect_research_candidates_from_message,
     format_insufficient_research_prompt,
     suggest_role_research_assignments,
+)
+
+# Remaining content (response_formatters) is still in _legacy.py —
+# re-export until the last module is extracted in step 8.
+from ._legacy import *  # noqa: F401,F403 — facade re-export
+from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+    build_engineering_conversation_response,
 )
 
 
