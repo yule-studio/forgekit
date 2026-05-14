@@ -4,8 +4,9 @@ import asyncio
 import os
 import uuid
 from datetime import date, datetime
+from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ...agents import (
     Dispatcher,
@@ -29,17 +30,127 @@ from ..ui.formatter import (
 from ..runtime.planning import build_due_checkpoints, load_plan_today_snapshot
 
 
+class BotRoleSet(str, Enum):
+    """Which slash-command group a bot process should register.
+
+    Owning the right set per process prevents the wrong app from
+    receiving a command (e.g. planning-bot getting ``/engineer_intake``
+    and timing out because it has no orchestrator wiring).
+    """
+
+    ALL = "all"
+    PLANNING_ONLY = "planning-only"
+    ENGINEERING_ONLY = "engineering-only"
+
+
+DISCORD_BOT_ROLE_ENV = "DISCORD_BOT_ROLE"
+
+_ROLE_FROM_ENV: dict[str, BotRoleSet] = {
+    "planning": BotRoleSet.PLANNING_ONLY,
+    "planning-only": BotRoleSet.PLANNING_ONLY,
+    "planning-bot": BotRoleSet.PLANNING_ONLY,
+    "engineering-gateway": BotRoleSet.ENGINEERING_ONLY,
+    "engineering-only": BotRoleSet.ENGINEERING_ONLY,
+    "engineering": BotRoleSet.ENGINEERING_ONLY,
+    "all": BotRoleSet.ALL,
+    "": BotRoleSet.ALL,
+}
+
+
+def resolve_bot_role_set_from_env(env: Optional[Mapping[str, str]] = None) -> BotRoleSet:
+    """Map ``DISCORD_BOT_ROLE`` env value to a :class:`BotRoleSet`.
+
+    Unset / unknown values fall back to :attr:`BotRoleSet.ALL` so existing
+    single-process callers keep their previous behavior.
+    """
+
+    source = env if env is not None else os.environ
+    raw = (source.get(DISCORD_BOT_ROLE_ENV) or "").strip().lower()
+    return _ROLE_FROM_ENV.get(raw, BotRoleSet.ALL)
+
+
 def register_discord_commands(
     bot: "commands.Bot",
     guild_id: int,
     notify_user_id: int | None = None,
+    *,
+    role_set: BotRoleSet = BotRoleSet.ALL,
 ) -> None:
+    """Register slash commands on *bot*'s tree.
+
+    *role_set* controls which command groups are attached. The default
+    keeps the historic behavior (every command on every bot); production
+    callers now pass a narrower set so the wrong application can never
+    own a command. Planning-only / engineering-only convenience wrappers
+    (:func:`register_planning_commands`, :func:`register_engineering_commands`)
+    front this so call sites stay readable.
+    """
+
     import discord
     from discord import app_commands
 
     _bind_discord_runtime_globals(discord_module=discord, app_commands_module=app_commands)
     guild = discord.Object(id=guild_id)
     allowed_mentions = _build_allowed_mentions(discord)
+
+    if role_set in (BotRoleSet.ALL, BotRoleSet.PLANNING_ONLY):
+        _register_planning_commands_impl(
+            bot,
+            guild=guild,
+            allowed_mentions=allowed_mentions,
+            notify_user_id=notify_user_id,
+            discord=discord,
+            app_commands=app_commands,
+        )
+    if role_set in (BotRoleSet.ALL, BotRoleSet.ENGINEERING_ONLY):
+        _register_engineering_commands_impl(
+            bot,
+            guild=guild,
+            allowed_mentions=allowed_mentions,
+            discord=discord,
+            app_commands=app_commands,
+        )
+
+
+def register_planning_commands(
+    bot: "commands.Bot",
+    guild_id: int,
+    notify_user_id: int | None = None,
+) -> None:
+    """Register only the planning-bot owned commands (ping / plan_today / checkpoints_now)."""
+
+    register_discord_commands(
+        bot,
+        guild_id,
+        notify_user_id,
+        role_set=BotRoleSet.PLANNING_ONLY,
+    )
+
+
+def register_engineering_commands(
+    bot: "commands.Bot",
+    guild_id: int,
+    notify_user_id: int | None = None,
+) -> None:
+    """Register only the engineering-gateway owned ``/engineer_*`` commands."""
+
+    register_discord_commands(
+        bot,
+        guild_id,
+        notify_user_id,
+        role_set=BotRoleSet.ENGINEERING_ONLY,
+    )
+
+
+def _register_planning_commands_impl(
+    bot: "commands.Bot",
+    *,
+    guild: Any,
+    allowed_mentions: Any,
+    notify_user_id: int | None,
+    discord: Any,
+    app_commands: Any,
+) -> None:
 
     @bot.tree.command(name="ping", description="봇이 살아 있는지 확인합니다.", guild=guild)
     async def ping(interaction: discord.Interaction) -> None:
@@ -103,339 +214,6 @@ def register_discord_commands(
             discord_module=discord,
         )
 
-    @bot.tree.command(
-        name="engineer_intake",
-        description="engineering-agent에게 작업을 위임합니다 (접수 메시지를 채널에 게시).",
-        guild=guild,
-    )
-    @app_commands.describe(
-        prompt="자연어 작업 요청.",
-        task_type="명시 task type (생략 시 키워드 분류).",
-        write_requested="이 작업이 코드/문서 쓰기를 요구하는지 여부.",
-    )
-    async def engineer_intake(
-        interaction: "discord.Interaction",
-        prompt: str,
-        task_type: Optional[str] = None,
-        write_requested: bool = False,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            result = await asyncio.to_thread(
-                _run_engineer_intake,
-                prompt=prompt,
-                task_type=task_type,
-                write_requested=write_requested,
-                channel_id=interaction.channel_id,
-                user_id=interaction.user.id,
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer intake 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            result.message,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_show",
-        description="engineering-agent 워크플로 세션 상태를 조회합니다.",
-        guild=guild,
-    )
-    @app_commands.describe(session_id="조회할 워크플로 세션 id.")
-    async def engineer_show(
-        interaction: "discord.Interaction",
-        session_id: str,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            session = await asyncio.to_thread(_load_engineer_session, session_id=session_id)
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer show 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        if session is None:
-            await _send_message_chunks(
-                interaction,
-                f"session `{session_id}` 을 찾을 수 없습니다.",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        summary = (
-            f"**[engineering-agent] 세션 상태**\n"
-            f"세션 ID: `{session.session_id}`\n"
-            f"상태: {session.state.value}\n"
-            f"분류: {session.task_type}\n"
-            f"실행 후보: {session.executor_role} ({session.executor_runner or '?'})"
-        )
-        if session.write_blocked_reason:
-            summary += f"\n승인 대기: {session.write_blocked_reason}"
-        await _send_message_chunks(
-            interaction,
-            summary,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_review",
-        description="기존 세션에 PR 리뷰/Copilot/외부 피드백을 입력합니다.",
-        guild=guild,
-    )
-    @app_commands.describe(
-        session_id="피드백을 연결할 워크플로 세션 ID.",
-        summary="한 줄 요약 (라우팅에 사용).",
-        body="피드백 본문 (선택).",
-        severity="blocking / high / medium / low / nit (기본: medium).",
-        categories="쉼표로 구분한 카테고리 라벨 (예: ui, copy).",
-        source="github_pr_review / github_copilot / external_agent / user (기본: user).",
-        file_paths="쉼표로 구분한 영향 파일 경로 (선택).",
-    )
-    async def engineer_review(
-        interaction: "discord.Interaction",
-        session_id: str,
-        summary: str,
-        body: Optional[str] = None,
-        severity: Optional[str] = None,
-        categories: Optional[str] = None,
-        source: Optional[str] = None,
-        file_paths: Optional[str] = None,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            result = await asyncio.to_thread(
-                _run_engineer_review,
-                session_id=session_id,
-                summary=summary,
-                body=body,
-                severity=severity,
-                categories=categories,
-                source=source,
-                file_paths=file_paths,
-                channel_id=interaction.channel_id,
-                thread_id=getattr(interaction.channel, "id", None),
-                user_id=interaction.user.id,
-                author_name=str(interaction.user),
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer review 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            result.message + f"\n\n_피드백 ID_: `{result.feedback.feedback_id}`",
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_review_reply",
-        description="리뷰 피드백에 적용/제안/남은 이슈 회신을 게시합니다.",
-        guild=guild,
-    )
-    @app_commands.describe(
-        session_id="회신 대상 워크플로 세션 ID.",
-        feedback_id="회신 대상 feedback ID.",
-        applied="적용한 수정 (개행 또는 ; 으로 분리).",
-        proposed="추가 제안 (선택, 개행 또는 ; 분리).",
-        remaining="남은 이슈 (선택, 개행 또는 ; 분리).",
-    )
-    async def engineer_review_reply(
-        interaction: "discord.Interaction",
-        session_id: str,
-        feedback_id: str,
-        applied: str,
-        proposed: Optional[str] = None,
-        remaining: Optional[str] = None,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            result = await asyncio.to_thread(
-                _run_engineer_review_reply,
-                session_id=session_id,
-                feedback_id=feedback_id,
-                applied=applied,
-                proposed=proposed,
-                remaining=remaining,
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer review reply 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            result.message,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_approve",
-        description="engineering-agent 세션을 승인해 진행을 풀어줍니다.",
-        guild=guild,
-    )
-    @app_commands.describe(session_id="승인할 워크플로 세션 ID.")
-    async def engineer_approve(
-        interaction: "discord.Interaction",
-        session_id: str,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            message = await asyncio.to_thread(
-                _run_engineer_approve,
-                session_id=session_id,
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer approve 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            message,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_reject",
-        description="engineering-agent 세션을 거절합니다 (사유 필수).",
-        guild=guild,
-    )
-    @app_commands.describe(
-        session_id="거절할 워크플로 세션 ID.",
-        reason="거절 사유 (운영 기록용, 한 줄).",
-    )
-    async def engineer_reject(
-        interaction: "discord.Interaction",
-        session_id: str,
-        reason: str,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            message = await asyncio.to_thread(
-                _run_engineer_reject,
-                session_id=session_id,
-                reason=reason,
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer reject 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            message,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_progress",
-        description="진행 중인 engineering-agent 세션에 진행 메모를 남깁니다.",
-        guild=guild,
-    )
-    @app_commands.describe(
-        session_id="메모를 남길 워크플로 세션 ID.",
-        note="진행 메모 (한 줄, PR/Thread 링크는 본문에 그대로 붙여도 됩니다).",
-    )
-    async def engineer_progress(
-        interaction: "discord.Interaction",
-        session_id: str,
-        note: str,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            message = await asyncio.to_thread(
-                _run_engineer_progress,
-                session_id=session_id,
-                note=note,
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer progress 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            message,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
-    @bot.tree.command(
-        name="engineer_complete",
-        description="engineering-agent 세션을 완료 상태로 닫고 요약을 게시합니다.",
-        guild=guild,
-    )
-    @app_commands.describe(
-        session_id="완료 처리할 워크플로 세션 ID.",
-        summary="완료 보고에 들어갈 요약 (한두 줄).",
-    )
-    async def engineer_complete(
-        interaction: "discord.Interaction",
-        session_id: str,
-        summary: str,
-    ) -> None:
-        if not await _safe_defer(interaction, discord_module=discord):
-            return
-        try:
-            message = await asyncio.to_thread(
-                _run_engineer_complete,
-                session_id=session_id,
-                summary=summary,
-            )
-        except (WorkflowError, ValueError) as exc:
-            await _send_message_chunks(
-                interaction,
-                f"engineer complete 실패: {exc}",
-                allowed_mentions=allowed_mentions,
-                discord_module=discord,
-            )
-            return
-        await _send_message_chunks(
-            interaction,
-            message,
-            allowed_mentions=allowed_mentions,
-            discord_module=discord,
-        )
-
     @bot.tree.command(name="checkpoints_now", description="지금 기준으로 다가오는 체크포인트를 보여줍니다.", guild=guild)
     @app_commands.describe(window_minutes="몇 분 앞까지 확인할지 설정합니다.")
     async def checkpoints_now(
@@ -461,6 +239,416 @@ def register_discord_commands(
             allowed_mentions=allowed_mentions,
             discord_module=discord,
         )
+
+    # engineer_* commands are registered by _register_engineering_commands_impl
+    # so the planning-bot application never owns them. See BotRoleSet docs.
+    return
+
+
+def _register_engineering_commands_impl(
+    bot: "commands.Bot",
+    *,
+    guild: Any,
+    allowed_mentions: Any,
+    discord: Any,
+    app_commands: Any,
+) -> None:
+    @bot.tree.command(
+        name="engineer_intake",
+        description="engineering-agent에게 작업을 위임합니다 (접수 메시지를 채널에 게시).",
+        guild=guild,
+    )
+    @app_commands.describe(
+        prompt="자연어 작업 요청.",
+        task_type="명시 task type (생략 시 키워드 분류).",
+        write_requested="이 작업이 코드/문서 쓰기를 요구하는지 여부.",
+    )
+    async def engineer_intake(
+        interaction: "discord.Interaction",
+        prompt: str,
+        task_type: Optional[str] = None,
+        write_requested: bool = False,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                result = await asyncio.to_thread(
+                    _run_engineer_intake,
+                    prompt=prompt,
+                    task_type=task_type,
+                    write_requested=write_requested,
+                    channel_id=interaction.channel_id,
+                    user_id=interaction.user.id,
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer intake 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                result.message,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_intake",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_show",
+        description="engineering-agent 워크플로 세션 상태를 조회합니다.",
+        guild=guild,
+    )
+    @app_commands.describe(session_id="조회할 워크플로 세션 id.")
+    async def engineer_show(
+        interaction: "discord.Interaction",
+        session_id: str,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                session = await asyncio.to_thread(_load_engineer_session, session_id=session_id)
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer show 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            if session is None:
+                await _send_message_chunks(
+                    interaction,
+                    f"session `{session_id}` 을 찾을 수 없습니다.",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            summary = (
+                f"**[engineering-agent] 세션 상태**\n"
+                f"세션 ID: `{session.session_id}`\n"
+                f"상태: {session.state.value}\n"
+                f"분류: {session.task_type}\n"
+                f"실행 후보: {session.executor_role} ({session.executor_runner or '?'})"
+            )
+            if session.write_blocked_reason:
+                summary += f"\n승인 대기: {session.write_blocked_reason}"
+            await _send_message_chunks(
+                interaction,
+                summary,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_show",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_review",
+        description="기존 세션에 PR 리뷰/Copilot/외부 피드백을 입력합니다.",
+        guild=guild,
+    )
+    @app_commands.describe(
+        session_id="피드백을 연결할 워크플로 세션 ID.",
+        summary="한 줄 요약 (라우팅에 사용).",
+        body="피드백 본문 (선택).",
+        severity="blocking / high / medium / low / nit (기본: medium).",
+        categories="쉼표로 구분한 카테고리 라벨 (예: ui, copy).",
+        source="github_pr_review / github_copilot / external_agent / user (기본: user).",
+        file_paths="쉼표로 구분한 영향 파일 경로 (선택).",
+    )
+    async def engineer_review(
+        interaction: "discord.Interaction",
+        session_id: str,
+        summary: str,
+        body: Optional[str] = None,
+        severity: Optional[str] = None,
+        categories: Optional[str] = None,
+        source: Optional[str] = None,
+        file_paths: Optional[str] = None,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                result = await asyncio.to_thread(
+                    _run_engineer_review,
+                    session_id=session_id,
+                    summary=summary,
+                    body=body,
+                    severity=severity,
+                    categories=categories,
+                    source=source,
+                    file_paths=file_paths,
+                    channel_id=interaction.channel_id,
+                    thread_id=getattr(interaction.channel, "id", None),
+                    user_id=interaction.user.id,
+                    author_name=str(interaction.user),
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer review 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                result.message + f"\n\n_피드백 ID_: `{result.feedback.feedback_id}`",
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_review",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_review_reply",
+        description="리뷰 피드백에 적용/제안/남은 이슈 회신을 게시합니다.",
+        guild=guild,
+    )
+    @app_commands.describe(
+        session_id="회신 대상 워크플로 세션 ID.",
+        feedback_id="회신 대상 feedback ID.",
+        applied="적용한 수정 (개행 또는 ; 으로 분리).",
+        proposed="추가 제안 (선택, 개행 또는 ; 분리).",
+        remaining="남은 이슈 (선택, 개행 또는 ; 분리).",
+    )
+    async def engineer_review_reply(
+        interaction: "discord.Interaction",
+        session_id: str,
+        feedback_id: str,
+        applied: str,
+        proposed: Optional[str] = None,
+        remaining: Optional[str] = None,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                result = await asyncio.to_thread(
+                    _run_engineer_review_reply,
+                    session_id=session_id,
+                    feedback_id=feedback_id,
+                    applied=applied,
+                    proposed=proposed,
+                    remaining=remaining,
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer review reply 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                result.message,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_review_reply",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_approve",
+        description="engineering-agent 세션을 승인해 진행을 풀어줍니다.",
+        guild=guild,
+    )
+    @app_commands.describe(session_id="승인할 워크플로 세션 ID.")
+    async def engineer_approve(
+        interaction: "discord.Interaction",
+        session_id: str,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                message = await asyncio.to_thread(
+                    _run_engineer_approve,
+                    session_id=session_id,
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer approve 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                message,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_approve",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_reject",
+        description="engineering-agent 세션을 거절합니다 (사유 필수).",
+        guild=guild,
+    )
+    @app_commands.describe(
+        session_id="거절할 워크플로 세션 ID.",
+        reason="거절 사유 (운영 기록용, 한 줄).",
+    )
+    async def engineer_reject(
+        interaction: "discord.Interaction",
+        session_id: str,
+        reason: str,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                message = await asyncio.to_thread(
+                    _run_engineer_reject,
+                    session_id=session_id,
+                    reason=reason,
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer reject 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                message,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_reject",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_progress",
+        description="진행 중인 engineering-agent 세션에 진행 메모를 남깁니다.",
+        guild=guild,
+    )
+    @app_commands.describe(
+        session_id="메모를 남길 워크플로 세션 ID.",
+        note="진행 메모 (한 줄, PR/Thread 링크는 본문에 그대로 붙여도 됩니다).",
+    )
+    async def engineer_progress(
+        interaction: "discord.Interaction",
+        session_id: str,
+        note: str,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                message = await asyncio.to_thread(
+                    _run_engineer_progress,
+                    session_id=session_id,
+                    note=note,
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer progress 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                message,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_progress",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_complete",
+        description="engineering-agent 세션을 완료 상태로 닫고 요약을 게시합니다.",
+        guild=guild,
+    )
+    @app_commands.describe(
+        session_id="완료 처리할 워크플로 세션 ID.",
+        summary="완료 보고에 들어갈 요약 (한두 줄).",
+    )
+    async def engineer_complete(
+        interaction: "discord.Interaction",
+        session_id: str,
+        summary: str,
+    ) -> None:
+        try:
+            if not await _safe_defer(interaction, discord_module=discord):
+                return
+            try:
+                message = await asyncio.to_thread(
+                    _run_engineer_complete,
+                    session_id=session_id,
+                    summary=summary,
+                )
+            except (WorkflowError, ValueError) as exc:
+                await _send_message_chunks(
+                    interaction,
+                    f"engineer complete 실패: {exc}",
+                    allowed_mentions=allowed_mentions,
+                    discord_module=discord,
+                )
+                return
+            await _send_message_chunks(
+                interaction,
+                message,
+                allowed_mentions=allowed_mentions,
+                discord_module=discord,
+            )
+        except Exception as exc:  # noqa: BLE001 - broad: must surface so Discord stops showing timeout
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_complete",
+                exc=exc,
+                discord_module=discord,
+            )
 
 
 def _engineer_orchestrator() -> WorkflowOrchestrator:
@@ -714,4 +902,48 @@ async def _send_message_chunks(
             "warning: discord interaction webhook expired before followup could be delivered "
             f"(command={getattr(interaction.command, 'name', 'unknown')}, "
             f"user_id={getattr(interaction.user, 'id', 'unknown')})"
+        )
+
+
+async def _surface_unexpected_engineer_error(
+    interaction: "discord.Interaction",
+    *,
+    command_name: str,
+    exc: BaseException,
+    discord_module: Any,
+) -> None:
+    """Surface an unexpected exception via the Discord followup channel.
+
+    Without this, broad exceptions from ``/engineer_*`` handlers bubble
+    out before Discord receives any followup, which the Discord client
+    displays as a generic "애플리케이션이 응답하지 않았어요" timeout.
+    Operators then have no signal as to which command failed or why.
+
+    Best-effort: we try ``followup.send`` first (interaction was already
+    deferred in the happy path), fall back to ``response.send_message``
+    if it wasn't, and as a last resort log to stderr so the failure
+    isn't silent.
+    """
+
+    del discord_module  # API parity with other helpers; not needed here.
+    text = (
+        f"⚠️ `/{command_name}` 처리 중 예상치 못한 오류가 발생했어요.\n"
+        f"`{type(exc).__name__}`: {exc}"
+    )
+    delivered = False
+    try:
+        await interaction.followup.send(text)
+        delivered = True
+    except Exception:  # noqa: BLE001 - fall through to response.send_message
+        pass
+    if not delivered:
+        try:
+            await interaction.response.send_message(text)
+            delivered = True
+        except Exception:  # noqa: BLE001 - last-resort logging below
+            pass
+    if not delivered:
+        print(
+            "error: failed to surface unexpected /"
+            f"{command_name} error to Discord: {type(exc).__name__}: {exc}"
         )
