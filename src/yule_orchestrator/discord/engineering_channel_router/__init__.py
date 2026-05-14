@@ -86,28 +86,42 @@ from .obsidian_gate import (  # noqa: F401 — facade re-export
     _can_save_to_obsidian,
     _run_obsidian_approval_gate,
 )
-
-from ._legacy import *  # noqa: F401,F403 — facade re-export
-# Symbols still owned by _legacy until steps 9-12 finish extraction.
-from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
-    _GATEWAY_CLARIFICATION_CONTEXT,
-    _clarification_context_key,
-    _clear_clarification_context,
-    _coerce_outcome,
-    _emit_work_report_preview,
-    _handle_clarification_selection,
-    _handle_join_or_append,
-    _looks_like_new_work_selection,
-    _recall_clarification_candidates,
-    _recall_clarification_canonical_prompt,
-    _remember_clarification_candidates,
+# Research loop hook + P0-K guard + forum status persistence (P0-P step 9).
+from .research_loop import (  # noqa: F401 — facade re-export
     _research_loop_blocked_by_command_only,
     _run_research_loop_hook,
-    _run_runtime_preflight,
-    _try_select_candidate,
-    is_coding_approval_phrase,
-    is_coding_proposal_request,
     make_default_research_loop,
     persist_research_forum_status,
+)
+
+# Work report + clarification display + outcome coercion (P0-P step 10).
+from .reporting import (  # noqa: F401 — facade re-export
+    _coerce_outcome,
+    _emit_work_report_preview,
+)
+
+# Runtime preflight + join/append (P0-P step 11).
+from .runtime_preflight import (  # noqa: F401 — facade re-export
+    _handle_join_or_append,
+    _run_runtime_preflight,
+)
+
+from ._legacy import *  # noqa: F401,F403 — facade re-export
+# Symbols still owned by _legacy until step 12 finishes extraction.
+from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+    _handle_clarification_selection,
+    is_coding_approval_phrase,
+    is_coding_proposal_request,
     route_engineering_message,
+)
+# Clarification cache symbols — already in engineering.clarification.
+from ..engineering.clarification import (  # noqa: F401 — facade re-export
+    GATEWAY_CLARIFICATION_CONTEXT as _GATEWAY_CLARIFICATION_CONTEXT,
+    clarification_context_key as _clarification_context_key,
+    clear_clarification_context as _clear_clarification_context,
+    looks_like_new_work_selection as _looks_like_new_work_selection,
+    recall_clarification_candidates as _recall_clarification_candidates,
+    recall_clarification_canonical_prompt as _recall_clarification_canonical_prompt,
+    remember_clarification_candidates as _remember_clarification_candidates,
+    try_select_candidate as _try_select_candidate,
 )
