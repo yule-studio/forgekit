@@ -1,56 +1,45 @@
-"""Engineering-agent free-form conversation layer.
+"""engineering_conversation — main entry + generic surface formatters.
 
-This module is the **conversational front door** for the engineering-agent
-gateway in the ``#업무-접수`` channel. It receives a user's natural-language
-message and returns a structured :class:`EngineeringConversationResponse`
-that downstream code (bot.py, commands.py, future dispatcher) consumes to
-decide whether to:
+This is the final stage of the conversation pipeline. Every other
+module in the package feeds into :func:`build_engineering_conversation_response`,
+which interprets the detected intent and produces the
+:class:`EngineeringConversationResponse` envelope the gateway acts on.
 
-- reply only (general help / clarification questions),
-- propose a task split before intake,
-- or actually call ``workflow.intake`` because the user confirmed.
+Public:
 
-It deliberately does **not** import :mod:`workflow` or the dispatcher so it
-can be exercised in unit tests without DB/Discord dependencies. The bot
-layer is responsible for translating ``ready_to_intake`` into the actual
-``workflow.intake`` call.
+- :func:`build_engineering_conversation_response` — main entry.
 
-How this differs from ``discord/conversation.py`` (planning-agent):
+Generic surface formatters (used by ``build_engineering_conversation_response``
+and not specialised enough to belong to ``status_responses`` or
+``research_bootstrap``):
 
-- planning conversation is *snapshot-bound* — it leans on
-  ``DailyPlanSnapshot`` and answers deterministic queries about the day.
-- engineering conversation is *task-shaping* — it interprets a free-form
-  request, asks for missing context, suggests breaking down multi-prong
-  asks, and only commits to a session once the user explicitly says so.
+- :func:`_format_general_help`
+- :func:`_format_clarification_question`
+- :func:`_format_split_proposal`
+- :func:`_format_intake_candidate_question`
+- :func:`_summarize_topic`
+- :func:`_pretty_task_type`
+- :func:`_pretty_provider`
+- :func:`_prepend_mention`
+
+Dependency direction (audit doc §2):
+``models`` / ``intent_detection`` / ``task_shaping`` / ``status_responses``
+/ ``research_bootstrap`` all feed into here. This module imports from
+all of them but is never imported by any of them, so there is no
+cycle.
 """
 
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Iterable, Mapping, Optional, Sequence
-from urllib.parse import urlparse
+from typing import Any, Optional, Sequence
 
-from ...agents.messaging.dispatcher import TaskType
-from ...agents.research.pack import (
-    ResearchAttachment,
-    ResearchPack,
-    ResearchSource,
-    extract_urls,
+from .intent_detection import (
+    _asks_to_continue_existing_thread,
+    _asks_to_start_new_thread,
+    detect_engineering_intent,
+    split_task_branches,
 )
-from ...agents.lifecycle.session_status import (
-    diagnose_session,
-    render_member_bot_summary,
-)
-
-
-# ---------------------------------------------------------------------------
-# Public dataclasses + intent ID constants (extracted to .models — P0-L step 3)
-# ---------------------------------------------------------------------------
-
-
-from .models import (  # noqa: E402 — re-export for back-compat
+from .models import (
     APPROVAL_ACTION,
     BLOCKED_REASON_QUERY,
     CHANGE_DIRECTION,
@@ -60,17 +49,35 @@ from .models import (  # noqa: E402 — re-export for back-compat
     EngineeringIntentMatch,
     GENERAL_ENGINEERING_HELP,
     NEEDS_CLARIFICATION,
-    READ_ONLY_INTENTS,
     SESSION_COUNT_QUERY,
     SESSION_LIST_QUERY,
     SPLIT_TASK_PROPOSAL,
     STATUS_DIAGNOSTIC,
     TASK_INTAKE_CANDIDATE,
 )
+from .research_bootstrap import (
+    _format_coding_bootstrap_body,
+    _format_collection_announcement,
+    _format_intake_with_collection,
+    _maybe_run_auto_collect,
+)
+from .status_responses import (
+    _asks_about_member_bots,
+    format_blocked_reason_response,
+    format_change_direction_response,
+    format_continue_existing_response,
+    format_session_count_response,
+    format_session_list_response,
+    format_status_diagnostic_response,
+)
+from .task_shaping import (
+    _looks_like_write_request,
+    _suggest_task_type,
+)
 
 
 # ---------------------------------------------------------------------------
-# Public entry points
+# Public entry point
 # ---------------------------------------------------------------------------
 
 
@@ -434,77 +441,9 @@ def build_engineering_conversation_response(
     )
 
 
-# P0-L step 7: collector wiring + intake/collection body formatters
-# extracted to .research_bootstrap.
-from .research_bootstrap import (  # noqa: E402,F401 — re-export for back-compat
-    _format_coding_bootstrap_body,
-    _format_collection_announcement,
-    _format_collection_meta_block,
-    _format_intake_with_collection,
-    _maybe_run_auto_collect,
-)
-
-
-# P0-L step 6: intent_detection extracted to .intent_detection.
-from .intent_detection import (  # noqa: E402,F401 — re-export for back-compat
-    _asks_for_general_help,
-    _asks_to_continue_existing_thread,
-    _asks_to_start_new_thread,
-    _BLOCKED_REASON_PHRASES,
-    _CHANGE_DIRECTION_PHRASES,
-    _CONFIRMATION_PHRASES,
-    _CONFIRMATION_STANDALONE,
-    _CONTINUE_EXISTING_PHRASES,
-    _GENERAL_HELP_PHRASES,
-    _is_blocked_reason_query,
-    _is_change_direction,
-    _is_confirmation,
-    _is_continue_existing_work,
-    _is_session_count_query,
-    _is_session_list_query,
-    _is_status_diagnostic,
-    _looks_too_vague,
-    _normalize,
-    _SESSION_COUNT_PHRASES,
-    _SESSION_LIST_PHRASES,
-    _SPLIT_PATTERN,
-    _STATUS_DIAGNOSTIC_PHRASES,
-    _VAGUE_TOKEN_RUNS,
-    detect_engineering_intent,
-    split_task_branches,
-)
-
-
-# P0-L step 4: task_shaping helpers extracted to .task_shaping.
-from .task_shaping import (  # noqa: E402,F401 — re-export for back-compat
-    _looks_like_multiple_tasks,
-    _looks_like_write_request,
-    _suggest_task_type,
-    _TASK_TYPE_KEYWORDS,
-)
-
-
 # ---------------------------------------------------------------------------
-# Response body formatters (status / session — extracted to .status_responses)
+# Generic surface formatters
 # ---------------------------------------------------------------------------
-
-
-# P0-L step 5: status / read-only responders extracted to .status_responses.
-from .status_responses import (  # noqa: E402,F401 — re-export for back-compat
-    _asks_about_member_bots,
-    _coerce_str,
-    _format_coding_status_line,
-    _MEMBER_BOT_PHRASES,
-    _open_states_set,
-    _safe_list_sessions,
-    _STATUS_SEVERITY_TAGS,
-    format_blocked_reason_response,
-    format_change_direction_response,
-    format_continue_existing_response,
-    format_session_count_response,
-    format_session_list_response,
-    format_status_diagnostic_response,
-)
 
 
 def _format_general_help() -> str:
@@ -652,73 +591,14 @@ def _prepend_mention(content: str, mention_user_id: Optional[int]) -> str:
     return f"<@{mention_user_id}>\n\n{content}".strip()
 
 
-# P0-L step 7: research candidate / source-type registry extracted to
-# .research_bootstrap.
-from .research_bootstrap import (  # noqa: E402,F401 — re-export for back-compat
-    ALL_SOURCE_TYPES,
-    IMAGE_EXTENSIONS,
-    ROLE_RESEARCH_PROFILES,
-    ResearchCandidate,
-    ResearchCollectionResult,
-    SOURCE_TYPE_CODE_CONTEXT,
-    SOURCE_TYPE_COMMUNITY_SIGNAL,
-    SOURCE_TYPE_DESIGN_REFERENCE,
-    SOURCE_TYPE_FILE_ATTACHMENT,
-    SOURCE_TYPE_GITHUB_ISSUE,
-    SOURCE_TYPE_GITHUB_PR,
-    SOURCE_TYPE_IMAGE_REFERENCE,
-    SOURCE_TYPE_OFFICIAL_DOCS,
-    SOURCE_TYPE_URL,
-    SOURCE_TYPE_USER_MESSAGE,
-    SOURCE_TYPE_WEB_RESULT,
-    _REQUIRED_SOURCE_TYPES_BY_TASK_TYPE,
-    _evaluate_research_sufficiency,
-    build_research_pack_from_candidates,
-    classify_attachment,
-    classify_url,
-    collect_research_candidates_from_message,
-    format_insufficient_research_prompt,
-    suggest_role_research_assignments,
-)
-
-
-# Re-exports for callers that want a one-stop import surface.
-__all__ = [
-    # existing
-    "EngineeringConversationResponse",
-    "EngineeringIntentMatch",
+__all__ = (
     "build_engineering_conversation_response",
-    "detect_engineering_intent",
-    "split_task_branches",
-    # research collection
-    "ALL_SOURCE_TYPES",
-    "IMAGE_EXTENSIONS",
-    "ROLE_RESEARCH_PROFILES",
-    "ResearchCandidate",
-    "ResearchCollectionResult",
-    "build_research_pack_from_candidates",
-    "classify_attachment",
-    "classify_url",
-    "collect_research_candidates_from_message",
-    "format_insufficient_research_prompt",
-    "format_status_diagnostic_response",
-    "suggest_role_research_assignments",
-    # source_type constants
-    "SOURCE_TYPE_USER_MESSAGE",
-    "SOURCE_TYPE_URL",
-    "SOURCE_TYPE_WEB_RESULT",
-    "SOURCE_TYPE_IMAGE_REFERENCE",
-    "SOURCE_TYPE_FILE_ATTACHMENT",
-    "SOURCE_TYPE_GITHUB_ISSUE",
-    "SOURCE_TYPE_GITHUB_PR",
-    "SOURCE_TYPE_CODE_CONTEXT",
-    "SOURCE_TYPE_OFFICIAL_DOCS",
-    "SOURCE_TYPE_COMMUNITY_SIGNAL",
-    "SOURCE_TYPE_DESIGN_REFERENCE",
-    # intent constants (existing)
-    "GENERAL_ENGINEERING_HELP",
-    "TASK_INTAKE_CANDIDATE",
-    "NEEDS_CLARIFICATION",
-    "CONFIRM_INTAKE",
-    "SPLIT_TASK_PROPOSAL",
-]
+    "_format_general_help",
+    "_format_clarification_question",
+    "_format_split_proposal",
+    "_format_intake_candidate_question",
+    "_summarize_topic",
+    "_pretty_task_type",
+    "_pretty_provider",
+    "_prepend_mention",
+)

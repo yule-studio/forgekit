@@ -10,11 +10,7 @@ decide whether to:
 - propose a task split before intake,
 - or actually call ``workflow.intake`` because the user confirmed.
 
-P0-L (#138 followup) decomposition:
-
-The historical monolith (``engineering_conversation.py``, 3000+ lines) was
-split into 6 responsibility-aligned modules. Each module owns one slice of
-the conversation layer:
+P0-L (#138 followup) decomposition — 6 responsibility-aligned modules:
 
   * :mod:`.models`              — dataclasses + intent ID constants.
   * :mod:`.intent_detection`    — :func:`detect_engineering_intent` + matchers.
@@ -38,7 +34,7 @@ How this differs from ``discord/conversation.py`` (planning-agent):
 
 from __future__ import annotations
 
-# Canonical dataclasses + intent ID constants live in .models (P0-L step 3).
+# Public dataclasses + intent ID constants live in .models.
 from .models import (  # noqa: F401 — facade re-export
     APPROVAL_ACTION,
     BLOCKED_REASON_QUERY,
@@ -56,11 +52,16 @@ from .models import (  # noqa: F401 — facade re-export
     STATUS_DIAGNOSTIC,
     TASK_INTAKE_CANDIDATE,
 )
-# task_type / write-intent heuristics live in .task_shaping (P0-L step 4).
+# Intent classification + phrase matchers + split helper live in .intent_detection.
+from .intent_detection import (  # noqa: F401 — facade re-export
+    detect_engineering_intent,
+    split_task_branches,
+)
+# task_type / write-intent heuristics live in .task_shaping.
 from .task_shaping import (  # noqa: F401 — facade re-export
     _suggest_task_type,
 )
-# Status / read-only responders live in .status_responses (P0-L step 5).
+# Status / read-only responders live in .status_responses.
 from .status_responses import (  # noqa: F401 — facade re-export
     format_blocked_reason_response,
     format_change_direction_response,
@@ -69,27 +70,34 @@ from .status_responses import (  # noqa: F401 — facade re-export
     format_session_list_response,
     format_status_diagnostic_response,
 )
-# Intent classification + phrase matchers live in .intent_detection (P0-L step 6).
-from .intent_detection import (  # noqa: F401 — facade re-export
-    detect_engineering_intent,
-    split_task_branches,
-)
 # Research candidate classification + collector wiring + intake body
-# formatters live in .research_bootstrap (P0-L step 7).
+# formatters live in .research_bootstrap.
 from .research_bootstrap import (  # noqa: F401 — facade re-export
+    ALL_SOURCE_TYPES,
+    IMAGE_EXTENSIONS,
+    ROLE_RESEARCH_PROFILES,
     ResearchCandidate,
     ResearchCollectionResult,
+    SOURCE_TYPE_CODE_CONTEXT,
+    SOURCE_TYPE_COMMUNITY_SIGNAL,
+    SOURCE_TYPE_DESIGN_REFERENCE,
+    SOURCE_TYPE_FILE_ATTACHMENT,
+    SOURCE_TYPE_GITHUB_ISSUE,
+    SOURCE_TYPE_GITHUB_PR,
+    SOURCE_TYPE_IMAGE_REFERENCE,
+    SOURCE_TYPE_OFFICIAL_DOCS,
+    SOURCE_TYPE_URL,
+    SOURCE_TYPE_USER_MESSAGE,
+    SOURCE_TYPE_WEB_RESULT,
+    build_research_pack_from_candidates,
     classify_attachment,
     classify_url,
     collect_research_candidates_from_message,
     format_insufficient_research_prompt,
     suggest_role_research_assignments,
 )
-
-# Remaining content (response_formatters) is still in _legacy.py —
-# re-export until the last module is extracted in step 8.
-from ._legacy import *  # noqa: F401,F403 — facade re-export
-from ._legacy import (  # noqa: F401 — explicit symbols for IDE/static analysis
+# Main entry — assembled in .response_formatters from the other modules.
+from .response_formatters import (  # noqa: F401 — facade re-export
     build_engineering_conversation_response,
 )
 
@@ -126,6 +134,21 @@ __all__ = (
     "format_session_list_response",
     "format_status_diagnostic_response",
     # research bootstrap surface
+    "ALL_SOURCE_TYPES",
+    "IMAGE_EXTENSIONS",
+    "ROLE_RESEARCH_PROFILES",
+    "SOURCE_TYPE_CODE_CONTEXT",
+    "SOURCE_TYPE_COMMUNITY_SIGNAL",
+    "SOURCE_TYPE_DESIGN_REFERENCE",
+    "SOURCE_TYPE_FILE_ATTACHMENT",
+    "SOURCE_TYPE_GITHUB_ISSUE",
+    "SOURCE_TYPE_GITHUB_PR",
+    "SOURCE_TYPE_IMAGE_REFERENCE",
+    "SOURCE_TYPE_OFFICIAL_DOCS",
+    "SOURCE_TYPE_URL",
+    "SOURCE_TYPE_USER_MESSAGE",
+    "SOURCE_TYPE_WEB_RESULT",
+    "build_research_pack_from_candidates",
     "classify_attachment",
     "classify_url",
     "collect_research_candidates_from_message",

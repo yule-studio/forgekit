@@ -107,7 +107,7 @@ class NaverSearchCloneEndToEndTests(unittest.TestCase):
         # NOT trip the platform-infra classification path or the
         # NEEDS_USER_INPUT surface.
         with patch(
-            "yule_orchestrator.discord.engineering_conversation._legacy._maybe_run_auto_collect",
+            "yule_orchestrator.discord.engineering_conversation.response_formatters._maybe_run_auto_collect",
             return_value=None,
         ):
             response = build_engineering_conversation_response(
@@ -137,7 +137,7 @@ class NaverSearchCloneEndToEndTests(unittest.TestCase):
             pack=None,
         )
         with patch(
-            "yule_orchestrator.discord.engineering_conversation._legacy._maybe_run_auto_collect",
+            "yule_orchestrator.discord.engineering_conversation.response_formatters._maybe_run_auto_collect",
             return_value=fake_collection,
         ):
             response = build_engineering_conversation_response(
@@ -164,7 +164,7 @@ class NaverSearchCloneEndToEndTests(unittest.TestCase):
             pack=None,
         )
         with patch(
-            "yule_orchestrator.discord.engineering_conversation._legacy._maybe_run_auto_collect",
+            "yule_orchestrator.discord.engineering_conversation.response_formatters._maybe_run_auto_collect",
             return_value=fake_collection,
         ):
             response = build_engineering_conversation_response(
@@ -187,7 +187,7 @@ class NaverSearchCloneEndToEndTests(unittest.TestCase):
             pack=None,
         )
         with patch(
-            "yule_orchestrator.discord.engineering_conversation._legacy._maybe_run_auto_collect",
+            "yule_orchestrator.discord.engineering_conversation.response_formatters._maybe_run_auto_collect",
             return_value=fake_collection,
         ):
             response = build_engineering_conversation_response(

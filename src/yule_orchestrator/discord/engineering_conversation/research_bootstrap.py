@@ -912,8 +912,9 @@ def _format_intake_with_collection(
     """
 
     # response_formatters owns _summarize_topic / _pretty_task_type per
-    # audit §2 — lazy-import to dodge the step-7 → step-8 ordering.
-    from ._legacy import _pretty_task_type, _summarize_topic
+    # audit §2 — lazy-import to avoid the circular research_bootstrap ↔
+    # response_formatters reference (response_formatters imports us).
+    from .response_formatters import _pretty_task_type, _summarize_topic
 
     mode = getattr(collection, "mode", None)
     mode_value = getattr(mode, "value", str(mode))
@@ -991,7 +992,7 @@ def _format_coding_bootstrap_body(
     not stalling.
     """
 
-    from ._legacy import _pretty_task_type, _summarize_topic
+    from .response_formatters import _pretty_task_type, _summarize_topic
 
     topic = _summarize_topic(message_text)
     stacks = ", ".join(getattr(bootstrap, "stacks_mentioned", ()) or ())
@@ -1070,7 +1071,7 @@ def _format_collection_meta_block(collection: Any) -> str:
         - 다음 단계: 역할별 검토
     """
 
-    from ._legacy import _pretty_provider
+    from .response_formatters import _pretty_provider
 
     count = getattr(collection, "auto_collected_count", 0) or 0
     name = getattr(collection, "collector_name", "?")
