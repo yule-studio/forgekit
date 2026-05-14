@@ -1,0 +1,269 @@
+"""P0-K e2e — command-only operational phrase must never spawn new research/forum (#148).
+
+User-reported scenarios:
+
+  1. "진행 해줘" on existing session — no new intake, no new thread,
+     no _run_research_loop_hook, canonical prompt 유지.
+  2. "작업 승인 할게 진행 해줘" — approval/proceed, no new forum thread.
+  3. "이대로 진행" — no "[Reference] 이대로 진행" thread.
+  4. "세션 <id> 계속 진행해" — existing session continue, no new research loop.
+  5. Genuine direction update — same-session direction update **allowed**.
+  6. Resumed thread role-change — session resolve via resumed_thread_id.
+"""
+
+from __future__ import annotations
+
+import unittest
+from types import SimpleNamespace
+
+try:
+    import _bootstrap  # noqa: F401
+except ModuleNotFoundError:
+    from tests import _bootstrap  # noqa: F401
+
+from yule_orchestrator.agents.routing import (
+    is_command_only_prompt,
+    is_non_actionable_prompt,
+)
+from yule_orchestrator.discord.engineering_channel_router import (
+    _research_loop_blocked_by_command_only,
+)
+from yule_orchestrator.discord.engineering_conversation import (
+    APPROVAL_ACTION,
+    CONFIRM_INTAKE,
+    TASK_INTAKE_CANDIDATE,
+    build_engineering_conversation_response,
+)
+from yule_orchestrator.discord.forum_message_adapter import (
+    _resolve_session_for_forum_thread,
+)
+from yule_orchestrator.discord.research_forum import (
+    derive_research_topic,
+)
+
+
+# ---------------------------------------------------------------------------
+# Phrase classification
+# ---------------------------------------------------------------------------
+
+
+class CommandOnlyPhraseTests(unittest.TestCase):
+    """The expanded phrase set catches every user-reported example."""
+
+    def test_user_examples_are_command_only(self) -> None:
+        for text in (
+            "진행 해줘",
+            "작업 승인 할게 진행 해줘",
+            "이대로 진행",
+            "승인하고 진행해",
+            "계속 해",
+            "이어서 해",
+            "오케이 진행",
+            "승인할게",
+            "새 작업으로 진행",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(
+                    is_command_only_prompt(text),
+                    f"{text!r} must be classified as command-only",
+                )
+                self.assertTrue(is_non_actionable_prompt(text))
+
+    def test_substantive_messages_are_not_command_only(self) -> None:
+        for text in (
+            "백엔드도 포함시켜줘",
+            "로그인 말고 검색부터 먼저 구현해",
+            "Next.js + Postgres 회원가입 화면 만들어줘",
+            "회원가입 화면 만들어줘",
+            "지금 뭐 하고 있어?",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(
+                    is_command_only_prompt(text),
+                    f"{text!r} is substantive — must NOT be command-only",
+                )
+
+
+# ---------------------------------------------------------------------------
+# Conversation envelope — no intake / no auto_collect for command-only
+# ---------------------------------------------------------------------------
+
+
+class ConversationEnvelopeTests(unittest.TestCase):
+    def test_proceed_haejwo_yields_approval_action(self) -> None:
+        response = build_engineering_conversation_response("진행 해줘")
+        self.assertEqual(response.intent_id, APPROVAL_ACTION)
+        self.assertFalse(response.ready_to_intake)
+        self.assertTrue(response.is_status_query)
+        self.assertIn("새 리서치 thread 는 만들지 않습니다", response.content)
+
+    def test_approval_compound_yields_approval_action(self) -> None:
+        response = build_engineering_conversation_response(
+            "작업 승인 할게 진행 해줘"
+        )
+        self.assertEqual(response.intent_id, APPROVAL_ACTION)
+        self.assertFalse(response.ready_to_intake)
+
+    def test_idaero_jin_haeng_alone_yields_approval_action(self) -> None:
+        response = build_engineering_conversation_response("이대로 진행")
+        self.assertEqual(response.intent_id, APPROVAL_ACTION)
+        self.assertFalse(response.ready_to_intake)
+
+    def test_seungin_hago_yields_approval_action(self) -> None:
+        response = build_engineering_conversation_response("승인하고 진행해")
+        self.assertEqual(response.intent_id, APPROVAL_ACTION)
+
+    def test_idaero_jin_haeng_with_substantive_last_prompt_still_promotes(self) -> None:
+        # P0-K preserves CONFIRM_INTAKE for legitimate "confirm prior
+        # proposal" — only downgrades when intake_prompt itself is bare
+        # command-only. Substantive last_proposed_prompt rescues it.
+        response = build_engineering_conversation_response(
+            "이대로 진행",
+            last_proposed_prompt="회원가입 화면 만들어줘",
+        )
+        self.assertEqual(response.intent_id, CONFIRM_INTAKE)
+        self.assertTrue(response.ready_to_intake)
+
+    def test_substantive_direction_update_still_intake_candidate(self) -> None:
+        response = build_engineering_conversation_response(
+            "로그인 말고 검색부터 먼저 구현해"
+        )
+        self.assertEqual(response.intent_id, TASK_INTAKE_CANDIDATE)
+
+
+# ---------------------------------------------------------------------------
+# Research loop guard helper
+# ---------------------------------------------------------------------------
+
+
+class ResearchLoopGuardTests(unittest.TestCase):
+    def test_command_only_blocks_research_loop(self) -> None:
+        for text in (
+            "진행 해줘",
+            "이대로 진행",
+            "작업 승인 할게 진행 해줘",
+            "승인하고 진행해",
+        ):
+            with self.subTest(text=text):
+                self.assertTrue(_research_loop_blocked_by_command_only(text))
+
+    def test_substantive_prompt_allows_research_loop(self) -> None:
+        for text in (
+            "Next.js 회원가입 페이지 만들어줘",
+            "로그인 말고 검색부터 먼저 구현해",
+            "백엔드도 포함시켜줘",
+        ):
+            with self.subTest(text=text):
+                self.assertFalse(_research_loop_blocked_by_command_only(text))
+
+    def test_empty_or_none_does_not_block(self) -> None:
+        self.assertFalse(_research_loop_blocked_by_command_only(None))
+        self.assertFalse(_research_loop_blocked_by_command_only(""))
+
+
+# ---------------------------------------------------------------------------
+# Forum thread title guard
+# ---------------------------------------------------------------------------
+
+
+class ForumThreadTitleGuardTests(unittest.TestCase):
+    """`[Reference] 진행 해줘` thread spam is the canonical bug — block at title source."""
+
+    def test_command_only_title_falls_back_to_default(self) -> None:
+        pack = SimpleNamespace(
+            title="진행 해줘",
+            summary="",
+            tags=(),
+            request=None,
+        )
+        topic = derive_research_topic(pack)
+        self.assertEqual(topic, "engineering 작업")
+        self.assertNotIn("진행", topic)
+
+    def test_command_only_summary_falls_back(self) -> None:
+        pack = SimpleNamespace(
+            title="",
+            summary="이대로 진행",
+            tags=(),
+            request=None,
+        )
+        topic = derive_research_topic(pack)
+        self.assertEqual(topic, "engineering 작업")
+
+    def test_substantive_title_used_normally(self) -> None:
+        pack = SimpleNamespace(
+            title="Next.js 회원가입 화면",
+            summary="",
+            tags=(),
+            request=None,
+        )
+        topic = derive_research_topic(pack)
+        self.assertEqual(topic, "Next.js 회원가입 화면")
+
+    def test_command_only_pack_with_substantive_tag_uses_tag(self) -> None:
+        # Edge case: pack.title is command-only but pack.tags is
+        # substantive — tag should win.
+        pack = SimpleNamespace(
+            title="진행 해줘",
+            summary="",
+            tags=("auth", "search"),
+            request=None,
+        )
+        topic = derive_research_topic(pack)
+        self.assertIn("auth", topic)
+        self.assertNotIn("진행", topic)
+
+
+# ---------------------------------------------------------------------------
+# Forum session resolve — resumed_thread_id fallback
+# ---------------------------------------------------------------------------
+
+
+def _fake_message(channel_id: int):
+    channel = SimpleNamespace(id=channel_id, parent_id=99, parent=SimpleNamespace())
+    return SimpleNamespace(channel=channel)
+
+
+def _session_with_extra(**extra):
+    return SimpleNamespace(extra=dict(extra))
+
+
+class ResumedThreadResolveTests(unittest.TestCase):
+    def test_resumed_thread_id_matches_when_research_forum_thread_absent(self) -> None:
+        message = _fake_message(channel_id=5050)
+        sessions = [
+            _session_with_extra(resumed_thread_id=5050),
+            _session_with_extra(research_forum_thread_id=1111),
+        ]
+        resolved = _resolve_session_for_forum_thread(
+            message=message, session_lister=lambda limit: sessions
+        )
+        self.assertIsNotNone(resolved)
+        assert resolved is not None
+        self.assertEqual(resolved.extra["resumed_thread_id"], 5050)
+
+    def test_research_forum_thread_id_preferred_over_resumed(self) -> None:
+        # When both keys point to different sessions, primary lookup
+        # wins (research_forum_thread_id is the canonical anchor).
+        message = _fake_message(channel_id=5050)
+        primary = _session_with_extra(research_forum_thread_id=5050)
+        secondary = _session_with_extra(resumed_thread_id=5050)
+        resolved = _resolve_session_for_forum_thread(
+            message=message, session_lister=lambda limit: [secondary, primary]
+        )
+        self.assertIs(resolved, primary)
+
+    def test_no_match_returns_none(self) -> None:
+        message = _fake_message(channel_id=99999)
+        sessions = [
+            _session_with_extra(research_forum_thread_id=111),
+            _session_with_extra(resumed_thread_id=222),
+        ]
+        resolved = _resolve_session_for_forum_thread(
+            message=message, session_lister=lambda limit: sessions
+        )
+        self.assertIsNone(resolved)
+
+
+if __name__ == "__main__":
+    unittest.main()
