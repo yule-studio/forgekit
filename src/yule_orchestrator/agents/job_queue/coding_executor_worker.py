@@ -42,9 +42,20 @@ from typing import (
     Tuple,
 )
 
+from ..governance.runtime_policy import (
+    BranchPolicyResult,
+    derive_standard_branch_name,
+    validate_branch_name,
+)
 from .heartbeat import HeartbeatStore
 from .state_machine import JobState
 from .store import Job, JobQueue
+from .work_order_coding_continuation import (
+    PROGRESS_CODING_BLOCKED,
+    PROGRESS_CODING_IN_PROGRESS,
+    PROGRESS_DRAFT_PR_OPENED,
+    stamp_progress_marker,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +73,7 @@ SKIPPED_CLAIMED: str = "claimed_by_other_worker"
 SKIPPED_VAULT_UNAVAILABLE: str = "worktree_root_unavailable"
 
 REASON_PROTECTED_BRANCH: str = "protected_branch_blocked"
+REASON_BRANCH_POLICY_VIOLATION: str = "branch_policy_violation"
 REASON_FORCE_PUSH_BLOCKED: str = "force_push_blocked"
 REASON_DRY_RUN: str = "dry_run"
 REASON_TEST_FAILED: str = "test_failed"
@@ -454,13 +466,60 @@ class CodingExecutorWorker:
                 reason=f"{REASON_INVALID_REQUEST}: {_short(exc)}",
             )
 
+        # --- Progress marker: coding_in_progress ----------------------------
+        # session.extra 에 marker stamp — operator 가 status 에서 "지금 실행
+        # 중인지 / 아직 큐에서 대기인지" 즉시 구분 가능.
+        self._stamp_progress(
+            session_id=request.session_id,
+            marker=PROGRESS_CODING_IN_PROGRESS,
+            detail={
+                "job_id": in_progress.job_id,
+                "executor_role": request.executor_role,
+                "branch_hint": request.branch_hint or None,
+                "issue_number": request.issue_number,
+            },
+        )
+
         # --- Hard rail: validate branch hint before any execution -----------
         branch = request.branch_hint or self._suggest_branch(request)
         if is_protected_branch(branch):
+            self._stamp_progress(
+                session_id=request.session_id,
+                marker=PROGRESS_CODING_BLOCKED,
+                detail={
+                    "job_id": in_progress.job_id,
+                    "reason": REASON_PROTECTED_BRANCH,
+                    "branch": branch,
+                },
+            )
             return self._fail(
                 in_progress,
                 terminal=True,
                 reason=f"{REASON_PROTECTED_BRANCH} (branch={branch})",
+                branch=branch,
+            )
+
+        # P0-T: runtime governance policy gate — protected 검사 외에 형식 /
+        # protected qualified ref 도 추가 검사. issue anchor missing 같은
+        # warning 은 거부하지 않고 audit 에만 남긴다.
+        policy = validate_branch_name(
+            branch, issue_number=request.issue_number
+        )
+        if not policy.allowed:
+            self._stamp_progress(
+                session_id=request.session_id,
+                marker=PROGRESS_CODING_BLOCKED,
+                detail={
+                    "job_id": in_progress.job_id,
+                    "reason": REASON_BRANCH_POLICY_VIOLATION,
+                    "branch": branch,
+                    "policy_reason": policy.reason,
+                },
+            )
+            return self._fail(
+                in_progress,
+                terminal=True,
+                reason=f"{REASON_BRANCH_POLICY_VIOLATION} ({policy.reason}; branch={branch})",
                 branch=branch,
             )
 
@@ -470,6 +529,15 @@ class CodingExecutorWorker:
 
             if request.dry_run:
                 # Dry-run path — no Protocol invoked, pure spec exercise.
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_DRAFT_PR_OPENED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "branch": branch,
+                        "dry_run": True,
+                    },
+                )
                 return self._success(
                     in_progress,
                     branch=branch,
@@ -481,6 +549,15 @@ class CodingExecutorWorker:
             ctx = self._editor.apply(request=request, context=ctx)
             ctx = self._tests.run(request=request, context=ctx)
             if not _tests_passed(ctx.test_summary):
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": REASON_TEST_FAILED,
+                        "branch": branch,
+                    },
+                )
                 return self._fail(
                     in_progress,
                     terminal=False,
@@ -490,6 +567,15 @@ class CodingExecutorWorker:
                 )
             ctx = self._committer.commit(request=request, context=ctx)
             if not ctx.commit_sha:
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": REASON_COMMIT_FAILED,
+                        "branch": branch,
+                    },
+                )
                 return self._fail(
                     in_progress,
                     terminal=False,
@@ -498,6 +584,16 @@ class CodingExecutorWorker:
                 )
             ctx = self._pusher.push(request=request, context=ctx)
             if not ctx.pushed:
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": REASON_PUSH_FAILED,
+                        "branch": branch,
+                        "commit_sha": ctx.commit_sha,
+                    },
+                )
                 return self._fail(
                     in_progress,
                     terminal=False,
@@ -507,6 +603,16 @@ class CodingExecutorWorker:
                 )
             ctx = self._pr_creator.open(request=request, context=ctx)
             if not ctx.pr_number:
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": REASON_PR_FAILED,
+                        "branch": branch,
+                        "commit_sha": ctx.commit_sha,
+                    },
+                )
                 return self._fail(
                     in_progress,
                     terminal=False,
@@ -515,6 +621,16 @@ class CodingExecutorWorker:
                     commit_sha=ctx.commit_sha,
                 )
         except CodingExecutorNotImplementedError as exc:
+            self._stamp_progress(
+                session_id=request.session_id,
+                marker=PROGRESS_CODING_BLOCKED,
+                detail={
+                    "job_id": in_progress.job_id,
+                    "reason": REASON_NOT_IMPLEMENTED,
+                    "branch": branch,
+                    "detail": _short(exc),
+                },
+            )
             return self._fail(
                 in_progress,
                 terminal=True,
@@ -522,6 +638,16 @@ class CodingExecutorWorker:
                 branch=branch,
             )
         except Exception as exc:  # noqa: BLE001
+            self._stamp_progress(
+                session_id=request.session_id,
+                marker=PROGRESS_CODING_BLOCKED,
+                detail={
+                    "job_id": in_progress.job_id,
+                    "reason": REASON_EDIT_FAILED,
+                    "branch": branch,
+                    "detail": _short(exc),
+                },
+            )
             return self._fail(
                 in_progress,
                 terminal=False,
@@ -529,6 +655,18 @@ class CodingExecutorWorker:
                 branch=branch,
             )
 
+        # PR 생성 성공 — operator-visible marker
+        self._stamp_progress(
+            session_id=request.session_id,
+            marker=PROGRESS_DRAFT_PR_OPENED,
+            detail={
+                "job_id": in_progress.job_id,
+                "branch": ctx.branch,
+                "commit_sha": ctx.commit_sha,
+                "pr_number": ctx.pr_number,
+                "pr_url": ctx.pr_url,
+            },
+        )
         return self._success(
             in_progress,
             branch=ctx.branch,
@@ -560,13 +698,79 @@ class CodingExecutorWorker:
     # ------------------------------------------------------------------
 
     def _suggest_branch(self, request: CodingExecuteRequest) -> str:
-        # Mirror the G3 branch convention — prefer the role + issue number,
-        # fall back to a deterministic timestamp slug. Caller can override
-        # via request.branch_hint.
+        """Return a branch name when caller didn't pass a hint.
+
+        Default convention: ``agent/<role>/issue-<n>-coding-execute`` —
+        기존 G3 호환. issue 가 있으면 추가로 :func:`derive_standard_branch_name`
+        의 표준 prefix (`feat/`) 로 안전 fallback 도 제공 (request 의
+        metadata['use_standard_prefix'] 가 True 일 때).
+        """
+
+        metadata = request.metadata or {}
+        use_standard = False
+        if isinstance(metadata, Mapping):
+            use_standard = bool(metadata.get("use_standard_prefix"))
+
+        if use_standard and request.issue_number is not None:
+            short = (
+                request.executor_role.split("-", 1)[0]
+                if request.executor_role
+                else "work"
+            )
+            return derive_standard_branch_name(
+                kind="feat",
+                short_purpose=short,
+                issue_number=int(request.issue_number),
+            )
         if request.issue_number is not None:
             return f"agent/{request.executor_role}/issue-{int(request.issue_number)}-coding-execute"
         ts = int((time.time())) % 10_000
         return f"agent/{request.executor_role}/coding-execute-{ts}"
+
+    def _stamp_progress(
+        self,
+        *,
+        session_id: str,
+        marker: str,
+        detail: Optional[Mapping[str, Any]] = None,
+    ) -> None:
+        """Persist a progress marker on ``session.extra`` — best-effort.
+
+        Uses :func:`agents.job_queue.work_order_coding_continuation.stamp_progress_marker`
+        which is the SSoT for the 5 progress markers (issue_created /
+        coding_dispatch_queued / coding_in_progress / draft_pr_opened /
+        coding_blocked). Storage failure is swallowed so the executor
+        pipeline never breaks on a session cache hiccup — the queue row
+        result still carries the same audit so #봇-상태 can recover.
+        """
+
+        if not session_id:
+            return
+        try:
+            from ..workflow_state import load_session as _load
+            from ..workflow_state import update_session as _update
+            from dataclasses import replace as _replace
+        except Exception:  # noqa: BLE001 - partial install
+            return
+        try:
+            session = _load(session_id)
+        except Exception:  # noqa: BLE001
+            return
+        if session is None:
+            return
+        try:
+            existing_extra = getattr(session, "extra", None) or {}
+            if not isinstance(existing_extra, Mapping):
+                existing_extra = {}
+            new_extra = stamp_progress_marker(
+                session_extra=existing_extra,
+                marker=marker,
+                detail=dict(detail or {}),
+            )
+            updated = _replace(session, extra=dict(new_extra))
+            _update(updated, now=datetime.now(tz=timezone.utc))
+        except Exception:  # noqa: BLE001
+            pass
 
     def _fail(
         self,
