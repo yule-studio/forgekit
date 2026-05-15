@@ -60,6 +60,28 @@ agent 가 issue 본문을 추측해 꾸며내지 않는다. placeholder/HTML 주
 `RepoContract.has_tag_policy` 가 False 이면 agent 는 tag 작업을 시도하지
 않는다 — 정책이 없는데 추측해 만들면 fake success 가 된다.
 
+### 1.2.1 Runtime hard rails — branch / PR / tag (P0-T)
+
+코드 SSoT: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py).
+
+**Branch**
+- protected branch (`main` / `master` / `develop` / `release*` / `hotfix*` / `production` / `prod`) 직접 작업 금지.
+- 표준 prefix: `feat/ fix/ chore/ refactor/ docs/ test/ perf/`. issue 번호가 있으면 `feat/<short>-issue-<n>` 으로 anchor.
+- 기존 `agent/<role>/...` 패턴 (engineering-agent 의 `derive_branch_name`) 도 회귀 없이 허용 — runtime_policy 가 warning 만 남김.
+- 검증: `validate_branch_name(name, issue_number=..., require_standard_prefix=...)`.
+- 표준 이름 빌더: `derive_standard_branch_name(kind, short_purpose, issue_number)`.
+
+**PR body**
+- 필수 5 섹션: `purpose` / `scope` / `risks` / `tests` / `issue_linkage` — 한국어/영어 키워드 alternative 매칭. repo PR template 의 heading 그대로 사용해도 통과.
+- audit block 필수 — `engineering-agent` / `audit` / `🤖` / `Generated with` / `Co-Authored-By` 마커 중 하나.
+- 누락 시 caller 가 push 거부.
+- 검증: `validate_pr_body(body)`.
+
+**Tag / version**
+- `RepoContract.tag_policy` 4 분류 (`workflow_driven` / `changelog_driven` / `version_file_only` / `none`) 그대로 사용 (PR #166).
+- `none` 일 때 자동 tag/release 금지 — audit 에 `tag_policy=none` 명시.
+- 실제 tag/release create 는 L3 승인 카드 별도 — 코딩 요청만으로 자동 발행 금지.
+
 ### 1.3 Operator action inbox
 
 agent 가 진행 중 외부 사실/권한/secret 값이 필요하면 `#승인-대기` 에
