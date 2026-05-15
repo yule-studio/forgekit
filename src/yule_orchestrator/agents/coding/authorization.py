@@ -151,10 +151,15 @@ class CodingAuthorizationProposal:
 _DEFAULT_SAFETY_RULES: Tuple[str, ...] = (
     "사용자 승인 phrase가 도착하기 전 어떤 production write도 시작하지 않는다",
     "수정 전 요약된 계획을 먼저 사용자에게 보여 준다",
-    "secret / .env / 운영 자격 증명에 접근하지 않는다",
+    # P0-S — secret 작업의 자율/승인 경계는 docs/approval-matrix.md §6 참조
+    "agent 자율 가능: secret 키 이름 정의, .env.example/compose/CI wiring, "
+    "GitHub Actions secret 이름 제안. 실제 secret 값/저장 위치는 SECRET_REQUIRED 카드로 사람에게 받는다",
     "git reset --hard / git push --force / 자동 deploy 같은 destructive 명령을 실행하지 않는다",
     "write_scope 밖의 파일을 수정하지 않는다",
     "변경 전후 관련 단위/통합 테스트를 실행하고 결과를 보고한다",
+    # P0-S — 외부 사실 / 권한 / secret 값 추측 금지
+    "서버 IP / SSH 자격 / 실제 도메인 / 운영 DB endpoint / 클라우드 계정 식별자는 추측하지 않고 INFO_REQUIRED · ACCESS_REQUIRED 카드로 사람에게 받는다",
+    "사람 응답이 필요한데 #승인-대기 카드 없이 세션이 멈추는 것을 금지한다 — 멈출 때는 반드시 operator action 카드를 게시한다",
 )
 
 
@@ -734,10 +739,70 @@ def proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProp
     )
 
 
+# ---------------------------------------------------------------------------
+# 기술 자율 vs 외부 사실 — operator action 가드 (P0-S)
+# ---------------------------------------------------------------------------
+
+
+# 단순 기술 선택은 agent 가 자율로 정하고 사람에게 묻지 않는다. 이 목록은
+# 명시 가드 — 새 항목을 추가하면 docs/approval-matrix.md §6 도 같이 갱신.
+TECH_DECISION_AUTONOMOUS: Tuple[str, ...] = (
+    "JWT vs session 선택",
+    "기본 DB 이름 규칙",
+    "Docker Compose 구조",
+    "Next/Nest 연결 방식",
+    "auth/API 구조",
+    "디렉터리 구조",
+    "구현에 필요한 일반적인 라이브러리/프레임워크 선택",
+)
+
+
+# 외부 사실 / 권한 / secret 값은 추측 금지 — 반드시 사람에게 카드로 요청.
+EXTERNAL_FACT_HUMAN_REQUIRED: Tuple[str, ...] = (
+    "실제 서버 IP / hostname",
+    "SSH user / key / 접근 방식",
+    "실제 운영 도메인",
+    "실제 secret 값",
+    "기존 운영 DB / Redis / API endpoint",
+    "클라우드 프로젝트 / 계정 식별자",
+    "이 서버/환경을 수정해도 되는가 같은 접근 권한 사실",
+)
+
+
+def classify_user_request_facts(text: str) -> Mapping[str, Tuple[str, ...]]:
+    """*text* 가 외부 사실 키워드를 포함하면 어떤 카드 타입이 필요한지 반환.
+
+    값은 ``{"INFO_REQUIRED": ("서버 ip",), "SECRET_REQUIRED": ()}`` 같은
+    형태. 빈 시퀀스는 해당 타입의 카드는 필요없음을 의미.
+
+    coding executor / planner 가 dispatch 직전에 이 헬퍼를 돌려 "지금 외부
+    사실이 필요한가" 를 검사한다. 본 함수는 보수적이라 false negative 가
+    있을 수 있음 — 호출자는 추가 컨텍스트로 보강 가능.
+    """
+
+    from ..operator_action import EXTERNAL_FACT_KEYWORDS, OperatorActionType
+
+    bucket: dict[str, list[str]] = {
+        OperatorActionType.INFO_REQUIRED.value: [],
+        OperatorActionType.ACCESS_REQUIRED.value: [],
+        OperatorActionType.SECRET_REQUIRED.value: [],
+    }
+    haystack = " ".join((text or "").lower().split())
+    if not haystack:
+        return {key: () for key in bucket}
+    for keyword, request_type in EXTERNAL_FACT_KEYWORDS:
+        if keyword in haystack and keyword not in bucket[request_type.value]:
+            bucket[request_type.value].append(keyword)
+    return {key: tuple(values) for key, values in bucket.items()}
+
+
 __all__ = (
     "CodingAuthorizationProposal",
+    "EXTERNAL_FACT_HUMAN_REQUIRED",
     "LIFECYCLE_MODE_IMPLEMENTATION",
     "LIFECYCLE_MODE_RESEARCH_ONLY",
+    "TECH_DECISION_AUTONOMOUS",
+    "classify_user_request_facts",
     "format_authorization_message",
     "load_role_profile",
     "proposal_from_dict",

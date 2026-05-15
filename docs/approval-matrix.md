@@ -136,3 +136,93 @@ operator 의 실제 vault repo (`yule-agent-vault`) 가 현재 workspace 에 클
 `session.extra['agent_ops_audit']` 에 `AgentOpsEntry` 로 append.
 A-M10b 에서 vault `40-agent-ops/<date>.md` 자동 export.
 A-M10c 에서 `#봇-상태` daily summary 게시.
+
+## 6. Operator Action Inbox — 기술 자율 vs 외부 사실 (P0-S)
+
+`#승인-대기` 채널은 더 이상 *approval-only* 가 아니라 **operator action
+inbox** 로 동작한다. agent 가 진행 중에 사람의 응답을 필요로 하는 모든
+순간이 같은 채널 카드로 표면화돼야 한다 — "조용히 멈추는" 회귀를
+영구히 막는 것이 §6 의 본질이다.
+
+### 6.1 5 가지 request_type
+
+| request_type | 의미 | 세션 sub-state | approval_kind |
+| --- | --- | --- | --- |
+| `APPROVAL_REQUIRED` | write/push/PR/merge/deploy 같은 **승인** | `waiting_approval` | 기존 vocabulary (`engineering_write` / `pr_merge` / …) |
+| `INFO_REQUIRED` | 서버 IP, 도메인, 운영 사실, 배포 대상 식별자 등 | `waiting_user_input` | `info_request` |
+| `ACCESS_REQUIRED` | SSH/서버 접근/권한 부여/repo access/cloud access | `waiting_access` | `access_request` |
+| `SECRET_REQUIRED` | 실제 secret 값/저장 위치/secret 등록 승인 | `waiting_secret` | `secret_request` |
+| `DECISION_REQUIRED` | 드물게 사람 정책/제품 판단 (단순 기술 선택은 금지) | `waiting_user_input` | `decision_request` |
+
+세션 macro state (`WorkflowState`) 와 직교하며,
+`session.extra["operator_state"]` 에 저장된다. 응답이 도착해 미해결이
+모두 해소되면 `running` 으로 복귀.
+
+### 6.2 기술 자율 vs 외부 사실 경계
+
+| 영역 | agent 자율 | 사람에게 요청 |
+| --- | --- | --- |
+| 인증 방식 | JWT vs session 선택 | — |
+| 데이터 모델 | 기본 DB 이름 규칙 | 기존 운영 DB endpoint |
+| 인프라 구조 | Docker Compose 구조, 디렉터리 구조 | 클라우드 프로젝트 / 계정 식별자 |
+| 프레임워크 | Next/Nest 연결 방식, auth/API 구조 | — |
+| 일반 기술 선택 | 라이브러리 선택, 테스트 도구 | — |
+| 서버 / 운영 | — | 실제 서버 IP / hostname, 실제 도메인 |
+| 접근 권한 | — | SSH user / key, 환경 수정 인가 |
+| Secret | secret 키 이름 정의, `.env.example` / compose / CI wiring 작성, GitHub Actions secret 이름 제안, 어떤 값이 필요한지 설명 | 실제 secret 값, secret 저장 위치, secret 등록 승인 |
+
+위 경계는 코드에서도 명시:
+`src/yule_orchestrator/agents/coding/authorization.py` →
+`TECH_DECISION_AUTONOMOUS` / `EXTERNAL_FACT_HUMAN_REQUIRED` /
+`classify_user_request_facts(...)`.
+
+### 6.3 Secret hard rails
+
+agent 가 자동으로 해도 되는 것
+- secret key **이름** 정의 (예: `JWT_SECRET`, `STRIPE_API_KEY`)
+- `.env.example` / `docker-compose.yml` / GitHub Actions workflow 의
+  **wiring** 작성 (값은 `${{ secrets.JWT_SECRET }}` 같은 placeholder)
+- "이 시크릿이 왜 필요한지" 사용자에게 설명
+
+agent 가 절대 자동으로 하면 안 되는 것
+- 실제 secret 값을 임의 생성해 운영 환경에 저장
+- GitHub secret / cloud secret manager 를 사용자 동의 없이 수정
+- prod `.env` 파일 직접 변경
+- 기존 secret 값을 다른 위치로 복사 / mirror
+
+위 두 목록은 `src/yule_orchestrator/agents/operator_action.py` 의
+`SECRET_AUTO_ALLOWED` / `SECRET_AUTO_FORBIDDEN` 와 동기화 유지.
+
+`SECRET_REQUIRED` 카드의 thread reply 는 반드시 **저장 위치만** 받는다 —
+`secret_value=...` / `raw_value=...` / `value=...` 형태로 raw 값이 채널
+에 붙으면 reply parser 가 거부하고 `RESPONSE_OPERATOR_SECRET_VALUE_REJECTED`
+응답을 게시한다.
+
+### 6.4 Operator action 카드 — 필수 필드
+
+각 카드는 최소 다음을 포함해야 한다 (
+`render_operator_action_card`):
+
+- `request_type` 라벨 + 이모지
+- `session_id` + `requested_by`
+- 현재 `stage` (어디서 멈췄는지)
+- `why_blocked` (왜 사람이 필요한지)
+- `expected_answer` (지금 필요한 답변 1개 또는 짧은 목록)
+- `answer_examples` (`host=10.0.0.5` 같은 thread reply 예시)
+- "이 카드의 thread 에서 답하라" 안내
+- `next_action` (응답 후 어떤 작업이 이어지는지)
+- `timeout_hint` (가능하면 timeout / fallback 메모)
+
+### 6.5 Hard rules
+
+- 사람 응답이 필요한데 카드 없이 멈추면 **금지** — 멈출 때는 반드시
+  `#승인-대기` 카드 게시.
+- 외부 사실을 추측해서 진행 **금지**.
+- secret 값을 agent 가 임의로 만들고 운영에 주입 **금지**.
+- 단순 기술 판단을 불필요하게 사람에게 떠넘기지 말 것 — `DECISION_REQUIRED`
+  남용 금지.
+- 승인/정보/접근/secret 요청은 모두 auditable 해야 함
+  (`session.extra["operator_pending_requests"]` /
+  `session.extra["operator_answered_requests"]`).
+- 본문 채널 / 업무-접수 / 운영-리서치에서 흩어진 응답을 기대하지 말 것 —
+  반드시 카드 thread.
