@@ -38,7 +38,13 @@ from ...agents.job_queue.approval_reply import (
     parse_approval_intent,
 )
 from ...agents.job_queue.obsidian_writer_worker import ObsidianWriterWorker
+from ...agents.job_queue.operator_action_reply import (
+    OperatorActionReplyOutcome,
+    find_pending_operator_action_for_reply,
+    handle_operator_action_reply,
+)
 from ...agents.job_queue.store import JobQueue
+from ...agents.operator_action import OperatorActionType, OperatorSessionState
 
 
 logger = logging.getLogger(__name__)
@@ -71,6 +77,35 @@ RESPONSE_REJECTION_AUDIT_FAILED: str = (
 )
 
 
+# Operator action reply (P0-S) — INFO/ACCESS/SECRET/DECISION 카드 ack.
+RESPONSE_OPERATOR_INFO_OK: str = (
+    "📥 정보 받았어요. 세션을 다시 진행 (`running`) 으로 돌려놓을게요."
+)
+RESPONSE_OPERATOR_ACCESS_OK: str = (
+    "🔐 접근 정보 받았어요. 세션을 다시 진행 (`running`) 으로 돌려놓을게요."
+)
+RESPONSE_OPERATOR_SECRET_OK: str = (
+    "🗝 secret 저장 위치 받았어요. 실제 값은 지정한 위치에서 주입됩니다 — agent 가 값을 직접 만들지 않습니다."
+)
+RESPONSE_OPERATOR_DECISION_OK: str = (
+    "🧭 결정 받았어요. 세션을 다시 진행 (`running`) 으로 돌려놓을게요."
+)
+RESPONSE_OPERATOR_MISSING_KEYS: str = (
+    "❓ 응답에서 필요한 `key=value` 를 찾지 못했어요. 카드의 답변 예시를 참고해 다시 답해 주세요."
+)
+RESPONSE_OPERATOR_SECRET_VALUE_REJECTED: str = (
+    "🚫 secret 값을 채널에 직접 붙이지 마세요. 저장 위치만 지정해 주세요 — 예: `github_secret=JWT_SECRET` 또는 `env_file=.env.prod`."
+)
+
+
+_OPERATOR_OK_RESPONSES: dict[OperatorActionType, str] = {
+    OperatorActionType.INFO_REQUIRED: RESPONSE_OPERATOR_INFO_OK,
+    OperatorActionType.ACCESS_REQUIRED: RESPONSE_OPERATOR_ACCESS_OK,
+    OperatorActionType.SECRET_REQUIRED: RESPONSE_OPERATOR_SECRET_OK,
+    OperatorActionType.DECISION_REQUIRED: RESPONSE_OPERATOR_DECISION_OK,
+}
+
+
 # Inputs the adapter doesn't own — injected so tests can drive the
 # behaviour without a real Discord client / live SQLite session.
 SessionListerFn = Callable[[], Iterable[Any]]
@@ -86,12 +121,17 @@ class ApprovalReplyRouteResult:
     a deliberate no-op. The caller must NOT fall through to the
     engineering route in that case — replies in the approval
     channel are not engineering intake.
+
+    P0-S — operator-action 카드 (INFO/ACCESS/SECRET/DECISION) 응답이
+    매칭되면 ``operator_outcome`` 이 채워진다. ``outcome`` (기존
+    APPROVE/REJECT 처리 결과) 과 둘 중 하나만 set 된다.
     """
 
     handled: bool
     outcome: Optional[ApprovalReplyOutcome] = None
     response_sent: Optional[str] = None
     skipped_reason: Optional[str] = None
+    operator_outcome: Optional[OperatorActionReplyOutcome] = None
 
 
 def is_approval_channel_message(
@@ -168,6 +208,48 @@ async def route_approval_channel_message(
             handled=True, skipped_reason="empty_message"
         )
 
+    source_message_id = _safe_int(getattr(message, "id", None))
+    source_thread_id = _safe_int(
+        getattr(getattr(message, "channel", None), "id", None)
+    )
+    approved_by = _author_handle(message)
+
+    # P0-S — operator-action 카드 매칭이 우선. INFO/ACCESS/SECRET/DECISION
+    # 카드는 ``key=value`` 어휘라서 일반 approval intent 파서에 걸리면
+    # UNCLEAR 로 떨어져 사람 응답이 잠깐 사라진다. 채널의 SAVED
+    # operator-action 카드를 먼저 본다.
+    operator_session_id = _resolve_session_for_reply(
+        message=message, session_lister=session_lister
+    )
+    if operator_session_id and (
+        find_pending_operator_action_for_reply(
+            queue=queue,
+            session_id=operator_session_id,
+            source_message_id=source_message_id,
+            source_thread_id=source_thread_id,
+        )
+        is not None
+    ):
+        op_outcome = handle_operator_action_reply(
+            queue=queue,
+            text=text,
+            session_id=operator_session_id,
+            answered_by=approved_by,
+            answered_at=now_iso,
+            source_message_id=source_message_id,
+            source_thread_id=source_thread_id,
+        )
+        op_response = _render_operator_outcome_message(op_outcome)
+        if op_response is not None:
+            await send_chunks(message.channel, op_response)
+        return ApprovalReplyRouteResult(
+            handled=True,
+            outcome=None,
+            response_sent=op_response,
+            skipped_reason=op_outcome.skipped_reason,
+            operator_outcome=op_outcome,
+        )
+
     intent = parse_approval_intent(text)
     if intent in (ApprovalIntent.HOLD, ApprovalIntent.UNCLEAR):
         # The helper still calls handle_approval_reply for
@@ -181,10 +263,7 @@ async def route_approval_channel_message(
             skipped_reason="intent_not_actionable",
         )
 
-    session_id = _resolve_session_for_reply(
-        message=message,
-        session_lister=session_lister,
-    )
+    session_id = operator_session_id
     if not session_id:
         await send_chunks(message.channel, RESPONSE_NO_MATCH)
         return ApprovalReplyRouteResult(
@@ -193,12 +272,6 @@ async def route_approval_channel_message(
             response_sent=RESPONSE_NO_MATCH,
             skipped_reason="no_session_for_reply",
         )
-
-    approved_by = _author_handle(message)
-    source_message_id = _safe_int(getattr(message, "id", None))
-    source_thread_id = _safe_int(
-        getattr(getattr(message, "channel", None), "id", None)
-    )
 
     outcome = handle_approval_reply(
         queue=queue,
@@ -222,6 +295,33 @@ async def route_approval_channel_message(
         response_sent=response,
         skipped_reason=outcome.skipped_reason,
     )
+
+
+def _render_operator_outcome_message(
+    outcome: OperatorActionReplyOutcome,
+) -> Optional[str]:
+    """operator-action reply outcome → 짧은 ack 메시지.
+
+    - ``rejected_reason == "secret_value_inline"``: 보안 가드. 채널에
+      raw secret 을 붙인 응답을 명시적으로 거부한다.
+    - ``rejected_reason == "missing_required_keys"`` 등 미완: 다시 답해
+      달라고 안내.
+    - 완료: request_type 별 친절한 ack.
+    """
+
+    if not outcome.handled:
+        return None
+    reply = outcome.reply
+    if reply is None:
+        return RESPONSE_OPERATOR_MISSING_KEYS
+
+    if reply.rejected_reason == "secret_value_inline":
+        return RESPONSE_OPERATOR_SECRET_VALUE_REJECTED
+    if not reply.is_complete:
+        return RESPONSE_OPERATOR_MISSING_KEYS
+
+    request_type = outcome.request_type or reply.request_type
+    return _OPERATOR_OK_RESPONSES.get(request_type, RESPONSE_OPERATOR_INFO_OK)
 
 
 def _render_outcome_message(outcome: ApprovalReplyOutcome) -> Optional[str]:
@@ -356,6 +456,12 @@ __all__ = (
     "RESPONSE_DUPLICATE",
     "RESPONSE_HOLD_OR_UNCLEAR",
     "RESPONSE_NO_MATCH",
+    "RESPONSE_OPERATOR_ACCESS_OK",
+    "RESPONSE_OPERATOR_DECISION_OK",
+    "RESPONSE_OPERATOR_INFO_OK",
+    "RESPONSE_OPERATOR_MISSING_KEYS",
+    "RESPONSE_OPERATOR_SECRET_OK",
+    "RESPONSE_OPERATOR_SECRET_VALUE_REJECTED",
     "RESPONSE_REJECTED",
     "RESPONSE_REJECTION_AUDIT_FAILED",
     "RESPONSE_UNSUPPORTED_KIND",
