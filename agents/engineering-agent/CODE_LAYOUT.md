@@ -2,6 +2,10 @@
 
 이 문서는 engineering-agent lifecycle 의 각 단계가 어느 모듈에서 책임지는지 빠르게 찾기 위한 지도입니다. 코드 변경 전에 "이 책임이 어디에 있어야 하지?" 를 먼저 확인하는 용도이고, 큰 rename / 분할은 별도 브랜치로 진행합니다.
 
+> 본 문서는 **engineering-agent 모듈 ownership + 파일 분리 기준** 의 SSoT.
+> 전역 코딩 컨벤션 요약은 [`/CLAUDE.md`](../../CLAUDE.md), 작업 맥락별 읽기
+> 가이드는 [`CLAUDE.md`](CLAUDE.md) §"작업 맥락별 읽기 가이드" 참조.
+
 ## Lifecycle stages → 책임 모듈
 
 | stage | module(s) | 핵심 함수 / 클래스 |
@@ -60,6 +64,85 @@
 - `engineering_channel_router.py` 가 4k LOC 를 넘는다 → forum publishing / status helpers 추출 검토
 - `agents/research_collector.py` 가 다중 provider 어댑터를 다 품게 됨 → `agents/research/` 패키지로 분할 검토
 - session.extra dict 의 키가 30 개를 넘는다 → 명명규약 + nested namespace 도입 검토 (`session.extra['research'] = {...}`)
+
+## 파일 크기 / 책임 분리 규칙
+
+> 길이보다 더 중요한 것은 **책임 수** 다. 단, 1000 줄은 강한 분리 신호다.
+> 본 규칙은 [`/CLAUDE.md`](../../CLAUDE.md) §"전역 코딩 컨벤션" 의 engineering-agent
+> 측 적용 가이드.
+
+### 등급별 액션
+
+| LOC | 액션 | 비고 |
+| --- | --- | --- |
+| ~700 | 안전 | — |
+| 700 ~ 1000 | **warning** — 분리 검토 | PR 본문에 "왜 한 파일에 남기나" 한 줄 적기. 검토자가 분리 요청 가능 |
+| 1000 초과 | **default split** | 별도 브랜치 또는 같은 PR 의 첫 commit 으로 분리 |
+| 1000 초과 + 책임 2개 이상 | **분리 필수** | 분리 없이 머지하지 않음 |
+
+### 책임 분리 신호
+
+다음이 한 파일에서 동시에 보이면 길이와 무관하게 분리 후보:
+
+- intake / intent classification / routing / state persistence / formatting /
+  external integration 중 **3 가지 이상** 이 한 파일에 섞임
+- 같은 phrase / regex 패턴이 여러 함수에서 반복 patch 됨 ("phrase patch
+  반복 파일")
+- 한 함수가 다른 도메인의 dataclass 를 직접 mutate
+- "임시" / "TODO" / "FIXME" 가 같은 파일에 5 개 이상 누적
+- 한 파일의 import top-level 이 30 줄을 초과
+
+### 분리 방식
+
+| 상황 | 권장 분리 방식 |
+| --- | --- |
+| 모듈이 한 도메인 + 여러 helper 로 커짐 | 같은 패키지 안의 sub-module 로 추출 (`foo/__init__.py` + `foo/<sub>.py`) |
+| 여러 도메인이 섞임 | 도메인별 모듈로 분할 후 패키지화 |
+| 모놀리스 → 점진 분해 중 | 임시 `_legacy.py` 사용 (파일 상단에 분해 플랜 docstring 필수) |
+| 큰 registry / data table | 분리 대신 데이터/로직 분리 (`_data.py` + `_logic.py`) |
+
+### 예외 정책
+
+다음은 분리 미루기 가능. 단, **이유 docstring 필수**:
+
+- generated file (`*.pb.py`, `*_pb2.py` 등 코드 생성물)
+- fixture / snapshot / test data
+- 큰 registry / mapping 성격 파일 (선언만, 분기 로직 없음)
+- in-flight refactor 중인 `_legacy.py` (해체 진행 중인 모놀리스)
+
+예외를 적용한 파일은 본 문서의 "현재 예외" 표에 추가:
+
+#### 현재 예외 (in-flight refactor 등)
+
+| 파일 | LOC | 이유 |
+| --- | --- | --- |
+| `src/yule_orchestrator/discord/bot/_legacy.py` | ~2700 | P0-Q discord/ 분해 진행 중 — 의미 그룹 추출 후 점진 제거 |
+| `src/yule_orchestrator/discord/engineering_team_runtime/_legacy.py` | ~2150 | P0-Q discord/ 분해 진행 중 — 같은 사이클 |
+| `src/yule_orchestrator/runtime/status.py` | ~2000 | 라이브 상태 표면화 — 도메인 단일, 단계별 helper 추출 후속 작업 |
+| `src/yule_orchestrator/agents/research/collector.py` | ~2400 | 다중 provider adapter — `agents/research/<provider>` 패키지화 후속 |
+| `src/yule_orchestrator/agents/deliberation.py` | ~1750 | TechLead 합의 단일 도메인 — open_research/synthesis 분리 검토 |
+
+새 파일이 1000 줄을 넘었는데 위에 없으면 분리 PR 을 먼저 띄우거나,
+이 표에 이유와 함께 추가해야 한다. silently 자라는 것을 막기 위함.
+
+### Router / conversation / runtime 의 별도 가드
+
+| 영역 | 한도 신호 |
+| --- | --- |
+| `discord/engineering_channel_router/main.py` | 1000 줄 근처가 되면 forum publishing / status helper / preflight 추출 |
+| `discord/engineering_conversation/research_bootstrap.py` | 1000 줄 근처가 되면 intent / formatter / bootstrap 분리 |
+| `agents/research/collector.py` | provider 어댑터별 sub-module 로 패키지화 |
+| `agents/deliberation.py` | open_research / synthesis 별 sub-module |
+
+### 자동 점검 훅과의 관계
+
+- 정책 / 프롬프트 / 템플릿 크기는 [`tests/governance/test_prompt_size_ceiling.py`](../../tests/governance/test_prompt_size_ceiling.py)
+  가 단일 파일 / 전체 preamble / `.tmpl` ceiling 을 강제.
+- 본 문서의 1000 줄 규칙은 governance smoke test
+  [`tests/engineering/test_engineering_agent_governance_doc.py`](../../tests/engineering/test_engineering_agent_governance_doc.py)
+  의 docstring 검증 라인이 핵심 섹션 존재를 지킨다.
+- 위 두 자동 가드와 본 규칙은 **상호 보완** — ceiling 은 토큰/회귀
+  보호, 본 규칙은 책임 분리 보호.
 
 ## Phase 1-5 변경 요약 (이 문서가 만들어진 배경)
 
