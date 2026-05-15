@@ -180,6 +180,38 @@ class LiveGithubAppClient:
         url = f"{self._api_base}/repos/{repo}/issues/{int(issue_number)}/comments"
         return self._post(url, body={"body": str(body)})
 
+    def create_issue(
+        self,
+        *,
+        repo: str,
+        title: str,
+        body: str,
+        labels: Sequence[str] = (),
+        assignees: Sequence[str] = (),
+    ) -> Mapping[str, Any]:
+        """POST /repos/{repo}/issues — issue auto-create surface (P0-S).
+
+        engineering-agent 가 target repo 의 ISSUE_TEMPLATE 을 채워 새 issue
+        를 만든다. ``labels``/``assignees`` 는 빈 시퀀스면 payload 에서 생략
+        해 GitHub 가 기본값을 적용하도록 둔다. 응답 dict 에서 호출자는
+        ``number`` / ``html_url`` 을 읽어 session 에 연결.
+        """
+
+        url = f"{self._api_base}/repos/{repo}/issues"
+        body_payload: dict[str, Any] = {
+            "title": str(title),
+            "body": str(body),
+        }
+        cleaned_labels = [str(label).strip() for label in labels if str(label).strip()]
+        if cleaned_labels:
+            body_payload["labels"] = cleaned_labels
+        cleaned_assignees = [
+            str(assignee).strip() for assignee in assignees if str(assignee).strip()
+        ]
+        if cleaned_assignees:
+            body_payload["assignees"] = cleaned_assignees
+        return self._post(url, body=body_payload)
+
     def add_labels(
         self, *, repo: str, issue_number: int, labels: Sequence[str]
     ) -> Mapping[str, Any]:

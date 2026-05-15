@@ -44,6 +44,7 @@ from .audit import (
     ACTION_GITHUB_BRANCH_CREATE,
     ACTION_GITHUB_COMMIT_CREATE,
     ACTION_GITHUB_ISSUE_COMMENT,
+    ACTION_GITHUB_ISSUE_CREATE,
     ACTION_GITHUB_LABEL_ADD,
     ACTION_GITHUB_PR_DRAFT_CREATE,
     GithubWriteAudit,
@@ -80,6 +81,17 @@ class GithubClient(Protocol):
 
     def create_issue_comment(
         self, *, repo: str, issue_number: int, body: str
+    ) -> Mapping[str, Any]:
+        ...
+
+    def create_issue(
+        self,
+        *,
+        repo: str,
+        title: str,
+        body: str,
+        labels: Sequence[str] = (),
+        assignees: Sequence[str] = (),
     ) -> Mapping[str, Any]:
         ...
 
@@ -185,6 +197,10 @@ _DEFAULT_MIN_AUTONOMY: Mapping[str, str] = {
     ACTION_GITHUB_BRANCH_CREATE: "L2",
     ACTION_GITHUB_COMMIT_CREATE: "L2",
     ACTION_GITHUB_PR_DRAFT_CREATE: "L2",
+    # Issue auto-create (P0-S) — issue 자체는 reversible 하지만 사람에게
+    # notification 이 가므로 PR draft 와 동일한 L2 등급. operator 가
+    # `#승인-대기` 카드를 승인한 GitHub work order 안에서만 실행됨.
+    ACTION_GITHUB_ISSUE_CREATE: "L2",
     # L3 actions live in audit constants but the writer doesn't
     # implement them — they require an approval-routed runner that's
     # G6's territory.
@@ -435,6 +451,50 @@ class GithubWriter:
     # ------------------------------------------------------------------
     # Public actions
     # ------------------------------------------------------------------
+
+    def create_issue(
+        self,
+        *,
+        repo: str,
+        title: str,
+        body: str,
+        labels: Sequence[str] = (),
+        assignees: Sequence[str] = (),
+        autonomy_level: str = "L2",
+        session_id: Optional[str] = None,
+        decision_id: Optional[str] = None,
+    ) -> GithubWriteResult:
+        """Create a new issue on *repo* — P0-S end-to-end.
+
+        ``labels`` / ``assignees`` 가 빈 시퀀스면 GitHub 가 repo 기본
+        라벨/담당자 (있으면) 를 적용. dry_run + denied_by_policy 경로는
+        다른 액션과 동일하게 audit 트레일을 남긴다.
+        """
+
+        cleaned_labels = tuple(
+            str(l).strip() for l in labels if str(l).strip()
+        )
+        cleaned_assignees = tuple(
+            str(a).strip() for a in assignees if str(a).strip()
+        )
+        title_snippet = (title or "").strip().splitlines()[0][:80]
+        return self._run(
+            action=ACTION_GITHUB_ISSUE_CREATE,
+            autonomy_level=autonomy_level,
+            repo=repo,
+            issue_number=None,
+            session_id=session_id,
+            decision_id=decision_id,
+            branch=None,
+            summary=f"create issue on {repo}: {title_snippet}",
+            client_call=lambda: self._require_client().create_issue(
+                repo=repo,
+                title=title,
+                body=body,
+                labels=cleaned_labels,
+                assignees=cleaned_assignees,
+            ),
+        )
 
     def post_issue_comment(
         self,
