@@ -15,8 +15,10 @@ GitHub issue / Discord 업무-접수 intake
        ├─ scope / non_scope / hidden_risks / test_plan
        └─ approval_required_actions (L3 카드 후보)
   → derive_branch_name (G3)            ← protected branch 거부
+  → discover_repo_contract (P0-H)      ← target repo 의 ISSUE/PR template / tag policy
+  → build_issue_auto_create_plan (P0-S)← issue 없으면 template 채워 plan 만 stamp
   → render_pr_body (G3)                ← in_scope/out_of_scope/risks/...
-  → build_github_action_plan (G3)      ← issue comment / label / branch / draft PR
+  → build_github_action_plan (G3)      ← issue create / comment / label / branch / draft PR
   → GithubWriter (G3) + LiveGithubAppClient (G6)
        └─ Authorization 헤더는 단 한 곳에서만 작성, 절대 출력 금지
   → audit (G3) + Discord 브릿지 (G4) + e2e harness (G5)
@@ -25,6 +27,45 @@ GitHub issue / Discord 업무-접수 intake
 **원칙:** 운영자 승인 없이 갈 수 있는 표면은 L0 read / L1 light-write /
 L2 plan 까지. **L3+ 는 항상 #승인-대기 카드 또는 별도 승인 토큰을 통한 사람 게이트.**
 G6 의 `smoke-pr --live` 는 draft PR 생성을 끝점으로 하며 **merge 는 절대 하지 않는다.**
+
+### 1.1 Issue auto-create (P0-S)
+
+| 조건 | 행동 | audit_reason |
+| --- | --- | --- |
+| `existing_issue_number` 가 명시됨 | issue 생성 건너뜀, 기존 번호 재사용 | `existing_issue_reused` |
+| target repo 에 `ISSUE_TEMPLATE` 가 1 개 | template 의 frontmatter (title prefix / labels) 적용 + body placeholder 보존 + request_summary quote 삽입 | `template_used` |
+| `ISSUE_TEMPLATE` 가 여러 개 + 키워드 매칭 ≥1 | best template 선택 (HIGH/MEDIUM confidence) | `template_used` |
+| `ISSUE_TEMPLATE` 가 여러 개인데 매칭 0 | LOW confidence + `needs_operator_decision=True` → DECISION_REQUIRED 카드 | `ambiguous_template` |
+| `ISSUE_TEMPLATE` 자체가 없음 | safe default body (목표/맥락/작업 항목/audit 4 섹션) | `no_repo_template` |
+
+agent 가 issue 본문을 추측해 꾸며내지 않는다. placeholder/HTML 주석은
+그대로 보존. body 끝에는 항상 `## engineering-agent audit` 섹션이
+붙어 `audit_reason` + `session_id` + `repo contract summary` 가 명시된다.
+
+승인 등급: `ACTION_GITHUB_ISSUE_CREATE` → **L2** (issue 자체는 reversible
+이지만 사람에게 notification 이 가므로 PR draft 와 동일 등급). 즉
+`#승인-대기` 카드로 묶인 GitHub work order 안에서만 dispatch 가능.
+
+### 1.2 Tag / version policy (P0-S)
+
+`RepoContract.tag_policy` 가 다음 4 종으로 분류:
+
+| 값 | 신호 | 자동 처리 |
+| --- | --- | --- |
+| `workflow_driven` | `.github/workflows/{release,publish,tag}*.yml` | agent 가 workflow 트리거 조건에 맞춘 plan 까지만, 실제 tag/release 발행은 L3 승인 필요 |
+| `changelog_driven` | `CHANGELOG.md` / `CHANGES.md` / `HISTORY.md` 등 | CHANGELOG entry 추가 plan 만, tag 는 L3 |
+| `version_file_only` | `package.json` / `pyproject.toml` / `Cargo.toml` / `setup.cfg` / `setup.py` / `VERSION` / `version.txt` 의 version 필드 | version bump 만, 자동 tag 미적용 |
+| `none` | 위 신호 없음 | **자동 tag/version 미적용** — audit 에 `tag_policy=none` 명시. 무단 tag 생성 금지 |
+
+`RepoContract.has_tag_policy` 가 False 이면 agent 는 tag 작업을 시도하지
+않는다 — 정책이 없는데 추측해 만들면 fake success 가 된다.
+
+### 1.3 Operator action inbox
+
+agent 가 진행 중 외부 사실/권한/secret 값이 필요하면 `#승인-대기` 에
+operator action 카드 (INFO/ACCESS/SECRET/DECISION) 가 올라간다. 흐름은
+[`docs/approval-matrix.md`](approval-matrix.md) §6 참조. issue auto-create
+의 LOW confidence 도 같은 inbox 로 흐른다 (`DECISION_REQUIRED`).
 
 ## 2. 환경 contract
 
