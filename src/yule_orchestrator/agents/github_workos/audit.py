@@ -46,6 +46,10 @@ ACTION_GITHUB_PR_DRAFT_CREATE: str = "github_pr_draft_create"
 ACTION_GITHUB_PR_READY: str = "github_pr_ready"
 ACTION_GITHUB_PUSH: str = "github_push"
 ACTION_GITHUB_MERGE: str = "github_merge"
+# Issue auto-create (P0-S end-to-end) — target repo 의 ISSUE_TEMPLATE 을
+# 채워 새 issue 를 생성. issue 자체는 reversible (operator 가 close 가능)
+# 이라 PR draft / branch create 와 동일한 L2 등급으로 매핑된다.
+ACTION_GITHUB_ISSUE_CREATE: str = "github_issue_create"
 
 
 # Outcome buckets
@@ -294,6 +298,7 @@ __all__ = (
     "ACTION_GITHUB_BRANCH_CREATE",
     "ACTION_GITHUB_COMMIT_CREATE",
     "ACTION_GITHUB_ISSUE_COMMENT",
+    "ACTION_GITHUB_ISSUE_CREATE",
     "ACTION_GITHUB_LABEL_ADD",
     "ACTION_GITHUB_MERGE",
     "ACTION_GITHUB_PR_DRAFT_CREATE",

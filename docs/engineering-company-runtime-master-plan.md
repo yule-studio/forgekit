@@ -42,15 +42,32 @@ Yule가 도달해야 하는 최종 상태는 아래와 같다.
 
 이 수치는 운영 판단 기준으로 유지한다.
 
-| 영역 | 현재 추정 (2026-05-11) | 이전 추정 |
+| 영역 | 현재 추정 (2026-05-15) | 2026-05-11 추정 |
 | --- | --- | --- |
-| 운영 골격 | 80~85% | 65~75% |
-| Discord 기술 토의 능력 | 50~60% | 40~50% |
-| 완전 자율 코딩 루프 | 70~80% | 45~55% |
-| 역할별 자료 수집/정형화 루프 | 50~60% | 25~35% |
-| 실제 회사처럼 굴러가는 종합 수준 | 60~70% | 45~55% |
+| 운영 골격 | 85~88% | 80~85% |
+| Discord 기술 토의 능력 | 55~65% | 50~60% |
+| 완전 자율 코딩 루프 | 78~85% | 70~80% |
+| 역할별 자료 수집/정형화 루프 | 50~60% | 50~60% |
+| 실제 회사처럼 굴러가는 종합 수준 | 68~75% | 60~70% |
 
-2026-05-11 갱신 근거 — issue #81 통합 polish (`feature/issue-81-integration-polish`) 의 cross-axis 회귀 (3493 + 160 cases 모두 OK) 와 Round 4 / 4-bis / 4-ter / 4 마무리 / Round 4 후속 시리즈 land 결과. 자세한 결정은 [[notes/vault-mirror/10-projects/yule-studio-agent/decisions/2026-05-11_issue-81-decision-integration-polish.md]] § D-81-3 ~ D-81-7. 상한이 100% 가 아닌 이유:
+2026-05-15 갱신 근거 — P0-S 시리즈 (PR #162 Operator Action Inbox / PR #164 문서 계층 + 분리 규칙 / 본 PR Issue auto-create end-to-end + Tag/version policy reader) 머지 결과. 자세한 결정은 본 PR 의 audit block + `docs/approval-matrix.md` §6.
+
+이번 PR (Issue auto-create + Tag policy) 닫은 범위:
+
+- **Issue auto-create end-to-end** — target repo `ISSUE_TEMPLATE` 발견 → 키워드 매칭으로 best template 선택 → frontmatter title prefix/labels 적용 + placeholder 보존 + request_summary quote 삽입 → audit 섹션 부착. 다중 template 매칭 0 → DECISION_REQUIRED 카드. template 없음 → safe default body + `no_repo_template` audit.
+- **`LiveGithubAppClient.create_issue`** — POST `/repos/{repo}/issues` capability + labels/assignees 정규화 + 빈 시퀀스 payload 생략.
+- **`GithubWriter.create_issue`** + `ACTION_GITHUB_ISSUE_CREATE` (L2) + dry_run/denied_by_policy/OK audit 트레일.
+- **`GitHubWorkOrder` payload 확장** — `issue_auto_create_plan` + `existing_issue_number` 1급 필드, proposal/work_order 양쪽 무손실 round-trip.
+- **Tag / version policy** — `RepoContract.tag_policy` (`workflow_driven` / `changelog_driven` / `version_file_only` / `none`). CHANGELOG / package.json / pyproject.toml / Cargo.toml / release.yml 등 신호 수집. 정책 없으면 `has_tag_policy=False` — 자동 tag 보류, audit 명시.
+- **Hollow knowledge note 가드 회귀 핀** — pack/snapshot/synthesis 모두 비면 `ObsidianRenderError` 로 fail-loud (silent failure 방지).
+
+남은 범위 (본 PR 의 한계):
+
+- **end-to-end live wiring** — GitHubWorkOrder executor 가 `create_issue` 를 실제 호출하는 wiring (consumer 측) 은 후속 PR. 본 PR 은 plan/payload/writer capability/policy 까지 land.
+- **issue 생성 결과 → session 연결** — 생성된 issue number/URL 을 session.extra 에 stamp 하고 이후 branch/PR 에 자동 link 하는 wiring 도 같은 후속 PR 범위 (`coding_executor_worker` 측).
+- **Tag/release 자동 발행** — 본 PR 은 policy 감지까지. 실제 tag/release 생성은 L3 승인 카드 + executor wiring 후속.
+
+상한이 100% 가 아닌 이유:
 
 - 운영 골격 상한 85% — autonomy producer / decision seam / status surface / operator actions 까지 land. 잔여: live LLM editor / live decision provider 활성화, Discord escalation alert 자동화.
 - Discord 기술 토의 상한 60% — discussion_followup + context_pack + retrieval slot land. 잔여: `feature/issue-81-discussion-gateway` (commit `512ce7c`) 미머지, gateway / tech-lead 경계 가독성 PR 필요.

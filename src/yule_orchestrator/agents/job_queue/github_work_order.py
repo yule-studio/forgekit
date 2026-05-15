@@ -348,6 +348,13 @@ class GitHubWorkOrderProposal:
     dry_run_default: bool = True
     extra: Mapping[str, Any] = field(default_factory=dict)
     created_at: str = ""
+    # P0-S end-to-end — target repo 의 ISSUE_TEMPLATE 을 읽어 채워둔 plan.
+    # ``None`` 일 때 두 의미 중 하나:
+    #   - 호출자가 issue auto-create 단계를 거치지 않음 (legacy path)
+    #   - 호출자가 ``existing_issue_number`` 를 알고 있음 (중복 생성 금지)
+    # plan dict 의 shape 은 :class:`IssueAutoCreatePlan.to_dict()` 와 동일.
+    issue_auto_create_plan: Optional[Mapping[str, Any]] = None
+    existing_issue_number: Optional[int] = None
 
     def to_payload(self) -> Mapping[str, Any]:
         return {
@@ -370,6 +377,12 @@ class GitHubWorkOrderProposal:
             "dry_run_default": self.dry_run_default,
             "extra": dict(self.extra),
             "created_at": self.created_at,
+            "issue_auto_create_plan": (
+                dict(self.issue_auto_create_plan)
+                if self.issue_auto_create_plan is not None
+                else None
+            ),
+            "existing_issue_number": self.existing_issue_number,
         }
 
     @classmethod
@@ -406,6 +419,12 @@ class GitHubWorkOrderProposal:
             dry_run_default=bool(payload.get("dry_run_default", True)),
             extra=dict(payload.get("extra") or {}),
             created_at=str(payload.get("created_at") or ""),
+            issue_auto_create_plan=(
+                dict(payload["issue_auto_create_plan"])
+                if isinstance(payload.get("issue_auto_create_plan"), Mapping)
+                else None
+            ),
+            existing_issue_number=_coerce_int(payload.get("existing_issue_number")),
         )
 
 
@@ -437,6 +456,11 @@ class GitHubWorkOrder:
     source_thread_id: Optional[int] = None
     source_message_id: Optional[int] = None
     extra: Mapping[str, Any] = field(default_factory=dict)
+    # P0-S — approval 시점에 stamp 된 plan. executor 가 이 값을 그대로 읽어
+    # ``GithubWriter.create_issue`` 호출. ``existing_issue_number`` 가 있으면
+    # plan 은 None 이고 executor 는 issue 생성을 건너뛴다.
+    issue_auto_create_plan: Optional[Mapping[str, Any]] = None
+    existing_issue_number: Optional[int] = None
 
     def to_payload(self) -> Mapping[str, Any]:
         return {
@@ -455,6 +479,12 @@ class GitHubWorkOrder:
             "source_thread_id": self.source_thread_id,
             "source_message_id": self.source_message_id,
             "extra": dict(self.extra),
+            "issue_auto_create_plan": (
+                dict(self.issue_auto_create_plan)
+                if self.issue_auto_create_plan is not None
+                else None
+            ),
+            "existing_issue_number": self.existing_issue_number,
         }
 
     @classmethod
@@ -479,6 +509,12 @@ class GitHubWorkOrder:
             source_thread_id=_coerce_int(payload.get("source_thread_id")),
             source_message_id=_coerce_int(payload.get("source_message_id")),
             extra=dict(payload.get("extra") or {}),
+            issue_auto_create_plan=(
+                dict(payload["issue_auto_create_plan"])
+                if isinstance(payload.get("issue_auto_create_plan"), Mapping)
+                else None
+            ),
+            existing_issue_number=_coerce_int(payload.get("existing_issue_number")),
         )
 
     @classmethod
@@ -518,6 +554,12 @@ class GitHubWorkOrder:
             source_thread_id=proposal.source_thread_id,
             source_message_id=proposal.source_message_id,
             extra=dict(proposal.extra or {}),
+            issue_auto_create_plan=(
+                dict(proposal.issue_auto_create_plan)
+                if proposal.issue_auto_create_plan is not None
+                else None
+            ),
+            existing_issue_number=proposal.existing_issue_number,
         )
 
 

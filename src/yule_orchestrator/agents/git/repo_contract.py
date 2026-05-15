@@ -61,6 +61,29 @@ _CODEOWNERS_PATHS: Tuple[str, ...] = (
     "docs/CODEOWNERS",
 )
 
+# Tag / version policy hints — P0-S end-to-end.
+# agent 가 release 정책을 추측하지 않고 repo 의 실제 신호를 기준으로 처리/
+# 보류 결정. 없으면 "자동 tag/version 미적용" 으로 audit.
+_CHANGELOG_PATHS: Tuple[str, ...] = (
+    "CHANGELOG.md",
+    "CHANGELOG",
+    "CHANGES.md",
+    "HISTORY.md",
+    "docs/CHANGELOG.md",
+)
+_VERSION_FILES: Tuple[str, ...] = (
+    "package.json",
+    "pyproject.toml",
+    "Cargo.toml",
+    "setup.cfg",
+    "setup.py",
+    "VERSION",
+    "version.txt",
+)
+# Workflow 파일 이름에 "release" / "publish" / "tag" 가 들어가면 release
+# automation 신호로 본다.
+_RELEASE_WORKFLOW_TOKENS: Tuple[str, ...] = ("release", "publish", "tag")
+
 
 @dataclass(frozen=True)
 class RepoContract:
@@ -88,6 +111,13 @@ class RepoContract:
     fallback: bool = False
     failure_mode: Optional[str] = None  # "no_backend" | "permission_denied" | "not_found" | etc.
     backend: Optional[str] = None  # "gh_cli" | "local_clone"
+    # P0-S — tag/version policy 신호. 비어있으면 "정책 없음" 으로 audit.
+    changelog: Optional[str] = None
+    version_files: Tuple[str, ...] = ()
+    release_workflows: Tuple[str, ...] = ()
+    tag_policy: Optional[str] = None
+    """One of: 'changelog_driven', 'workflow_driven', 'version_file_only',
+    'none'. :func:`derive_tag_policy` decides."""
 
     @property
     def has_any_contract(self) -> bool:
@@ -98,6 +128,10 @@ class RepoContract:
             or self.codeowners
             or self.workflows
         )
+
+    @property
+    def has_tag_policy(self) -> bool:
+        return self.tag_policy not in (None, "", "none")
 
     def to_dict(self) -> Mapping[str, object]:
         return {
@@ -117,6 +151,10 @@ class RepoContract:
             "fallback": self.fallback,
             "failure_mode": self.failure_mode,
             "backend": self.backend,
+            "changelog": self.changelog,
+            "version_files": list(self.version_files),
+            "release_workflows": list(self.release_workflows),
+            "tag_policy": self.tag_policy,
         }
 
     @classmethod
@@ -138,6 +176,10 @@ class RepoContract:
             fallback=bool(payload.get("fallback") or False),
             failure_mode=_coerce_optional_str(payload.get("failure_mode")),
             backend=_coerce_optional_str(payload.get("backend")),
+            changelog=_coerce_optional_str(payload.get("changelog")),
+            version_files=tuple(_coerce_str_seq(payload.get("version_files"))),
+            release_workflows=tuple(_coerce_str_seq(payload.get("release_workflows"))),
+            tag_policy=_coerce_optional_str(payload.get("tag_policy")),
         )
 
     def summary_line(self) -> str:
@@ -272,6 +314,20 @@ def _scan_paths_under(
             if entry.is_file() and entry.suffix in (".yml", ".yaml")
         )
 
+    changelog = _find_first_existing(root, _CHANGELOG_PATHS)
+    version_files = tuple(
+        path for path in _VERSION_FILES if (root / path).is_file()
+    )
+    release_workflows = tuple(
+        wf for wf in workflows
+        if any(token in Path(wf).name.lower() for token in _RELEASE_WORKFLOW_TOKENS)
+    )
+    tag_policy = derive_tag_policy(
+        changelog=changelog,
+        version_files=version_files,
+        release_workflows=release_workflows,
+    )
+
     ssot_paths = tuple(
         path
         for path in [
@@ -281,6 +337,8 @@ def _scan_paths_under(
             readme,
             codeowners,
             *(workflows or ()),
+            changelog,
+            *(version_files or ()),
         ]
         if path
     )
@@ -303,6 +361,10 @@ def _scan_paths_under(
         commit_convention=commit_convention,
         ssot_paths=ssot_paths,
         backend=backend,
+        changelog=changelog,
+        version_files=version_files,
+        release_workflows=release_workflows,
+        tag_policy=tag_policy,
     )
     return contract
 
@@ -423,6 +485,20 @@ def _try_gh_cli(
             except json.JSONDecodeError:
                 workflows = ()
 
+    changelog = _first_present(all_paths, _CHANGELOG_PATHS)
+    version_files = tuple(
+        path for path in _VERSION_FILES if path in all_paths
+    )
+    release_workflows = tuple(
+        wf for wf in workflows
+        if any(token in Path(wf).name.lower() for token in _RELEASE_WORKFLOW_TOKENS)
+    )
+    tag_policy = derive_tag_policy(
+        changelog=changelog,
+        version_files=version_files,
+        release_workflows=release_workflows,
+    )
+
     ssot_paths = tuple(
         path
         for path in [
@@ -432,6 +508,8 @@ def _try_gh_cli(
             readme,
             codeowners,
             *(workflows or ()),
+            changelog,
+            *(version_files or ()),
         ]
         if path
     )
@@ -448,12 +526,50 @@ def _try_gh_cli(
         workflows=workflows,
         ssot_paths=ssot_paths,
         backend="gh_cli",
+        changelog=changelog,
+        version_files=version_files,
+        release_workflows=release_workflows,
+        tag_policy=tag_policy,
     )
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def derive_tag_policy(
+    *,
+    changelog: Optional[str],
+    version_files: Sequence[str],
+    release_workflows: Sequence[str],
+) -> Optional[str]:
+    """입력 신호 3 종에서 tag/version policy 분류.
+
+    분류 우선순위 — 더 강한 신호가 우선:
+      1. ``release_workflows`` 가 비어있지 않음 → ``"workflow_driven"``
+         (GitHub Actions 가 release/publish/tag 작업을 가짐 — agent 는
+         그 워크플로우 트리거 조건에 맞춰 plan)
+      2. ``changelog`` 가 있음 → ``"changelog_driven"`` (release note 가
+         CHANGELOG 에 누적 — agent 는 CHANGELOG entry 추가 + tag 명시
+         계획)
+      3. ``version_files`` 만 있음 → ``"version_file_only"`` (package.json
+        / pyproject.toml 의 version field 만 있음. release automation
+        없으므로 자동 tag 는 보류, version bump 만 계획)
+      4. 아무 신호도 없음 → ``"none"`` (자동 tag/version 미적용).
+
+    None 반환은 호출자가 신호 자체를 모를 때 (예: tests 가 명시적으로
+    빈 input 을 전달) 의 명시적 noop 신호. 본 함수는 None 이 아닌 4 종
+    문자열만 반환.
+    """
+
+    if release_workflows:
+        return "workflow_driven"
+    if changelog:
+        return "changelog_driven"
+    if version_files:
+        return "version_file_only"
+    return "none"
 
 
 def _default_subprocess_run(cmd, *, timeout=None):
