@@ -72,6 +72,10 @@ from .github_work_order import (
 from .heartbeat import HeartbeatStore
 from .state_machine import JobState
 from .store import Job, JobQueue
+from .work_order_coding_continuation import (
+    ContinuationOutcome,
+    promote_session_to_coding_ready,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -340,6 +344,14 @@ class GitHubWorkOrderWorker:
             "repo": work_order.repo,
         }
         self._write_session_anchor(work_order.session_id, anchor)
+        # P0-S continuation — anchor 가 안착되면 즉시 coding_job=ready 로
+        # promote. issue-less bootstrap 과 existing issue 둘 다 같은 downstream
+        # coding path 로 모인다.
+        continuation = self._continue_to_coding(
+            session_id=work_order.session_id,
+            work_order=work_order,
+            anchor=anchor,
+        )
         saved = self._queue.transition(
             job.job_id,
             JobState.SAVED,
@@ -347,6 +359,11 @@ class GitHubWorkOrderWorker:
                 "created_via": CREATED_VIA_EXISTING_ANCHOR,
                 "issue_number": anchor["issue_number"],
                 "skipped_reason": SKIPPED_EXISTING_ANCHOR,
+                "coding_dispatch_queued": continuation is not None
+                and continuation.promoted,
+                "coding_dispatch_noop_reason": continuation.noop_reason
+                if continuation is not None
+                else None,
             },
             clear_lease=True,
             now=now,
@@ -357,7 +374,15 @@ class GitHubWorkOrderWorker:
             issue_url=None,
             created_via=CREATED_VIA_EXISTING_ANCHOR,
             skipped_reason=SKIPPED_EXISTING_ANCHOR,
-            audit_summary={"anchor": anchor},
+            audit_summary={
+                "anchor": anchor,
+                "continuation_promoted": bool(
+                    continuation and continuation.promoted
+                ),
+                "continuation_noop": continuation.noop_reason
+                if continuation is not None
+                else None,
+            },
         )
 
     def _execute_auto_create(
@@ -431,6 +456,15 @@ class GitHubWorkOrderWorker:
         }
         self._write_session_anchor(work_order.session_id, anchor)
 
+        # P0-S continuation — anchor stamp 후 즉시 coding_job=ready 로 promote.
+        # dry_run plan-only 케이스도 같은 path 를 타고 dispatcher 가 dry_run
+        # 으로 자연스럽게 진행한다 (executor 가 자체 dry_run gate 보유).
+        continuation = self._continue_to_coding(
+            session_id=work_order.session_id,
+            work_order=work_order,
+            anchor=anchor,
+        )
+
         # Always SAVED — even dry_run / denied is a deterministic
         # outcome we want the operator to see in #봇-상태. failure means
         # the writer raised an exception, which is converted below.
@@ -443,6 +477,11 @@ class GitHubWorkOrderWorker:
                 "issue_url": issue_url,
                 "outcome": outcome_label,
                 "skipped_reason": skipped_reason,
+                "coding_dispatch_queued": continuation is not None
+                and continuation.promoted,
+                "coding_dispatch_noop_reason": continuation.noop_reason
+                if continuation is not None
+                else None,
             },
             clear_lease=True,
             now=now,
@@ -453,12 +492,63 @@ class GitHubWorkOrderWorker:
             issue_url=str(issue_url) if issue_url else None,
             created_via=created_via,
             skipped_reason=skipped_reason,
-            audit_summary={"anchor": anchor},
+            audit_summary={
+                "anchor": anchor,
+                "continuation_promoted": bool(
+                    continuation and continuation.promoted
+                ),
+                "continuation_noop": continuation.noop_reason
+                if continuation is not None
+                else None,
+            },
         )
 
     # ------------------------------------------------------------------
     # Session writer
     # ------------------------------------------------------------------
+
+    def _continue_to_coding(
+        self,
+        *,
+        session_id: str,
+        work_order: GitHubWorkOrder,
+        anchor: Mapping[str, Any],
+    ) -> Optional[ContinuationOutcome]:
+        """Anchor stamp 직후 같은 세션을 coding_job=ready 로 promote.
+
+        idempotent — 이미 같은 anchor 로 ready 상태면 noop. session 이
+        없거나 coding_proposal 이 없으면 noop (operator audit 에 noop
+        reason 남김).
+        """
+
+        if not session_id:
+            return None
+        try:
+            session = self._load_session(session_id)
+        except Exception:  # noqa: BLE001
+            return None
+        if session is None:
+            return None
+        existing_extra = getattr(session, "extra", None) or {}
+        if not isinstance(existing_extra, Mapping):
+            existing_extra = {}
+        outcome = promote_session_to_coding_ready(
+            session_extra=existing_extra,
+            anchor=anchor,
+            repo=work_order.repo,
+            base_branch=work_order.base_branch,
+            dry_run=bool(work_order.dry_run),
+            approval_id=work_order.approval_id or None,
+            approved_by=work_order.approved_by or None,
+            approved_at=work_order.approved_at or None,
+        )
+        if outcome.new_extra is None:
+            return outcome
+        try:
+            self._update_session(session, outcome.new_extra)
+        except Exception:  # noqa: BLE001 - best-effort
+            pass
+        return outcome
 
     def _write_session_anchor(
         self, session_id: str, anchor: Mapping[str, Any]
