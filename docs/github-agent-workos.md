@@ -63,6 +63,9 @@ agent 가 issue 본문을 추측해 꾸며내지 않는다. placeholder/HTML 주
 ### 1.2.1 Runtime hard rails — branch / PR / tag (P0-T)
 
 코드 SSoT: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py).
+Caller 통합 (P0-T caller integration):
+- [`agents/job_queue/coding_executor_worker.py`](../src/yule_orchestrator/agents/job_queue/coding_executor_worker.py) `process_job` — branch 결정 후 `validate_branch_name` 호출, deny 시 `REASON_BRANCH_POLICY_VIOLATION` terminal + `coding_blocked` progress marker
+- [`agents/job_queue/coding_executor_live.py`](../src/yule_orchestrator/agents/job_queue/coding_executor_live.py) `GithubAppDraftPRCreator.open` — `_draft_pr_body` 직후 `validate_pr_body` 호출, warning 은 logger 로 audit (caller-driven gate). `_draft_pr_body` 자체가 5 섹션 + audit block 충족하도록 정렬
 
 **Branch**
 - protected branch (`main` / `master` / `develop` / `release*` / `hotfix*` / `production` / `prod`) 직접 작업 금지.
@@ -133,9 +136,13 @@ SSoT. 가능한 marker:
 | --- | --- |
 | `issue_created` | `GitHubWorkOrderWorker` (anchor stamp 직후) |
 | `coding_dispatch_queued` | `promote_session_to_coding_ready` (continuation) |
-| `coding_in_progress` | `CodingExecutorWorker` (작업 시작) |
-| `draft_pr_opened` | `CodingExecutorWorker` (draft PR 생성 완료) |
-| `coding_blocked` | `operator_action_reply` (외부 요인 대기) |
+| `coding_in_progress` | **`CodingExecutorWorker.process_job` 진입 직후 (P0-T)** |
+| `draft_pr_opened` | **`CodingExecutorWorker` PR 성공 또는 dry_run 성공 (P0-T)** |
+| `coding_blocked` | **`CodingExecutorWorker` fail (protected/policy/test/commit/push/PR/edit) 또는 `operator_action_reply` 외부 요인 대기 (P0-T)** |
+
+P0-T caller integration 이후 marker 는 모두 실제 단계에서 자동 stamp.
+operator 는 status 진단으로 "executor 는 ALIVE 인데 아무 것도 안 함" 같은
+정체를 즉시 구분할 수 있다.
 
 idempotency:
 - 같은 anchor 로 두 번 promote 호출 → noop (`coding_job_already_ready_same_anchor`)

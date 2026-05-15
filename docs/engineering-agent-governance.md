@@ -74,12 +74,13 @@ write 발생:
 
 ### 4.1.1 Git / branch / PR / tag
 
-| 영역 | 규칙 | 코드 |
-| --- | --- | --- |
-| Branch | protected branch 직접 작업 금지. 표준 prefix `feat/fix/chore/refactor/docs/test/perf`. issue 번호 anchor 권장. | `validate_branch_name`, `derive_standard_branch_name` |
-| Commit | 의미 있는 작업 단위. raw 수집과 curated promotion 분리. 30+ vault 변경은 분할. 봇 identity 만 사용. force push 금지. | (commit author = GitHub App identity 만) |
-| PR | draft 기본. repo PR template 우선. 5 섹션 (`purpose / scope / risks / tests / issue_linkage`) + audit block 필수. | `validate_pr_body` |
-| Tag/release | `RepoContract.tag_policy` 기반. `none` 이면 자동 발행 금지 + audit. 실제 create 는 L3 별도. | `RepoContract.tag_policy` + `has_tag_policy` |
+| 영역 | 규칙 | 코드 | Caller 통합 (P0-T) |
+| --- | --- | --- | --- |
+| Branch | protected branch 직접 작업 금지. 표준 prefix `feat/fix/chore/refactor/docs/test/perf`. issue 번호 anchor 권장. | `validate_branch_name`, `derive_standard_branch_name` | `CodingExecutorWorker.process_job` 가 branch 결정 후 호출, deny 시 `REASON_BRANCH_POLICY_VIOLATION` terminal |
+| Commit | 의미 있는 작업 단위. raw 수집과 curated promotion 분리. 30+ vault 변경은 분할. 봇 identity 만 사용. force push 금지. | (commit author = GitHub App identity 만) | `LocalGitCommitter` 가 봇 identity 강제 |
+| PR | draft 기본. repo PR template 우선. 5 섹션 (`purpose / scope / risks / tests / issue_linkage`) + audit block 필수. | `validate_pr_body` | `GithubAppDraftPRCreator.open` 가 `_draft_pr_body` 직후 호출, warning logger 로 audit. `_draft_pr_body` 자체가 5 섹션 + audit 충족 |
+| Tag/release | `RepoContract.tag_policy` 기반. `none` 이면 자동 발행 금지 + audit. 실제 create 는 L3 별도. | `RepoContract.tag_policy` + `has_tag_policy` | (별 worker — 후속 PR) |
+| Progress marker | 5 단계 (issue_created / coding_dispatch_queued / coding_in_progress / draft_pr_opened / coding_blocked) | `stamp_progress_marker` | `CodingExecutorWorker._stamp_progress` 가 각 분기마다 호출 |
 
 ### 4.1.2 Vault / inbox / curated note / hub linkage
 
