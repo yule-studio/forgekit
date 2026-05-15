@@ -43,6 +43,8 @@ action 을 추가할 때는 반드시 본 표 + `autonomy_policy._DEFAULT_LEVELS
 | **runtime/prod 코드 변경** | **L3** | `runtime_code_change` |
 | 공유 repo 로 push (feature branch) | L3 | `push_to_shared_repo` |
 | draft PR 생성 | L3 | `draft_pr_create` (사용자 정책으로 사전 자동 허용 가능) |
+| **GitHub issue 자동 생성** | **L2** | `github_issue_create` — `#승인-대기` 카드로 묶인 work_order 안에서만 (P0-S, [`github-agent-workos.md`](github-agent-workos.md) §1.1) |
+| **Tag/release create** | **L3** | `tag_create` / `release_create` — `RepoContract.tag_policy` 가 `none` 이면 금지 (P0-S §1.2 / §1.2.1) |
 | **main 직접 push** | **L4** | `main_branch_push` — 사실상 금지 |
 | **merge** | **L4** | `branch_merge` |
 | **deploy** | **L4** | `deploy` |

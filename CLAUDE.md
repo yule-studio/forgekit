@@ -27,6 +27,19 @@
 멈추는 것 금지. 5 가지 request_type (APPROVAL/INFO/ACCESS/SECRET/DECISION)
 는 [`docs/approval-matrix.md`](docs/approval-matrix.md) §6 참조.
 
+## Runtime governance hard rails (P0-T)
+
+엔지니어링 코딩 작업이 실제로 굴러갈 때 무너지지 말아야 할 hard rail —
+코드 SSoT 는 [`src/yule_orchestrator/agents/governance/runtime_policy.py`](src/yule_orchestrator/agents/governance/runtime_policy.py),
+사람용 SSoT 는 [`docs/engineering-agent-governance.md`](docs/engineering-agent-governance.md)
+와 [`docs/memory.md`](docs/memory.md).
+
+핵심 규칙:
+- **Git/PR/Tag** — protected branch (main/master/develop/release/...) 직접 작업 금지, 표준 prefix (`feat/fix/chore/refactor/...`) 권장, issue 번호를 branch name 에 anchor. PR body 는 5 섹션 (목적/범위/리스크/테스트/이슈 linkage) + audit block 필수. Tag/release 는 `RepoContract.tag_policy` 기반 — 정책 없으면 자동 발행 금지.
+- **Vault / 지식** — `00-inbox` 는 raw 자료 보관소. curated note 는 **새로 만드는 것** 이지 inbox 안에서 자리만 바꾸는 게 아님. curated note 는 필수 frontmatter (title/kind/status/created_at/tags/related/home_hub) + 본문 5 섹션 (핵심 요약/내 해석/적용 맥락/관련 노트/참고). orphan / broken link 면 push 금지.
+- **Retrieval eval** — fixture 최소 50 / 목표 100 / top-5 평가. note 많이 추가했는데 eval 점수가 떨어지면 "지식 추가 성공" 이 아니라 **regression**. eval 없이 대량 curated generation push 금지.
+- **Post-test hardening** — 8 opening criteria (queue_backlog / runtime_status_latency / retrieval_eval_regression / prompt_size_ceiling / large_file_rule / duplicate_work / critical_path_bottleneck / flaky_or_slow_test) 중 하나라도 충족돼야 성능 개선 작업을 연다. baseline 측정 + target metric 명시 + behavior change 분리 + 회귀 테스트 의무.
+
 ## 읽기 우선순위 (요약)
 | 항상 | `AGENTS.md` → 본 파일 |
 | --- | --- |

@@ -141,8 +141,11 @@
 - 본 문서의 1000 줄 규칙은 governance smoke test
   [`tests/engineering/test_engineering_agent_governance_doc.py`](../../tests/engineering/test_engineering_agent_governance_doc.py)
   의 docstring 검증 라인이 핵심 섹션 존재를 지킨다.
-- 위 두 자동 가드와 본 규칙은 **상호 보완** — ceiling 은 토큰/회귀
-  보호, 본 규칙은 책임 분리 보호.
+- runtime hard rail (branch / PR / tag / curated note / retrieval eval /
+  post-test hardening) 은 [`tests/governance/test_runtime_policy.py`](../../tests/governance/test_runtime_policy.py)
+  가 검사 — 코드 SSoT 는 [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../../src/yule_orchestrator/agents/governance/runtime_policy.py).
+- 세 자동 가드와 본 규칙은 **상호 보완** — ceiling 은 토큰/회귀 보호,
+  본 규칙은 책임 분리 보호, runtime_policy 는 git/vault/eval drift 보호.
 
 ## Phase 1-5 변경 요약 (이 문서가 만들어진 배경)
 

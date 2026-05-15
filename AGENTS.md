@@ -46,12 +46,14 @@ docs/
 | --- | --- |
 | engineering-agent 전반 | `agents/engineering-agent/CLAUDE.md` |
 | 코드 구조 / 리팩터링 / 모듈 분할 | `agents/engineering-agent/CODE_LAYOUT.md` |
-| 브랜치 / 커밋 / PR / 네이밍 | `policies/reference/{BRANCH_STRATEGY,COMMIT_CONVENTION,NAMING_CONVENTION}.md` |
+| 브랜치 / 커밋 / PR / 네이밍 | `policies/reference/{BRANCH_STRATEGY,COMMIT_CONVENTION,NAMING_CONVENTION}.md` + `agents/governance/runtime_policy.py` |
 | 승인 / 자율 / hard rail | `docs/approval-matrix.md`, `docs/autonomy-policy.md` |
 | 운영 / 배포 / 상태 / 업타임 | `docs/operations.md`, `docs/configuration.md` |
 | Discord / forum / member-bot | `docs/discord.md`, `docs/runtime-member-bot-dispatch-parity.md` |
 | 거버넌스 / Obsidian write ownership | `docs/engineering-agent-governance.md` (+ `policies/runtime/agents/engineering-agent/*`) |
+| Vault / 지식 / inbox / retrieval | `docs/memory.md` (§"Curated 정책" / §"Retrieval eval") |
 | 테스트 작성 / 회귀 가이드 | `docs/testing.md` |
+| 성능 개선 / 고도화 opening criteria | `docs/engineering-company-runtime-master-plan.md` §"Post-test hardening" |
 
 규칙:
 - 위 표에 없는 토픽이면 그 작업과 가장 가까운 디렉터리의 `CLAUDE.md`,

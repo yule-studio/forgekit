@@ -42,13 +42,13 @@ Yule가 도달해야 하는 최종 상태는 아래와 같다.
 
 이 수치는 운영 판단 기준으로 유지한다.
 
-| 영역 | 현재 추정 (2026-05-15, work_order→coding continuation) | 2026-05-15 (P0-S 종단 1) | 2026-05-15 (P0-S 1차) | 2026-05-11 추정 |
-| --- | --- | --- | --- | --- |
-| 운영 골격 | 90~92% | 88~90% | 85~88% | 80~85% |
-| Discord 기술 토의 능력 | 55~65% | 55~65% | 55~65% | 50~60% |
-| 완전 자율 코딩 루프 | 85~90% | 82~88% | 78~85% | 70~80% |
-| 역할별 자료 수집/정형화 루프 | 50~60% | 50~60% | 50~60% | 50~60% |
-| 실제 회사처럼 굴러가는 종합 수준 | 76~83% | 72~80% | 68~75% | 60~70% |
+| 영역 | 현재 추정 (2026-05-15, runtime policy hard rails) | 2026-05-15 (continuation) | 2026-05-15 (P0-S 종단 1) | 2026-05-15 (P0-S 1차) | 2026-05-11 추정 |
+| --- | --- | --- | --- | --- | --- |
+| 운영 골격 | 91~93% | 90~92% | 88~90% | 85~88% | 80~85% |
+| Discord 기술 토의 능력 | 55~65% | 55~65% | 55~65% | 55~65% | 50~60% |
+| 완전 자율 코딩 루프 | 86~91% | 85~90% | 82~88% | 78~85% | 70~80% |
+| 역할별 자료 수집/정형화 루프 | 55~65% | 50~60% | 50~60% | 50~60% | 50~60% |
+| 실제 회사처럼 굴러가는 종합 수준 | 78~85% | 76~83% | 72~80% | 68~75% | 60~70% |
 
 이번 PR 닫은 범위 (work_order → coding_execute continuation):
 
@@ -731,3 +731,43 @@ Round 4-bis 가 deterministic / record-only / live-ready 3-tier 의 *형식* 을
 - discussion + research + execution + retry를 한 흐름으로 묶는 것이 핵심
 
 이 문서를 기준으로 앞으로의 구현 판단을 고정한다.
+
+## 18. Post-test hardening — 성능 개선 / 고도화 opening criteria (P0-T)
+
+테스트가 green 이라고 자동으로 성능 개선 작업을 여는 건 금지. scope creep
+방지를 위해 다음 hard rail 을 둔다.
+
+### 18.1 우선순위
+**correctness > visibility > maintainability > performance** 순서.
+correctness 회귀가 없고 visibility 가 안정돼야 maintainability 가 의미를
+가지며, 그 위에서만 performance 가 정당화된다.
+
+### 18.2 Opening criteria (최소 1 개 충족 시 작업 허용)
+
+| # | criterion | 매칭 신호 |
+| --- | --- | --- |
+| 1 | `queue_backlog` | queue_backlog_jobs > 0 |
+| 2 | `runtime_status_latency` | status 응답 30s+ |
+| 3 | `retrieval_eval_regression` | top-5 fail / 점수 하락 |
+| 4 | `prompt_size_ceiling` | preamble / template size 가 ceiling 90%+ |
+| 5 | `large_file_rule` | 700 warning / 1000 split 초과 (`CODE_LAYOUT.md`) |
+| 6 | `duplicate_work` | 같은 repo contract / issue template / vault routing 반복 |
+| 7 | `critical_path_bottleneck` | executor / approval / operator action path 명시적 정체 |
+| 8 | `flaky_or_slow_test` | flaky 발견 또는 slow test 누적 |
+
+### 18.3 작업 의무
+opening 이 허용된 경우라도 PR 본문에 다음 4 가지를 명시해야 한다:
+
+- `baseline_measurement` — 이전 값
+- `target_metric` — 어떤 metric 을 어떻게 개선할지
+- `behavior_change_separated` — semantic 변경과 perf refactor 분리
+- `regression_test` — 회귀 보호
+
+코드 SSoT: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py)
+의 `decide_hardening_opening(observations)`. 검증 회귀:
+[`tests/governance/test_runtime_policy.py`](../tests/governance/test_runtime_policy.py).
+
+### 18.4 거버넌스 cross-link
+git / vault / retrieval 규칙은 [`engineering-agent-governance.md`](engineering-agent-governance.md)
+§4.1 / [`memory.md`](memory.md) §"Curated 정책" / [`github-agent-workos.md`](github-agent-workos.md)
+§1.2.1 참조.

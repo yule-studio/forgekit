@@ -66,6 +66,70 @@ write 발생:
 
 위 항목 변경은 별도 hard-rail 정책 PR + 사용자 결정이 필요. 본 governance 가 자체 권한으로 변경할 수 없다.
 
+## 4.1 Runtime governance hard rails (P0-T)
+
+**코드 SSoT**: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py).
+**회귀 test**: [`tests/governance/test_runtime_policy.py`](../tests/governance/test_runtime_policy.py).
+**docs cross-link**: [`/docs/github-agent-workos.md`](github-agent-workos.md) §1.2.1 / [`/docs/memory.md`](memory.md).
+
+### 4.1.1 Git / branch / PR / tag
+
+| 영역 | 규칙 | 코드 |
+| --- | --- | --- |
+| Branch | protected branch 직접 작업 금지. 표준 prefix `feat/fix/chore/refactor/docs/test/perf`. issue 번호 anchor 권장. | `validate_branch_name`, `derive_standard_branch_name` |
+| Commit | 의미 있는 작업 단위. raw 수집과 curated promotion 분리. 30+ vault 변경은 분할. 봇 identity 만 사용. force push 금지. | (commit author = GitHub App identity 만) |
+| PR | draft 기본. repo PR template 우선. 5 섹션 (`purpose / scope / risks / tests / issue_linkage`) + audit block 필수. | `validate_pr_body` |
+| Tag/release | `RepoContract.tag_policy` 기반. `none` 이면 자동 발행 금지 + audit. 실제 create 는 L3 별도. | `RepoContract.tag_policy` + `has_tag_policy` |
+
+### 4.1.2 Vault / inbox / curated note / hub linkage
+
+- `00-inbox` 는 **raw 자료 보관소** — curated 승격 대상이 아님. 승격은
+  `20-areas` / `40-patterns` / `60-troubleshooting` / `10-projects/*`
+  아래에 **새 curated note** 를 만드는 행위.
+- Curated note 필수 frontmatter (7 키): `title / kind / status /
+  created_at / tags / related / home_hub`.
+- Curated note 필수 본문 섹션 (5 종): `핵심 요약 / 내 해석 / 적용 맥락 /
+  관련 노트 / 참고`.
+- 하루 자동 생성/갱신 curated note 20~30 개 / raw reference 100 개 제한.
+- 모든 curated note 는 ① `home_hub` 1 개 + ② `related` 최소 1 개.
+- orphan note / broken link 면 push 금지.
+- 검증: `validate_curated_note`, `is_inbox_path`, `detect_orphan_note`,
+  `detect_broken_links`.
+
+### 4.1.3 Retrieval eval
+
+- 평가셋 스키마: `question / expected_notes / allowed_alternatives /
+  failure_reason`.
+- 최소 50 / 목표 100 문항.
+- top-5 평가 — 기대 note 가 top-5 에 없으면 **regression** (지식 추가
+  성공 아님).
+- vault 구조 변경 / 대량 노트 추가 전후 eval 실행 의무. eval 없이
+  대량 curated generation push 금지.
+- 검증: `validate_retrieval_eval_entry`, `validate_retrieval_eval_fixture`.
+
+### 4.1.4 Post-test hardening — 성능 개선 opening criteria
+
+`correctness > visibility > maintainability > performance` 순서. 테스트가
+green 이어도 성능 개선은 자동 의무가 아니다. 다음 8 종 중 **최소 1 개
+가 충족돼야** 성능/고도화 작업을 연다:
+
+1. queue_backlog (큐 적체)
+2. runtime_status_latency (status 응답 30s+)
+3. retrieval_eval_regression
+4. prompt_size_ceiling (90%+ 근접)
+5. large_file_rule (700 warning / 1000 split)
+6. duplicate_work (중복 dispatch / 같은 repo contract / template 반복 작업)
+7. critical_path_bottleneck (executor / approval / operator action 명시적 정체)
+8. flaky_or_slow_test
+
+성능 개선 작업 시 의무:
+- baseline_measurement (이전 값)
+- target_metric (개선 대상)
+- behavior_change_separated (semantic 변경 ≠ perf refactor)
+- regression_test
+
+코드: `decide_hardening_opening(observations)` → `allowed` + `matched_criteria` + `required_artifacts`.
+
 ## 5. 정책 위치 인덱스
 
 | 영역 | 파일 |

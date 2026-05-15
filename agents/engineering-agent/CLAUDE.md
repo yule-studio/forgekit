@@ -97,6 +97,8 @@ Engineering Agent는 **엔지니어링 부서의 게이트웨이**다. 외부에
 | 테스트 작성 | [`/docs/testing.md`](../../docs/testing.md), [`CODE_LAYOUT.md`](CODE_LAYOUT.md) §"tests/ 매핑" | 어느 디렉터리에 어떤 테스트가 떨어져야 하는지 |
 | Discord member-bot / dispatcher | [`/docs/discord.md`](../../docs/discord.md), [`/docs/runtime-member-bot-dispatch-parity.md`](../../docs/runtime-member-bot-dispatch-parity.md) | bot.py / member_bot 진입부 |
 | Configuration / env / CI 알림 | [`/docs/configuration.md`](../../docs/configuration.md), [`/docs/ci-discord-notifications.md`](../../docs/ci-discord-notifications.md) | env 변수 / CI 알림 채널 |
+| Runtime governance (branch/PR/tag/curated/eval/hardening) | [`/docs/engineering-agent-governance.md`](../../docs/engineering-agent-governance.md), [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../../src/yule_orchestrator/agents/governance/runtime_policy.py) | hard rail 코드 SSoT |
+| Vault / 지식 / inbox / retrieval | [`/docs/memory.md`](../../docs/memory.md) | curated 승격 규칙 + retrieval eval |
 
 ## 코딩 작업 시 강제 규칙 (engineering-agent 특화)
 
