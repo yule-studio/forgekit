@@ -55,6 +55,23 @@ APPROVAL_KIND_RESEARCH_PROMOTION: str = "research_promotion"
 APPROVAL_KIND_OBSIDIAN_WRITE: str = "obsidian_write"
 APPROVAL_KIND_ENGINEERING_WRITE: str = "engineering_write"
 
+# Operator action inbox (P0-S) — `#승인-대기` 가 approval-only 가 아니라
+# 정보/접근/secret/판단 요청까지 같은 채널에서 처리하기 위한 새 kind 들.
+# render 분기는 ``ApprovalRequest.extra['operator_action']`` 페이로드를
+# :func:`yule_orchestrator.agents.operator_action.render_operator_action_card`
+# 로 위임한다 — 같은 worker, 같은 dedup, 같은 reply router.
+APPROVAL_KIND_INFO_REQUEST: str = "info_request"
+APPROVAL_KIND_ACCESS_REQUEST: str = "access_request"
+APPROVAL_KIND_SECRET_REQUEST: str = "secret_request"
+APPROVAL_KIND_DECISION_REQUEST: str = "decision_request"
+
+OPERATOR_ACTION_KINDS: Tuple[str, ...] = (
+    APPROVAL_KIND_INFO_REQUEST,
+    APPROVAL_KIND_ACCESS_REQUEST,
+    APPROVAL_KIND_SECRET_REQUEST,
+    APPROVAL_KIND_DECISION_REQUEST,
+)
+
 
 # Skipped reasons surfaced via :class:`ApprovalJobOutcome`. Made into
 # constants so the gateway / status diagnostic can match exact values
@@ -171,7 +188,28 @@ def render_approval_request(request: ApprovalRequest) -> str:
     action + source thread pointer + approval phrase hint. The
     rendered text is **stable across worker restarts** (no
     timestamps embedded) so dedup hits are visible by content too.
+
+    P0-S — operator action 카드 (INFO/ACCESS/SECRET/DECISION) 는 별도
+    렌더러를 가진다. ``request.extra['operator_action']`` 페이로드가
+    있으면 그쪽으로 위임한다.
     """
+
+    operator_payload = (request.extra or {}).get("operator_action")
+    if isinstance(operator_payload, Mapping):
+        # 지연 import — operator_action 은 agents/ 패키지 위에 있고
+        # job_queue/ 는 그 자식이므로 상위 import 가 가능하다. circular
+        # 방지로 함수 호출 시점에만 가져온다.
+        from ..operator_action import (
+            OperatorActionRequest,
+            render_operator_action_card,
+        )
+
+        try:
+            op_request = OperatorActionRequest.from_extra_payload(operator_payload)
+        except Exception:  # noqa: BLE001 — payload 손상 시 기본 렌더로 fallback
+            op_request = None
+        if op_request is not None:
+            return render_operator_action_card(op_request)
 
     kind_label = _APPROVAL_KIND_LABELS.get(
         request.approval_kind, request.approval_kind
@@ -210,6 +248,10 @@ _APPROVAL_KIND_LABELS: Mapping[str, str] = {
     APPROVAL_KIND_RESEARCH_PROMOTION: "리서치 결과 승격",
     APPROVAL_KIND_OBSIDIAN_WRITE: "Obsidian 저장",
     APPROVAL_KIND_ENGINEERING_WRITE: "코드 변경",
+    APPROVAL_KIND_INFO_REQUEST: "정보 필요",
+    APPROVAL_KIND_ACCESS_REQUEST: "접근 / 권한 필요",
+    APPROVAL_KIND_SECRET_REQUEST: "Secret 필요",
+    APPROVAL_KIND_DECISION_REQUEST: "정책 / 제품 판단 필요",
 }
 
 
@@ -525,9 +567,14 @@ def _short_error(exc: BaseException) -> str:
 
 
 __all__ = (
+    "APPROVAL_KIND_ACCESS_REQUEST",
+    "APPROVAL_KIND_DECISION_REQUEST",
     "APPROVAL_KIND_ENGINEERING_WRITE",
+    "APPROVAL_KIND_INFO_REQUEST",
     "APPROVAL_KIND_OBSIDIAN_WRITE",
     "APPROVAL_KIND_RESEARCH_PROMOTION",
+    "APPROVAL_KIND_SECRET_REQUEST",
+    "OPERATOR_ACTION_KINDS",
     "ApprovalChannelResolver",
     "ApprovalJobOutcome",
     "ApprovalPostFn",
