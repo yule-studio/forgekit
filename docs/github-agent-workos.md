@@ -67,6 +67,35 @@ operator action 카드 (INFO/ACCESS/SECRET/DECISION) 가 올라간다. 흐름은
 [`docs/approval-matrix.md`](approval-matrix.md) §6 참조. issue auto-create
 의 LOW confidence 도 같은 inbox 로 흐른다 (`DECISION_REQUIRED`).
 
+### 1.4 Issue-less bootstrap end-to-end (P0-S)
+
+"issue 가 없는 repo 에 업무 요청만 들어와도 agent 가 스스로 issue 를
+만들고 그것을 anchor 로 끝까지 이어가는" 종단은 다음 모듈이 묶는다:
+
+```
+Discord intake
+  └─ build_github_work_order_proposal(repo_contract, issue_template_loader)
+       └─ build_issue_auto_create_plan       ← #166 PR
+       └─ session.extra.github_work_order_issue 이미 있으면 existing_anchor 로 전환
+  └─ ApprovalRequest 카드 (#승인-대기)
+  └─ 승인 → handle_github_work_approval_reply
+  └─ dispatch_github_work_order (queue)
+  └─ GitHubWorkOrderWorker.process_job        ← 이 PR 신설 consumer
+       └─ existing_issue_number 있으면 issue 생성 skip + anchor stamp
+       └─ plan 있으면 GithubWriter.create_issue 호출 + anchor stamp
+       └─ session.extra[`github_work_order_issue`] = {issue_number, html_url, ...}
+```
+
+`session.extra["github_work_order_issue"]` 가 **issue-anchored continuity**
+의 SSoT. downstream (branch / commit / draft PR / progress comment /
+Obsidian work-report) 는 이 키를 anchor 로 읽는다. 본 키는 오직
+`GitHubWorkOrderWorker` 만 쓴다 — 다른 path 가 stamp 하지 않음.
+
+dry_run / live 분기는 `work_order.dry_run` 을 따른다 (default True). True
+면 anchor 의 `created_via` 가 `dry_run_plan`, False 면 `auto_create` 또는
+`existing_anchor`. 잘못된 enqueue (repo 없음 / plan + existing 둘 다 없음)
+는 `failed_retryable` 로 떨어져 operator 가 status 에서 즉시 볼 수 있다.
+
 ## 2. 환경 contract
 
 | env key | 설명 | placeholder 거부 값 |

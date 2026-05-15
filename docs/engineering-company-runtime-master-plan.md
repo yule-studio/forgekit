@@ -42,30 +42,36 @@ Yule가 도달해야 하는 최종 상태는 아래와 같다.
 
 이 수치는 운영 판단 기준으로 유지한다.
 
-| 영역 | 현재 추정 (2026-05-15) | 2026-05-11 추정 |
-| --- | --- | --- |
-| 운영 골격 | 85~88% | 80~85% |
-| Discord 기술 토의 능력 | 55~65% | 50~60% |
-| 완전 자율 코딩 루프 | 78~85% | 70~80% |
-| 역할별 자료 수집/정형화 루프 | 50~60% | 50~60% |
-| 실제 회사처럼 굴러가는 종합 수준 | 68~75% | 60~70% |
+| 영역 | 현재 추정 (2026-05-15, P0-S 종단) | 2026-05-15 (P0-S 1차) | 2026-05-11 추정 |
+| --- | --- | --- | --- |
+| 운영 골격 | 88~90% | 85~88% | 80~85% |
+| Discord 기술 토의 능력 | 55~65% | 55~65% | 50~60% |
+| 완전 자율 코딩 루프 | 82~88% | 78~85% | 70~80% |
+| 역할별 자료 수집/정형화 루프 | 50~60% | 50~60% | 50~60% |
+| 실제 회사처럼 굴러가는 종합 수준 | 72~80% | 68~75% | 60~70% |
 
-2026-05-15 갱신 근거 — P0-S 시리즈 (PR #162 Operator Action Inbox / PR #164 문서 계층 + 분리 규칙 / 본 PR Issue auto-create end-to-end + Tag/version policy reader) 머지 결과. 자세한 결정은 본 PR 의 audit block + `docs/approval-matrix.md` §6.
+2026-05-15 갱신 근거 — P0-S 시리즈 (PR #162 Operator Action Inbox / PR #164 문서 계층 / PR #166 Issue auto-create plan + Tag policy / 본 PR Issue-less bootstrap end-to-end consumer).
 
-이번 PR (Issue auto-create + Tag policy) 닫은 범위:
+이번 PR 닫은 범위 (issue-less bootstrap 종단):
 
-- **Issue auto-create end-to-end** — target repo `ISSUE_TEMPLATE` 발견 → 키워드 매칭으로 best template 선택 → frontmatter title prefix/labels 적용 + placeholder 보존 + request_summary quote 삽입 → audit 섹션 부착. 다중 template 매칭 0 → DECISION_REQUIRED 카드. template 없음 → safe default body + `no_repo_template` audit.
-- **`LiveGithubAppClient.create_issue`** — POST `/repos/{repo}/issues` capability + labels/assignees 정규화 + 빈 시퀀스 payload 생략.
-- **`GithubWriter.create_issue`** + `ACTION_GITHUB_ISSUE_CREATE` (L2) + dry_run/denied_by_policy/OK audit 트레일.
-- **`GitHubWorkOrder` payload 확장** — `issue_auto_create_plan` + `existing_issue_number` 1급 필드, proposal/work_order 양쪽 무손실 round-trip.
-- **Tag / version policy** — `RepoContract.tag_policy` (`workflow_driven` / `changelog_driven` / `version_file_only` / `none`). CHANGELOG / package.json / pyproject.toml / Cargo.toml / release.yml 등 신호 수집. 정책 없으면 `has_tag_policy=False` — 자동 tag 보류, audit 명시.
-- **Hollow knowledge note 가드 회귀 핀** — pack/snapshot/synthesis 모두 비면 `ObsidianRenderError` 로 fail-loud (silent failure 방지).
+- **`GitHubWorkOrderWorker` 신설** — `github_work_order` 큐 job 을 실제 drain 하는 consumer. `existing_issue_number` 있으면 issue 생성 skip + anchor stamp, `issue_auto_create_plan` 있으면 `GithubWriter.create_issue` 호출 + anchor stamp. dry_run / live / failed_retryable 모두 명시적 분기.
+- **`session.extra["github_work_order_issue"]`** anchor SSoT — downstream (branch / commit / PR / progress / Obsidian) 가 일관되게 읽을 단일 키. issue number / html_url / approval_id / created_via / audit_reason 보존.
+- **adapter wiring (`build_github_work_order_proposal`)** — `repo_contract` + `issue_template_loader` + `existing_issue_number` 파라미터로 plan 을 proposal 에 직접 stamp. 동일 session 이 이미 anchor 를 들고 있으면 자동으로 existing_anchor 로 전환 (중복 issue 생성 방지).
+- **end-to-end 회귀 테스트** — Discord intake → approval card → 승인 → work_order dispatch → worker drain → issue 생성 → anchor stamp → 재호출 시 anchor 재사용 한 줄 검증.
 
-남은 범위 (본 PR 의 한계):
+직전 PR (#166) 닫은 범위는 동일 그대로 유효:
 
-- **end-to-end live wiring** — GitHubWorkOrder executor 가 `create_issue` 를 실제 호출하는 wiring (consumer 측) 은 후속 PR. 본 PR 은 plan/payload/writer capability/policy 까지 land.
-- **issue 생성 결과 → session 연결** — 생성된 issue number/URL 을 session.extra 에 stamp 하고 이후 branch/PR 에 자동 link 하는 wiring 도 같은 후속 PR 범위 (`coding_executor_worker` 측).
-- **Tag/release 자동 발행** — 본 PR 은 policy 감지까지. 실제 tag/release 생성은 L3 승인 카드 + executor wiring 후속.
+- Issue auto-create model (parser/selector/filler/fallback + ambiguous → DECISION_REQUIRED)
+- `LiveGithubAppClient.create_issue` + `GithubWriter.create_issue` + `ACTION_GITHUB_ISSUE_CREATE` (L2)
+- `GitHubWorkOrder.issue_auto_create_plan` / `existing_issue_number` 1급 필드 round-trip
+- `RepoContract.tag_policy` 4 분류
+- Hollow knowledge note 가드 회귀 핀
+
+남은 범위 (이 PR 의 명시적 deferred):
+
+- **Branch / commit / push / draft PR wiring** — issue create 직후 같은 `GitHubWorkOrderWorker` (또는 별 worker) 가 branch 생성 → tree build → commit → ref move → draft PR 까지 잇는 wiring. issue anchor 키는 이미 SSoT 로 land 됐으므로 다음 PR 은 anchor 를 읽기만 한다.
+- **Tag/release 자동 발행** — 별도 worker + L3 카드.
+- **Discord 측 intake → adapter** wiring — 현재 adapter API 는 keyword arg 로 `repo_contract` / `issue_template_loader` 를 받음. engineering_channel_router 측에서 실제 호출 시점에 이 두 값을 주입하는 통합은 `repo_contract` 발견 위치가 router 측인지 background loop 측인지 추가 결정 후 별 PR.
 
 상한이 100% 가 아닌 이유:
 
