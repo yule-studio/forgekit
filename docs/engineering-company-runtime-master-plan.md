@@ -42,13 +42,34 @@ Yule가 도달해야 하는 최종 상태는 아래와 같다.
 
 이 수치는 운영 판단 기준으로 유지한다.
 
-| 영역 | 현재 추정 (2026-05-15, P0-S 종단) | 2026-05-15 (P0-S 1차) | 2026-05-11 추정 |
-| --- | --- | --- | --- |
-| 운영 골격 | 88~90% | 85~88% | 80~85% |
-| Discord 기술 토의 능력 | 55~65% | 55~65% | 50~60% |
-| 완전 자율 코딩 루프 | 82~88% | 78~85% | 70~80% |
-| 역할별 자료 수집/정형화 루프 | 50~60% | 50~60% | 50~60% |
-| 실제 회사처럼 굴러가는 종합 수준 | 72~80% | 68~75% | 60~70% |
+| 영역 | 현재 추정 (2026-05-15, work_order→coding continuation) | 2026-05-15 (P0-S 종단 1) | 2026-05-15 (P0-S 1차) | 2026-05-11 추정 |
+| --- | --- | --- | --- | --- |
+| 운영 골격 | 90~92% | 88~90% | 85~88% | 80~85% |
+| Discord 기술 토의 능력 | 55~65% | 55~65% | 55~65% | 50~60% |
+| 완전 자율 코딩 루프 | 85~90% | 82~88% | 78~85% | 70~80% |
+| 역할별 자료 수집/정형화 루프 | 50~60% | 50~60% | 50~60% | 50~60% |
+| 실제 회사처럼 굴러가는 종합 수준 | 76~83% | 72~80% | 68~75% | 60~70% |
+
+이번 PR 닫은 범위 (work_order → coding_execute continuation):
+
+- **`promote_session_to_coding_ready`** — anchor 직후 `session.extra["coding_proposal"]` 을 읽어 `CodingJob(status=ready)` 빌드 후 `session.extra["coding_job"]` 에 stamp. metadata 에 anchor 정보 (issue_number / issue_url / repo / base_branch / dry_run / approval_id) 동기화. idempotent — 같은 anchor 로 재호출 시 `coding_job_already_ready_same_anchor` noop.
+- **`GitHubWorkOrderWorker` continuation hook** — auto_create / existing_anchor 양쪽 분기 모두 anchor stamp 직후 continuation 호출. queue row 의 `result.coding_dispatch_queued` / `coding_dispatch_noop_reason` 에 결과 audit.
+- **Progress markers SSoT** — `session.extra["github_work_order_progress"]` 가 5 단계 (issue_created / coding_dispatch_queued / coding_in_progress / draft_pr_opened / coding_blocked) 의 operator-visible timeline. 본 PR 은 앞 2 단계 stamp, 나머지 3 단계는 coding executor / operator action 측에서 누적.
+- **`build_coding_execute_request` anchor fallback** — coding_job metadata 에 issue_number / repo 가 비어 있어도 session.extra의 anchor 에서 자동 보충. legacy proposal builder 와 호환.
+
+이번 PR 후 operator 가 실제로 개입해야 하는 지점은 **승인 1회 + 외부 사실 (INFO/ACCESS/SECRET/DECISION) 카드 응답만**. 승인 후:
+
+1. work_order dispatch → worker drain (issue create / existing)
+2. continuation 자동 호출 → coding_job=ready
+3. `iter_ready_coding_jobs` 가 세션을 yield
+4. dispatcher 가 coding_execute 큐에 enqueue
+5. `CodingExecutorWorker` 가 branch / edit / test / commit / push / draft PR 까지
+
+남은 범위 (이 PR 의 명시적 deferred):
+
+- **CodingExecutorWorker live wiring** — 기존 dispatcher → executor 경로는 land 됐고 본 PR 이 그 경로 진입까지 자동 잇기. 실제 GitHub App 기반 commit/push/draft PR 의 live runner activation 은 `YULE_GITHUB_APP_*` 환경 설정 후 별 PR.
+- **Discord intake → adapter `repo_contract` 통합** — adapter API 는 keyword arg 로 받지만 router 측에서 실제 호출 시점에 어떻게 주입할지 (router 내부 discover vs background loop) 별 PR.
+- **Tag/release 자동 발행** — 별 worker + L3 카드.
 
 2026-05-15 갱신 근거 — P0-S 시리즈 (PR #162 Operator Action Inbox / PR #164 문서 계층 / PR #166 Issue auto-create plan + Tag policy / 본 PR Issue-less bootstrap end-to-end consumer).
 

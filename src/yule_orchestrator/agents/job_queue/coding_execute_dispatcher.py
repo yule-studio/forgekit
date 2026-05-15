@@ -210,6 +210,7 @@ def _resolve_repo(coding_job: Mapping[str, Any], session: Any, env_repo: Optiona
     """Resolve repo_full_name with deterministic precedence.
 
     Order: ``coding_job.metadata['repo_full_name']`` →
+    ``session.extra['github_work_order_issue']['repo']`` (P0-S anchor) →
     ``session.extra['coding_repo_full_name']`` → env default. Empty
     string is acceptable — the worker only refuses to push when the
     GithubAppPusher is invoked on an empty repo, which the dry-run
@@ -223,6 +224,14 @@ def _resolve_repo(coding_job: Mapping[str, Any], session: Any, env_repo: Optiona
             return from_meta
     extra = getattr(session, "extra", None) or {}
     if isinstance(extra, Mapping):
+        # P0-S — issue anchor 가 stamp 한 repo 를 fallback 으로 사용. issue
+        # auto-create 후 같은 session 의 coding_job 이 metadata.repo_full_name
+        # 을 못 채운 경우 (legacy proposal 빌더) 에도 자연스럽게 연결.
+        anchor = extra.get("github_work_order_issue")
+        if isinstance(anchor, Mapping):
+            from_anchor = str(anchor.get("repo") or "").strip()
+            if from_anchor:
+                return from_anchor
         from_extra = str(extra.get("coding_repo_full_name") or "").strip()
         if from_extra:
             return from_extra
@@ -297,6 +306,16 @@ def build_coding_execute_request(
             else None
         )
     )
+    # P0-S — issue anchor fallback. coding_job.metadata 에 issue_number 가
+    # 없어도 session.extra["github_work_order_issue"]["issue_number"] 가
+    # 있으면 그쪽을 사용. issue-less bootstrap path 가 metadata 채움 직전에
+    # 호출되는 경우의 안전망.
+    if issue_number is None:
+        session_extra = getattr(ready.session, "extra", None) or {}
+        if isinstance(session_extra, Mapping):
+            anchor = session_extra.get("github_work_order_issue")
+            if isinstance(anchor, Mapping):
+                issue_number = _coerce_int(anchor.get("issue_number"))
 
     branch_hint = ""
     if isinstance(metadata_in, Mapping):

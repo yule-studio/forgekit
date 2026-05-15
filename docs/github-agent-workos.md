@@ -70,7 +70,7 @@ operator action 카드 (INFO/ACCESS/SECRET/DECISION) 가 올라간다. 흐름은
 ### 1.4 Issue-less bootstrap end-to-end (P0-S)
 
 "issue 가 없는 repo 에 업무 요청만 들어와도 agent 가 스스로 issue 를
-만들고 그것을 anchor 로 끝까지 이어가는" 종단은 다음 모듈이 묶는다:
+만들고 그것을 anchor 로 끝까지 이어가는" 종단:
 
 ```
 Discord intake
@@ -78,23 +78,50 @@ Discord intake
        └─ build_issue_auto_create_plan       ← #166 PR
        └─ session.extra.github_work_order_issue 이미 있으면 existing_anchor 로 전환
   └─ ApprovalRequest 카드 (#승인-대기)
-  └─ 승인 → handle_github_work_approval_reply
+  └─ 승인 1회 → handle_github_work_approval_reply
   └─ dispatch_github_work_order (queue)
-  └─ GitHubWorkOrderWorker.process_job        ← 이 PR 신설 consumer
+  └─ GitHubWorkOrderWorker.process_job        ← #168 신설 consumer
        └─ existing_issue_number 있으면 issue 생성 skip + anchor stamp
        └─ plan 있으면 GithubWriter.create_issue 호출 + anchor stamp
-       └─ session.extra[`github_work_order_issue`] = {issue_number, html_url, ...}
+       └─ session.extra["github_work_order_issue"] = {...}
+       └─ promote_session_to_coding_ready          ← 본 PR continuation
+              └─ session.extra["coding_job"] status="ready" + anchor metadata
+              └─ session.extra["github_work_order_progress"] = {
+                     "issue_created": ..., "coding_dispatch_queued": ...
+                 }
+  └─ iter_ready_coding_jobs (autonomy_producer / 운영 tick) 가 같은 세션 발견
+  └─ build_coding_execute_request 가 anchor 의 repo/issue_number 를 자동 fallback
+  └─ CodingExecutorWorker 가 branch / edit / test / commit / push / draft PR
 ```
 
-`session.extra["github_work_order_issue"]` 가 **issue-anchored continuity**
-의 SSoT. downstream (branch / commit / draft PR / progress comment /
-Obsidian work-report) 는 이 키를 anchor 로 읽는다. 본 키는 오직
-`GitHubWorkOrderWorker` 만 쓴다 — 다른 path 가 stamp 하지 않음.
+승인 **1회** 후 operator 추가 입력 없이 다음 단계가 자동 이어진다:
 
-dry_run / live 분기는 `work_order.dry_run` 을 따른다 (default True). True
-면 anchor 의 `created_via` 가 `dry_run_plan`, False 면 `auto_create` 또는
-`existing_anchor`. 잘못된 enqueue (repo 없음 / plan + existing 둘 다 없음)
-는 `failed_retryable` 로 떨어져 operator 가 status 에서 즉시 볼 수 있다.
+1. `GithubWriter.create_issue` 실제 호출 (`auto_create` 또는 `existing_anchor`)
+2. `session.extra["github_work_order_issue"]` anchor stamp
+3. `session.extra["coding_job"]` status=ready 로 promote + anchor metadata
+4. `iter_ready_coding_jobs` 가 세션을 yield
+5. `build_coding_execute_request` 가 anchor 의 repo/issue_number 를 자동 fallback
+6. dispatcher 가 `coding_execute` 큐에 enqueue
+7. `CodingExecutorWorker` 가 branch / edit / test / commit / push / draft PR
+
+`session.extra["github_work_order_progress"]` 가 operator-visible progress
+SSoT. 가능한 marker:
+
+| marker | 누가 stamp 하나 |
+| --- | --- |
+| `issue_created` | `GitHubWorkOrderWorker` (anchor stamp 직후) |
+| `coding_dispatch_queued` | `promote_session_to_coding_ready` (continuation) |
+| `coding_in_progress` | `CodingExecutorWorker` (작업 시작) |
+| `draft_pr_opened` | `CodingExecutorWorker` (draft PR 생성 완료) |
+| `coding_blocked` | `operator_action_reply` (외부 요인 대기) |
+
+idempotency:
+- 같은 anchor 로 두 번 promote 호출 → noop (`coding_job_already_ready_same_anchor`)
+- worker 재시작으로 같은 work_order 가 다시 drain → 이미 SAVED 라 queue 측에서 skip
+- coding_job 이 이미 다른 path (Discord chat phrase 승인) 로 ready 면 다시 build 안 함
+
+비표준 진입:
+- `coding_proposal` 이 session.extra 에 없으면 `promote_session_to_coding_ready` 가 noop 반환 + audit reason `no_coding_proposal` — operator 가 status diagnostic 으로 즉시 확인 가능 (Discord intake 가 proposal 을 stamp 안 한 경우).
 
 ## 2. 환경 contract
 
