@@ -34,6 +34,7 @@ can show what is actually wireable in the current environment.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shlex
 import shutil
@@ -47,6 +48,9 @@ from .coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +544,25 @@ class GithubAppDraftPRCreator:
             else f"📝 coding-executor draft — {context.branch}"
         )
         body = _draft_pr_body(request, context)
+
+        # P0-T: runtime governance policy gate — PR body 가 5 섹션 +
+        # audit block 을 갖는지 검사. caller-driven gate 원칙: validation
+        # 결과를 로그/audit 으로 남기되 PR 생성 자체는 진행한다 (operator
+        # 가 status 에서 즉시 확인 후 후속 PR 에서 보강 가능).
+        try:
+            from ..governance.runtime_policy import validate_pr_body
+
+            pr_validation = validate_pr_body(body)
+            if not pr_validation.ok:
+                logger.warning(
+                    "draft PR body policy warning — missing=%s, audit=%s, warnings=%s",
+                    pr_validation.missing_sections,
+                    pr_validation.audit_block_present,
+                    pr_validation.warnings,
+                )
+        except Exception:  # noqa: BLE001 — never block PR on validator
+            pass
+
         pr_response = self._live.create_draft_pull_request(
             repo=repo,
             head=context.branch,
@@ -556,26 +579,50 @@ class GithubAppDraftPRCreator:
 def _draft_pr_body(
     request: CodingExecuteRequest, context: WorktreeContext
 ) -> str:
+    """draft PR body. P0-T runtime_policy.validate_pr_body 통과하도록
+    5 섹션 (purpose / scope / risks / tests / issue_linkage) + audit block
+    을 모두 갖춘다."""
+
+    test_summary = context.test_summary or {}
+    test_status = (
+        test_summary.get("status")
+        if isinstance(test_summary, Mapping)
+        else None
+    ) or ("dry_run" if test_summary.get("dry_run") else "unknown")
+
     parts = [
         "## 📌 관련 이슈",
         f"- close #{request.issue_number}" if request.issue_number else "- (no issue)",
         "",
-        "## ✨ 과제 내용",
-        f"- coding_execute job (executor=`{request.executor_role}`) 의 dry pipeline 산출.",
+        "## ✨ 과제 내용 (목적)",
+        f"- coding_execute job (executor=`{request.executor_role}`) 산출.",
         "- 본 PR 은 `RecordOnlyCodeEditor` 가 만든 계획 markdown 만 포함합니다 — 실 LLM 편집은 운영자 승인 후 별도.",
+        "",
+        "## 🎯 범위 (scope)",
+        f"- in_scope: write_scope={list(request.write_scope) or '(미지정)'}",
+        f"- out_of_scope: forbidden_scope={list(request.forbidden_scope) or '(미지정)'}",
+        "",
+        "## ⚠️ 리스크 (risks)",
+        "- safety_rules 준수: " + (", ".join(request.safety_rules) if request.safety_rules else "(미지정)"),
+        "- live editor 미연결 — 본 PR 은 record-only. operator 검토 후 후속 PR 에서 실 편집 land 예정.",
+        "",
+        "## ✅ 테스트 (tests)",
+        f"- test_status: `{test_status}`",
+        f"- test_summary: `{dict(test_summary) if isinstance(test_summary, Mapping) else test_summary}`",
         "",
         "## :camera_with_flash: 스크린샷(선택)",
         "_(N/A)_",
         "",
-        "## 📚 레퍼런스 (또는 새로 알게 된 내용) 혹은 궁금한 사항들",
+        "## 📚 참고 (references)",
         f"- session_id: `{request.session_id}`",
         f"- branch: `{context.branch}` (from `{request.base_branch}`)",
-        f"- commit: `{context.commit_sha[:10] or '-'}`",
+        f"- commit: `{context.commit_sha[:10] if context.commit_sha else '-'}`",
         "",
         "## 🤖 Agent WorkOS Audit",
         f"- branch: `{context.branch}` (from `{request.base_branch}`)",
         f"- repo: `{request.repo_full_name}`",
         f"- role: `{request.executor_role}`",
+        f"- engineering-agent runtime_policy: branch/PR/tag hard rails 적용",
         "- mode: `live` (G6 LiveGithubAppClient — RecordOnly editor)",
         "- merge: do-not-merge until operator review",
     ]
