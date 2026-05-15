@@ -67,6 +67,12 @@ from ...agents.job_queue.approval_worker import (
     ApprovalRequest,
     ApprovalWorker,
 )
+from ...agents.git.repo_contract import RepoContract
+from ...agents.github_workos.issue_auto_create import (
+    AUDIT_TEMPLATE_FALLBACK,
+    IssueAutoCreateOutcome,
+    build_issue_auto_create_plan,
+)
 from ...agents.job_queue.github_work_order import (
     APPROVAL_KIND_GITHUB_WORK_ORDER,
     GitHubWorkOrder,
@@ -213,6 +219,9 @@ def build_github_work_order_proposal(
     proposal_id: Optional[str] = None,
     extra: Optional[Mapping[str, Any]] = None,
     summary_max_chars: int = 280,
+    repo_contract: Optional[RepoContract] = None,
+    issue_template_loader: Optional[Callable[[str], Optional[str]]] = None,
+    existing_issue_number: Optional[int] = None,
 ) -> Optional[GitHubWorkOrderProposal]:
     """Compose a :class:`GitHubWorkOrderProposal` for *session* / *request_text*,
     or ``None`` when the request should not flow through the GitHub
@@ -246,6 +255,33 @@ def build_github_work_order_proposal(
     selected, excluded = _resolve_roles_from_session(session)
     summary = _short_request_summary(request_text, max_chars=summary_max_chars)
 
+    # P0-S — Issue-less bootstrap. repo_contract 가 주어지면 그 자리에서
+    # issue auto-create plan 을 빌드해 proposal payload 에 stamp. existing
+    # issue 번호가 명시되면 plan 은 None — worker 가 existing anchor 로
+    # 전환. session.extra 가 이미 anchor 를 들고 있어도 동일하게 인식한다
+    # (이전 PR 후속 호출에서 한 번 stamp 된 경우).
+    issue_plan_payload: Optional[Mapping[str, Any]] = None
+    resolved_existing = _coerce_existing_issue(existing_issue_number, session)
+    if repo_contract is not None and not resolved_existing:
+        try:
+            outcome = build_issue_auto_create_plan(
+                repo_contract=repo_contract,
+                request_summary=summary,
+                template_loader=issue_template_loader,
+                session_id=str(getattr(session, "session_id", "") or ""),
+            )
+        except Exception:  # noqa: BLE001 - never block the proposal on plan failure
+            outcome = None
+        if outcome is not None and outcome.plan is not None:
+            issue_plan_payload = outcome.plan.to_dict()
+            # audit 흔적을 extras_payload 에도 남김 — operator 가 카드를
+            # 볼 때 어떤 audit_reason 으로 plan 이 만들어졌는지 확인 가능
+            extras_payload.setdefault(
+                "issue_auto_create_audit_reason", outcome.audit_reason
+            )
+            if outcome.plan.needs_operator_decision:
+                extras_payload.setdefault("issue_auto_create_needs_decision", True)
+
     pid = (proposal_id or "").strip() or _new_proposal_id()
     return GitHubWorkOrderProposal(
         proposal_id=pid,
@@ -267,7 +303,41 @@ def build_github_work_order_proposal(
         dry_run_default=True,
         extra=extras_payload,
         created_at=_utc_now_iso(),
+        issue_auto_create_plan=issue_plan_payload,
+        existing_issue_number=resolved_existing,
     )
+
+
+def _coerce_existing_issue(
+    explicit: Optional[int], session: Any
+) -> Optional[int]:
+    """Caller-provided existing issue > session anchor > None.
+
+    The anchor key (``github_work_order_issue.issue_number``) is set by
+    a previous run of :class:`GitHubWorkOrderWorker` after a successful
+    auto-create. If the operator restarts the flow for the same session
+    (e.g. re-runs intake), we treat the existing anchor as the issue
+    number so a second issue isn't created.
+    """
+
+    if explicit is not None:
+        try:
+            value = int(explicit)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return value
+    extra = getattr(session, "extra", None)
+    if not isinstance(extra, Mapping):
+        return None
+    anchor = extra.get("github_work_order_issue")
+    if not isinstance(anchor, Mapping):
+        return None
+    try:
+        value = int(anchor.get("issue_number") or 0)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
 
 
 def _resolve_roles_from_session(
@@ -400,6 +470,9 @@ async def enqueue_github_work_approval(
     proposal_id: Optional[str] = None,
     drive_consumer: bool = True,
     now: Optional[float] = None,
+    repo_contract: Optional[RepoContract] = None,
+    issue_template_loader: Optional[Callable[[str], Optional[str]]] = None,
+    existing_issue_number: Optional[int] = None,
 ) -> GitHubWorkApprovalOutcome:
     """Build a proposal + enqueue (and optionally post) the approval card.
 
@@ -427,6 +500,9 @@ async def enqueue_github_work_approval(
         base_branch=base_branch,
         proposal_id=proposal_id,
         extra=extra,
+        repo_contract=repo_contract,
+        issue_template_loader=issue_template_loader,
+        existing_issue_number=existing_issue_number,
     )
     if proposal is None:
         eligible, skipped_reason, _ = should_route_to_github_workos(
