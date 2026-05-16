@@ -181,6 +181,7 @@ async def _run_coding_authorization_gate(
     prompt_text: str,
     list_sessions_fn: Callable[..., Sequence[Any]],
     send_chunks: SendChunksFn,
+    approval_worker: Any = None,
 ) -> Optional[EngineeringRouteResult]:
     """Two-branch gate.
 
@@ -222,6 +223,48 @@ async def _run_coding_authorization_gate(
         )
         _persist_coding_proposal(target, proposal)
         await send_chunks(message.channel, format_authorization_message(proposal))
+
+        # P0-T smoke fix (session c5278a9043f2 repro): approval card 가
+        # 본문 채널에만 뜨고 `#승인-대기` 에는 안 뜨던 회귀 차단. caller 가
+        # approval_worker 를 inject 했으면 coding_proposal stamp 직후 자동
+        # enqueue. worker 미주입 시 기존 동작 그대로 (회귀 없음).
+        if approval_worker is not None and proposal.approval_required:
+            try:
+                from ..integrations.github_workos_adapter import (
+                    enqueue_github_work_approval,
+                )
+
+                outcome = await enqueue_github_work_approval(
+                    session=target,
+                    request_text=getattr(target, "prompt", "") or prompt_text,
+                    approval_worker=approval_worker,
+                    source_channel_id=getattr(getattr(message, "channel", None), "id", None),
+                    source_thread_id=getattr(getattr(message, "channel", None), "id", None),
+                    source_message_id=getattr(message, "id", None),
+                    requested_by=str(getattr(getattr(message, "author", None), "id", "")),
+                )
+                if outcome.proposal is not None and outcome.skipped_reason is None:
+                    await send_chunks(
+                        message.channel,
+                        f"📨 `#승인-대기` 카드 게시 완료 (job=`{outcome.approval_job_id or '-'}`).",
+                    )
+                elif outcome.skipped_reason == "duplicate_approval_in_flight":
+                    await send_chunks(
+                        message.channel,
+                        "ℹ️ 같은 작업의 `#승인-대기` 카드가 이미 게시돼 있어요.",
+                    )
+                # 기타 skipped_reason 은 본문 응답을 추가하지 않음 — 본문
+                # proposal preview 자체로 operator 가 진행 가능.
+            except Exception:  # noqa: BLE001 — never block coding gate
+                # 카드 게시 실패는 본문 proposal preview 를 막지 않는다.
+                # session.extra audit 에는 남기지 않음 (logger 만).
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "coding_authorization_gate: enqueue_github_work_approval 실패 — 본문 proposal 만 게시",
+                    exc_info=True,
+                )
+
         return EngineeringRouteResult(
             handled=True,
             session_id=getattr(target, "session_id", None),

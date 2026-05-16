@@ -109,6 +109,20 @@ CODING_PROPOSAL_REQUEST_PHRASES: tuple[str, ...] = (
     "이 작업 수정 권한",
     "이 작업 구현 권한",
     "코딩 권한 만들",
+    # P0-T smoke fix (session c5278a9043f2 repro):
+    # operator 가 mode 토큰을 명시한 자연어로 들어오는 경우. 이 토큰들이
+    # 보이면 coding authorization gate 가 자동 발동 — 매칭 안 돼 approval
+    # card / coding_proposal 둘 다 누락되는 회귀를 막는다.
+    "approval_required",
+    "full_stack_single_repo",
+    "full-stack-single-repo",
+    "single_repo",
+    "single-repo",
+    "single_scope",
+    "single-scope",
+    "코딩으로 진행",
+    "구현으로 진행",
+    "풀스택으로 진행",
 )
 
 

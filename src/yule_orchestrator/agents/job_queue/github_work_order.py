@@ -160,6 +160,22 @@ _CODING_INTENT_PHRASES: Tuple[str, ...] = (
     "patch 작성",
     "패치를 만들",
     "patch 만들",
+    # P0-T smoke fix (session c5278a9043f2 repro):
+    # operator 가 mode 토큰만 명시하는 자연어 — 본 토큰들이 보이면 coding
+    # intent 로 인식해야 enqueue_github_work_approval 이 발동하고 #승인-대기
+    # 카드가 게시된다. phrase_detect 의 CODING_PROPOSAL_REQUEST_PHRASES 와
+    # 동기화 유지.
+    "approval_required",
+    "full_stack_single_repo",
+    "full-stack-single-repo",
+    "single_repo",
+    "single-repo",
+    "코딩으로 진행",
+    "구현으로 진행",
+    "풀스택으로 진행",
+    "코딩 권한 제안",
+    "수정 권한 제안",
+    "구현 권한 제안",
 )
 
 
