@@ -194,17 +194,22 @@ def find_replyable_approval(
     approval_kind: Optional[str] = None,
     source_message_id: Optional[int] = None,
     source_thread_id: Optional[int] = None,
+    replied_message_id: Optional[int] = None,
 ) -> Optional[Job]:
     """Return the approval_post job a reply most likely refers to.
 
     Resolution priority (most specific first):
 
-      1. ``source_message_id`` match — when the reply quotes the
+      1. ``replied_message_id`` match against the posted card's
+         ``result.posted_message_id`` — strongest signal when the
+         operator quoted the card directly (Discord ``message.reference
+         .message_id``).
+      2. ``source_message_id`` match — when the reply quotes the
          original card. (Discord doesn't always carry this; the
          resolver tolerates None.)
-      2. ``source_thread_id`` match — reply in the same thread
+      3. ``source_thread_id`` match — reply in the same thread
          where the card was posted.
-      3. Most recent SAVED ``approval_post`` for the session.
+      4. Most recent SAVED ``approval_post`` for the session.
 
     The approval_kind filter keeps the resolver from returning a
     ``research_promotion`` row when the reply is meant for a
@@ -230,6 +235,18 @@ def find_replyable_approval(
     if not candidates:
         return None
 
+    # 0. P0-T live smoke fix — replied_message_id 가 posted_message_id 와
+    # 같은 카드를 우선 반환. Discord 의 message.reference.message_id 가
+    # 가장 안정적인 매칭 신호.
+    if replied_message_id is not None:
+        for job in candidates:
+            result = getattr(job, "result", None) or {}
+            if not isinstance(result, Mapping):
+                continue
+            posted = result.get("posted_message_id")
+            if posted is not None and int(posted) == int(replied_message_id):
+                return job
+
     # 1. exact source_message_id match — strongest signal.
     if source_message_id is not None:
         for job in candidates:
@@ -249,7 +266,9 @@ def find_replyable_approval(
         if thread_matches:
             return _most_recent(thread_matches)
 
-    # 3. Most recent for the session.
+    # 3. Most recent for the session — operator 가 #승인-대기 채널에
+    # 그냥 "승인" 만 친 경우의 최후 fallback. approval_kind 필터링이
+    # 같은 종류의 카드만 남기므로 안전.
     return _most_recent(candidates)
 
 
