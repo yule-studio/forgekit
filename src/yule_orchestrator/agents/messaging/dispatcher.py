@@ -201,9 +201,14 @@ _KEYWORD_RULES: Sequence[tuple[TaskType, Sequence[str]]] = (
     (TaskType.EMAIL_CAMPAIGN, ("email", "이메일", "campaign", "캠페인", "광고", "ad creative")),
     (TaskType.LANDING_PAGE, ("landing", "랜딩", "marketing page")),
     (TaskType.QA_TEST, ("regression", "회귀", "qa", "test plan", "테스트 시나리오")),
+    # P0-J / P0-T smoke fix — `docker` 단독 매칭 제거. Docker / Docker
+    # Compose / K8s 가 *full-stack 요청 안에서* 언급되면 본 keyword 매칭
+    # 전에 stack_detector 가 FULL_STACK_APP 분류하도록 ``classify`` 위
+    # 분기에서 우선 처리. 본 platform-infra 매칭은 deploy / terraform /
+    # github actions 같은 *genuine infra* 신호만 남긴다.
     (
         TaskType.PLATFORM_INFRA,
-        ("infra", "deploy", "ci ", " ci", "docker", "k8s", "terraform", "github action"),
+        ("infra", "deploy", "ci ", " ci", "terraform", "github action"),
     ),
     (TaskType.FRONTEND_FEATURE, ("frontend", "ui ", "component", "컴포넌트", "react", "next.js", "vue")),
     (
@@ -285,12 +290,51 @@ class Dispatcher:
         self.ranking_signal = ranking_signal
 
     def classify(self, request: DispatchRequest) -> TaskType:
+        """Classify request → TaskType.
+
+        Precedence (P0-T smoke fix for session c5278a9043f2):
+
+          1. explicit ``request.task_type`` — operator override.
+          2. **stack_detector** — if message mentions ≥2 distinct
+             application tiers (frontend / backend / database / cache /
+             queue / auth) → :attr:`TaskType.FULL_STACK_APP`. Mirrors
+             :func:`discord.engineering_conversation.task_shaping._suggest_task_type`.
+             Without this, a prompt like "Next.js + NestJS + Postgres +
+             Docker Compose 기반 회원가입/검색" mis-classified as
+             ``platform-infra`` (Docker keyword wins) or even
+             ``qa-test`` when the operator adds "테스트" later in the
+             same prompt.
+          3. keyword fallback — legacy ``_KEYWORD_RULES`` table.
+          4. ``TaskType.UNKNOWN``.
+
+        The stack_detector pass is best-effort: a stack_detector import
+        failure (partial install / circular path) falls back to the
+        keyword table — never raises.
+        """
+
         if request.task_type is not None:
             return request.task_type
-        prompt = request.prompt.lower()
+
+        prompt = request.prompt or ""
+        try:
+            from ..coding.stack_detector import detect_stacks
+        except Exception:  # noqa: BLE001 - partial install fallback
+            detect_stacks = None  # type: ignore[assignment]
+        if detect_stacks is not None:
+            try:
+                detection = detect_stacks(prompt)
+            except Exception:  # noqa: BLE001
+                detection = None
+            if detection is not None:
+                if detection.is_full_stack:
+                    return TaskType.FULL_STACK_APP
+                if detection.is_infra_only:
+                    return TaskType.PLATFORM_INFRA
+
+        prompt_lower = prompt.lower()
         for task_type, keywords in _KEYWORD_RULES:
             for keyword in keywords:
-                if keyword in prompt:
+                if keyword in prompt_lower:
                     return task_type
         return TaskType.UNKNOWN
 
