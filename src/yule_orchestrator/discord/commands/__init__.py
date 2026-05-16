@@ -674,13 +674,132 @@ def _run_engineer_intake(
                 f"task_type must be one of {[t.value for t in TaskType]}, got {task_type!r}"
             ) from exc
     orchestrator = _engineer_orchestrator()
-    return orchestrator.intake(
+    result = orchestrator.intake(
         prompt=prompt,
         task_type=parsed,
         write_requested=write_requested,
         channel_id=channel_id,
         user_id=user_id,
     )
+
+    # P0-T smoke fix (session c5278a9043f2 repro):
+    # /engineer_intake 슬래시 명령이 issue-less full-stack coding 요청을
+    # 받았을 때 본문 응답만 게시하고 `#승인-대기` 카드는 누락되던 회귀
+    # 차단. write_requested=True 이고 stack_detector / phrase_detect 가
+    # coding intent 를 인식하면 ApprovalWorker 빌드 후
+    # ``enqueue_github_work_approval`` 호출. 실패는 swallow — slash
+    # command 본문 응답은 절대 막지 않는다.
+    if write_requested:
+        try:
+            _maybe_post_intake_approval_card(
+                session=result.session,
+                prompt_text=prompt,
+                requested_by=str(user_id or ""),
+            )
+        except Exception:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "engineer_intake: approval card posting 실패 — 본문 응답은 그대로 진행",
+                exc_info=True,
+            )
+    return result
+
+
+def _maybe_post_intake_approval_card(
+    *,
+    session: Any,
+    prompt_text: str,
+    requested_by: str,
+) -> None:
+    """Build production ApprovalWorker + post `#승인-대기` 카드 (best-effort).
+
+    intake 시점에는 session.extra 가 비어있어 should_route_to_github_workos
+    가 lifecycle_mode 누락 + coding_intent 둘 중 하나로 skip 할 수 있다.
+    그래서 본 helper 는 intake 직전 session 에 ``lifecycle_mode=implementation``
+    임시 stamp + ``active_research_roles`` placeholder 만 채워 adapter 가
+    proposal 을 build 할 수 있게 한다.
+    """
+
+    import asyncio as _asyncio
+
+    from ...agents.job_queue import (
+        ApprovalWorker,
+        HeartbeatStore,
+        JobQueue,
+    )
+    from ...agents.job_queue.approval_discord_poster import (
+        build_approval_channel_resolver,
+        build_production_post_fn,
+    )
+    from ..integrations.github_workos_adapter import (
+        enqueue_github_work_approval,
+        should_route_to_github_workos,
+    )
+
+    # intake 직후 session.extra 는 비어있을 수 있으므로 adapter 가 인식할
+    # 최소 lifecycle 신호를 임시로 채운다. 실제 lifecycle_mode 는 후속
+    # `_run_coding_authorization_gate` 가 정확한 값으로 갱신.
+    session_extra = dict(getattr(session, "extra", None) or {})
+    if "lifecycle_mode" not in session_extra:
+        session_extra["lifecycle_mode"] = "implementation"
+    if "active_research_roles" not in session_extra:
+        session_extra["active_research_roles"] = ["tech-lead", "backend-engineer"]
+    if session_extra != (getattr(session, "extra", None) or {}):
+        try:
+            from dataclasses import replace as _replace
+            from ...agents.workflow_state import update_session as _update
+
+            session = _update(
+                _replace(session, extra=session_extra),
+                now=datetime.now(),
+            )
+        except Exception:  # noqa: BLE001 - keep going with in-memory copy
+            try:
+                session.extra = session_extra  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
+
+    eligible, reason, _ = should_route_to_github_workos(
+        session=session, request_text=prompt_text
+    )
+    if not eligible:
+        return
+
+    queue = JobQueue()
+    worker = ApprovalWorker(
+        queue=queue,
+        heartbeats=HeartbeatStore(),
+        post_fn=build_production_post_fn(),
+        channel_resolver=build_approval_channel_resolver(),
+    )
+
+    async def _go():
+        return await enqueue_github_work_approval(
+            session=session,
+            request_text=prompt_text,
+            approval_worker=worker,
+            requested_by=requested_by,
+        )
+
+    try:
+        loop = _asyncio.get_event_loop()
+        if loop.is_running():
+            # Slash command path 는 _run_engineer_intake 를 to_thread 로
+            # 호출하므로 별도 loop 가 필요. 새 loop 로 한 줄 실행.
+            new_loop = _asyncio.new_event_loop()
+            try:
+                new_loop.run_until_complete(_go())
+            finally:
+                new_loop.close()
+        else:
+            loop.run_until_complete(_go())
+    except RuntimeError:
+        new_loop = _asyncio.new_event_loop()
+        try:
+            new_loop.run_until_complete(_go())
+        finally:
+            new_loop.close()
 
 
 def _load_engineer_session(*, session_id: str):
