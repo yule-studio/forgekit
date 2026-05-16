@@ -257,20 +257,29 @@ class GitHubWorkOrderWorker:
             )
             raise
 
-        # Reject early: no repo means we can't call GitHub. Mark
-        # failed_retryable so an operator who corrects the proposal can
-        # requeue without losing the row.
+        # P0-T live smoke fix — repo 가 work_order payload 에 비어있을
+        # 때 session / prompt 에서 canonical owner/repo 복구. 이전에
+        # producer bug 로 SKIPPED_NO_REPO failed_retryable 로 떨어진
+        # rows 도 fix 후 supervisor requeue → executor 가 본 fallback
+        # 으로 재개 가능. invalid guess 는 거부 — canonical owner/repo
+        # 만 허용.
         if not (work_order.repo or "").strip():
-            self._queue.transition(
-                in_progress.job_id,
-                JobState.FAILED_RETRYABLE,
-                result={"error": SKIPPED_NO_REPO},
-                clear_lease=True,
-                now=now,
-            )
-            return GitHubWorkOrderExecutionOutcome(
-                job=in_progress, skipped_reason=SKIPPED_NO_REPO
-            )
+            recovered_repo = self._recover_repo_for_work_order(work_order)
+            if recovered_repo:
+                from dataclasses import replace as _replace
+
+                work_order = _replace(work_order, repo=recovered_repo)
+            else:
+                self._queue.transition(
+                    in_progress.job_id,
+                    JobState.FAILED_RETRYABLE,
+                    result={"error": SKIPPED_NO_REPO},
+                    clear_lease=True,
+                    now=now,
+                )
+                return GitHubWorkOrderExecutionOutcome(
+                    job=in_progress, skipped_reason=SKIPPED_NO_REPO
+                )
 
         # Branch 1 — existing issue anchor. Just stamp session and exit.
         if (
@@ -508,6 +517,69 @@ class GitHubWorkOrderWorker:
     # Session writer
     # ------------------------------------------------------------------
 
+    def _recover_repo_for_work_order(
+        self,
+        work_order: GitHubWorkOrder,
+    ) -> Optional[str]:
+        """Fallback owner/repo extractor when payload.repo is empty.
+
+        Resolution order — first canonical match wins:
+          1. session.references_user (set by ``Orchestrator.intake`` from
+             the intake prompt URLs)
+          2. session.extra['coding_repo_full_name']
+          3. work_order.request_summary 안의 GitHub URL fragment
+          4. session.prompt 안의 GitHub URL fragment
+
+        Returns ``"owner/repo"`` or None — invalid guesses (no GitHub
+        URL anywhere) return None so the caller still lands SKIPPED_NO_REPO
+        loudly.
+        """
+
+        try:
+            from ..git.github_url import parse_github_target
+        except Exception:  # noqa: BLE001 - partial install
+            return None
+
+        session = None
+        try:
+            session = self._load_session(work_order.session_id)
+        except Exception:  # noqa: BLE001
+            session = None
+
+        candidates: list[str] = []
+        if session is not None:
+            refs = getattr(session, "references_user", None) or ()
+            candidates.extend(str(r) for r in refs)
+            extra = getattr(session, "extra", None) or {}
+            if isinstance(extra, Mapping):
+                stored = str(extra.get("coding_repo_full_name") or "").strip()
+                if stored and "/" in stored:
+                    return stored
+            for source in (
+                getattr(session, "prompt", None),
+                work_order.request_summary,
+            ):
+                for token in (source or "").split():
+                    token = token.strip().strip("(),.;<>")
+                    if token.startswith(("http://", "https://", "github.com")):
+                        candidates.append(token)
+        else:
+            # session missing — last-chance scan of request_summary alone
+            for token in (work_order.request_summary or "").split():
+                token = token.strip().strip("(),.;<>")
+                if token.startswith(("http://", "https://", "github.com")):
+                    candidates.append(token)
+
+        for raw in candidates:
+            target = parse_github_target(raw)
+            if target is None:
+                continue
+            owner = (target.owner or "").strip()
+            repo = (target.repo or "").strip()
+            if owner and repo:
+                return f"{owner}/{repo}"
+        return None
+
     def _continue_to_coding(
         self,
         *,
@@ -624,6 +696,102 @@ class GitHubWorkOrderWorker:
                 )
                 return None
         return self.process_job(picked, now=now)
+
+
+def requeue_no_repo_failures(
+    queue: JobQueue,
+    *,
+    error_reasons: Tuple[str, ...] = (SKIPPED_NO_REPO,),
+    max_per_run: int = 50,
+    backoff_seconds: float = 0.0,
+    log_fn: Optional[Callable[[str, Optional[Any]], None]] = None,
+) -> Tuple[str, ...]:
+    """Startup recovery hook — requeue ``failed_retryable`` work_order
+    rows whose error matches *error_reasons*.
+
+    Live smoke (session ``c5278a9043f2`` 후속): producer bug 로 work_order
+    payload 가 repo 없이 enqueue 됐고, executor 가 SKIPPED_NO_REPO 로
+    failed_retryable 처리한 row 들이 fix 후 자동 재실행되지 않고 stranded.
+    이 helper 가 supervisor / executor startup 시 한 번 호출돼 그런 rows
+    를 자동으로 requeue 한다. executor 는 본 PR 의 repo fallback 으로
+    re-pick 시 성공.
+
+    pure SQLite read + ``queue.requeue_retryable`` — 운영자 수동 DB 조작
+    없이 작동.
+
+    Returns the requeued job_id 시퀀스 (audit / logging 용).
+    """
+
+    import sqlite3 as _sqlite3
+
+    requeued: list[str] = []
+    db_path = getattr(queue, "_db_path", None)
+    if db_path is None:
+        return ()
+    try:
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT job_id, result_json
+                FROM job_queue
+                WHERE job_type = ?
+                  AND state = ?
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (
+                    JOB_TYPE_GITHUB_WORK_ORDER,
+                    JobState.FAILED_RETRYABLE.value,
+                    int(max_per_run),
+                ),
+            ).fetchall()
+    except Exception as exc:  # noqa: BLE001 - never crash the executor
+        if log_fn is not None:
+            try:
+                log_fn(
+                    "requeue_no_repo_failures: sqlite query failed", exc
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return ()
+
+    import json as _json
+
+    for row in rows or ():
+        raw = row["result_json"] or "{}"
+        try:
+            payload = _json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        error = str(payload.get("error") or "").strip()
+        if error not in error_reasons:
+            continue
+        try:
+            queue.requeue_retryable(
+                row["job_id"], backoff_seconds=backoff_seconds
+            )
+            requeued.append(row["job_id"])
+            if log_fn is not None:
+                try:
+                    log_fn(
+                        f"github_work_order: requeued failed_retryable "
+                        f"row (error={error}, job_id={row['job_id']})",
+                        None,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception as exc:  # noqa: BLE001
+            if log_fn is not None:
+                try:
+                    log_fn(
+                        f"github_work_order: requeue failed for {row['job_id']}",
+                        exc,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            continue
+    return tuple(requeued)
 
 
 async def run_until_shutdown(
@@ -747,5 +915,6 @@ __all__ = (
     "SKIPPED_NO_WRITER",
     "UpdateSessionFn",
     "WriterFactory",
+    "requeue_no_repo_failures",
     "run_until_shutdown",
 )
