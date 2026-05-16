@@ -50,8 +50,9 @@ class CodingExecutorRegistrationTests(unittest.TestCase):
 
     def test_engineering_profile_size_grew_by_one(self) -> None:
         # History: 13 → 14 (F13 #122 added eng-digest-scheduler) →
-        # 21 (P0-C #132 added 7 eng-member-* bots, one per role).
-        self.assertEqual(len(ENGINEERING_PROFILE), 21)
+        # 21 (P0-C #132 added 7 eng-member-* bots, one per role) →
+        # 22 (P0-T added eng-github-work-order-executor).
+        self.assertEqual(len(ENGINEERING_PROFILE), 22)
 
 
 if __name__ == "__main__":

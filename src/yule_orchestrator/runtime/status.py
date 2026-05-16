@@ -72,6 +72,9 @@ _KIND_TO_JOB_TYPE: Mapping[ServiceKind, Optional[str]] = {
     ServiceKind.APPROVAL_WORKER: "approval_post",
     ServiceKind.OBSIDIAN_WRITER: "obsidian_write",
     ServiceKind.CODING_EXECUTOR: "coding_execute",
+    # P0-T — github_work_order 큐 consumer 가 status 표면에 jobs queued
+    # /in_progress/saved 카운트와 함께 보이도록 매핑.
+    ServiceKind.GITHUB_WORK_ORDER_EXECUTOR: "github_work_order",
     ServiceKind.SUPERVISOR: None,
     ServiceKind.DISCORD_GATEWAY: None,
     ServiceKind.RESERVED_DISCORD_GATEWAY: None,

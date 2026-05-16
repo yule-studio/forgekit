@@ -49,6 +49,12 @@ class ServiceKind(str, Enum):
     # it OFF by default (opt-in flag in the service spec). Production
     # spawn after live-executor wiring lands in a follow-up PR.
     CODING_EXECUTOR = "coding_executor"
+    # P0-T live smoke fix — `github_work_order` 큐의 consumer 가 inventory
+    # 에 없어 라이브에서 승인 reply 후 queued=1 인 상태로 정체. 본 kind 가
+    # runtime up 에 의해 spawn 되면 GitHubWorkOrderWorker.run_one 가
+    # 주기적으로 큐를 drain → issue create / existing anchor +
+    # continuation → coding_execute 로 자동 진입.
+    GITHUB_WORK_ORDER_EXECUTOR = "github_work_order_executor"
     SUPERVISOR = "supervisor"
     DISCORD_GATEWAY = "discord_gateway"
     # P0-C (#132) — engineering member bot (per role) running as a
@@ -210,6 +216,21 @@ def _build_engineering_profile(
                 "executor wiring + push credentials are validated."
             ),
             auto_spawn=coding_executor_auto,
+        )
+    )
+    rows.append(
+        ServiceSpec(
+            service_id="eng-github-work-order-executor",
+            kind=ServiceKind.GITHUB_WORK_ORDER_EXECUTOR,
+            description=(
+                "github_work_order queue consumer (P0-T) — drains approved "
+                "engineering_write work orders. existing_issue_number 가 "
+                "있으면 anchor 만 stamp, 없으면 GithubWriter.create_issue "
+                "호출 → issue create + session.extra['github_work_order_issue'] "
+                "stamp + promote_session_to_coding_ready continuation → "
+                "coding_execute path 로 자연스럽게 진입. live GitHub App "
+                "client 미주입 시 anchor 만 stamp (dry_run plan-only)."
+            ),
         )
     )
     rows.append(

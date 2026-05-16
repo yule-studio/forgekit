@@ -91,15 +91,17 @@ class DryRunPlanTests(unittest.TestCase):
         # #73 added eng-coding-executor as opt-in (auto_spawn=False) —
         # NOT in the spawn plan even though it is implemented.
         # F13 #122 added eng-digest-scheduler (13). P0-C #132 added 7
-        # eng-member-* member bots (20 auto-spawn). Total auto-spawn
-        # count is now 20; opt-in (coding executor) stays out.
+        # eng-member-* member bots (20 auto-spawn). P0-T added
+        # eng-github-work-order-executor (21 auto-spawn). Opt-in
+        # (coding executor) stays out.
         ids = {entry[0] for entry in plan.services}
-        self.assertEqual(len(plan.services), 20)
+        self.assertEqual(len(plan.services), 21)
         self.assertNotIn("eng-coding-executor", ids)
         self.assertIn("eng-research-worker", ids)
         self.assertIn("eng-role-tech-lead", ids)
         self.assertIn("eng-supervisor-watch", ids)
         self.assertIn("eng-discord-gateway", ids)
+        self.assertIn("eng-github-work-order-executor", ids)
         # P0-C: every member bot in the spawn plan.
         for role in (
             "tech-lead",
@@ -135,10 +137,11 @@ class DryRunPlanTests(unittest.TestCase):
         plan = build_dry_run_plan(profile="engineering")
         rendered = render_dry_run_plan(plan)
         self.assertIn("profile: engineering", rendered)
-        # 21 specs total; 1 opt-in (coding executor) → 20 spawned.
-        # The remaining 20 = 1 supervisor + 1 research + 7 role workers
-        # + 1 approval + 1 obsidian + 1 gateway + 1 digest + 7 member.
-        self.assertIn("services to start: 20", rendered)
+        # 22 specs total; 1 opt-in (coding executor) → 21 spawned.
+        # The remaining 21 = 1 supervisor + 1 research + 7 role workers
+        # + 1 approval + 1 obsidian + 1 work_order_executor (P0-T) + 1
+        # gateway + 1 digest + 7 member.
+        self.assertIn("services to start: 21", rendered)
         self.assertIn("eng-research-worker", rendered)
         self.assertIn("eng-discord-gateway", rendered)
         # No reserved block now that gateway is implemented.
@@ -219,11 +222,13 @@ class SpawnAndSuperviseTests(unittest.TestCase):
         rc = _run(driver())
         self.assertEqual(rc, 0)
         # Auto-spawn count history: 12 (M6.1b-2) → 13 (F13 #122 digest)
-        # → 20 (P0-C #132 added 7 eng-member-* member bots).
+        # → 20 (P0-C #132 added 7 eng-member-* member bots) → 21 (P0-T
+        # added eng-github-work-order-executor).
         # eng-coding-executor stays out as opt-in (auto_spawn=False).
         spawned_ids = [cmd[-1] for cmd in spawned]
-        self.assertEqual(len(spawned_ids), 20)
+        self.assertEqual(len(spawned_ids), 21)
         self.assertIn("eng-discord-gateway", spawned_ids)
+        self.assertIn("eng-github-work-order-executor", spawned_ids)
         self.assertNotIn("eng-coding-executor", spawned_ids)
         # P0-C: every member bot was spawned exactly once.
         for role in (

@@ -31,8 +31,8 @@ class EngineeringProfileTests(unittest.TestCase):
     def test_engineering_profile_lists_all_required_services(self) -> None:
         ids = {spec.service_id for spec in ENGINEERING_PROFILE}
         # Spec: 11 always-on workers + 1 opt-in coding executor (#73)
-        # + 1 discord gateway + 1 F13 digest scheduler (#122) + 7 P0-C
-        # member bots (#132) = 21 total.
+        # + 1 P0-T github work_order executor + 1 discord gateway
+        # + 1 F13 digest scheduler (#122) + 7 P0-C member bots (#132) = 22 total.
         required = {
             "eng-supervisor-watch",
             "eng-research-worker",
@@ -46,6 +46,8 @@ class EngineeringProfileTests(unittest.TestCase):
             "eng-approval-worker",
             "eng-obsidian-writer",
             "eng-coding-executor",
+            # P0-T live smoke fix — github_work_order 큐 consumer.
+            "eng-github-work-order-executor",
             "eng-discord-gateway",
             "eng-digest-scheduler",
             # P0-C (#132): 7 member bots, one per engineering role.
