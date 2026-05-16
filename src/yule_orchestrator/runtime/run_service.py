@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 from pathlib import Path
@@ -138,6 +139,13 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
         autonomy_tick_fn, autonomy_interval = _build_autonomy_producer_tick(
             queue=queue, heartbeats=heartbeats
         )
+        (
+            si_detect_fn,
+            si_dispatch_fn,
+            si_interval,
+        ) = _build_self_improvement_loop(
+            queue=queue, heartbeats=heartbeats
+        )
         await run_supervisor_watch_loop(
             heartbeat_store=heartbeats,
             job_queue=queue,
@@ -147,14 +155,21 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
             autonomy_producer_tick_fn=autonomy_tick_fn,
             autonomy_producer_interval_seconds=autonomy_interval,
             autonomy_producer_on_report=_supervisor_autonomy_on_report,
+            self_improvement_detect_fn=si_detect_fn,
+            self_improvement_dispatch_fn=si_dispatch_fn,
+            self_improvement_interval_seconds=si_interval,
         )
         return EXIT_OK
 
     if spec.kind == ServiceKind.DISCORD_GATEWAY:
-        return await _run_discord_gateway(spec, shutdown_event=shutdown_event)
+        return await _run_discord_gateway(
+            spec, shutdown_event=shutdown_event, db_path=db_path
+        )
 
     if spec.kind == ServiceKind.DISCORD_MEMBER_BOT:
-        return await _run_discord_member_bot(spec, shutdown_event=shutdown_event)
+        return await _run_discord_member_bot(
+            spec, shutdown_event=shutdown_event, db_path=db_path
+        )
 
     if spec.kind == ServiceKind.DIGEST_SCHEDULER:
         from ..agents.digest.scheduler import run_scheduler
@@ -176,10 +191,76 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
     return EXIT_OK
 
 
+async def _heartbeat_loop(
+    *,
+    service_id: str,
+    heartbeats: HeartbeatStore,
+    shutdown_event: asyncio.Event,
+    metadata: Mapping[str, Any],
+    interval_seconds: float = 30.0,
+) -> None:
+    """Background task that records *service_id* heartbeat every
+    *interval_seconds* until shutdown.
+
+    P0-T runtime status visibility fix — gateway / member bot 같은
+    non-queue 서비스가 status surface 에서 영원히 UNKNOWN 으로 보이던
+    회귀 차단. heartbeat 가 살아있으면 ALIVE, 끊기면 STALE 로 자연스럽게
+    전이된다.
+    """
+
+    pid = os.getpid()
+    while not shutdown_event.is_set():
+        try:
+            heartbeats.record(service_id, pid=pid, metadata=dict(metadata))
+        except Exception:  # noqa: BLE001 - never crash the gateway loop
+            logger.warning(
+                "heartbeat loop record failed for %s", service_id, exc_info=True
+            )
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(), timeout=interval_seconds
+            )
+        except asyncio.TimeoutError:
+            continue
+
+
+def _record_graceful_disable(
+    *,
+    service_id: str,
+    db_path: Optional[Path],
+    env_key: str,
+    reason: str,
+) -> None:
+    """Stamp a heartbeat with ``state=graceful_disabled`` so status surface
+    distinguishes "operator disabled (token missing / placeholder)" from
+    "worker likely never started".
+
+    Best-effort — heartbeat 기록 실패는 graceful-disable 자체를 막지
+    않는다. caller 는 호출 후 EXIT_UNKNOWN_SERVICE 로 종료한다.
+    """
+
+    try:
+        heartbeats = HeartbeatStore(db_path=db_path)
+        heartbeats.record(
+            service_id,
+            pid=os.getpid(),
+            metadata={
+                "state": "graceful_disabled",
+                "env_key": env_key,
+                "reason": reason,
+            },
+        )
+    except Exception:  # noqa: BLE001 - never crash on heartbeat
+        logger.warning(
+            "graceful-disable heartbeat record failed for %s", service_id, exc_info=True
+        )
+
+
 async def _run_discord_gateway(
     spec: ServiceSpec,
     *,
     shutdown_event: asyncio.Event,
+    db_path: Optional[Path] = None,
 ) -> int:
     """Run the engineering gateway under ``run-service``.
 
@@ -230,6 +311,23 @@ async def _run_discord_gateway(
     _install_role_runner_dispatch_for_run_service()
 
     repo_root = Path(os.environ.get("YULE_REPO_ROOT", os.getcwd()))
+
+    # P0-T heartbeat — gateway 가 살아있으면 ALIVE 표시되게.
+    heartbeats = HeartbeatStore(db_path=db_path)
+    hb_task = asyncio.create_task(
+        _heartbeat_loop(
+            service_id=spec.service_id,
+            heartbeats=heartbeats,
+            shutdown_event=shutdown_event,
+            metadata={
+                "state": "online",
+                "kind": spec.kind.value,
+                "transport": "discord_websocket",
+            },
+            interval_seconds=30.0,
+        )
+    )
+
     try:
         await run_engineering_gateway_until_shutdown(
             shutdown_event=shutdown_event,
@@ -238,6 +336,12 @@ async def _run_discord_gateway(
         )
     except KeyboardInterrupt:
         return EXIT_OK
+    finally:
+        hb_task.cancel()
+        try:
+            await hb_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
     return EXIT_OK
 
 
@@ -245,6 +349,7 @@ async def _run_discord_member_bot(
     spec: ServiceSpec,
     *,
     shutdown_event: asyncio.Event,
+    db_path: Optional[Path] = None,
 ) -> int:
     """Run a single engineering member bot under ``run-service``. (P0-C #132)
 
@@ -294,6 +399,12 @@ async def _run_discord_member_bot(
             f"'yule run-service {spec.service_id}' (or 'yule runtime up') "
             "to bring this role bot online.\n"
         )
+        _record_graceful_disable(
+            service_id=spec.service_id,
+            db_path=db_path,
+            env_key=env_key,
+            reason="token_missing",
+        )
         return EXIT_UNKNOWN_SERVICE
 
     if not looks_like_real_discord_token(token):
@@ -302,6 +413,12 @@ async def _run_discord_member_bot(
             f"{env_key} is set but doesn't match the Discord bot token "
             "shape (placeholder or wrong format). Regenerate the token "
             "in the Discord developer portal and update .env.local.\n"
+        )
+        _record_graceful_disable(
+            service_id=spec.service_id,
+            db_path=db_path,
+            env_key=env_key,
+            reason="token_placeholder",
         )
         return EXIT_UNKNOWN_SERVICE
 
@@ -313,6 +430,24 @@ async def _run_discord_member_bot(
         display_label=f"engineering-agent/{spec.role}",
     )
 
+    # P0-T heartbeat — member bot 이 실제 connected 일 때 ALIVE.
+    heartbeats = HeartbeatStore(db_path=db_path)
+    hb_task = asyncio.create_task(
+        _heartbeat_loop(
+            service_id=spec.service_id,
+            heartbeats=heartbeats,
+            shutdown_event=shutdown_event,
+            metadata={
+                "state": "online",
+                "kind": spec.kind.value,
+                "role": spec.role,
+                "env_key": env_key,
+                "transport": "discord_websocket",
+            },
+            interval_seconds=30.0,
+        )
+    )
+
     try:
         await run_member_bot_until_shutdown(
             profile=profile,
@@ -320,6 +455,12 @@ async def _run_discord_member_bot(
         )
     except KeyboardInterrupt:
         return EXIT_OK
+    finally:
+        hb_task.cancel()
+        try:
+            await hb_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
     return EXIT_OK
 
 
@@ -973,6 +1114,115 @@ def _log_decision_port_trace(
         skipped,
         live_marker,
     )
+
+
+# ---------------------------------------------------------------------------
+# Self-improvement runtime loop wiring (P0-SI)
+# ---------------------------------------------------------------------------
+#
+# Bridges :class:`SelfImprovementDispatcher` into the supervisor watch
+# loop's ``self_improvement_detect_fn`` + ``self_improvement_dispatch_fn``
+# hook pair. Disabled by default — the operator opts in via
+# ``YULE_SELF_IMPROVEMENT_ENABLED=1`` so an unconfigured production host
+# behaves exactly like before this PR landed.
+#
+# Hard rails:
+#   * No auto-merge / push to protected branches / deploy / secret modify
+#     ever runs through this path — the delegated_operator policy's
+#     permanent escalation list blocks those at the boundary, and the
+#     executor handoff hook stamps ``draft_pr_only=True`` so a downstream
+#     coding executor that *did* support auto-merge could not.
+#   * Failures are logged + swallowed by the watch loop's own try/except
+#     so this never crashes the supervisor.
+
+
+def _build_self_improvement_loop(*, queue, heartbeats):
+    """Return ``(detect_fn, dispatch_fn, interval_seconds)`` for the
+    supervisor watch loop.
+
+    Returns ``(None, None, None)`` when the operator hasn't opted in
+    via ``YULE_SELF_IMPROVEMENT_ENABLED`` — that's the M6.0 default and
+    keeps the supervisor identical to before for installations that
+    don't want autonomous problem handling.
+    """
+
+    try:
+        from ..agents.lifecycle.runtime_self_improvement_wiring import (
+            build_self_improvement_dispatcher,
+            is_enabled,
+            resolve_interval_seconds,
+        )
+    except Exception:  # noqa: BLE001 - import failure must not kill supervisor
+        logger.warning(
+            "self-improvement runtime wiring import failed", exc_info=True
+        )
+        return None, None, None
+
+    if not is_enabled():
+        return None, None, None
+
+    interval = resolve_interval_seconds()
+
+    try:
+        dispatcher = build_self_improvement_dispatcher(
+            job_queue=queue,
+            heartbeat_store=heartbeats,
+        )
+    except Exception:  # noqa: BLE001 - never crash supervisor on wiring
+        logger.warning(
+            "self-improvement dispatcher construction failed; "
+            "supervisor will tick without self-improvement loop",
+            exc_info=True,
+        )
+        return None, None, None
+
+    logger.info(
+        "self-improvement runtime loop enabled "
+        "(interval=%.1fs, ledger=%s)",
+        interval,
+        dispatcher.problem_ledger._path,  # type: ignore[attr-defined]
+    )
+
+    # Wrap dispatch_fn so each per-signal dispatch also updates the
+    # process-local journal — operator status post + journalctl both
+    # read from there. Failures are logged + swallowed so a journaling
+    # bug never crashes the supervisor.
+    from ..agents.lifecycle.runtime_self_improvement_loop import (
+        SelfImprovementTickReport,
+    )
+    from .self_improvement_status import record_tick
+
+    raw_dispatch_fn = dispatcher.dispatch_fn
+
+    def _wrapped_dispatch(signal, plan):
+        outcome = raw_dispatch_fn(signal, plan)
+        try:
+            # Build a single-signal pseudo-report so the journal entry
+            # still surfaces in the absence of a paired run_tick call.
+            problem = outcome.problem
+            single_report = SelfImprovementTickReport(
+                detected_signals=(signal,),
+                new_problems=(problem,) if problem.occurrence_count == 1 else (),
+                handled=(outcome,),
+                skipped_terminal=(),
+                delegated_count=1 if outcome.problem.delegated_ok else 0,
+                waiting_operator_count=(
+                    1
+                    if outcome.final_status.value == "waiting_operator"
+                    else 0
+                ),
+                blocked_count=(
+                    1 if outcome.final_status.value == "blocked" else 0
+                ),
+            )
+            record_tick(single_report)
+        except Exception:  # noqa: BLE001 - journaling must not break dispatch
+            logger.warning(
+                "self-improvement status journal record raised", exc_info=True
+            )
+        return outcome
+
+    return dispatcher.detect_fn, _wrapped_dispatch, interval
 
 
 # ---------------------------------------------------------------------------
