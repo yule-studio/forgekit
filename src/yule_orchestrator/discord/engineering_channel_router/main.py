@@ -170,6 +170,7 @@ async def route_engineering_message(
     list_sessions_fn: Optional[Callable[..., Sequence[Any]]] = None,
     obsidian_writer_fn: Optional[Callable[..., Any]] = None,
     obsidian_env: Optional[Any] = None,
+    approval_worker: Any = None,
 ) -> EngineeringRouteResult:
     """Drive the engineering channel response.
 
@@ -213,6 +214,7 @@ async def route_engineering_message(
             prompt_text=prompt_text,
             list_sessions_fn=list_sessions_fn,
             send_chunks=send_chunks,
+            approval_worker=approval_worker,
         )
         if coding is not None:
             return coding
