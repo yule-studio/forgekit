@@ -447,14 +447,21 @@ def build_engineering_conversation_response(
 
 
 def _format_general_help() -> str:
-    return (
-        "engineering-agent예요. 받은 요청을 정리해서 멤버들과 함께 다음 단계로 이어갑니다.\n\n"
-        "이렇게 말씀해 주시면 도움이 됩니다:\n"
-        "- 무엇을 만들거나 고치고 싶은지 한두 문장으로 설명\n"
-        "- 참고할 화면이나 링크가 있으면 함께 붙여 주세요\n"
-        "- 갈래가 여러 개면 한 번에 적어 주셔도 좋아요. 제가 나눠 제안해 드릴게요.\n\n"
-        "확정할 때는 `이대로 진행`이라고 답해 주시면 그 다음 단계로 넘어갑니다."
-    )
+    """Return the canonical ``/help`` body.
+
+    Natural-language help intents ("도움말", "어떻게 써?", "help", …)
+    reach this function via :data:`GENERAL_ENGINEERING_HELP`. We render
+    the same surface as the ``/help`` slash command so a user who never
+    learned slash commands still sees the full quick-start + escalation
+    guidance.
+    """
+
+    # Import locally so this module stays importable without the
+    # discord package fully initialised (tests assert response formatters
+    # in isolation, and the help_surface helper is pure-Python).
+    from ..engineering.help_surface import render_engineer_help_message
+
+    return render_engineer_help_message()
 
 
 def _format_clarification_question(message_text: str) -> str:

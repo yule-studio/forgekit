@@ -1503,6 +1503,69 @@ def _recall_engineering_research_context(
     return context
 
 
+_NL_HELP_TRIGGERS: tuple[str, ...] = (
+    "help",
+    "/help",
+    "도움말",
+    "도움",
+    "사용법",
+    "헬프",
+    "어떻게 써",
+    "어떻게 쓰",
+    "어떻게 사용",
+    "뭐 할 수 있",
+    "뭘 할 수 있",
+    "기능 알려",
+    "what can you do",
+    "engineer_help",
+    "/engineer_help",
+)
+
+
+def _looks_like_nl_help(message_text: str) -> bool:
+    """True when *message_text* is a plain-language help ask.
+
+    Mirrors the slash command (``/help`` / ``/engineer_help``) and the
+    engineering_conversation ``GENERAL_ENGINEERING_HELP`` intent — kept
+    here as a tiny standalone matcher so the import-fallback path can
+    still answer help questions even if the conversation module did
+    not load.
+    """
+
+    if not message_text:
+        return False
+    normalized = " ".join(message_text.lower().split())
+    if not normalized:
+        return False
+    short_tokens = {"help", "도움말", "도움", "사용법", "헬프", "h", "?"}
+    if normalized in short_tokens:
+        return True
+    return any(trigger in normalized for trigger in _NL_HELP_TRIGGERS)
+
+
+def _build_help_or_intake_fallback(*, reason: str) -> "EngineeringConversationOutcome":
+    """Reply when the conversation module isn't available.
+
+    Historically this surface was a hard "지금은 /engineer_intake 슬래시
+    명령으로 작업을 등록해주세요" line — which forced new users to learn
+    a slash command before they could talk to the bot at all. We now
+    surface the canonical help body (same as ``/help``) so onboarding
+    still works, and frame ``/engineer_intake`` as one of several
+    options rather than the only path.
+    """
+
+    from ..engineering.help_surface import render_engineer_help_short
+
+    body = (
+        f"⚠️ {reason} — 정식 자유 대화 흐름은 잠깐 막혀 있어요.\n"
+        "그래도 사용법 안내와 명령 흐름은 그대로 동작합니다:\n\n"
+        f"{render_engineer_help_short()}\n\n"
+        "지금 바로 실행 요청을 등록하시려면 `/engineer_intake <요청 내용>` 으로 시작할 수 있고, "
+        "단순 질문이나 상담은 잠시 후 다시 자연어로 말씀하셔도 됩니다."
+    )
+    return EngineeringConversationOutcome(content=body)
+
+
 def _default_engineering_conversation_fn(
     *,
     message_text: str,
@@ -1517,19 +1580,20 @@ def _default_engineering_conversation_fn(
 ):
     """Bridge to the engineering free-conversation layer.
 
-    The conversation module is being landed in parallel; if it is not yet
-    importable we degrade to a short fallback that points the user at the
-    manual ``/engineer_intake`` slash command instead of crashing.
+    The conversation module is normally always importable in production;
+    when it isn't (test harness, partial install, in-flight refactor)
+    we still want the user to be able to *talk* to the bot without
+    bouncing off a hard "use the slash command" wall.  The fallback
+    surface therefore (1) answers the natural-language help intent
+    inline so onboarding still works, and (2) explains the intake
+    escalation path as an option, not a requirement.
     """
 
     try:
         from .. import engineering_conversation  # type: ignore
     except ImportError:
-        return EngineeringConversationOutcome(
-            content=(
-                "엔지니어링 자유 대화 레이어가 아직 준비되지 않았습니다.\n"
-                "지금은 `/engineer_intake` 슬래시 명령으로 작업을 등록해주세요."
-            ),
+        return _build_help_or_intake_fallback(
+            reason="자유 대화 레이어가 아직 준비되지 않았습니다",
         )
 
     builder = getattr(
@@ -1538,11 +1602,8 @@ def _default_engineering_conversation_fn(
         None,
     )
     if builder is None:
-        return EngineeringConversationOutcome(
-            content=(
-                "엔지니어링 대화 모듈이 응답 빌더를 노출하지 않았습니다.\n"
-                "지금은 `/engineer_intake` 로 작업을 등록해주세요."
-            ),
+        return _build_help_or_intake_fallback(
+            reason="대화 모듈이 응답 빌더를 아직 노출하지 않았습니다",
         )
 
     last_proposed = (

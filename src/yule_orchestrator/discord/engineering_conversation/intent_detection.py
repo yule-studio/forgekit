@@ -529,14 +529,45 @@ _GENERAL_HELP_PHRASES = (
     "어떻게 사용",
     "기능 알려",
     "도움말",
+    "도와줄 수 있",
     "help",
     "what can you do",
     "사용법",
+    "사용법 알려",
+    "쓰는 법",
+    "쓰는법",
     "뭐 할 수 있",
+    "뭘 할 수 있",
+    "뭐 해 줄 수 있",
+    "뭐 해줄 수 있",
+    "어떤 명령",
+    "어떤 기능",
+    "명령어 알려",
+    "command list",
+    "available commands",
+    "intake 어떻게",
+    "intake 가 뭐",
+    "intake가 뭐",
+)
+
+
+_GENERAL_HELP_STANDALONE = frozenset(
+    {
+        "help",
+        "?help",
+        "/help",
+        "도움말",
+        "도움",
+        "사용법",
+        "헬프",
+        "h",
+    }
 )
 
 
 def _asks_for_general_help(normalized: str) -> bool:
+    if normalized in _GENERAL_HELP_STANDALONE:
+        return True
     return any(phrase in normalized for phrase in _GENERAL_HELP_PHRASES)
 
 
@@ -591,6 +622,7 @@ __all__ = (
     "_CONTINUE_EXISTING_PHRASES",
     "_CHANGE_DIRECTION_PHRASES",
     "_GENERAL_HELP_PHRASES",
+    "_GENERAL_HELP_STANDALONE",
     "_VAGUE_TOKEN_RUNS",
     "_SPLIT_PATTERN",
 )
