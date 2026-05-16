@@ -20,6 +20,7 @@ from ...agents.review_loop import (
     ReviewSeverity,
     ReviewSource,
 )
+from ..engineering.help_surface import render_engineer_help_message
 from ..ui.formatter import (
     format_checkpoints_message,
     format_plan_today_message,
@@ -253,6 +254,48 @@ def _register_engineering_commands_impl(
     discord: Any,
     app_commands: Any,
 ) -> None:
+    async def _send_help_response(interaction: "discord.Interaction") -> None:
+        if not await _safe_defer(interaction, discord_module=discord):
+            return
+        await _send_message_chunks(
+            interaction,
+            render_engineer_help_message(),
+            allowed_mentions=allowed_mentions,
+            discord_module=discord,
+        )
+
+    @bot.tree.command(
+        name="help",
+        description="engineering-agent 봇 사용법 (자유 대화 vs intake, 주요 명령, 예시).",
+        guild=guild,
+    )
+    async def help_command(interaction: "discord.Interaction") -> None:
+        try:
+            await _send_help_response(interaction)
+        except Exception as exc:  # noqa: BLE001
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="help",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_help",
+        description="`/help` 와 동일 — 명령 이름 충돌 시 fallback 으로 호출하세요.",
+        guild=guild,
+    )
+    async def engineer_help_command(interaction: "discord.Interaction") -> None:
+        try:
+            await _send_help_response(interaction)
+        except Exception as exc:  # noqa: BLE001
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_help",
+                exc=exc,
+                discord_module=discord,
+            )
+
     @bot.tree.command(
         name="engineer_intake",
         description="engineering-agent에게 작업을 위임합니다 (접수 메시지를 채널에 게시).",
@@ -956,7 +999,8 @@ def _format_engineer_reject_message(session) -> str:
         f"상태: {session.state.value}",
         f"사유: {session.rejection_reason or 'rejected'}",
         "",
-        "거절된 세션은 재개할 수 없습니다. 필요하면 `/engineer_intake`로 새 세션을 시작해주세요.",
+        "거절된 세션은 재개할 수 없습니다. 새로 시작하시려면 채널에서 자연어로 그냥 말씀하시거나 "
+        "`/engineer_intake` 로 정식 등록해 주세요. 도움이 필요하면 `/help` 로 사용법을 확인할 수 있어요.",
     ]
     return "\n".join(lines)
 
