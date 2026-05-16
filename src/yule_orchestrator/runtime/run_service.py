@@ -71,7 +71,20 @@ from ..agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
     run_worker_loop,
 )
+from .discord_runner import (
+    install_role_runner_dispatch_for_run_service as _install_role_runner_dispatch_for_run_service_impl,
+    run_discord_gateway as _run_discord_gateway_impl,
+    run_discord_member_bot as _run_discord_member_bot_impl,
+)
+from .heartbeats import (
+    heartbeat_loop as _heartbeat_loop_impl,
+    record_graceful_disable as _record_graceful_disable_impl,
+)
 from .services import ServiceKind, ServiceSpec, resolve_service
+from .work_order_executor_runner import (
+    maybe_build_live_github_client as _maybe_build_live_github_client_impl,
+    run_github_work_order_executor as _run_github_work_order_executor_impl,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -199,328 +212,23 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
     return EXIT_OK
 
 
-async def _heartbeat_loop(
-    *,
-    service_id: str,
-    heartbeats: HeartbeatStore,
-    shutdown_event: asyncio.Event,
-    metadata: Mapping[str, Any],
-    interval_seconds: float = 30.0,
-) -> None:
-    """Background task that records *service_id* heartbeat every
-    *interval_seconds* until shutdown.
-
-    P0-T runtime status visibility fix — gateway / member bot 같은
-    non-queue 서비스가 status surface 에서 영원히 UNKNOWN 으로 보이던
-    회귀 차단. heartbeat 가 살아있으면 ALIVE, 끊기면 STALE 로 자연스럽게
-    전이된다.
-    """
-
-    pid = os.getpid()
-    while not shutdown_event.is_set():
-        try:
-            heartbeats.record(service_id, pid=pid, metadata=dict(metadata))
-        except Exception:  # noqa: BLE001 - never crash the gateway loop
-            logger.warning(
-                "heartbeat loop record failed for %s", service_id, exc_info=True
-            )
-        try:
-            await asyncio.wait_for(
-                shutdown_event.wait(), timeout=interval_seconds
-            )
-        except asyncio.TimeoutError:
-            continue
+# Heartbeat helpers live in ``runtime.heartbeats`` — extracted from
+# this module as part of the P0-T split (governance/code_audit pending
+# `runtime/run_service.py`). The thin module-level aliases here keep
+# tests + existing callers binding to the original names while the
+# implementation moves out of the monolith.
+_heartbeat_loop = _heartbeat_loop_impl
+_record_graceful_disable = _record_graceful_disable_impl
 
 
-def _record_graceful_disable(
-    *,
-    service_id: str,
-    db_path: Optional[Path],
-    env_key: str,
-    reason: str,
-) -> None:
-    """Stamp a heartbeat with ``state=graceful_disabled`` so status surface
-    distinguishes "operator disabled (token missing / placeholder)" from
-    "worker likely never started".
-
-    Best-effort — heartbeat 기록 실패는 graceful-disable 자체를 막지
-    않는다. caller 는 호출 후 EXIT_UNKNOWN_SERVICE 로 종료한다.
-    """
-
-    try:
-        heartbeats = HeartbeatStore(db_path=db_path)
-        heartbeats.record(
-            service_id,
-            pid=os.getpid(),
-            metadata={
-                "state": "graceful_disabled",
-                "env_key": env_key,
-                "reason": reason,
-            },
-        )
-    except Exception:  # noqa: BLE001 - never crash on heartbeat
-        logger.warning(
-            "graceful-disable heartbeat record failed for %s", service_id, exc_info=True
-        )
-
-
-async def _run_discord_gateway(
-    spec: ServiceSpec,
-    *,
-    shutdown_event: asyncio.Event,
-    db_path: Optional[Path] = None,
-) -> int:
-    """Run the engineering gateway under ``run-service``.
-
-    Resolves the gateway token, layers the planning-bot env
-    overrides via :func:`build_gateway_env_overrides`, then drives
-    the bot through :func:`run_engineering_gateway_until_shutdown`
-    so SIGTERM at the runtime level translates into
-    ``await bot.close()`` instead of relying on discord.py's
-    internal signal handlers (which only fire when ``bot.run``
-    owns the main thread — under ``run-service`` the runtime owns
-    the loop, so the legacy thread path saw the runtime swallow
-    the signal first and the bot kept running until the parent
-    killed it).
-    """
-
-    from ..discord.bot import (
-        build_engineering_gateway_bot,
-        run_engineering_gateway_until_shutdown,
-    )
-    from .gateway_env import (
-        build_gateway_env_overrides,
-        resolve_gateway_token,
-    )
-    import os
-
-    token = resolve_gateway_token()
-    if token is None:
-        sys.stderr.write(
-            "yule run-service: ENGINEERING_AGENT_BOT_GATEWAY_TOKEN unset; "
-            "engineering gateway cannot start.\n"
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    overrides = build_gateway_env_overrides(gateway_token=token)
-    # Apply overrides in-place so the bot's env reads see the
-    # gateway-only view.
-    for key, value in overrides.items():
-        os.environ[key] = value
-
-    # A-M11b: install the role-runner dispatcher from env *before* the
-    # bot starts. ``build_engineering_gateway_bot`` also calls the
-    # installer (legacy ``run_discord_bot`` direct path), so this call
-    # is idempotent — last-one-wins on the dispatcher binding. We
-    # install here so an operator running ``yule run-service
-    # eng-discord-gateway`` sees the trace stdout line *before* the
-    # bot's discord login attempt, which makes "왜 fallback 떨어졌어?"
-    # answerable from the run-service logs alone.
-    _install_role_runner_dispatch_for_run_service()
-
-    repo_root = Path(os.environ.get("YULE_REPO_ROOT", os.getcwd()))
-
-    # P0-T heartbeat — gateway 가 살아있으면 ALIVE 표시되게.
-    heartbeats = HeartbeatStore(db_path=db_path)
-    hb_task = asyncio.create_task(
-        _heartbeat_loop(
-            service_id=spec.service_id,
-            heartbeats=heartbeats,
-            shutdown_event=shutdown_event,
-            metadata={
-                "state": "online",
-                "kind": spec.kind.value,
-                "transport": "discord_websocket",
-            },
-            interval_seconds=30.0,
-        )
-    )
-
-    try:
-        await run_engineering_gateway_until_shutdown(
-            shutdown_event=shutdown_event,
-            bot_factory=lambda: build_engineering_gateway_bot(repo_root),
-            token=token,
-        )
-    except KeyboardInterrupt:
-        return EXIT_OK
-    finally:
-        hb_task.cancel()
-        try:
-            await hb_task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
-    return EXIT_OK
-
-
-async def _run_discord_member_bot(
-    spec: ServiceSpec,
-    *,
-    shutdown_event: asyncio.Event,
-    db_path: Optional[Path] = None,
-) -> int:
-    """Run a single engineering member bot under ``run-service``. (P0-C #132)
-
-    Hard rails (matching docs/operations.md §0.1 promise):
-
-      * ``spec.role`` must be set — enforced by the inventory schema.
-      * Token lookup uses :func:`member_bots.env_key_for` so the env
-        contract stays identical to ``yule discord up`` (one source
-        of truth).
-      * Graceful disable on missing / placeholder-shape token:
-        emit a stderr line with the env_key + reason, return
-        :data:`EXIT_UNKNOWN_SERVICE` (78). Both the subprocess
-        supervisor and systemd unit treat 78 as "stop, don't
-        restart" so the rest of the company keeps running.
-      * Valid token → drive the bot through the SIGTERM-aware
-        :func:`run_member_bot_until_shutdown` so the runtime's
-        shutdown event translates into a graceful Discord disconnect.
-
-    The function never mutates ``os.environ`` because the per-role
-    token already lives at its dedicated env_key — the bot reads it
-    directly via the resolved profile, no override layering needed.
-    """
-
-    if not spec.role:
-        sys.stderr.write(
-            f"yule run-service: {spec.service_id} is DISCORD_MEMBER_BOT "
-            "but spec.role is empty; cannot resolve the member token.\n"
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    from ..discord.member.bot import run_member_bot_until_shutdown
-    from ..discord.member.bots import (
-        env_key_for,
-        looks_like_real_discord_token,
-        MemberBotProfile,
-    )
-    import os
-
-    env_key = env_key_for("engineering-agent", spec.role)
-    raw = os.environ.get(env_key)
-    token = raw.strip() if isinstance(raw, str) and raw.strip() else None
-
-    if not token:
-        sys.stderr.write(
-            f"yule run-service: {spec.service_id} graceful-disable — "
-            f"{env_key} is empty. Add the bot token to .env.local then "
-            f"'yule run-service {spec.service_id}' (or 'yule runtime up') "
-            "to bring this role bot online.\n"
-        )
-        _record_graceful_disable(
-            service_id=spec.service_id,
-            db_path=db_path,
-            env_key=env_key,
-            reason="token_missing",
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    if not looks_like_real_discord_token(token):
-        sys.stderr.write(
-            f"yule run-service: {spec.service_id} graceful-disable — "
-            f"{env_key} is set but doesn't match the Discord bot token "
-            "shape (placeholder or wrong format). Regenerate the token "
-            "in the Discord developer portal and update .env.local.\n"
-        )
-        _record_graceful_disable(
-            service_id=spec.service_id,
-            db_path=db_path,
-            env_key=env_key,
-            reason="token_placeholder",
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    profile = MemberBotProfile(
-        agent_id="engineering-agent",
-        role=spec.role,
-        env_key=env_key,
-        token=token,
-        display_label=f"engineering-agent/{spec.role}",
-    )
-
-    # P0-T heartbeat — member bot 이 실제 connected 일 때 ALIVE.
-    heartbeats = HeartbeatStore(db_path=db_path)
-    hb_task = asyncio.create_task(
-        _heartbeat_loop(
-            service_id=spec.service_id,
-            heartbeats=heartbeats,
-            shutdown_event=shutdown_event,
-            metadata={
-                "state": "online",
-                "kind": spec.kind.value,
-                "role": spec.role,
-                "env_key": env_key,
-                "transport": "discord_websocket",
-            },
-            interval_seconds=30.0,
-        )
-    )
-
-    try:
-        await run_member_bot_until_shutdown(
-            profile=profile,
-            shutdown_event=shutdown_event,
-        )
-    except KeyboardInterrupt:
-        return EXIT_OK
-    finally:
-        hb_task.cancel()
-        try:
-            await hb_task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
-    return EXIT_OK
-
-
-def _install_role_runner_dispatch_for_run_service() -> None:
-    """Best-effort role-runner wiring shim for the run-service path.
-
-    Mirrors the bot.py installer so a ``yule run-service`` start
-    publishes the same env-derived dispatcher. Sanitised stdout line
-    on success / fallback. Failure is swallowed — the gateway must
-    boot even if the role-runner subsystem is misconfigured.
-    """
-
-    try:
-        from ..agents.runners.bootstrap import (
-            install_engineering_role_runner_dispatch,
-        )
-    except Exception as exc:  # noqa: BLE001 - partial install fallback
-        sys.stderr.write(
-            f"warning: role-runner bootstrap import failed ({type(exc).__name__}); "
-            "gateway continues with deterministic in-process role bodies\n"
-        )
-        return
-
-    def _on_failure(exc: BaseException) -> None:
-        sys.stderr.write(
-            "warning: role-runner dispatch install failed "
-            f"({type(exc).__name__}); using deterministic fallback\n"
-        )
-
-    try:
-        trace = install_engineering_role_runner_dispatch(
-            on_install_failure=_on_failure
-        )
-    except Exception as exc:  # noqa: BLE001 - bootstrap must not kill run-service
-        _on_failure(exc)
-        return
-    if trace is None:
-        return
-    if trace.deterministic_fallback_only:
-        configured = [e.provider for e in trace.entries if e.configured]
-        sys.stderr.write(
-            "role-runner dispatch installed: deterministic fallback only "
-            f"(opted-in providers: {configured or 'none'})\n"
-        )
-    else:
-        available = [
-            e.provider for e in trace.entries if e.configured and e.available
-        ]
-        sys.stderr.write(
-            f"role-runner dispatch installed: priority={available} "
-            "+ deterministic terminal\n"
-        )
+# Discord gateway / member bot / role-runner installer — extracted to
+# ``runtime.discord_runner`` (split_now_pending). Module-level aliases
+# preserve binding for existing callers/tests.
+_run_discord_gateway = _run_discord_gateway_impl
+_run_discord_member_bot = _run_discord_member_bot_impl
+_install_role_runner_dispatch_for_run_service = (
+    _install_role_runner_dispatch_for_run_service_impl
+)
 
 
 # ---------------------------------------------------------------------------
@@ -790,33 +498,7 @@ def _record_coding_progress_after_outcome(
         )
 
 
-def _maybe_build_live_github_client(*, env: Mapping[str, str]) -> Optional[Any]:
-    """Return a live GitHub App client if env is set, else None.
-
-    The factory only fires when *all three* env keys are present —
-    we don't want a partial config (e.g. app id but no key path) to
-    silently force a stub through. Errors at construction are
-    swallowed so the consumer falls back to dry-run-only.
-    """
-
-    needed = (
-        "YULE_GITHUB_APP_ID",
-        "YULE_GITHUB_APP_INSTALLATION_ID",
-        "YULE_GITHUB_APP_PRIVATE_KEY_PATH",
-    )
-    if not all((env.get(name) or "").strip() for name in needed):
-        return None
-    try:
-        from ..github_app.live_client import build_live_client_from_env
-
-        return build_live_client_from_env(env)
-    except Exception:  # noqa: BLE001 - log and continue dry-run
-        logger.warning(
-            "coding executor: build_live_client_from_env raised; falling "
-            "back to push-blocked bundle",
-            exc_info=True,
-        )
-        return None
+_maybe_build_live_github_client = _maybe_build_live_github_client_impl
 
 
 def _pick_filters_for(spec: ServiceSpec):
@@ -837,96 +519,7 @@ def _pick_filters_for(spec: ServiceSpec):
     return ((), ())
 
 
-async def _run_github_work_order_executor(
-    spec: ServiceSpec,
-    *,
-    queue: JobQueue,
-    heartbeats: HeartbeatStore,
-    shutdown_event: asyncio.Event,
-) -> int:
-    """Drain the ``github_work_order`` queue until shutdown — P0-T live
-    smoke fix.
-
-    라이브 운영에서 승인 reply 가 work_order job 을 enqueue 했지만 그것을
-    소비하는 background process 가 inventory 에 없어 queued=1 인 상태로
-    정체했다. 본 함수가 그 missing consumer:
-
-      1. live GitHub App env 가 있으면 GithubWriter 빌드 (writer_factory
-         가 (writer, "L2") 반환), 없으면 (None, "L2") 반환해 worker 가
-         SKIPPED_NO_WRITER 로 audit 만 남기고 anchor 만 stamp.
-      2. GitHubWorkOrderWorker 가 run_one 로 한 건씩 drain.
-      3. 각 drain 결과 issue create / existing anchor → session.extra
-         anchor stamp → promote_session_to_coding_ready continuation →
-         coding_execute path.
-    """
-
-    from ..agents.github_workos.github_writer import (
-        GithubWriter,
-        make_default_policy_gate,
-    )
-    from ..agents.job_queue.github_work_order_executor import (
-        GitHubWorkOrderWorker,
-        requeue_no_repo_failures,
-        run_until_shutdown,
-    )
-
-    live_client = _maybe_build_live_github_client(env=os.environ)
-
-    def _writer_factory(_work_order) -> Tuple[Optional[Any], str]:
-        if live_client is None:
-            # live env 미주입 — worker 가 SKIPPED_NO_WRITER 로 audit
-            # 만 남기고 anchor 만 stamp. operator 가 #봇-상태 에서
-            # graceful 한 상태로 확인 가능.
-            return None, "L2"
-        return (
-            GithubWriter(
-                client=live_client,
-                dry_run=False,
-                live=True,
-                policy_gate=make_default_policy_gate(),
-            ),
-            "L2",
-        )
-
-    worker = GitHubWorkOrderWorker(
-        queue=queue,
-        writer_factory=_writer_factory,
-        heartbeats=heartbeats,
-    )
-
-    def _log(message: str, exc: Optional[Any]) -> None:
-        if exc is not None:
-            logger.warning(message, exc_info=exc)
-        else:
-            logger.info(message)
-
-    # P0-T startup recovery hook — producer bug 로 SKIPPED_NO_REPO
-    # failed_retryable 로 떨어진 rows 를 자동 requeue. executor 가 본
-    # PR 의 repo fallback 으로 재처리 시 성공. operator 가 runtime
-    # restart 만으로 stranded rows 복구.
-    try:
-        requeued = requeue_no_repo_failures(queue, log_fn=_log)
-        if requeued:
-            logger.info(
-                "github_work_order_executor: startup hook requeued "
-                "%d failed_retryable rows after producer fix",
-                len(requeued),
-            )
-    except Exception:  # noqa: BLE001 — never crash the executor on hook
-        logger.warning(
-            "github_work_order_executor: startup requeue hook raised",
-            exc_info=True,
-        )
-
-    await run_until_shutdown(
-        worker,
-        shutdown_event=shutdown_event,
-        interval_seconds=5.0,
-        heartbeats=heartbeats,
-        heartbeat_interval_seconds=30.0,
-        log_fn=_log,
-    )
-    return EXIT_OK
+_run_github_work_order_executor = _run_github_work_order_executor_impl
 
 
 # M6.1b-1 landed the production post_fn (build_production_post_fn).
