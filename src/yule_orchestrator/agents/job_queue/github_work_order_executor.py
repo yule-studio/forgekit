@@ -60,6 +60,7 @@ recording client + permissive policy gate 로 driven.
 from __future__ import annotations
 
 import logging
+import asyncio
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -625,6 +626,97 @@ class GitHubWorkOrderWorker:
         return self.process_job(picked, now=now)
 
 
+async def run_until_shutdown(
+    worker: "GitHubWorkOrderWorker",
+    *,
+    shutdown_event: asyncio.Event,
+    interval_seconds: float = 5.0,
+    heartbeats: Optional[HeartbeatStore] = None,
+    heartbeat_interval_seconds: float = 30.0,
+    log_fn: Optional[Callable[[str, Optional[Any]], None]] = None,
+) -> None:
+    """Drain the github_work_order queue until *shutdown_event* fires.
+
+    P0-T live smoke fix — `runtime up` 으로 spawn 가능한 background
+    consumer. process 자체가 자체 heartbeat 도 기록해 status surface
+    에서 ALIVE 로 보이게 한다.
+
+    pattern:
+      - 매 *interval_seconds* 마다 ``worker.run_one()`` 호출
+      - outcome 이 None 이면 idle, 있으면 outcome 로깅
+      - ``heartbeats`` 가 inject 되면 ``heartbeat_interval_seconds`` 간격
+        으로 ``SERVICE_ID_GITHUB_WORK_ORDER_EXECUTOR`` heartbeat
+      - shutdown 시 graceful exit
+    """
+
+    pid = os.getpid()
+    last_heartbeat_at: float = 0.0
+
+    def _record_heartbeat() -> None:
+        if heartbeats is None:
+            return
+        try:
+            heartbeats.record(
+                SERVICE_ID_GITHUB_WORK_ORDER_EXECUTOR,
+                pid=pid,
+                metadata={
+                    "state": "online",
+                    "interval_seconds": float(interval_seconds),
+                },
+            )
+        except Exception:  # noqa: BLE001 - heartbeat is observability only
+            pass
+
+    # 초기 heartbeat — supervisor 가 status 를 즉시 ALIVE 로 본다
+    _record_heartbeat()
+    last_heartbeat_at = _monotonic_now()
+
+    while not shutdown_event.is_set():
+        try:
+            outcome = worker.run_one()
+        except Exception as exc:  # noqa: BLE001 — drain 은 절대 죽지 않음
+            if log_fn is not None:
+                try:
+                    log_fn("github_work_order_executor: run_one raised", exc)
+                except Exception:  # noqa: BLE001
+                    pass
+            outcome = None
+
+        if outcome is not None and log_fn is not None:
+            try:
+                log_fn(
+                    f"github_work_order_executor: drained job — "
+                    f"created_via={outcome.created_via}, "
+                    f"issue_number={outcome.issue_number}, "
+                    f"skipped={outcome.skipped_reason}",
+                    None,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        now = _monotonic_now()
+        if heartbeats is not None and (
+            now - last_heartbeat_at >= heartbeat_interval_seconds
+        ):
+            _record_heartbeat()
+            last_heartbeat_at = now
+
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(), timeout=interval_seconds
+            )
+        except asyncio.TimeoutError:
+            continue
+
+    # 최종 heartbeat (shutdown 직전) 은 생략 — 곧 STALE 로 표시되는 게 의도
+
+
+def _monotonic_now() -> float:
+    import time as _time
+
+    return _time.monotonic()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -655,4 +747,5 @@ __all__ = (
     "SKIPPED_NO_WRITER",
     "UpdateSessionFn",
     "WriterFactory",
+    "run_until_shutdown",
 )

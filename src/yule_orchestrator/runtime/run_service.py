@@ -171,6 +171,14 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
             spec, shutdown_event=shutdown_event, db_path=db_path
         )
 
+    if spec.kind == ServiceKind.GITHUB_WORK_ORDER_EXECUTOR:
+        return await _run_github_work_order_executor(
+            spec,
+            queue=queue,
+            heartbeats=heartbeats,
+            shutdown_event=shutdown_event,
+        )
+
     if spec.kind == ServiceKind.DIGEST_SCHEDULER:
         from ..agents.digest.scheduler import run_scheduler
 
@@ -824,7 +832,82 @@ def _pick_filters_for(spec: ServiceSpec):
         return (("obsidian_write",), ())
     if spec.kind == ServiceKind.CODING_EXECUTOR:
         return (("coding_execute",), ())
+    if spec.kind == ServiceKind.GITHUB_WORK_ORDER_EXECUTOR:
+        return (("github_work_order",), ())
     return ((), ())
+
+
+async def _run_github_work_order_executor(
+    spec: ServiceSpec,
+    *,
+    queue: JobQueue,
+    heartbeats: HeartbeatStore,
+    shutdown_event: asyncio.Event,
+) -> int:
+    """Drain the ``github_work_order`` queue until shutdown — P0-T live
+    smoke fix.
+
+    라이브 운영에서 승인 reply 가 work_order job 을 enqueue 했지만 그것을
+    소비하는 background process 가 inventory 에 없어 queued=1 인 상태로
+    정체했다. 본 함수가 그 missing consumer:
+
+      1. live GitHub App env 가 있으면 GithubWriter 빌드 (writer_factory
+         가 (writer, "L2") 반환), 없으면 (None, "L2") 반환해 worker 가
+         SKIPPED_NO_WRITER 로 audit 만 남기고 anchor 만 stamp.
+      2. GitHubWorkOrderWorker 가 run_one 로 한 건씩 drain.
+      3. 각 drain 결과 issue create / existing anchor → session.extra
+         anchor stamp → promote_session_to_coding_ready continuation →
+         coding_execute path.
+    """
+
+    from ..agents.github_workos.github_writer import (
+        GithubWriter,
+        make_default_policy_gate,
+    )
+    from ..agents.job_queue.github_work_order_executor import (
+        GitHubWorkOrderWorker,
+        run_until_shutdown,
+    )
+
+    live_client = _maybe_build_live_github_client(env=os.environ)
+
+    def _writer_factory(_work_order) -> Tuple[Optional[Any], str]:
+        if live_client is None:
+            # live env 미주입 — worker 가 SKIPPED_NO_WRITER 로 audit
+            # 만 남기고 anchor 만 stamp. operator 가 #봇-상태 에서
+            # graceful 한 상태로 확인 가능.
+            return None, "L2"
+        return (
+            GithubWriter(
+                client=live_client,
+                dry_run=False,
+                live=True,
+                policy_gate=make_default_policy_gate(),
+            ),
+            "L2",
+        )
+
+    worker = GitHubWorkOrderWorker(
+        queue=queue,
+        writer_factory=_writer_factory,
+        heartbeats=heartbeats,
+    )
+
+    def _log(message: str, exc: Optional[Any]) -> None:
+        if exc is not None:
+            logger.warning(message, exc_info=exc)
+        else:
+            logger.info(message)
+
+    await run_until_shutdown(
+        worker,
+        shutdown_event=shutdown_event,
+        interval_seconds=5.0,
+        heartbeats=heartbeats,
+        heartbeat_interval_seconds=30.0,
+        log_fn=_log,
+    )
+    return EXIT_OK
 
 
 # M6.1b-1 landed the production post_fn (build_production_post_fn).
