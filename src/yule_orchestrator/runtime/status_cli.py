@@ -73,6 +73,12 @@ def run_runtime_status_command(
     circuits = _load_circuit_snapshots_safe(
         persistence=circuit_persistence, db_path=db_path
     )
+    # P0-T status visibility fix — completion funnel recent rows 도 CLI
+    # 에서 항상 비어있던 회귀 차단. session_lister 가 None 이면 default
+    # workflow_state.list_sessions 사용. fallback_lister 가 inject 되면 그것 사용.
+    completion_funnel_recent = _load_completion_funnel_safe(
+        fallback_lister=fallback_lister
+    )
     try:
         report = build_runtime_status(
             profile=profile,
@@ -80,6 +86,7 @@ def run_runtime_status_command(
             heartbeats=heartbeats,
             failed_limit=max(0, int(failed_limit)),
             circuit_snapshots=circuits,
+            completion_funnel_recent=completion_funnel_recent,
         )
     except ValueError as exc:
         sys.stderr.write(f"yule runtime status: {exc}\n")
@@ -101,6 +108,30 @@ def run_runtime_status_command(
         state_store=state_store,
         fallback_lister=fallback_lister,
     )
+
+
+def _load_completion_funnel_safe(
+    *,
+    fallback_lister: Optional[Callable[..., Sequence[Any]]] = None,
+):
+    """Best-effort completion funnel collector for the CLI.
+
+    P0-T runtime status visibility fix — CLI 에서 ``(no recent completions)``
+    처럼 항상 비어 보이던 회귀 차단. status_poster 의 collector 를 그대로
+    재사용해 markdown post 와 CLI render 가 같은 데이터를 본다. session
+    lister 가 없거나 raise 하면 빈 시퀀스 — CLI 가 죽지 않는다.
+    """
+
+    try:
+        from .status_poster import collect_recent_completion_funnel
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return ()
+    try:
+        return collect_recent_completion_funnel(
+            session_lister=fallback_lister,
+        )
+    except Exception:  # noqa: BLE001 - never crash the CLI
+        return ()
 
 
 def _load_circuit_snapshots_safe(

@@ -53,6 +53,9 @@ HEALTH_ALIVE: str = "alive"
 HEALTH_STALE: str = "stale"
 HEALTH_UNKNOWN: str = "unknown"
 HEALTH_RESERVED: str = "reserved"
+# P0-T — graceful-disable 와 unknown 을 구분. operator 가 "토큰만 빠졌나"
+# vs "프로세스 미기동" 을 즉시 식별할 수 있어야 한다.
+HEALTH_GRACEFUL_DISABLED: str = "graceful_disabled"
 # A-M7-final: circuit-open trumps the heartbeat-based labels because
 # the supervisor parent has explicitly stopped restarting the service.
 # A live ``alive`` heartbeat could otherwise mask the fact that the
@@ -322,6 +325,8 @@ ACTION_KIND_STALE_SERVICE: str = "stale_service"
 ACTION_KIND_UNKNOWN_SERVICE: str = "unknown_service"
 ACTION_KIND_CIRCUIT_OPEN: str = "circuit_open"
 ACTION_KIND_FAILED_TERMINAL: str = "failed_terminal_jobs"
+# P0-T — graceful-disable 와 unknown 을 operator hint 측에서도 구분.
+ACTION_KIND_GRACEFUL_DISABLED: str = "graceful_disabled_service"
 
 
 @dataclass(frozen=True)
@@ -431,13 +436,52 @@ def summarize_operator_actions(
                 kind=ACTION_KIND_UNKNOWN_SERVICE,
                 severity=OPERATOR_ACTION_HIGH,
                 headline=(
-                    f"{len(ids)} service(s) never reported a heartbeat"
+                    f"{len(ids)} service(s) never reported a heartbeat "
+                    "— worker likely never started"
                 ),
                 next_step=(
                     f"yule runtime up  # or single: yule run-service {first}"
                 ),
                 affected=ids,
                 icon="❓",
+            )
+        )
+
+    # P0-T — graceful-disabled services: token / env 가 비어있는 명시적
+    # 비활성 상태. UNKNOWN 과 다르게 "restart 한다고 해결 안 됨" 으로
+    # operator hint 분리. env_key 가 metadata 에 있으면 그걸 가리킴.
+    disabled = [
+        s
+        for s in report.services
+        if s.health == HEALTH_GRACEFUL_DISABLED and s.implemented
+    ]
+    if disabled:
+        ids = tuple(s.service_id for s in disabled)
+        env_keys = sorted(
+            {
+                str(s.metadata.get("env_key") or "")
+                for s in disabled
+                if isinstance(s.metadata, Mapping)
+                and s.metadata.get("env_key")
+            }
+        )
+        env_hint = (
+            f" (env: {', '.join(env_keys)})" if env_keys else ""
+        )
+        actions.append(
+            OperatorAction(
+                kind=ACTION_KIND_GRACEFUL_DISABLED,
+                severity=OPERATOR_ACTION_LOW,
+                headline=(
+                    f"{len(ids)} service(s) graceful-disabled "
+                    "— operator chose to keep these offline"
+                ),
+                next_step=(
+                    "토큰을 .env.local 에 추가한 뒤 `yule runtime up` 으로 "
+                    "다시 올리세요" + env_hint
+                ),
+                affected=ids,
+                icon="🔌",
             )
         )
 
@@ -1126,7 +1170,18 @@ def _build_service_status(
         )
 
     age = max(0.0, now_ts - float(heartbeat.last_beat))
-    health = HEALTH_ALIVE if age <= max(1.0, float(deadline_seconds)) else HEALTH_STALE
+    metadata = dict(heartbeat.metadata or {})
+    # P0-T — heartbeat metadata 의 state 가 graceful_disabled 면 ALIVE
+    # 가 아니라 별도 분류. operator hint 도 token/env 안내로 분기.
+    state = str(metadata.get("state") or "").strip().lower()
+    if state == "graceful_disabled":
+        health = HEALTH_GRACEFUL_DISABLED
+    else:
+        health = (
+            HEALTH_ALIVE
+            if age <= max(1.0, float(deadline_seconds))
+            else HEALTH_STALE
+        )
     return ServiceStatus(
         service_id=spec.service_id,
         kind=spec.kind.value,
@@ -1137,7 +1192,7 @@ def _build_service_status(
         heartbeat_age_seconds=age,
         heartbeat_last_beat=float(heartbeat.last_beat),
         pid=heartbeat.pid,
-        metadata=dict(heartbeat.metadata or {}),
+        metadata=metadata,
         job_type=job_type,
     )
 
@@ -1280,6 +1335,8 @@ def _build_warnings(
     if unknown_implemented:
         ids = ", ".join(s.service_id for s in unknown_implemented)
         first_id = unknown_implemented[0].service_id
+        # P0-T — restart-needed 와 token/env 문제를 분리해 안내.
+        # graceful_disabled 는 아래 별 warning 으로 처리.
         warnings.append(
             f"no heartbeat (worker likely never started): {ids} — start "
             f"options: `yule runtime up` (single-host parent spawning all "
@@ -1288,6 +1345,30 @@ def _build_warnings(
             f"yule-run-service@{first_id}.service` (systemd). Without "
             "one of these, the queue stays unpicked even though the "
             "gateway is enqueuing jobs."
+        )
+
+    # P0-T — graceful-disabled: token/env 설정 문제. restart 한다고 해결
+    # 안 되니까 별 warning 으로 분리.
+    disabled_services = [
+        s
+        for s in services
+        if s.health == HEALTH_GRACEFUL_DISABLED and s.implemented
+    ]
+    if disabled_services:
+        ids = ", ".join(s.service_id for s in disabled_services)
+        env_keys = sorted(
+            {
+                str(s.metadata.get("env_key") or "")
+                for s in disabled_services
+                if isinstance(s.metadata, Mapping)
+                and s.metadata.get("env_key")
+            }
+        )
+        env_hint = f" (env: {', '.join(env_keys)})" if env_keys else ""
+        warnings.append(
+            f"graceful-disabled: {ids} — token/env 가 비어있어 자체적으로 "
+            "꺼진 상태. restart 가 아니라 .env.local 의 토큰 채움이 "
+            f"필요{env_hint}. 채운 뒤 `yule runtime up` 으로 다시 올리세요."
         )
     failed_terminal_total = sum(j.failed_terminal for j in job_types)
     if failed_terminal_total > 0:
@@ -1960,6 +2041,7 @@ __all__ = (
     "ACTION_KIND_NEEDS_APPROVAL",
     "ACTION_KIND_RETRY_READY_BACKLOG",
     "ACTION_KIND_STALE_SERVICE",
+    "ACTION_KIND_GRACEFUL_DISABLED",
     "ACTION_KIND_UNKNOWN_SERVICE",
     "AUTONOMY_OUTCOME_DEDUPED",
     "AUTONOMY_OUTCOME_DISPATCHED",
@@ -1973,6 +2055,7 @@ __all__ = (
     "FailedJobSummary",
     "HEALTH_ALIVE",
     "HEALTH_CIRCUIT_OPEN",
+    "HEALTH_GRACEFUL_DISABLED",
     "HEALTH_RESERVED",
     "HEALTH_STALE",
     "HEALTH_UNKNOWN",
