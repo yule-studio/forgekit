@@ -85,6 +85,15 @@ from .self_improvement_worktree import (
     WorktreeProvisionOutcome,
     provision_worktree_for_problem,
 )
+from .troubleshooting_ledger import (
+    CaptureOutcome as TroubleshootingCaptureOutcome,
+    TroubleshootingLedger,
+)
+from .troubleshooting_record import (
+    CaptureReason,
+    DETECTED_BY_SELF_IMPROVEMENT,
+    TroubleshootingStatus,
+)
 from .tech_lead_triage import (
     SCOPE_BLOCKED,
     SCOPE_DELEGATED_OK,
@@ -218,6 +227,7 @@ class SelfImprovementDispatcher:
     operator_action_hook: Optional[OperatorActionHook] = None
     executor_handoff_hook: Optional[ExecutorHandoffHook] = None
     obsidian_record_hook: Optional[ObsidianRecordHook] = None
+    troubleshooting_ledger: Optional[TroubleshootingLedger] = None
     triage_deliberation_fn: Optional[Callable[..., Optional[TriageVerdict]]] = None
     repo_cwd: str = "."
     base_branch: str = "main"
@@ -602,6 +612,27 @@ class SelfImprovementDispatcher:
                     "self-improvement: obsidian_record_hook raised", exc_info=True
                 )
 
+        # Mandatory troubleshooting capture — every detected problem becomes
+        # a structured record. Failures are logged + swallowed so a ledger
+        # bug never breaks dispatch.
+        if self.troubleshooting_ledger is not None:
+            try:
+                self._capture_troubleshooting(
+                    signal=signal,
+                    problem=self.problem_ledger.get(problem.signature) or problem,
+                    verdict=verdict,
+                    delegated_decision=delegated_decision,
+                    worktree=worktree_outcome,
+                    executor_handoff_job_id=executor_handoff_job_id,
+                    operator_action_id=operator_action_id,
+                    final_status=final_status,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "self-improvement: troubleshooting capture raised",
+                    exc_info=True,
+                )
+
         final_problem = self.problem_ledger.get(problem.signature) or problem
         return ProblemHandlingOutcome(
             problem=final_problem,
@@ -613,6 +644,117 @@ class SelfImprovementDispatcher:
             audit_entries=tuple(audit_entries),
             final_status=final_status,
         )
+
+    # ------------------------------------------------------------------
+    # Troubleshooting capture — every dispatched problem becomes a record
+    # ------------------------------------------------------------------
+
+    def _capture_troubleshooting(
+        self,
+        *,
+        signal: SelfImprovementSignal,
+        problem: ProblemObject,
+        verdict: TriageVerdict,
+        delegated_decision: DelegatedDecision,
+        worktree: Optional[WorktreeProvisionOutcome],
+        executor_handoff_job_id: Optional[str],
+        operator_action_id: Optional[str],
+        final_status: ProblemStatus,
+    ) -> Optional[TroubleshootingCaptureOutcome]:
+        if self.troubleshooting_ledger is None:
+            return None
+
+        capture_reason = _SIGNAL_TO_CAPTURE_REASON.get(
+            signal.signal, CaptureReason.OPERATOR_MANUAL_INTERVENTION
+        )
+
+        severity = signal.severity or "medium"
+        status = _PROBLEM_STATUS_TO_TROUBLESHOOTING_STATUS.get(
+            final_status, TroubleshootingStatus.OPEN
+        )
+        attempted_fix = ""
+        final_fix = ""
+        prevention_rule = ""
+        if worktree is not None:
+            attempted_fix = (
+                f"branch={worktree.metadata.branch} 분기 → executor handoff "
+                f"({'reused' if worktree.reused else 'created'})"
+            )
+        if executor_handoff_job_id:
+            final_fix = (
+                f"executor job={executor_handoff_job_id} 위임 — draft PR 까지 진행 "
+                "(merge 자동 금지)"
+            )
+        if operator_action_id:
+            final_fix = (
+                f"operator action card={operator_action_id} 발행 — 사람 응답 대기"
+            )
+        prevention_rule = verdict.rationale
+
+        related_files = tuple(
+            problem.evidence.get("related_files")
+            if isinstance(problem.evidence.get("related_files"), (list, tuple))
+            else ()
+        )
+
+        return self.troubleshooting_ledger.capture(
+            title=f"self-improvement: {signal.signal}",
+            capture_reason=capture_reason,
+            detected_by=DETECTED_BY_SELF_IMPROVEMENT,
+            owner_role=verdict.primary_owner,
+            scope=signal.signal,
+            symptom=signal.summary,
+            severity=severity,
+            exact_evidence=str(dict(signal.evidence) or "{}"),
+            attempted_fix=attempted_fix,
+            final_fix=final_fix,
+            prevention_rule=prevention_rule,
+            related_session_ids=tuple(problem.related_session_ids),
+            related_job_ids=tuple(problem.related_job_ids)
+            + ((executor_handoff_job_id,) if executor_handoff_job_id else ()),
+            related_prs=tuple(problem.related_pr_urls),
+            related_files=related_files,
+            followup_required=(
+                final_status == ProblemStatus.WAITING_OPERATOR
+                or final_status == ProblemStatus.BLOCKED
+            ),
+            problem_signature=problem.signature,
+            tags=("self-improvement",),
+            status=status,
+        )
+
+
+# Map dispatcher's ProblemStatus → TroubleshootingStatus.
+_PROBLEM_STATUS_TO_TROUBLESHOOTING_STATUS: Mapping[ProblemStatus, TroubleshootingStatus] = {
+    ProblemStatus.DETECTED: TroubleshootingStatus.OPEN,
+    ProblemStatus.TRIAGED: TroubleshootingStatus.OPEN,
+    ProblemStatus.FIXING: TroubleshootingStatus.MITIGATED,
+    ProblemStatus.VERIFYING: TroubleshootingStatus.MITIGATED,
+    ProblemStatus.COMPLETED: TroubleshootingStatus.FIXED,
+    ProblemStatus.BLOCKED: TroubleshootingStatus.OPEN,
+    ProblemStatus.WAITING_OPERATOR: TroubleshootingStatus.OPEN,
+    ProblemStatus.ESCALATED: TroubleshootingStatus.OPEN,
+    ProblemStatus.SUPPRESSED: TroubleshootingStatus.SUPERSEDED,
+}
+
+
+# Map known self-improvement signal id → CaptureReason. Unknown signals
+# fall back to OPERATOR_MANUAL_INTERVENTION so capture still happens.
+_SIGNAL_TO_CAPTURE_REASON: Mapping[str, CaptureReason] = {
+    "engineering_write_reply_mismatch": CaptureReason.APPROVAL_REPLY_MISMATCH,
+    "approval_no_matching_reply": CaptureReason.APPROVAL_REPLY_MISMATCH,
+    "qa_test_misclassification": CaptureReason.WRONG_CLASSIFICATION,
+    "coding_continuation_stalled": CaptureReason.NO_CONTINUATION,
+    "supervisor_watch_unknown_surface": CaptureReason.RUNTIME_UNKNOWN_CONFUSION,
+    "obsidian_render_failure": CaptureReason.POLICY_EXISTS_NO_ENFORCEMENT,
+    "member_bot_presence_confusion": CaptureReason.RUNTIME_UNKNOWN_CONFUSION,
+    "issueless_bootstrap_failure": CaptureReason.PARTIAL_WIRING,
+    "failed_retryable_pileup": CaptureReason.FAILED_RETRYABLE_NO_RECOVERY,
+    "duplicate_topic_approval": CaptureReason.DUPLICATE_WORK_ORDER,
+    "stale_heartbeat": CaptureReason.QUEUE_STUCK,
+    "empty_knowledge_note": CaptureReason.POLICY_EXISTS_NO_ENFORCEMENT,
+    "repeated_user_complaint": CaptureReason.OPERATOR_MANUAL_INTERVENTION,
+}
 
 
 # ---------------------------------------------------------------------------

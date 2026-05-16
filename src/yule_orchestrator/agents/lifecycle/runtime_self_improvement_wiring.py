@@ -39,6 +39,10 @@ from .runtime_self_improvement_loop import (
     OperatorActionHook,
     SelfImprovementDispatcher,
 )
+from .troubleshooting_ledger import (
+    TroubleshootingLedger,
+    default_ledger_path as default_troubleshooting_ledger_path,
+)
 from .self_improvement_seed_detectors import ObservationContext
 from .self_improvement_worktree import (
     GitWorktreeProvisioner,
@@ -527,6 +531,15 @@ def build_self_improvement_dispatcher(
         supervisor_session_id=obsidian_supervisor_session_id
     )
 
+    # Troubleshooting ledger — every detected problem (delegated or operator-
+    # escalated) auto-records a structured TroubleshootingRecord. The ledger
+    # JSON sits alongside the problem ledger / worktree registry so a single
+    # `.cache/yule/` directory carries all operational memory.
+    troubleshooting_ledger = TroubleshootingLedger(
+        ledger_path=default_troubleshooting_ledger_path(env=env),
+        actor="self-improvement-runtime",
+    )
+
     return SelfImprovementDispatcher(
         observation_provider=observation_provider,
         problem_ledger=ledger,
@@ -536,6 +549,7 @@ def build_self_improvement_dispatcher(
         operator_action_hook=operator_hook,
         executor_handoff_hook=executor_hook,
         obsidian_record_hook=obsidian_hook,
+        troubleshooting_ledger=troubleshooting_ledger,
         repo_cwd=str(repo_cwd),
         base_branch=base_branch,
     )

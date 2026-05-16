@@ -131,6 +131,28 @@ green 이어도 성능 개선은 자동 의무가 아니다. 다음 8 종 중 **
 
 코드: `decide_hardening_opening(observations)` → `allowed` + `matched_criteria` + `required_artifacts`.
 
+### 4.1.5 Troubleshooting 은 운영 메모리 (mandatory capture)
+
+실패 / 우회 / 재시도 / 잘못된 가정 / fallback success / dead path / large-file
+위반 / wrong classification / no_repo·no_writer·no_continuation / live smoke
+막힘이 발생했는데 그 기록이 *대화창에만* 남고 시스템에는 안 남는 상태를 **금지**
+한다. 코드 SSoT:
+
+- [`agents/lifecycle/troubleshooting_record.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_record.py)
+  — 20 필드 `TroubleshootingRecord` + 30+ `CaptureReason` enum + 8 섹션 markdown 렌더러.
+- [`agents/lifecycle/troubleshooting_ledger.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_ledger.py)
+  — 3 surface fan-out + 같은 signature 2회 이상이면 mistake ledger 자동 승격.
+- [`agents/lifecycle/troubleshooting_enforcer.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_enforcer.py)
+  — `mandatory_capture` context manager / `record_silent_correction` /
+  `record_claude_correction` / `record_codex_correction`. Claude Code / Codex
+  도 같은 ledger 에 누적.
+- [`agents/lifecycle/troubleshooting_preflight.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_preflight.py)
+  — 작업 시작 전 prior record / mistake ledger 둘 다 조회해 advisory /
+  warning / block verdict 결합.
+
+사람용 SSoT: [`docs/troubleshooting-mandatory.md`](troubleshooting-mandatory.md).
+"한 번 실패하면 다음 작업 시 먼저 경고/차단" 이 실제로 동작한다.
+
 ## 5. 정책 위치 인덱스
 
 | 영역 | 파일 |
