@@ -866,6 +866,7 @@ async def _run_github_work_order_executor(
     )
     from ..agents.job_queue.github_work_order_executor import (
         GitHubWorkOrderWorker,
+        requeue_no_repo_failures,
         run_until_shutdown,
     )
 
@@ -898,6 +899,24 @@ async def _run_github_work_order_executor(
             logger.warning(message, exc_info=exc)
         else:
             logger.info(message)
+
+    # P0-T startup recovery hook — producer bug 로 SKIPPED_NO_REPO
+    # failed_retryable 로 떨어진 rows 를 자동 requeue. executor 가 본
+    # PR 의 repo fallback 으로 재처리 시 성공. operator 가 runtime
+    # restart 만으로 stranded rows 복구.
+    try:
+        requeued = requeue_no_repo_failures(queue, log_fn=_log)
+        if requeued:
+            logger.info(
+                "github_work_order_executor: startup hook requeued "
+                "%d failed_retryable rows after producer fix",
+                len(requeued),
+            )
+    except Exception:  # noqa: BLE001 — never crash the executor on hook
+        logger.warning(
+            "github_work_order_executor: startup requeue hook raised",
+            exc_info=True,
+        )
 
     await run_until_shutdown(
         worker,
