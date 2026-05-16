@@ -706,6 +706,54 @@ def _run_engineer_intake(
     return result
 
 
+def _extract_repo_from_session(session: Any, prompt_text: str) -> Optional[str]:
+    """Resolve canonical ``owner/repo`` from session refs or prompt text.
+
+    Producer path (P0-T live smoke fix): without this `_maybe_post_intake_approval_card`
+    builds a proposal with empty repo → work_order executor lands
+    ``github_work_order_no_repo`` failed_retryable.
+
+    Resolution order — first match wins:
+      1. ``session.references_user`` (extracted from prompt by intake)
+      2. ``session.extra['coding_repo_full_name']``
+      3. raw scan of *prompt_text* via ``parse_github_target``
+
+    Returns the canonical ``owner/repo`` string, or ``None`` when no
+    GitHub URL fragment is found (operator did not give a repo).
+    """
+
+    try:
+        from ...agents.git.github_url import parse_github_target
+    except Exception:  # noqa: BLE001 - partial install
+        return None
+
+    refs = list(getattr(session, "references_user", None) or ())
+    extra = getattr(session, "extra", None) or {}
+    if isinstance(extra, Mapping):
+        existing = str(extra.get("coding_repo_full_name") or "").strip()
+        if existing and "/" in existing:
+            return existing
+
+    candidates: list[str] = []
+    candidates.extend(str(r) for r in refs)
+    # parse_github_target only consumes one URL at a time; we'll feed it
+    # any URL-looking fragment from the prompt text too.
+    for token in (prompt_text or "").split():
+        token = token.strip().strip("(),.;<>")
+        if token.startswith(("http://", "https://", "github.com")):
+            candidates.append(token)
+
+    for raw in candidates:
+        target = parse_github_target(raw)
+        if target is None:
+            continue
+        owner = (target.owner or "").strip()
+        repo = (target.repo or "").strip()
+        if owner and repo:
+            return f"{owner}/{repo}"
+    return None
+
+
 def _maybe_post_intake_approval_card(
     *,
     session: Any,
@@ -774,12 +822,19 @@ def _maybe_post_intake_approval_card(
         channel_resolver=build_approval_channel_resolver(),
     )
 
+    # P0-T live smoke fix — repo 가 비어있어 work_order executor 가
+    # `github_work_order_no_repo` failed_retryable 로 떨어지던 회귀
+    # 차단. session.references_user / extra / prompt 에서 canonical
+    # owner/repo 추출해 enqueue_github_work_approval 로 forwarding.
+    resolved_repo = _extract_repo_from_session(session, prompt_text)
+
     async def _go():
         return await enqueue_github_work_approval(
             session=session,
             request_text=prompt_text,
             approval_worker=worker,
             requested_by=requested_by,
+            repo=resolved_repo,
         )
 
     try:
