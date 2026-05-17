@@ -83,6 +83,7 @@ async def run_github_work_order_executor(
     )
     from ..agents.job_queue.github_work_order_executor import (
         GitHubWorkOrderWorker,
+        repair_stranded_coding_sessions,
         requeue_missing_plan_failures,
         requeue_no_repo_failures,
         run_until_shutdown,
@@ -141,6 +142,24 @@ async def run_github_work_order_executor(
                 label,
                 exc_info=True,
             )
+
+    # P0-X startup sweep — SAVED rows 가 `no_coding_proposal` noop 으로
+    # 멈춰있는 session 들을 prompt 만으로 self-heal. canonical session
+    # ``11917bf1e75d`` 같은 stranded 케이스가 runtime restart 한 번으로
+    # 자동 복구되고 coding_execute 로 이어진다.
+    try:
+        repaired = repair_stranded_coding_sessions(queue, log_fn=_log)
+        if repaired:
+            logger.info(
+                "github_work_order_executor: startup hook repaired %d "
+                "stranded coding sessions (no_coding_proposal → ready)",
+                len(repaired),
+            )
+    except Exception:  # noqa: BLE001 — never crash the executor on hook
+        logger.warning(
+            "github_work_order_executor: startup repair hook raised",
+            exc_info=True,
+        )
 
     await run_until_shutdown(
         worker,

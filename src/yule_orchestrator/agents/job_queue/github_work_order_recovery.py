@@ -261,10 +261,183 @@ def requeue_missing_plan_failures(
     )
 
 
+def repair_stranded_coding_sessions(
+    queue: JobQueue,
+    *,
+    load_session_fn=None,
+    update_session_fn=None,
+    max_per_run: int = 50,
+    log_fn: Optional[Callable[[str, Optional[Any]], None]] = None,
+) -> Tuple[str, ...]:
+    """Startup sweep — github_work_order SAVED rows whose continuation
+    stalled at ``no_coding_proposal`` get repaired in place.
+
+    P0-X live smoke fix (canonical session ``11917bf1e75d``):
+
+      * executor 가 issue anchor 까지 만들고 SAVED 로 transition 했지만
+        ``coding_dispatch_queued=False`` + ``coding_dispatch_noop_reason
+        =no_coding_proposal`` 상태로 남음.
+      * 새 self-heal (``promote_session_to_coding_ready`` 의 auto_rebuild)
+        은 다음 enqueue 부터 작동하지만, 이미 SAVED 로 떨어진 row 는
+        worker 가 다시 pick 하지 않음.
+      * 본 sweep 이 SAVED rows 를 직접 스캔해 각 session 에 대해
+        :func:`work_order_coding_continuation.repair_session_for_coding_dispatch`
+        를 호출한다. operator 가 runtime restart 하나로 stranded session
+        들이 모두 coding_execute 단계로 흘러가게 한다.
+
+    pure SQLite read + ``repair_session_for_coding_dispatch`` — operator
+    수동 DB 조작 없이 작동.
+
+    Defaults: ``load_session_fn`` 가 None 이면 workflow_state.load_session,
+    ``update_session_fn`` 이 None 이면 workflow_state.update_session 의
+    표준 patterns 를 사용한다. 테스트는 모두 injection.
+
+    Returns repaired session_id 시퀀스 (audit / logging).
+    """
+
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    if load_session_fn is None or update_session_fn is None:
+        try:
+            from ..workflow_state import (
+                load_session as _default_load,
+                update_session as _default_update,
+            )
+            from datetime import datetime as _dt
+        except Exception as exc:  # noqa: BLE001 - partial install
+            if log_fn is not None:
+                try:
+                    log_fn(
+                        "repair_stranded_coding_sessions: workflow_state import failed",
+                        exc,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            return ()
+        if load_session_fn is None:
+            load_session_fn = _default_load
+        if update_session_fn is None:
+
+            def _persist(session, _new_extra):  # noqa: ANN001
+                try:
+                    _default_update(session, now=_dt.now().astimezone())
+                except Exception:  # noqa: BLE001 - never crash sweep
+                    pass
+
+            update_session_fn = _persist
+
+    db_path = getattr(queue, "_db_path", None)
+    if db_path is None:
+        return ()
+
+    try:
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT job_id, payload_json, result_json
+                FROM job_queue
+                WHERE job_type = ?
+                  AND state = ?
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (
+                    JOB_TYPE_GITHUB_WORK_ORDER,
+                    "saved",
+                    int(max_per_run),
+                ),
+            ).fetchall()
+    except Exception as exc:  # noqa: BLE001 - never crash startup
+        if log_fn is not None:
+            try:
+                log_fn(
+                    "repair_stranded_coding_sessions: sqlite query failed",
+                    exc,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return ()
+
+    try:
+        from .work_order_coding_continuation import (
+            REPAIR_OUTCOME_REPAIRED,
+            repair_session_for_coding_dispatch,
+        )
+    except Exception as exc:  # noqa: BLE001
+        if log_fn is not None:
+            try:
+                log_fn(
+                    "repair_stranded_coding_sessions: repair helper import failed",
+                    exc,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        return ()
+
+    repaired: list[str] = []
+    seen_sessions: set[str] = set()
+    for row in rows or ():
+        result_raw = row["result_json"] or "{}"
+        try:
+            result = _json.loads(result_raw)
+        except Exception:  # noqa: BLE001
+            continue
+        # only sweep rows that explicitly stalled at no_coding_proposal
+        noop_reason = str(result.get("coding_dispatch_noop_reason") or "").strip()
+        coding_queued = bool(result.get("coding_dispatch_queued", False))
+        if coding_queued or noop_reason != "no_coding_proposal":
+            continue
+
+        payload_raw = row["payload_json"] or "{}"
+        try:
+            payload = _json.loads(payload_raw)
+        except Exception:  # noqa: BLE001
+            continue
+        session_id = str(payload.get("session_id") or "").strip()
+        if not session_id or session_id in seen_sessions:
+            continue
+        seen_sessions.add(session_id)
+
+        try:
+            outcome = repair_session_for_coding_dispatch(
+                session_id=session_id,
+                load_session_fn=load_session_fn,
+                update_session_fn=update_session_fn,
+            )
+        except Exception as exc:  # noqa: BLE001 - per-session failure is local
+            if log_fn is not None:
+                try:
+                    log_fn(
+                        f"repair_stranded_coding_sessions: session {session_id} "
+                        "raised",
+                        exc,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+            continue
+
+        if outcome.outcome == REPAIR_OUTCOME_REPAIRED and outcome.promoted:
+            repaired.append(session_id)
+            if log_fn is not None:
+                try:
+                    log_fn(
+                        f"github_work_order: repaired stranded session "
+                        f"{session_id} — coding_proposal rebuilt + promoted",
+                        None,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+
+    return tuple(repaired)
+
+
 __all__ = (
     "DEFAULT_MISSING_PLAN_REASON",
     "DEFAULT_NO_REPO_REASON",
     "recover_plan_from_work_order",
+    "repair_stranded_coding_sessions",
     "requeue_failed_rows_by_reason",
     "requeue_missing_plan_failures",
     "requeue_no_repo_failures",
