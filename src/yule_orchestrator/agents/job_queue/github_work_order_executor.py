@@ -620,6 +620,10 @@ class GitHubWorkOrderWorker:
         existing_extra = getattr(session, "extra", None) or {}
         if not isinstance(existing_extra, Mapping):
             existing_extra = {}
+        # P0-X: pass session.prompt + session_id so promote_session_to_coding_ready
+        # 가 coding_proposal 누락 시 즉석에서 재구성한다 (slash intake 가
+        # proposal stamp 를 건너뛴 옛 / 새 session 모두 self-heal).
+        prompt_for_rebuild = str(getattr(session, "prompt", "") or "") or None
         outcome = promote_session_to_coding_ready(
             session_extra=existing_extra,
             anchor=anchor,
@@ -629,6 +633,9 @@ class GitHubWorkOrderWorker:
             approval_id=work_order.approval_id or None,
             approved_by=work_order.approved_by or None,
             approved_at=work_order.approved_at or None,
+            session_prompt=prompt_for_rebuild,
+            session_id_for_proposal=getattr(session, "session_id", None),
+            auto_rebuild_proposal=True,
         )
         if outcome.new_extra is None:
             return outcome
@@ -718,6 +725,7 @@ class GitHubWorkOrderWorker:
 # Re-exported here so existing callers / tests keep their import sites.
 from .github_work_order_recovery import (
     recover_plan_from_work_order as _recover_plan_from_work_order,
+    repair_stranded_coding_sessions,
     requeue_missing_plan_failures,
     requeue_no_repo_failures,
 )
@@ -844,6 +852,7 @@ __all__ = (
     "SKIPPED_NO_WRITER",
     "UpdateSessionFn",
     "WriterFactory",
+    "repair_stranded_coding_sessions",
     "requeue_missing_plan_failures",
     "requeue_no_repo_failures",
     "run_until_shutdown",

@@ -120,6 +120,9 @@ def promote_session_to_coding_ready(
     approved_by: Optional[str] = None,
     approved_at: Optional[str] = None,
     now: Optional[datetime] = None,
+    session_prompt: Optional[str] = None,
+    session_id_for_proposal: Optional[str] = None,
+    auto_rebuild_proposal: bool = True,
 ) -> ContinuationOutcome:
     """*session_extra* 를 pure 하게 갱신해 coding_job=ready 상태로 promote.
 
@@ -129,7 +132,15 @@ def promote_session_to_coding_ready(
     idempotent 동작:
       - coding_job 이 이미 ready 이고 그 metadata 의 ``issue_number`` /
         ``approval_id`` 가 anchor 와 같으면 noop.
-      - coding_proposal 이 session.extra 에 없으면 noop ("비표준 진입").
+      - coding_proposal 이 session.extra 에 없고 *session_prompt* 가
+        주어졌고 *auto_rebuild_proposal* True 면 즉석에서 재구성. 그렇지
+        않으면 (옛 동작) noop.
+
+    P0-X self-heal: slash command intake 가 (a) coding_proposal 을
+    stamp 하기 전에 race 로 anchor 가 먼저 만들어졌거나, (b) intake
+    경로 자체가 stamp 를 건너뛴 경우, 모두 continuation 단계에서 prompt
+    만 있으면 자체적으로 회복한다. 동일 사고의 silent stall (라이브
+    canonical session ``11917bf1e75d``) 재발 방지.
 
     progress markers:
       - 항상 ``issue_created`` 를 추가 (anchor 가 존재한다는 사실 자체).
@@ -151,16 +162,24 @@ def promote_session_to_coding_ready(
         },
     )
 
-    # 2. coding_proposal 없으면 promote 불가 — issue_created marker 만 반환
+    # 2. coding_proposal 없으면 — P0-X 자동 재구성 시도 후에도 비어있을 때만 noop.
     proposal_payload = extra.get(SESSION_EXTRA_CODING_PROPOSAL_KEY)
     if not isinstance(proposal_payload, Mapping) or not proposal_payload:
-        return ContinuationOutcome(
-            promoted=False,
-            coding_job=None,
-            new_extra=extra,
-            noop_reason=CONTINUATION_NOOP_NO_PROPOSAL,
-            progress_markers=progress_markers,
-        )
+        rebuilt = None
+        if auto_rebuild_proposal:
+            rebuilt = _rebuild_proposal_payload(
+                prompt=session_prompt, session_id=session_id_for_proposal
+            )
+        if rebuilt is None:
+            return ContinuationOutcome(
+                promoted=False,
+                coding_job=None,
+                new_extra=extra,
+                noop_reason=CONTINUATION_NOOP_NO_PROPOSAL,
+                progress_markers=progress_markers,
+            )
+        extra[SESSION_EXTRA_CODING_PROPOSAL_KEY] = dict(rebuilt)
+        proposal_payload = extra[SESSION_EXTRA_CODING_PROPOSAL_KEY]
 
     # 3. 같은 anchor 로 이미 ready 인지 확인
     existing_job = extra.get(SESSION_EXTRA_CODING_JOB_KEY)
@@ -325,6 +344,54 @@ def _coerce_dt(value: Any) -> Optional[datetime]:
 def _now_iso(now: Optional[datetime]) -> str:
     dt = now or datetime.now(tz=timezone.utc)
     return dt.replace(microsecond=0).isoformat()
+
+
+def _rebuild_proposal_payload(
+    *,
+    prompt: Optional[str],
+    session_id: Optional[str],
+) -> Optional[Mapping[str, Any]]:
+    """Rebuild a ``coding_proposal`` payload from *prompt* alone.
+
+    SSoT 는 ``agents.coding.authorization.recommend_authorization`` —
+    `_persist_coding_proposal` 가 stamp 하는 모양과 똑같이 serialise
+    한다. 본 helper 는 storage 와 무관하게 pure dict 를 반환한다.
+
+    Returns None when:
+      * prompt 가 비어있어 의미 있는 proposal 을 만들 수 없을 때.
+      * import / build 실패 (partial install 등).
+    """
+
+    text = str(prompt or "").strip()
+    if not text:
+        return None
+    try:
+        from ..coding.authorization import recommend_authorization
+    except Exception:  # noqa: BLE001 - partial install
+        return None
+    try:
+        proposal = recommend_authorization(
+            user_request=text, session_id=session_id
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if proposal is None:
+        return None
+    return {
+        "session_id": proposal.session_id,
+        "user_request": proposal.user_request,
+        "executor_role": proposal.executor_role,
+        "review_roles": list(proposal.review_roles),
+        "participant_roles": list(proposal.participant_roles),
+        "write_scope": list(proposal.write_scope),
+        "forbidden_scope": list(proposal.forbidden_scope),
+        "reason": proposal.reason,
+        "safety_rules": list(proposal.safety_rules),
+        "approval_required": bool(proposal.approval_required),
+        "metadata": {**dict(proposal.metadata), "rebuilt_by": "continuation_self_heal"},
+        "lifecycle_mode": proposal.lifecycle_mode,
+        "research_leads": list(proposal.research_leads),
+    }
 
 
 # ---------------------------------------------------------------------------
