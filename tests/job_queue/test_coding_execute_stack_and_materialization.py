@@ -123,11 +123,15 @@ def _make_request(metadata: Optional[Mapping[str, Any]] = None) -> CodingExecute
 
 class StackAwareTestCommandTests(unittest.TestCase):
     def test_python_repo_uses_unittest_default(self) -> None:
-        """case 1 — JS/TS / Python signals 없는 repo 는 python unittest
-        fallback 유지 (회귀 방지)."""
+        """case 1 — Python signals (tests/*.py 등) 가 있는 repo 는 python
+        unittest fallback 유지 (회귀 방지). 시그널이 전혀 없는 빈 repo
+        는 P1-G 이후 별도 ``bootstrap_required`` 로 분류된다 (다른 case 참고)."""
 
         with tempfile.TemporaryDirectory() as tmp:
-            sel = select_test_command(worktree_path=tmp)
+            root = Path(tmp)
+            (root / "tests").mkdir()
+            (root / "tests" / "test_x.py").write_text("def test():\n    pass\n")
+            sel = select_test_command(worktree_path=str(root))
         self.assertEqual(sel.strategy, STRATEGY_PYTHON_UNITTEST_DEFAULT)
         self.assertEqual(sel.command, PYTHON_UNITTEST_DEFAULT)
 
