@@ -94,6 +94,27 @@ async def _producer_loop(
                     )
                 except Exception:  # noqa: BLE001
                     pass
+            # P0-Z phantom marker self-heal — operator surface 가 silent
+            # heal 되지 않도록 stale marker 한 줄 노출.
+            stale = [
+                d
+                for d in dispatched
+                if getattr(d, "stale_marker_reason", None)
+            ]
+            if stale:
+                for d in stale:
+                    try:
+                        logger.warning(
+                            "coding_execute producer: phantom dispatch "
+                            "marker self-healed (session=%s, reason=%s, "
+                            "phantom_job_id=%s, new_job_id=%s)",
+                            d.session_id,
+                            d.stale_marker_reason,
+                            d.stale_marker_job_id,
+                            d.job_id,
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
         try:
             await asyncio.wait_for(
                 shutdown_event.wait(), timeout=interval_seconds
