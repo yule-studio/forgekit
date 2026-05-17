@@ -563,7 +563,13 @@ class CodingExecutorWorker:
                 )
                 if target_repo_unavail:
                     reason_token = REASON_TARGET_REPO_MISSING
-                    terminal = True  # operator has to fix path / clone
+                    # P1-D: target checkout missing is *recoverable infra
+                    # state*, not a permanent business failure. operator
+                    # creates the checkout (or sets env mapping) → the
+                    # dedicated recovery hook revives the row on next
+                    # tick. attempts still bounded by max_attempts so a
+                    # tight retry burst stops naturally.
+                    terminal = False
                 elif worktree_specific:
                     reason_token = (
                         f"{REASON_WORKTREE_FAILED}:{getattr(exc, 'reason', 'unknown')}"
@@ -574,16 +580,26 @@ class CodingExecutorWorker:
                     # the outer except, re-raise so the broad handler
                     # below catches.
                     raise
+                # P1-D: progress marker distinguishes "waiting on operator
+                # checkout / env" (recoverable) from "worktree subprocess
+                # failed" (different recovery path).
+                progress_marker = PROGRESS_CODING_BLOCKED
+                progress_detail = {
+                    "job_id": in_progress.job_id,
+                    "reason": reason_token,
+                    "branch": branch,
+                    "detail": _short(exc),
+                    "repo_full_name": request.repo_full_name,
+                }
+                if target_repo_unavail:
+                    progress_detail["status"] = "waiting_for_operator_checkout"
+                    progress_detail["searched_roots"] = list(
+                        getattr(exc, "searched_roots", ()) or ()
+                    )
                 self._stamp_progress(
                     session_id=request.session_id,
-                    marker=PROGRESS_CODING_BLOCKED,
-                    detail={
-                        "job_id": in_progress.job_id,
-                        "reason": reason_token,
-                        "branch": branch,
-                        "detail": _short(exc),
-                        "repo_full_name": request.repo_full_name,
-                    },
+                    marker=progress_marker,
+                    detail=progress_detail,
                 )
                 return self._fail(
                     in_progress,
