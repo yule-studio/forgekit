@@ -48,6 +48,17 @@ ENV_PRODUCER_INTERVAL: str = "YULE_CODING_EXECUTE_PRODUCER_INTERVAL_SECONDS"
 DEFAULT_PRODUCER_INTERVAL_SECONDS: float = 10.0
 
 
+# P1-A long-running coding_execute lease/keepalive — coding pipeline
+# (worktree + edits + tests + commit + push + PR) easily exceeds the
+# default 60s lease. Initial lease is large; keepalive ticker extends
+# it while process_job is running so the supervisor reaper doesn't
+# bounce an active job to ``failed_retryable``.
+ENV_PICK_LEASE_SECONDS: str = "YULE_CODING_EXECUTE_PICK_LEASE_SECONDS"
+DEFAULT_PICK_LEASE_SECONDS: float = 900.0  # 15 min initial lease
+ENV_KEEPALIVE_INTERVAL: str = "YULE_CODING_EXECUTE_KEEPALIVE_INTERVAL_SECONDS"
+DEFAULT_KEEPALIVE_INTERVAL_SECONDS: float = 30.0
+
+
 def _resolve_producer_interval() -> float:
     raw = (os.environ.get(ENV_PRODUCER_INTERVAL) or "").strip()
     if not raw:
@@ -57,6 +68,76 @@ def _resolve_producer_interval() -> float:
     except ValueError:
         return DEFAULT_PRODUCER_INTERVAL_SECONDS
     return max(2.0, value)
+
+
+def _resolve_pick_lease_seconds() -> float:
+    raw = (os.environ.get(ENV_PICK_LEASE_SECONDS) or "").strip()
+    if not raw:
+        return DEFAULT_PICK_LEASE_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_PICK_LEASE_SECONDS
+    return max(60.0, value)
+
+
+def _resolve_keepalive_interval_seconds() -> float:
+    raw = (os.environ.get(ENV_KEEPALIVE_INTERVAL) or "").strip()
+    if not raw:
+        return DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_KEEPALIVE_INTERVAL_SECONDS
+    return max(5.0, value)
+
+
+async def _lease_keepalive_loop(
+    *,
+    queue: JobQueue,
+    job_id: str,
+    worker_id: str,
+    lease_seconds: float,
+    interval_seconds: float,
+    done_event: asyncio.Event,
+) -> None:
+    """Background ticker that refreshes ``picked_until`` every
+    *interval_seconds* until *done_event* is set.
+
+    Failure modes:
+      * ``queue.renew_lease`` 가 None 반환 → job 이 이미 다른 경로로
+        terminate / reap 됨. ticker 도 정리.
+      * raise → swallow + 다음 tick (DB blip 한 번에 keepalive 가 죽지
+        않게).
+    """
+
+    while not done_event.is_set():
+        try:
+            refreshed = queue.renew_lease(
+                job_id,
+                lease_seconds=lease_seconds,
+                worker_id=worker_id,
+            )
+        except Exception:  # noqa: BLE001 - never crash the keepalive
+            logger.warning(
+                "coding_execute keepalive: renew_lease raised (job=%s)",
+                job_id,
+                exc_info=True,
+            )
+            refreshed = None
+        if refreshed is None:
+            logger.info(
+                "coding_execute keepalive: job %s no longer active "
+                "(state changed or row missing) — keepalive exiting",
+                job_id,
+            )
+            return
+        try:
+            await asyncio.wait_for(
+                done_event.wait(), timeout=interval_seconds
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 async def _producer_loop(
@@ -167,6 +248,8 @@ async def run_coding_executor(
     progress_post_fn = _build_coding_progress_post_fn()
 
     producer_interval = _resolve_producer_interval()
+    pick_lease_seconds = _resolve_pick_lease_seconds()
+    keepalive_interval = _resolve_keepalive_interval_seconds()
     producer_task = asyncio.create_task(
         _producer_loop(
             worker=worker,
@@ -175,8 +258,34 @@ async def run_coding_executor(
         )
     )
 
+    # P1-A startup recovery — fix 이전에 lease_expired 로 reap 된
+    # coding_execute row 들을 자동 requeue. canonical session
+    # ``11917bf1e75d`` 처럼 한 번 reaped 된 job 도 runtime restart 한 번
+    # 으로 깨어나서 keepalive 보호 아래 다시 시도된다.
+    _recover_lease_expired_rows(queue=queue, log_fn=logger.info)
+
     async def _process(job):
-        outcome = worker.process_job(job)
+        # Spawn a per-job keepalive task. picked_by 는 pick(...) 시점에
+        # service_id 로 설정되므로 worker_id 도 동일.
+        done = asyncio.Event()
+        keepalive_task = asyncio.create_task(
+            _lease_keepalive_loop(
+                queue=queue,
+                job_id=job.job_id,
+                worker_id=spec.service_id,
+                lease_seconds=pick_lease_seconds,
+                interval_seconds=keepalive_interval,
+                done_event=done,
+            )
+        )
+        try:
+            outcome = worker.process_job(job)
+        finally:
+            done.set()
+            try:
+                await keepalive_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
         _record_coding_progress_after_outcome(
             outcome=outcome,
             obsidian_writer=obsidian_progress_writer,
@@ -192,6 +301,7 @@ async def run_coding_executor(
             job_types=("coding_execute",),
             roles=(),
             shutdown_event=shutdown_event,
+            pick_lease_seconds=pick_lease_seconds,
         )
     finally:
         producer_task.cancel()
@@ -203,8 +313,81 @@ async def run_coding_executor(
     return EXIT_OK
 
 
+def _recover_lease_expired_rows(
+    *,
+    queue: JobQueue,
+    log_fn=logger.info,
+) -> tuple:
+    """Scan ``coding_execute`` ``failed_retryable`` rows whose
+    ``result_json.error == 'lease_expired'`` and requeue them so the
+    keepalive-protected worker can retry. Per-row failure is swallowed
+    — startup must never crash.
+    """
+
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    db_path = getattr(queue, "_db_path", None)
+    if db_path is None:
+        return ()
+    try:
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT job_id, result_json
+                FROM job_queue
+                WHERE job_type = 'coding_execute'
+                  AND state = 'failed_retryable'
+                ORDER BY created_at ASC
+                LIMIT 50
+                """
+            ).fetchall()
+    except Exception:  # noqa: BLE001 - never crash startup
+        logger.warning(
+            "coding_execute lease-expired sweep: sqlite query failed",
+            exc_info=True,
+        )
+        return ()
+
+    requeued: list[str] = []
+    for row in rows or ():
+        raw = row["result_json"] or "{}"
+        try:
+            payload = _json.loads(raw)
+        except Exception:  # noqa: BLE001
+            continue
+        if str(payload.get("error") or "").strip() != "lease_expired":
+            continue
+        try:
+            queue.requeue_retryable(row["job_id"])
+            requeued.append(row["job_id"])
+            try:
+                log_fn(
+                    "coding_execute startup recovery: requeued "
+                    "lease_expired row (job=%s)",
+                    row["job_id"],
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "coding_execute startup recovery: requeue failed for %s",
+                row["job_id"],
+                exc_info=True,
+            )
+            continue
+    return tuple(requeued)
+
+
 __all__ = (
+    "DEFAULT_KEEPALIVE_INTERVAL_SECONDS",
+    "DEFAULT_PICK_LEASE_SECONDS",
     "DEFAULT_PRODUCER_INTERVAL_SECONDS",
+    "ENV_KEEPALIVE_INTERVAL",
+    "ENV_PICK_LEASE_SECONDS",
     "ENV_PRODUCER_INTERVAL",
+    "_lease_keepalive_loop",
+    "_recover_lease_expired_rows",
     "run_coding_executor",
 )
