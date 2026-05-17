@@ -50,6 +50,7 @@ from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
 from yule_orchestrator.agents.job_queue.store import JobQueue
 from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
     PROGRESS_CODING_DISPATCH_QUEUED,
+    PROGRESS_CODING_JOB_READY,
     PROGRESS_ISSUE_CREATED,
     SESSION_EXTRA_CODING_JOB_KEY,
     SESSION_EXTRA_PROGRESS_KEY,
@@ -257,10 +258,13 @@ class ContinuationEndToEndTests(unittest.TestCase):
         self.assertEqual(meta["base_branch"], "main")
         self.assertEqual(meta["approval_id"], "approval-e2e")
         self.assertEqual(meta["approved_by"], "masterway")
-        # progress markers
+        # progress markers — P0-Y: ready 단계는 coding_job_ready 만 stamp.
+        # 실제 queue row 가 만들어진 시점은 dispatcher (다음 producer tick)
+        # 에서 coding_dispatch_queued 가 stamp 된다.
         progress = s.extra[SESSION_EXTRA_PROGRESS_KEY]
         self.assertIn(PROGRESS_ISSUE_CREATED, progress)
-        self.assertIn(PROGRESS_CODING_DISPATCH_QUEUED, progress)
+        self.assertIn(PROGRESS_CODING_JOB_READY, progress)
+        self.assertNotIn(PROGRESS_CODING_DISPATCH_QUEUED, progress)
         # work_order queue row 의 result 에 continuation 흔적
         row = exec_outcome.job
         assert row is not None
@@ -336,7 +340,8 @@ class ContinuationEndToEndTests(unittest.TestCase):
         self.assertEqual(coding_job["status"], STATUS_READY)
         self.assertEqual(coding_job["metadata"]["issue_number"], 42)
         progress = s.extra[SESSION_EXTRA_PROGRESS_KEY]
-        self.assertIn(PROGRESS_CODING_DISPATCH_QUEUED, progress)
+        self.assertIn(PROGRESS_CODING_JOB_READY, progress)
+        self.assertNotIn(PROGRESS_CODING_DISPATCH_QUEUED, progress)
 
     def test_same_work_order_drained_twice_does_not_repromote(self) -> None:
         """idempotency: 같은 work_order job 이 두 번 drain (e.g., worker

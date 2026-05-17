@@ -71,9 +71,21 @@ SESSION_EXTRA_PROGRESS_KEY: str = "github_work_order_progress"
 
 
 # Progress markers — operator surface 에서 "어디까지 갔는지" 즉시 보이는 키.
-# 본 모듈은 처음 2 종만 stamp. 나머지는 후속 단계 (coding_executor,
-# operator_action_reply) 가 stamp.
+# P0-Y marker correctness: 이전엔 ``coding_dispatch_queued`` 가 coding_job
+# stamp 시점에 찍혔는데, 실제 ``coding_execute`` queue row 는 그 이후
+# dispatcher 가 enqueue 해야 생긴다. operator surface 가 "queued 됐다"
+# 고 거짓말하는 회귀를 끊기 위해 두 단계로 분리:
+#
+#   * ``coding_job_ready`` — proposal → CodingJob(status=ready) 가
+#     session.extra 에 stamp 된 시점. queue row 는 아직 없음.
+#   * ``coding_dispatch_queued`` — ``dispatch_ready_coding_jobs`` 가
+#     실제 queue row 를 만들고 ``coding_execute_dispatch`` marker 까지
+#     찍은 시점. 이때만 operator 에게 "큐에 들어갔다" 고 말한다.
+#
+# 후속 단계 (``coding_in_progress`` / ``draft_pr_opened`` / ``coding_blocked``)
+# 는 coding executor / operator_action 핸들러가 stamp.
 PROGRESS_ISSUE_CREATED: str = "issue_created"
+PROGRESS_CODING_JOB_READY: str = "coding_job_ready"
 PROGRESS_CODING_DISPATCH_QUEUED: str = "coding_dispatch_queued"
 PROGRESS_CODING_IN_PROGRESS: str = "coding_in_progress"
 PROGRESS_DRAFT_PR_OPENED: str = "draft_pr_opened"
@@ -82,6 +94,7 @@ PROGRESS_CODING_BLOCKED: str = "coding_blocked"
 
 PROGRESS_TIMELINE: tuple = (
     PROGRESS_ISSUE_CREATED,
+    PROGRESS_CODING_JOB_READY,
     PROGRESS_CODING_DISPATCH_QUEUED,
     PROGRESS_CODING_IN_PROGRESS,
     PROGRESS_DRAFT_PR_OPENED,
@@ -253,10 +266,14 @@ def promote_session_to_coding_ready(
 
     extra[SESSION_EXTRA_CODING_JOB_KEY] = job_payload
 
-    # 5. 두 번째 progress marker
+    # 5. P0-Y marker correctness: 이 시점은 coding_job=ready stamp 만
+    # 완료된 상태 — queue row 는 아직 ``dispatch_ready_coding_jobs`` 가
+    # 만들지 않았다. 따라서 ``coding_job_ready`` 만 stamp 하고,
+    # ``coding_dispatch_queued`` 는 dispatcher 가 실제 enqueue 한 뒤에
+    # ``_persist_dispatch_marker`` 가 stamp 한다.
     progress_markers = _ensure_progress_marker(
         extra,
-        marker=PROGRESS_CODING_DISPATCH_QUEUED,
+        marker=PROGRESS_CODING_JOB_READY,
         at=_now_iso(now),
         detail={
             "issue_number": anchor_issue_number,
@@ -570,6 +587,24 @@ def repair_session_for_coding_dispatch(
             fields_to_replace["task_type"] = new_task_type
         if new_executor_role is not None:
             fields_to_replace["executor_role"] = new_executor_role
+
+    # P0-Y session normalization — stale qa-engineer block reason 등 옛
+    # 분류의 흔적이 남아있으면 operator surface 가 헷갈린다. anchor +
+    # coding_proposal 까지 도달했다는 사실 자체가 "write 가 사실상 승인
+    # 된" 상태이므로 write_blocked_reason 도 비운다.
+    current_block_reason = (
+        str(getattr(session, "write_blocked_reason", "") or "")
+    )
+    stale_qa_marker = (
+        "qa-engineer" in current_block_reason
+        or "qa_engineer" in current_block_reason
+    )
+    needs_block_reason_clear = bool(current_block_reason) and (
+        stale_qa_marker
+        or task_type_reclassified  # 재분류됐으면 옛 reason 는 stale
+    )
+    if needs_block_reason_clear:
+        fields_to_replace["write_blocked_reason"] = None
     if _replace is not None:
         try:
             updated = _replace(session, **fields_to_replace)
@@ -607,6 +642,8 @@ def repair_session_for_coding_dispatch(
                 second_fields["task_type"] = new_task_type
             if new_executor_role is not None:
                 second_fields["executor_role"] = new_executor_role
+        if needs_block_reason_clear:
+            second_fields["write_blocked_reason"] = None
         updated_after = updated
         if _replace is not None:
             try:
@@ -644,6 +681,7 @@ __all__ = (
     "PROGRESS_CODING_BLOCKED",
     "PROGRESS_CODING_DISPATCH_QUEUED",
     "PROGRESS_CODING_IN_PROGRESS",
+    "PROGRESS_CODING_JOB_READY",
     "PROGRESS_DRAFT_PR_OPENED",
     "PROGRESS_ISSUE_CREATED",
     "PROGRESS_TIMELINE",

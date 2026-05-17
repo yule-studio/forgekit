@@ -425,6 +425,40 @@ def _persist_dispatch_marker(
         "repo_full_name": request.repo_full_name,
         "base_branch": request.base_branch,
     }
+
+    # P0-Y marker correctness — actual queue row exists now, so progress
+    # bucket gets the real ``coding_dispatch_queued`` marker (not the
+    # earlier ``coding_job_ready`` stamp). operator surface 가 "큐에
+    # 들어갔다" 고 말할 수 있는 정확한 시점.
+    try:
+        from .work_order_coding_continuation import (
+            PROGRESS_CODING_DISPATCH_QUEUED,
+            SESSION_EXTRA_PROGRESS_KEY,
+        )
+    except Exception:  # noqa: BLE001 - partial install
+        PROGRESS_CODING_DISPATCH_QUEUED = None
+        SESSION_EXTRA_PROGRESS_KEY = None
+    if PROGRESS_CODING_DISPATCH_QUEUED and SESSION_EXTRA_PROGRESS_KEY:
+        bucket = extra.get(SESSION_EXTRA_PROGRESS_KEY)
+        if not isinstance(bucket, Mapping):
+            bucket = {}
+        bucket = dict(bucket)
+        existing_entry = bucket.get(PROGRESS_CODING_DISPATCH_QUEUED)
+        first_at = (
+            existing_entry.get("at")
+            if isinstance(existing_entry, Mapping) and existing_entry.get("at")
+            else when
+        )
+        bucket[PROGRESS_CODING_DISPATCH_QUEUED] = {
+            "at": first_at,
+            "detail": {
+                "job_id": job_id,
+                "executor_role": request.executor_role,
+                "repo_full_name": request.repo_full_name,
+            },
+        }
+        extra[SESSION_EXTRA_PROGRESS_KEY] = bucket
+
     try:
         updated = _replace(session, extra=extra)
     except TypeError:

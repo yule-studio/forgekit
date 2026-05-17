@@ -329,6 +329,7 @@ class RuntimeDrainAndContinuationTests(unittest.TestCase):
     def test_anchor_stamp_promotes_coding_job(self) -> None:
         from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
             PROGRESS_CODING_DISPATCH_QUEUED,
+            PROGRESS_CODING_JOB_READY,
             PROGRESS_ISSUE_CREATED,
             promote_session_to_coding_ready,
         )
@@ -368,9 +369,13 @@ class RuntimeDrainAndContinuationTests(unittest.TestCase):
             approval_id="approval-x",
         )
         self.assertTrue(outcome.promoted)
-        # progress marker 가 둘 다 stamp 됨 — issue_created + dispatch_queued
+        # progress marker — P0-Y: ready stamp 시점은 coding_job_ready 만.
+        # 실제 dispatch_queued 는 dispatcher 가 queue row 만든 뒤 stamp.
         self.assertIn(PROGRESS_ISSUE_CREATED, outcome.progress_markers)
-        self.assertIn(PROGRESS_CODING_DISPATCH_QUEUED, outcome.progress_markers)
+        self.assertIn(PROGRESS_CODING_JOB_READY, outcome.progress_markers)
+        self.assertNotIn(
+            PROGRESS_CODING_DISPATCH_QUEUED, outcome.progress_markers
+        )
         # coding_job 이 ready 로 promote
         new_extra = outcome.new_extra
         self.assertIn("coding_job", new_extra)
