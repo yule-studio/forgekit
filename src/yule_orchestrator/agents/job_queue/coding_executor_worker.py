@@ -87,6 +87,11 @@ REASON_INVALID_REQUEST: str = "invalid_request"
 # exit 255 대신 operator 가 즉시 이해 가능한 token 으로 분기).
 REASON_TARGET_REPO_MISSING: str = "target_repo_checkout_missing"
 REASON_WORKTREE_FAILED: str = "worktree_provision_failed"
+# P1-G — repo 가 detectable stack 이 하나도 없어 ``test_failed`` 가
+# 의미 없음. record-only editor + greenfield 조합 이면 sub-reason 에
+# editor capability 정보까지 포함 (e.g.
+# ``bootstrap_required:empty_or_greenfield_repo+editor_record_only_insufficient``).
+REASON_BOOTSTRAP_REQUIRED: str = "bootstrap_required"
 
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
@@ -609,6 +614,43 @@ class CodingExecutorWorker:
                 )
             ctx = self._editor.apply(request=request, context=ctx)
             ctx = self._tests.run(request=request, context=ctx)
+            # P1-G: test runner 가 bootstrap_required 로 short-circuit
+            # 한 경우 — repo 에 detectable stack 이 없음. record-only
+            # editor + greenfield 조합이면 sub-reason 에 capability
+            # 부족까지 명시. terminal=True 로 무한 retry churn 차단 (생산
+            # 차원의 fix: live editor / repo scaffolding 작업이 필요).
+            test_summary_mapping = (
+                ctx.test_summary if isinstance(ctx.test_summary, Mapping) else {}
+            )
+            if test_summary_mapping.get("status") == "bootstrap_required":
+                sub_reason = (
+                    test_summary_mapping.get("bootstrap_sub_reason") or "no_signals"
+                )
+                editor_class = type(self._editor).__name__
+                editor_audit = editor_class
+                if editor_class == "RecordOnlyCodeEditor":
+                    sub_reason = (
+                        f"{sub_reason}+editor_record_only_insufficient"
+                    )
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": REASON_BOOTSTRAP_REQUIRED,
+                        "sub_reason": sub_reason,
+                        "branch": branch,
+                        "selection": test_summary_mapping.get("selection"),
+                        "code_editor": editor_audit,
+                    },
+                )
+                return self._fail(
+                    in_progress,
+                    terminal=True,
+                    reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
+                    branch=branch,
+                    test_summary=dict(test_summary_mapping),
+                )
             if not _tests_passed(ctx.test_summary):
                 self._stamp_progress(
                     session_id=request.session_id,
@@ -940,6 +982,7 @@ __all__ = (
     "REASON_NOT_IMPLEMENTED",
     "REASON_PR_FAILED",
     "REASON_PROTECTED_BRANCH",
+    "REASON_BOOTSTRAP_REQUIRED",
     "REASON_PUSH_FAILED",
     "REASON_TARGET_REPO_MISSING",
     "REASON_TEST_FAILED",

@@ -593,6 +593,25 @@ class SubprocessTestRunner:
             request_metadata=request.metadata,
             fallback_command=self.default_command,
         )
+
+        # P1-G bootstrap_required short-circuit — selection 이 "no stack" /
+        # "greenfield" 라면 subprocess 실행 자체가 의미 없음. 옛 동작은
+        # python unittest 로 fallback 해 misleading test_failed 만 남겼다.
+        # 본 분기는 caller (worker) 가 ``REASON_BOOTSTRAP_REQUIRED`` 로
+        # surface 할 수 있게 selection 만 stamp 하고 즉시 반환.
+        if selection.requires_bootstrap:
+            return replace(
+                context,
+                test_summary={
+                    "status": "bootstrap_required",
+                    "command": [],
+                    "exit_code": None,
+                    "selection": selection.to_audit(),
+                    "reason": selection.reason,
+                    "bootstrap_sub_reason": selection.bootstrap_sub_reason,
+                },
+            )
+
         cmd = list(selection.command)
         try:
             result = self._runner(
