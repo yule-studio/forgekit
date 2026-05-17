@@ -40,7 +40,9 @@ from yule_orchestrator.agents.job_queue.github_work_order_executor import (
     CREATED_VIA_AUTO_CREATE,
     GitHubWorkOrderWorker,
     SESSION_EXTRA_GITHUB_ISSUE_KEY,
+    SKIPPED_MISSING_PLAN,
     SKIPPED_NO_REPO,
+    requeue_missing_plan_failures,
     requeue_no_repo_failures,
 )
 from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
@@ -341,9 +343,13 @@ class StartupRetryHookTests(_Fixture):
         self.assertIn(SESSION_EXTRA_GITHUB_ISSUE_KEY, sess.extra)
 
     def test_requeue_skips_other_failures(self) -> None:
-        """다른 error reason 의 failed_retryable rows 는 건드리지 않음."""
+        """다른 error reason 의 failed_retryable rows 는 건드리지 않음.
 
-        # GitHubWorkOrder 가 dispatched 됐다가 다른 사유로 fail 한 케이스
+        P0-V 이후엔 plan-missing + repo present 조합이 executor self-heal
+        로 성공하므로, "다른 사유로 fail" 상태를 만들려면 writer 가 없는
+        경로 (SKIPPED_NO_WRITER) 로 떨어뜨린다.
+        """
+
         wo = GitHubWorkOrder(
             proposal_id="p-other",
             session_id="sess-other",
@@ -353,14 +359,19 @@ class StartupRetryHookTests(_Fixture):
             request_summary="x",
             repo="owner/repo",
             dry_run=False,
-            # plan 도 existing 도 없음 → SKIPPED_MISSING_PLAN
+            issue_auto_create_plan={
+                "title": "fake",
+                "body": "body",
+                "labels": [],
+                "assignees": [],
+            },
         )
         job = dispatch_github_work_order(self.queue, wo).job
         assert job is not None
-        # session 없이 drain — SKIPPED_MISSING_PLAN failed_retryable
+        # writer_factory 가 None 을 반환 — SKIPPED_NO_WRITER failed_retryable
         worker = GitHubWorkOrderWorker(
             queue=self.queue,
-            writer_factory=lambda _wo: (self.writer, "L2"),
+            writer_factory=lambda _wo: (None, "L2"),
             heartbeats=self.heartbeats,
         )
         worker.run_one()
@@ -370,6 +381,141 @@ class StartupRetryHookTests(_Fixture):
 
         # startup hook 은 본 row 를 건드리지 않음
         requeued = requeue_no_repo_failures(self.queue)
+        self.assertEqual(requeued, ())
+        post = self.queue.get(job.job_id)
+        self.assertEqual(post.state, JobState.FAILED_RETRYABLE)
+
+
+# ---------------------------------------------------------------------------
+# P0-V — plan missing self-heal + startup hook
+# ---------------------------------------------------------------------------
+
+
+class StartupRetryHookMissingPlanTests(unittest.TestCase):
+    """Mirror of `StartupRetryHookTests` but for SKIPPED_MISSING_PLAN.
+
+    옛 producer 가 plan 을 빠뜨리고 enqueue 한 row 들이 fix 후에도
+    영원히 stranded 로 남는 회귀를 차단.
+    """
+
+    def setUp(self) -> None:
+        tmp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp_dir.cleanup)
+        self.db_path = Path(tmp_dir.name) / "queue.sqlite"
+        self.queue = JobQueue(db_path=self.db_path)
+        self.heartbeats = HeartbeatStore(db_path=self.db_path)
+
+        class _Writer:
+            def __init__(self) -> None:
+                self.calls: List[Mapping[str, Any]] = []
+
+            def create_issue(self, **kwargs):  # noqa: ANN003
+                self.calls.append(kwargs)
+                return type(
+                    "WriteResult",
+                    (),
+                    {
+                        "outcome": OUTCOME_OK,
+                        "succeeded": True,
+                        "body": {
+                            "number": 99,
+                            "html_url": "https://example.test/issues/99",
+                            "url": "https://example.test/api/issues/99",
+                        },
+                    },
+                )()
+
+        self.writer = _Writer()
+
+    def test_executor_recovers_plan_for_old_failed_row(self) -> None:
+        # 1. plan 없이 enqueue (옛 producer 시뮬)
+        wo = GitHubWorkOrder(
+            proposal_id="p-old",
+            session_id="sess-old-plan",
+            approval_id="a-old",
+            approved_by="m",
+            approved_at="2026-05-17T11:00:00+00:00",
+            request_summary="네이버 검색 풀스택 MVP 구현해줘",
+            repo="yule-studio/naver-search-clone",
+            dry_run=False,
+            # plan / existing_issue 둘 다 빠짐
+        )
+        job = dispatch_github_work_order(self.queue, wo).job
+        assert job is not None
+
+        # 2. self-heal 이 들어가기 전 시점 시뮬 — writer 없는 worker 가
+        # 일단 SKIPPED_MISSING_PLAN 으로 떨어뜨린다. 하지만 본 PR 의 self-heal
+        # 은 worker 가 writer 를 갖고 있을 때 작동하므로 그 경로를 정확히
+        # 모사하려면 옛 동작을 흉내내야 한다 — 그래서 미리 result_json 에
+        # SKIPPED_MISSING_PLAN 을 강제로 stamp.
+        import json as _json
+        import sqlite3 as _sqlite3
+
+        with _sqlite3.connect(str(self.db_path)) as conn:
+            conn.execute(
+                "UPDATE job_queue SET state = ?, result_json = ? WHERE job_id = ?",
+                (
+                    JobState.FAILED_RETRYABLE.value,
+                    _json.dumps({"error": SKIPPED_MISSING_PLAN}),
+                    job.job_id,
+                ),
+            )
+            conn.commit()
+
+        refreshed = self.queue.get(job.job_id)
+        self.assertEqual(refreshed.state, JobState.FAILED_RETRYABLE)
+
+        # 3. startup hook 실행 → row 가 queued 로 복귀
+        requeued = requeue_missing_plan_failures(self.queue)
+        self.assertIn(job.job_id, requeued)
+        re = self.queue.get(job.job_id)
+        self.assertEqual(re.state, JobState.QUEUED)
+
+        # 4. 본 PR self-heal worker 가 re-pick → plan 재구성 → 성공
+        worker = GitHubWorkOrderWorker(
+            queue=self.queue,
+            writer_factory=lambda _wo: (self.writer, "L2"),
+            heartbeats=self.heartbeats,
+        )
+        outcome = worker.run_one()
+        assert outcome is not None
+        self.assertIsNone(
+            outcome.skipped_reason,
+            "self-heal 으로 plan 재구성 후 정상 issue 생성되어야 함",
+        )
+        self.assertEqual(outcome.created_via, CREATED_VIA_AUTO_CREATE)
+        self.assertEqual(len(self.writer.calls), 1)
+        self.assertEqual(
+            self.writer.calls[0]["repo"], "yule-studio/naver-search-clone"
+        )
+
+    def test_requeue_missing_plan_skips_no_repo_failures(self) -> None:
+        """`requeue_missing_plan_failures` 는 SKIPPED_NO_REPO row 는 안 건드림."""
+
+        wo = GitHubWorkOrder(
+            proposal_id="p-noco",
+            session_id="sess-no-repo-row",
+            approval_id="a-noco",
+            approved_by="m",
+            approved_at="2026-05-17T11:00:00+00:00",
+            request_summary="x",
+            repo=None,
+            issue_auto_create_plan={"title": "t", "body": "b"},
+        )
+        job = dispatch_github_work_order(self.queue, wo).job
+        assert job is not None
+
+        # session 없는 worker — SKIPPED_NO_REPO 로 떨어뜨림
+        worker = GitHubWorkOrderWorker(
+            queue=self.queue,
+            writer_factory=lambda _wo: (self.writer, "L2"),
+            heartbeats=self.heartbeats,
+        )
+        worker.run_one()
+        refreshed = self.queue.get(job.job_id)
+        self.assertEqual(refreshed.result.get("error"), SKIPPED_NO_REPO)
+
+        requeued = requeue_missing_plan_failures(self.queue)
         self.assertEqual(requeued, ())
         post = self.queue.get(job.job_id)
         self.assertEqual(post.state, JobState.FAILED_RETRYABLE)

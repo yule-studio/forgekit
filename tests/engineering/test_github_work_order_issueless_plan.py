@@ -388,5 +388,42 @@ class RuntimeDrainAndContinuationTests(unittest.TestCase):
         self.assertFalse(outcome_again.promoted)
 
 
+# ---------------------------------------------------------------------------
+# 6. Runtime startup wiring — both requeue hooks live in work_order runner.
+# ---------------------------------------------------------------------------
+
+
+class RuntimeStartupHooksTests(unittest.TestCase):
+    """`work_order_executor_runner` 가 startup 시점에 `requeue_no_repo` +
+    `requeue_missing_plan` 둘 다 호출하는지 import-level 검증.
+
+    하나라도 빠지면 fix 후에도 stranded rows 가 영영 깨어나지 못함 (live
+    smoke 복귀의 의미적 회귀).
+    """
+
+    def test_runner_imports_both_recovery_hooks(self) -> None:
+        # import 단계에서 ImportError 가 발생하지 않아야 한다
+        from yule_orchestrator.runtime import work_order_executor_runner
+
+        # runner module 본문에 두 helper 이름이 모두 등장해야 함
+        source = work_order_executor_runner.__file__
+        with open(source, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("requeue_no_repo_failures", text)
+        self.assertIn("requeue_missing_plan_failures", text)
+
+    def test_executor_module_exports_recovery_hooks(self) -> None:
+        from yule_orchestrator.agents.job_queue import (
+            github_work_order_executor as module,
+        )
+
+        self.assertIn(
+            "requeue_no_repo_failures", getattr(module, "__all__", ())
+        )
+        self.assertIn(
+            "requeue_missing_plan_failures", getattr(module, "__all__", ())
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
