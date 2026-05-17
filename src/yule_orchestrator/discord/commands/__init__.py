@@ -749,6 +749,49 @@ def _run_engineer_intake(
     return result
 
 
+def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
+    """If *session.extra* lacks ``coding_proposal``, build one from
+    *prompt_text* and persist it. Idempotent — existing payload wins.
+
+    P0-W slash intake fix — engineering channel router 의 coding gate 가
+    "코딩 권한 제안" 단어를 받아야만 stamp 하던 것을, slash command path
+    에서도 동일 stamp 가 일어나도록 한다. 결과:
+
+      * `_maybe_post_intake_approval_card` 시점에 session.extra 에 코딩
+        proposal payload 가 살아있음.
+      * 이후 `promote_session_to_coding_ready` 가 anchor 만 받아도 곧장
+        coding_job=ready 로 promote 가능 (no_coding_proposal noop 제거).
+    """
+
+    extra = getattr(session, "extra", None) or {}
+    if isinstance(extra, Mapping) and isinstance(
+        extra.get("coding_proposal"), Mapping
+    ):
+        return  # 이미 있음 — 덮어쓰지 않는다
+
+    try:
+        from ...agents.coding.authorization import recommend_authorization
+        from ..engineering_channel_router.session_persistence import (
+            _persist_coding_proposal,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return
+
+    try:
+        proposal = recommend_authorization(
+            user_request=prompt_text or "",
+            session_id=getattr(session, "session_id", None),
+        )
+    except Exception:  # noqa: BLE001 - never block intake on proposal failure
+        return
+    if proposal is None:
+        return
+    try:
+        _persist_coding_proposal(session, proposal)
+    except Exception:  # noqa: BLE001
+        return
+
+
 def _extract_repo_from_session(session: Any, prompt_text: str) -> Optional[str]:
     """Resolve canonical ``owner/repo`` from session refs or prompt text.
 
@@ -856,6 +899,14 @@ def _maybe_post_intake_approval_card(
     )
     if not eligible:
         return
+
+    # P0-W — slash intake 가 coding intent 로 인정된 시점에 즉시
+    # `session.extra['coding_proposal']` 를 stamp. 이전엔 engineering
+    # channel router 의 `_run_coding_authorization_gate` 만 stamp 해서
+    # slash command 단독 경로는 coding_proposal 이 영원히 비어 있었고,
+    # work_order continuation 이 `no_coding_proposal` 으로 noop 처리됐다.
+    # 본 helper 가 idempotent — 이미 있으면 skip.
+    _ensure_coding_proposal_on_session(session, prompt_text)
 
     queue = JobQueue()
     worker = ApprovalWorker(
