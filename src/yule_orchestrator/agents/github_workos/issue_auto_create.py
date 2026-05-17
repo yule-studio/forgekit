@@ -43,7 +43,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Mapping, Optional, Sequence, Tuple
+from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
 from ..git.repo_contract import RepoContract
 
@@ -432,53 +432,111 @@ def build_default_issue_body(
     session_id: Optional[str] = None,
     title_override: Optional[str] = None,
     extra_labels: Iterable[str] = (),
+    obsidian_template_loader: Optional[Any] = None,
 ) -> IssueAutoCreatePlan:
-    """target repo 에 template 가 없을 때의 fallback plan.
+    """target repo 에 template 가 없을 때의 *고품질* fallback plan.
 
-    무리해서 꾸며내지 않는다 — title 은 request_summary 의 첫 줄,
-    body 는 짧고 명시적인 4 섹션 (목표/맥락/작업 항목/audit).
-    ``audit_reason='no_repo_template'`` 으로 audit 에 fallback 임을 남긴다.
+    이전 회귀: title 이 raw request_summary 첫 줄을 잘랐고 labels 는 caller
+    가 준 extra 만 사용해 비어있기 십상이었다. 라이브에서 생성된 issue #1
+    이 그 약점을 그대로 노출. 현재는 :mod:`issue_quality` 로 라우팅해:
+
+    * 한국어 명확 title 자동 합성 (intent + scope 기반)
+    * deterministic label mapping (full-stack / feature / docs / refactor /
+      bug / test / chore + auto-created marker)
+    * 운영 규칙에 맞는 6 섹션 body (목표 / 범위 / 작업 항목 / 검증 기준 /
+      운영 규칙 / engineering-agent audit)
+    * audit 토큰 (template_source / audit_reason / label_source /
+      title_strategy) 이 body 끝에 stamp
+
+    Obsidian fallback template loader 가 주입되면 그 텍스트를 그대로 body
+    로 사용하고 ``template_source="obsidian_fallback"`` 으로 audit. 없으면
+    Yule deterministic default 로 진행하고 그 사실도 audit 한다 (fake
+    success 금지).
+
+    ``title_override`` / ``extra_labels`` 는 기존 호출자가 명시적으로 줄
+    수 있는 override 슬롯. 우선순위는 quality layer 가 알아서 처리.
     """
 
+    # Lazy import — issue_quality 가 본 모듈에 의존하지 않게.
+    from .issue_quality import (
+        LABEL_SOURCE_YULE_FALLBACK,
+        TEMPLATE_SOURCE_OBSIDIAN,
+        TEMPLATE_SOURCE_YULE_DEFAULT,
+        build_quality_default_body,
+        derive_default_labels,
+        detect_intent,
+        detect_scopes,
+        resolve_template_source,
+        synthesize_korean_title,
+    )
+
     summary = (request_summary or "").strip()
-    title = (title_override or "").strip() or summary.splitlines()[0][:120] or "engineering-agent issue"
-
-    lines = [
-        "## 목표",
-        "",
-        f"> {summary or '— 요약 없음 —'}",
-        "",
-        "## 맥락",
-        "",
-        "- engineering-agent 가 coding request 처리 중 issue 가 명시되지 않아 자동 생성한 issue 입니다.",
-    ]
-    if repo_contract is not None:
-        lines.append(f"- repo contract: {repo_contract.summary_line()}")
-    lines.extend(
-        [
-            "",
-            "## 작업 항목",
-            "",
-            "- [ ] (placeholder — 실제 작업 분해는 PR 본문 또는 sub-issue 에서 진행)",
-            "",
-            "## engineering-agent audit",
-            "",
-            f"- audit_reason: `{AUDIT_TEMPLATE_FALLBACK}`",
-        ]
+    intent = detect_intent(summary)
+    scopes = detect_scopes(summary)
+    repo_slug = (
+        f"{repo_contract.owner}/{repo_contract.repo}"
+        if repo_contract is not None
+        else None
     )
-    if session_id:
-        lines.append(f"- engineering-agent session: `{session_id}`")
 
-    body = "\n".join(lines).rstrip() + "\n"
-    labels = tuple(
-        dict.fromkeys(
-            str(l).strip() for l in extra_labels if str(l).strip()
+    # Title — title_override 가 있으면 그것을 그대로 (호출자가 강제), 없으면
+    # Korean synthesis.
+    if (title_override or "").strip():
+        title = (title_override or "").strip()
+        title_strategy = "operator_override"
+    else:
+        title, title_strategy = synthesize_korean_title(
+            request_text=summary,
+            intent=intent,
+            scopes=scopes,
+            repo_slug=repo_slug,
+            fallback_summary=summary,
         )
+
+    # Template source — Obsidian fallback 있으면 그 텍스트로 body 대체.
+    template_decision = resolve_template_source(
+        repo_contract_templates=(
+            repo_contract.issue_templates if repo_contract is not None else ()
+        ),
+        obsidian_template_loader=obsidian_template_loader,
     )
+
+    label_resolution = derive_default_labels(
+        request_text=summary,
+        extra_labels=tuple(extra_labels or ()),
+        intent=intent,
+    )
+
+    if template_decision.source == TEMPLATE_SOURCE_OBSIDIAN and template_decision.template_text:
+        body = template_decision.template_text
+        if "engineering-agent audit" not in body:
+            body = body.rstrip() + (
+                "\n\n## engineering-agent audit\n\n"
+                f"- audit_reason: `{AUDIT_TEMPLATE_FALLBACK}`\n"
+                f"- template_source: `{template_decision.source}`\n"
+                f"- label_source: `{label_resolution.primary_source}`\n"
+                f"- title_strategy: `{title_strategy}`\n"
+                + (f"- engineering-agent session: `{session_id}`\n" if session_id else "")
+            )
+        template_source_value = TEMPLATE_SOURCE_OBSIDIAN
+    else:
+        body = build_quality_default_body(
+            request_summary=summary,
+            intent=intent,
+            scopes=scopes,
+            repo_slug=repo_slug,
+            session_id=session_id,
+            template_source=TEMPLATE_SOURCE_YULE_DEFAULT,
+            audit_reason=AUDIT_TEMPLATE_FALLBACK,
+            label_source=label_resolution.primary_source,
+            title_strategy=title_strategy,
+        )
+        template_source_value = TEMPLATE_SOURCE_YULE_DEFAULT
+
     return IssueAutoCreatePlan(
         title=title,
         body=body,
-        labels=labels,
+        labels=label_resolution.labels,
         assignees=(),
         template_path=None,
         confidence=CONFIDENCE_HIGH,  # fallback 자체는 deterministic, 사람 입력 불필요
