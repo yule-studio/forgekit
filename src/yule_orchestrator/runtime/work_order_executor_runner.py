@@ -83,6 +83,7 @@ async def run_github_work_order_executor(
     )
     from ..agents.job_queue.github_work_order_executor import (
         GitHubWorkOrderWorker,
+        requeue_missing_plan_failures,
         requeue_no_repo_failures,
         run_until_shutdown,
     )
@@ -117,23 +118,29 @@ async def run_github_work_order_executor(
         else:
             logger.info(message)
 
-    # P0-T startup recovery hook — producer bug 로 SKIPPED_NO_REPO
-    # failed_retryable 로 떨어진 rows 를 자동 requeue. executor 가 본
-    # PR 의 repo fallback 으로 재처리 시 성공. operator 가 runtime
-    # restart 만으로 stranded rows 복구.
-    try:
-        requeued = requeue_no_repo_failures(queue, log_fn=_log)
-        if requeued:
-            logger.info(
-                "github_work_order_executor: startup hook requeued "
-                "%d failed_retryable rows after producer fix",
-                len(requeued),
+    # P0-T / P0-V startup recovery hooks — producer 가 plan / repo 를
+    # 빠뜨리고 enqueue 한 row 들이 fix 후에도 stranded 로 남는 회귀를
+    # 차단한다. 각 helper 는 자기 error reason 만 picks 해서 audit 라인을
+    # 분리한다 — operator 가 #봇-상태 에서 두 결을 따로 본다.
+    for label, helper in (
+        ("SKIPPED_NO_REPO", requeue_no_repo_failures),
+        ("SKIPPED_MISSING_PLAN", requeue_missing_plan_failures),
+    ):
+        try:
+            requeued = helper(queue, log_fn=_log)
+            if requeued:
+                logger.info(
+                    "github_work_order_executor: startup hook requeued "
+                    "%d failed_retryable rows (reason=%s) after producer fix",
+                    len(requeued),
+                    label,
+                )
+        except Exception:  # noqa: BLE001 — never crash the executor on hook
+            logger.warning(
+                "github_work_order_executor: startup requeue hook raised (reason=%s)",
+                label,
+                exc_info=True,
             )
-    except Exception:  # noqa: BLE001 — never crash the executor on hook
-        logger.warning(
-            "github_work_order_executor: startup requeue hook raised",
-            exc_info=True,
-        )
 
     await run_until_shutdown(
         worker,
