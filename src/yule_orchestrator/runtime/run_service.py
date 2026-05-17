@@ -192,6 +192,20 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
             shutdown_event=shutdown_event,
         )
 
+    if spec.kind == ServiceKind.CODING_EXECUTOR:
+        # P0-Y: producer/consumer 분리. dispatch_ready_coding_jobs 는
+        # 별도 background task 로 주기 호출 — coding_execute queue 가
+        # 비어 있어도 ready coding_job 이 enqueue 된다 (옛 chicken-and-egg
+        # deadlock 해소).
+        from .coding_executor_runner import run_coding_executor
+
+        return await run_coding_executor(
+            spec,
+            queue=queue,
+            heartbeats=heartbeats,
+            shutdown_event=shutdown_event,
+        )
+
     if spec.kind == ServiceKind.DIGEST_SCHEDULER:
         from ..agents.digest.scheduler import run_scheduler
 
