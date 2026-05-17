@@ -154,6 +154,11 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "worker loop, persistence, formatting",
     },
+    "src/yule_orchestrator/agents/job_queue/coding_executor_worker.py": {
+        "deadline": "2026-06-14",
+        "owner": "codwithyc",
+        "axes": "process_job pipeline, reason classification, progress stamping",
+    },
 }
 
 

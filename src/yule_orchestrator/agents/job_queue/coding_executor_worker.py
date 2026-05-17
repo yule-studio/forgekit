@@ -246,6 +246,7 @@ class WorktreeContext:
     pushed: bool = False
     pr_number: Optional[int] = None
     pr_url: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 class WorktreeProvisioner(Protocol):
@@ -612,7 +613,60 @@ class CodingExecutorWorker:
                     reason=f"{reason_token}: {_short(exc)}",
                     branch=branch,
                 )
-            ctx = self._editor.apply(request=request, context=ctx)
+            # P1-H — editor 가 greenfield bootstrap 경로를 가지고 있고
+            # capability gap (env opt-in 안 됨) 이거나 scaffold 자체가
+            # 실패하면 두 specialized exception 으로 surface. 둘 다
+            # ``REASON_BOOTSTRAP_REQUIRED`` 로 mapping 후 terminal 처리.
+            try:
+                ctx = self._editor.apply(request=request, context=ctx)
+            except Exception as exc:  # noqa: BLE001 - mapped below
+                exc_name = type(exc).__name__
+                if exc_name == "BootstrapLiveEditorUnavailable":
+                    sub_reason = (
+                        f"live_editor_unavailable:{getattr(exc, 'mode', 'unknown')}"
+                    )
+                    self._stamp_progress(
+                        session_id=request.session_id,
+                        marker=PROGRESS_CODING_BLOCKED,
+                        detail={
+                            "job_id": in_progress.job_id,
+                            "reason": REASON_BOOTSTRAP_REQUIRED,
+                            "sub_reason": sub_reason,
+                            "branch": branch,
+                            "code_editor": type(self._editor).__name__,
+                            "detail": _short(exc),
+                        },
+                    )
+                    return self._fail(
+                        in_progress,
+                        terminal=True,
+                        reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
+                        branch=branch,
+                    )
+                if exc_name == "BootstrapApplyFailed":
+                    sub_reason = (
+                        f"scaffold_apply_failed:{getattr(exc, 'mode', 'unknown')}"
+                    )
+                    self._stamp_progress(
+                        session_id=request.session_id,
+                        marker=PROGRESS_CODING_BLOCKED,
+                        detail={
+                            "job_id": in_progress.job_id,
+                            "reason": REASON_BOOTSTRAP_REQUIRED,
+                            "sub_reason": sub_reason,
+                            "branch": branch,
+                            "code_editor": type(self._editor).__name__,
+                            "detail": _short(exc),
+                        },
+                    )
+                    return self._fail(
+                        in_progress,
+                        terminal=True,
+                        reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
+                        branch=branch,
+                    )
+                raise
+
             ctx = self._tests.run(request=request, context=ctx)
             # P1-G: test runner 가 bootstrap_required 로 short-circuit
             # 한 경우 — repo 에 detectable stack 이 없음. record-only

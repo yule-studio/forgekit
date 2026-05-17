@@ -507,6 +507,179 @@ class RecordOnlyCodeEditor:
         return replace(context, edited_files=tuple(list(context.edited_files) + [rel]))
 
 
+# P1-H — env-gated greenfield bootstrap.
+ENV_GREENFIELD_BOOTSTRAP_ENABLED: str = "YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED"
+
+
+def _greenfield_bootstrap_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    import os as _os
+
+    src = env if env is not None else _os.environ
+    return (src.get(ENV_GREENFIELD_BOOTSTRAP_ENABLED) or "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+class GreenfieldBootstrapEditor:
+    """Bootstrap-capable editor for greenfield target repos.
+
+    P1-H — empty target repo + full-stack/python request 시:
+      * deterministic scaffold plan (Next/Nest/Postgres docker-compose OR
+        python pyproject layout) 생성
+      * ``request.write_scope`` governance 준수
+      * idempotent — 이미 존재하는 파일 절대 덮어쓰지 않음
+
+    greenfield 가 아니면 기본 동작은 record-only delegation (plan note
+    만 작성) — 옛 ``RecordOnlyCodeEditor`` 와 동일.
+
+    Env gate: ``YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED`` 가
+    truthy 일 때만 scaffold 실행. off 면 record-only 만 + worker 가
+    ``bootstrap_required:live_editor_unavailable`` 로 surface (operator
+    가 명시적 opt-in 필요).
+    """
+
+    def __init__(
+        self,
+        *,
+        plan_file_template: str = DEFAULT_PLAN_FILE_REL,
+        env: Optional[Mapping[str, str]] = None,
+    ) -> None:
+        self.plan_file_template = plan_file_template
+        self._env = env
+        self._delegate = RecordOnlyCodeEditor(
+            plan_file_template=plan_file_template
+        )
+
+    @property
+    def is_bootstrap_capable(self) -> bool:
+        return _greenfield_bootstrap_enabled(self._env)
+
+    def apply(
+        self,
+        *,
+        request: CodingExecuteRequest,
+        context: WorktreeContext,
+    ) -> WorktreeContext:
+        if not context.worktree_path:
+            raise ValueError("GreenfieldBootstrapEditor requires a worktree_path")
+
+        from ..coding.greenfield_bootstrap import (
+            apply_bootstrap_plan,
+            detect_bootstrap_mode,
+            plan_greenfield_scaffold,
+        )
+
+        mode = detect_bootstrap_mode(
+            request=request, worktree_path=context.worktree_path
+        )
+        if mode is None:
+            # Not a greenfield case — keep ordinary record-only behaviour.
+            return self._delegate.apply(request=request, context=context)
+
+        if not self.is_bootstrap_capable:
+            # Greenfield detected but operator hasn't opted into live
+            # bootstrap — surface a clear capability gap. Worker maps
+            # to ``REASON_BOOTSTRAP_REQUIRED:live_editor_unavailable``.
+            raise BootstrapLiveEditorUnavailable(
+                mode=mode,
+                message=(
+                    f"greenfield bootstrap mode {mode!r} requires the "
+                    f"{ENV_GREENFIELD_BOOTSTRAP_ENABLED} env opt-in"
+                ),
+            )
+
+        # Real scaffold path. Plan + governance-aware apply.
+        plan = plan_greenfield_scaffold(mode=mode, request=request)
+        result = apply_bootstrap_plan(
+            worktree_path=context.worktree_path,
+            plan=plan,
+            write_scope=tuple(request.write_scope or ()),
+        )
+        if result.write_errors and not result.files_created:
+            raise BootstrapApplyFailed(
+                mode=plan.mode,
+                message=(
+                    f"all scaffold files failed: "
+                    f"{result.write_errors[:2]} (truncated)"
+                ),
+            )
+        # Also write the plan note for audit (mirroring record-only path).
+        slug = _slugify(context.branch)
+        note_rel = self.plan_file_template.format(branch_slug=slug)
+        note_path = Path(context.worktree_path) / note_rel
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+        note_path.write_text(
+            _render_bootstrap_plan_markdown(request, context, plan, result),
+            encoding="utf-8",
+        )
+
+        new_edited = list(context.edited_files) + [note_rel] + list(result.files_created)
+        new_metadata = dict(context.metadata or {})
+        new_metadata["bootstrap_apply"] = result.to_audit()
+        new_metadata["bootstrap_plan_summary"] = plan.summary
+        new_metadata["bootstrap_stack_signals_expected"] = list(
+            plan.stack_signals_expected
+        )
+        return replace(
+            context,
+            edited_files=tuple(new_edited),
+            metadata=new_metadata,
+        )
+
+
+class BootstrapLiveEditorUnavailable(RuntimeError):
+    """Raised by ``GreenfieldBootstrapEditor`` when greenfield bootstrap
+    is required but the env opt-in is not set. Worker surfaces this as
+    ``REASON_BOOTSTRAP_REQUIRED:live_editor_unavailable``.
+    """
+
+    def __init__(self, *, mode: str, message: str) -> None:
+        super().__init__(message)
+        self.mode = mode
+
+
+class BootstrapApplyFailed(RuntimeError):
+    """All scaffold writes failed (e.g. permissions). Worker surfaces
+    as ``REASON_BOOTSTRAP_REQUIRED:scaffold_apply_failed``.
+    """
+
+    def __init__(self, *, mode: str, message: str) -> None:
+        super().__init__(message)
+        self.mode = mode
+
+
+def _render_bootstrap_plan_markdown(
+    request: "CodingExecuteRequest",
+    context: "WorktreeContext",
+    plan: Any,
+    result: Any,
+) -> str:
+    lines = [
+        f"# greenfield-bootstrap plan — {context.branch}",
+        "",
+        f"- session_id: `{request.session_id}`",
+        f"- executor_role: `{request.executor_role}`",
+        f"- repo: `{request.repo_full_name or '(unset)'}`",
+        f"- bootstrap_mode: `{plan.mode}`",
+        f"- summary: {plan.summary}",
+        "",
+        "## scaffold result",
+        "",
+        f"- files_created ({len(result.files_created)}): {list(result.files_created)}",
+        f"- files_skipped_exists ({len(result.files_skipped_exists)}): {list(result.files_skipped_exists)}",
+        f"- files_refused_by_scope ({len(result.files_refused_by_scope)}): {list(result.files_refused_by_scope)}",
+        f"- write_errors: {list(result.write_errors)}",
+        "",
+        "## next step",
+        "",
+        "이 scaffold 는 stack signal (package.json / pyproject.toml / docker-compose) 만",
+        "만들어 두는 minimal viable shape 입니다. 실제 product 구현은 후속 coding",
+        "job 들이 같은 repo 에 PR 단위로 land 합니다.",
+        "",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def _render_plan_markdown(
     request: CodingExecuteRequest, context: WorktreeContext
 ) -> str:
@@ -978,7 +1151,13 @@ def build_live_executor(
         "worktree_provisioner": LocalGitWorktreeProvisioner(
             repo_root=repo_root, worktree_root=worktree_root
         ),
-        "code_editor": RecordOnlyCodeEditor(),
+        # P1-H — pick GreenfieldBootstrapEditor automatically. The new
+        # editor delegates to record-only behavior for non-greenfield
+        # cases, so this is a strict superset. Bootstrap actually
+        # writes files only when YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED=1;
+        # otherwise greenfield surfaces a clear ``live_editor_unavailable``
+        # reason instead of silently writing record-only notes only.
+        "code_editor": GreenfieldBootstrapEditor(),
         "test_runner": SubprocessTestRunner(
             default_command=tuple(test_command or DEFAULT_TEST_COMMAND)
         ),
@@ -1084,6 +1263,10 @@ __all__ = (
     "GithubAppPusher",
     "LiveExecutorAvailability",
     "LocalGitCommitter",
+    "BootstrapApplyFailed",
+    "BootstrapLiveEditorUnavailable",
+    "ENV_GREENFIELD_BOOTSTRAP_ENABLED",
+    "GreenfieldBootstrapEditor",
     "LocalGitWorktreeProvisioner",
     "RecordOnlyCodeEditor",
     "SubprocessTestRunner",
