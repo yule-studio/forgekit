@@ -260,12 +260,23 @@ def build_github_work_order_proposal(
     # issue 번호가 명시되면 plan 은 None — worker 가 existing anchor 로
     # 전환. session.extra 가 이미 anchor 를 들고 있어도 동일하게 인식한다
     # (이전 PR 후속 호출에서 한 번 stamp 된 경우).
+    #
+    # P0-U `missing_plan_or_issue` 회귀 fix — 이전엔 caller 가 repo_contract
+    # 를 안 넘기면 plan 이 영원히 None 으로 남아 executor 가
+    # `github_work_order_missing_plan_or_issue` 로 떨어졌다. 이제는 *repo
+    # 만이라도* 주어지면 minimal RepoContract (owner/repo) 를 즉석에서
+    # 구성해 `build_default_issue_body` fallback 으로 plan 을 *반드시*
+    # 만든다. 같은 issue 가 다시 발생하지 않게 caller 측 RepoContract 주입
+    # 누락이 더 이상 silent failure 가 되지 않는다.
     issue_plan_payload: Optional[Mapping[str, Any]] = None
     resolved_existing = _coerce_existing_issue(existing_issue_number, session)
-    if repo_contract is not None and not resolved_existing:
+    effective_repo_contract = repo_contract
+    if effective_repo_contract is None and not resolved_existing:
+        effective_repo_contract = _minimal_repo_contract_from_repo(repo)
+    if effective_repo_contract is not None and not resolved_existing:
         try:
             outcome = build_issue_auto_create_plan(
-                repo_contract=repo_contract,
+                repo_contract=effective_repo_contract,
                 request_summary=summary,
                 template_loader=issue_template_loader,
                 session_id=str(getattr(session, "session_id", "") or ""),
@@ -281,6 +292,13 @@ def build_github_work_order_proposal(
             )
             if outcome.plan.needs_operator_decision:
                 extras_payload.setdefault("issue_auto_create_needs_decision", True)
+            if repo_contract is None:
+                # caller 가 본격 contract 를 안 넘긴 경로 — operator 가
+                # "왜 fallback 으로 떨어졌는지" 한 줄에 보이도록 audit 에
+                # 별도 marker.
+                extras_payload.setdefault(
+                    "issue_auto_create_contract_source", "minimal_repo_string"
+                )
 
     pid = (proposal_id or "").strip() or _new_proposal_id()
     return GitHubWorkOrderProposal(
@@ -305,6 +323,38 @@ def build_github_work_order_proposal(
         created_at=_utc_now_iso(),
         issue_auto_create_plan=issue_plan_payload,
         existing_issue_number=resolved_existing,
+    )
+
+
+def _minimal_repo_contract_from_repo(repo: Optional[str]) -> Optional[RepoContract]:
+    """`owner/name` 문자열로부터 최소 :class:`RepoContract` 생성.
+
+    template / contributing / pr_template 등은 모두 비어있는 fallback —
+    `build_issue_auto_create_plan` 이 후보 template 없음을 보고 자동으로
+    `build_default_issue_body` 경로 (deterministic 4 섹션 fallback) 로
+    떨어진다. 그래서 plan 이 *반드시* 생성된다.
+
+    Returns ``None`` 만 owner/name 둘 다 추출 가능할 때 (`"yule-studio/
+    naver-search-clone"` 같은 형태). 호출자가 빈 문자열 / None / 잘못된
+    형식을 줘도 None 만 반환 — proposal 측에서 자동 skip.
+    """
+
+    if not repo:
+        return None
+    text = str(repo).strip()
+    if not text or "/" not in text:
+        return None
+    owner, _, name = text.partition("/")
+    owner = owner.strip()
+    name = name.strip().rstrip(".git")
+    if not owner or not name:
+        return None
+    return RepoContract(
+        owner=owner,
+        repo=name,
+        fallback=True,
+        failure_mode="no_repo_contract_supplied_by_caller",
+        backend=None,
     )
 
 
