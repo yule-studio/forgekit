@@ -44,6 +44,10 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple
 
+from .coding_execute_test_command import (
+    TestCommandSelection,
+    select_test_command,
+)
 from .coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
@@ -263,8 +267,17 @@ class LocalGitWorktreeProvisioner:
     ) -> str:
         """Return the local checkout path for *request.repo_full_name*.
 
-        Raises :class:`TargetRepoUnavailableError` when no checkout can
-        be located — caller surfaces ``target_repo_checkout_missing``.
+        Resolution chain (P1-F):
+          1. Existing local checkout via env JSON / search paths /
+             sibling (existing default resolver).
+          2. Auto-materialize via :func:`materialize_repo` — opt-in via
+             ``YULE_CODING_EXECUTOR_REPO_AUTO_CLONE`` + owner allowlist.
+             Cache root = ``YULE_CODING_EXECUTOR_REPO_CACHE_ROOT`` (default
+             ``~/.cache/yule/repos``).
+          3. Raise :class:`TargetRepoUnavailableError` with the
+             materialization reason embedded so operator sees exactly
+             why ("auto-clone disabled", "owner not allowed",
+             "git clone failed: …") instead of generic "not found".
         """
 
         repo_name = (request.repo_full_name or "").strip()
@@ -287,12 +300,30 @@ class LocalGitWorktreeProvisioner:
             orchestrator_repo_root=self.repo_root,
             extra_search_roots=self._extra_search_roots,
         )
-        if resolved is None:
-            raise TargetRepoUnavailableError(
-                repo_full_name=repo_name,
-                searched_roots=searched,
-            )
-        return resolved
+        if resolved is not None:
+            return resolved
+
+        # P1-F: existing checkout 못 찾음 → auto-clone 시도 (opt-in
+        # gated). 성공하면 그 path 사용, 거부 / 실패하면 reason 을
+        # ``TargetRepoUnavailableError`` 에 그대로 surface.
+        from .coding_execute_repo_materializer import (
+            ACTION_FAILED,
+            materialize_repo,
+        )
+
+        materialization = materialize_repo(repo_full_name=repo_name)
+        if materialization.succeeded and materialization.path:
+            return materialization.path
+        message_suffix = materialization.reason or "no auto-clone outcome"
+        raise TargetRepoUnavailableError(
+            repo_full_name=repo_name,
+            searched_roots=searched,
+            message=(
+                f"target repo {repo_name!r} not found in any of: "
+                f"{', '.join(searched) or '(no candidates)'} — "
+                f"materialization: {materialization.action} ({message_suffix})"
+            ),
+        )
 
     def provision(
         self, *, request: CodingExecuteRequest, branch: str
@@ -553,7 +584,16 @@ class SubprocessTestRunner:
     ) -> WorktreeContext:
         if not context.worktree_path:
             raise ValueError("SubprocessTestRunner requires a worktree_path")
-        cmd = list(_resolve_test_command(request) or self.default_command)
+
+        # P1-E stack-aware selection. operator override (metadata.test_command)
+        # 가 항상 우선, 그 다음 worktree 의 실제 파일 시그널 (package.json /
+        # pyproject.toml / manage.py / lock files).
+        selection = select_test_command(
+            worktree_path=context.worktree_path,
+            request_metadata=request.metadata,
+            fallback_command=self.default_command,
+        )
+        cmd = list(selection.command)
         try:
             result = self._runner(
                 cmd,
@@ -570,6 +610,7 @@ class SubprocessTestRunner:
                     "exit_code": exc.exit_code,
                     "stdout_tail": _tail(exc.stdout, lines=20),
                     "stderr_tail": _tail(exc.stderr, lines=20),
+                    "selection": selection.to_audit(),
                 },
             )
         # success
@@ -580,11 +621,16 @@ class SubprocessTestRunner:
                 "command": cmd,
                 "exit_code": 0,
                 "stdout_tail": _tail(result.stdout, lines=20),
+                "selection": selection.to_audit(),
             },
         )
 
 
 def _resolve_test_command(request: CodingExecuteRequest) -> Optional[Sequence[str]]:
+    """Backward-compat helper — old callers still import this. New code
+    uses :func:`select_test_command` directly via the runner above.
+    """
+
     cmd = (request.metadata or {}).get("test_command")
     if isinstance(cmd, (list, tuple)) and cmd:
         return tuple(str(c) for c in cmd)
@@ -1023,10 +1069,12 @@ __all__ = (
     "RecordOnlyCodeEditor",
     "SubprocessTestRunner",
     "TargetRepoUnavailableError",
+    "TestCommandSelection",
     "WorktreeProvisionError",
     "_default_repo_root_resolver",
     "build_live_executor",
     "detect_live_executor_availability",
+    "select_test_command",
     # F4 / #91 — Live LLM editor MVP (env-gated, claude-cli only).
     "BlockedLiveEditorError",
     "CodeEditPort",
