@@ -294,16 +294,31 @@ class GitHubWorkOrderWorker:
         # Branch 2 — auto-create plan. Need writer + plan.
         plan = work_order.issue_auto_create_plan
         if not isinstance(plan, Mapping) or not plan:
-            self._queue.transition(
-                in_progress.job_id,
-                JobState.FAILED_RETRYABLE,
-                result={"error": SKIPPED_MISSING_PLAN},
-                clear_lease=True,
-                now=now,
-            )
-            return GitHubWorkOrderExecutionOutcome(
-                job=in_progress, skipped_reason=SKIPPED_MISSING_PLAN
-            )
+            # P0-V live smoke fix — executor self-heal: 옛 PR 이전에
+            # producer 가 plan 을 빠뜨리고 enqueue 한 row 들은 그대로
+            # 두면 영원히 `SKIPPED_MISSING_PLAN` 으로 남는다. payload 에
+            # repo 만 있어도 minimal RepoContract 로 plan 을 재구성해서
+            # 같은 자리에서 다시 진행 — 동일 사고 재발 차단 + 기존
+            # failed_retryable row 도 requeue 후 자연 복구.
+            recovered = _recover_plan_from_work_order(work_order)
+            if recovered is not None:
+                plan = recovered
+                from dataclasses import replace as _replace
+
+                work_order = _replace(
+                    work_order, issue_auto_create_plan=plan
+                )
+            else:
+                self._queue.transition(
+                    in_progress.job_id,
+                    JobState.FAILED_RETRYABLE,
+                    result={"error": SKIPPED_MISSING_PLAN},
+                    clear_lease=True,
+                    now=now,
+                )
+                return GitHubWorkOrderExecutionOutcome(
+                    job=in_progress, skipped_reason=SKIPPED_MISSING_PLAN
+                )
 
         writer, autonomy_level = self._writer_factory(work_order)
         if writer is None:
@@ -698,100 +713,14 @@ class GitHubWorkOrderWorker:
         return self.process_job(picked, now=now)
 
 
-def requeue_no_repo_failures(
-    queue: JobQueue,
-    *,
-    error_reasons: Tuple[str, ...] = (SKIPPED_NO_REPO,),
-    max_per_run: int = 50,
-    backoff_seconds: float = 0.0,
-    log_fn: Optional[Callable[[str, Optional[Any]], None]] = None,
-) -> Tuple[str, ...]:
-    """Startup recovery hook — requeue ``failed_retryable`` work_order
-    rows whose error matches *error_reasons*.
-
-    Live smoke (session ``c5278a9043f2`` 후속): producer bug 로 work_order
-    payload 가 repo 없이 enqueue 됐고, executor 가 SKIPPED_NO_REPO 로
-    failed_retryable 처리한 row 들이 fix 후 자동 재실행되지 않고 stranded.
-    이 helper 가 supervisor / executor startup 시 한 번 호출돼 그런 rows
-    를 자동으로 requeue 한다. executor 는 본 PR 의 repo fallback 으로
-    re-pick 시 성공.
-
-    pure SQLite read + ``queue.requeue_retryable`` — 운영자 수동 DB 조작
-    없이 작동.
-
-    Returns the requeued job_id 시퀀스 (audit / logging 용).
-    """
-
-    import sqlite3 as _sqlite3
-
-    requeued: list[str] = []
-    db_path = getattr(queue, "_db_path", None)
-    if db_path is None:
-        return ()
-    try:
-        with _sqlite3.connect(str(db_path)) as conn:
-            conn.row_factory = _sqlite3.Row
-            rows = conn.execute(
-                """
-                SELECT job_id, result_json
-                FROM job_queue
-                WHERE job_type = ?
-                  AND state = ?
-                ORDER BY created_at ASC
-                LIMIT ?
-                """,
-                (
-                    JOB_TYPE_GITHUB_WORK_ORDER,
-                    JobState.FAILED_RETRYABLE.value,
-                    int(max_per_run),
-                ),
-            ).fetchall()
-    except Exception as exc:  # noqa: BLE001 - never crash the executor
-        if log_fn is not None:
-            try:
-                log_fn(
-                    "requeue_no_repo_failures: sqlite query failed", exc
-                )
-            except Exception:  # noqa: BLE001
-                pass
-        return ()
-
-    import json as _json
-
-    for row in rows or ():
-        raw = row["result_json"] or "{}"
-        try:
-            payload = _json.loads(raw)
-        except Exception:  # noqa: BLE001
-            continue
-        error = str(payload.get("error") or "").strip()
-        if error not in error_reasons:
-            continue
-        try:
-            queue.requeue_retryable(
-                row["job_id"], backoff_seconds=backoff_seconds
-            )
-            requeued.append(row["job_id"])
-            if log_fn is not None:
-                try:
-                    log_fn(
-                        f"github_work_order: requeued failed_retryable "
-                        f"row (error={error}, job_id={row['job_id']})",
-                        None,
-                    )
-                except Exception:  # noqa: BLE001
-                    pass
-        except Exception as exc:  # noqa: BLE001
-            if log_fn is not None:
-                try:
-                    log_fn(
-                        f"github_work_order: requeue failed for {row['job_id']}",
-                        exc,
-                    )
-                except Exception:  # noqa: BLE001
-                    pass
-            continue
-    return tuple(requeued)
+# Recovery helpers live in ``github_work_order_recovery`` — extracted to
+# keep this executor module under the governance/code_audit LOC threshold.
+# Re-exported here so existing callers / tests keep their import sites.
+from .github_work_order_recovery import (
+    recover_plan_from_work_order as _recover_plan_from_work_order,
+    requeue_missing_plan_failures,
+    requeue_no_repo_failures,
+)
 
 
 async def run_until_shutdown(
@@ -915,6 +844,7 @@ __all__ = (
     "SKIPPED_NO_WRITER",
     "UpdateSessionFn",
     "WriterFactory",
+    "requeue_missing_plan_failures",
     "requeue_no_repo_failures",
     "run_until_shutdown",
 )
