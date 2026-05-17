@@ -83,6 +83,10 @@ REASON_EDIT_FAILED: str = "edit_failed"
 REASON_COMMIT_FAILED: str = "commit_failed"
 REASON_NOT_IMPLEMENTED: str = "executor_not_wired_yet"
 REASON_INVALID_REQUEST: str = "invalid_request"
+# P1-B — worktree / target repo specific failures (generic subprocess
+# exit 255 대신 operator 가 즉시 이해 가능한 token 으로 분기).
+REASON_TARGET_REPO_MISSING: str = "target_repo_checkout_missing"
+REASON_WORKTREE_FAILED: str = "worktree_provision_failed"
 
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
@@ -545,7 +549,48 @@ class CodingExecutorWorker:
                     audit_reason=REASON_DRY_RUN,
                 )
 
-            ctx = self._worktree.provision(request=request, branch=branch)
+            # P1-B: separate worktree provisioning from editor so we can
+            # surface specific failure tokens (target_repo_checkout_missing
+            # / worktree_provision_failed) instead of generic edit_failed.
+            try:
+                ctx = self._worktree.provision(request=request, branch=branch)
+            except Exception as exc:  # noqa: BLE001 - mapped below
+                target_repo_unavail = (
+                    type(exc).__name__ == "TargetRepoUnavailableError"
+                )
+                worktree_specific = (
+                    type(exc).__name__ == "WorktreeProvisionError"
+                )
+                if target_repo_unavail:
+                    reason_token = REASON_TARGET_REPO_MISSING
+                    terminal = True  # operator has to fix path / clone
+                elif worktree_specific:
+                    reason_token = (
+                        f"{REASON_WORKTREE_FAILED}:{getattr(exc, 'reason', 'unknown')}"
+                    )
+                    terminal = False
+                else:
+                    # fallthrough — keep old edit_failed behaviour via
+                    # the outer except, re-raise so the broad handler
+                    # below catches.
+                    raise
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": reason_token,
+                        "branch": branch,
+                        "detail": _short(exc),
+                        "repo_full_name": request.repo_full_name,
+                    },
+                )
+                return self._fail(
+                    in_progress,
+                    terminal=terminal,
+                    reason=f"{reason_token}: {_short(exc)}",
+                    branch=branch,
+                )
             ctx = self._editor.apply(request=request, context=ctx)
             ctx = self._tests.run(request=request, context=ctx)
             if not _tests_passed(ctx.test_summary):
@@ -880,7 +925,9 @@ __all__ = (
     "REASON_PR_FAILED",
     "REASON_PROTECTED_BRANCH",
     "REASON_PUSH_FAILED",
+    "REASON_TARGET_REPO_MISSING",
     "REASON_TEST_FAILED",
+    "REASON_WORKTREE_FAILED",
     "SERVICE_ID_CODING_EXECUTOR",
     "TestRunner",
     "WorktreeContext",

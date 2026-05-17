@@ -176,8 +176,13 @@ class WorktreeProvisionerIntegrationTests(unittest.TestCase):
         self.head = _init_git_repo(self.repo)
 
     def test_provision_creates_worktree_at_root(self) -> None:
+        # P1-B: tests use a temp git repo as the target — bypass the
+        # real cross-repo resolver by injecting a permissive one that
+        # always maps to ``self.repo``.
         provisioner = LocalGitWorktreeProvisioner(
-            repo_root=str(self.repo), worktree_root=str(self.worktree_root)
+            repo_root=str(self.repo),
+            worktree_root=str(self.worktree_root),
+            repo_root_resolver=lambda _n: str(self.repo),
         )
         ctx = provisioner.provision(
             request=_request(), branch="agent/backend-engineer/issue-99-fix"
@@ -187,8 +192,13 @@ class WorktreeProvisionerIntegrationTests(unittest.TestCase):
         provisioner.cleanup(force=True)
 
     def test_cleanup_removes_worktree(self) -> None:
+        # P1-B: tests use a temp git repo as the target — bypass the
+        # real cross-repo resolver by injecting a permissive one that
+        # always maps to ``self.repo``.
         provisioner = LocalGitWorktreeProvisioner(
-            repo_root=str(self.repo), worktree_root=str(self.worktree_root)
+            repo_root=str(self.repo),
+            worktree_root=str(self.worktree_root),
+            repo_root_resolver=lambda _n: str(self.repo),
         )
         ctx = provisioner.provision(
             request=_request(), branch="agent/backend-engineer/cleanup-1"
@@ -209,7 +219,10 @@ class LocalGitCommitterIntegrationTests(unittest.TestCase):
         self.worktree_root = Path(self._wt_tmp.name)
         _init_git_repo(self.repo)
         self.provisioner = LocalGitWorktreeProvisioner(
-            repo_root=str(self.repo), worktree_root=str(self.worktree_root)
+            repo_root=str(self.repo),
+            worktree_root=str(self.worktree_root),
+            # P1-B: bypass cross-repo resolver — see WorktreeProvisionerIntegrationTests.
+            repo_root_resolver=lambda _n: str(self.repo),
         )
         self.addCleanup(lambda: self.provisioner.cleanup(force=True))
 
