@@ -235,7 +235,15 @@ class ValidateMarkerSSoTTests(unittest.TestCase):
         self.assertTrue(check.is_stale)
         self.assertEqual(check.reason, PHANTOM_MARKER_REASON_WRONG_SESSION)
 
-    def test_marker_with_terminal_row_is_stale(self) -> None:
+    def test_marker_with_terminal_row_is_classified_terminal(self) -> None:
+        """P1-C: FAILED_TERMINAL / SAVED 는 stale 이 아닌 'terminal' —
+        dispatch 가 이미 결과까지 도달한 상태. producer 가 새 row 만들면
+        안 되며, caller 는 그대로 skip."""
+
+        from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+            MARKER_STATE_TERMINAL,
+        )
+
         self._insert_row(
             job_id="job-terminal",
             job_type=JOB_TYPE_CODING_EXECUTE,
@@ -247,8 +255,31 @@ class ValidateMarkerSSoTTests(unittest.TestCase):
             extra={SESSION_EXTRA_DISPATCH_KEY: {"job_id": "job-terminal"}},
         )
         check = validate_coding_dispatch_marker(session=session, queue=self.queue)
-        self.assertTrue(check.is_stale)
-        self.assertEqual(check.reason, PHANTOM_MARKER_REASON_TERMINAL)
+        self.assertEqual(check.state, MARKER_STATE_TERMINAL)
+        self.assertFalse(check.is_stale)
+
+    def test_marker_with_failed_retryable_row_is_pending_retry(self) -> None:
+        """P1-C: FAILED_RETRYABLE 는 phantom 이 아니라 'pending_retry'.
+        producer 가 새 row 를 만들면 attempt 카운터가 reset 되어
+        max_attempts / backoff 가 무력화되는 infinite loop 의 원인."""
+
+        from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+            MARKER_STATE_PENDING_RETRY,
+        )
+
+        self._insert_row(
+            job_id="job-retry",
+            job_type=JOB_TYPE_CODING_EXECUTE,
+            session_id="s7",
+            state=JobState.FAILED_RETRYABLE,
+        )
+        session = _SessionFake(
+            session_id="s7",
+            extra={SESSION_EXTRA_DISPATCH_KEY: {"job_id": "job-retry"}},
+        )
+        check = validate_coding_dispatch_marker(session=session, queue=self.queue)
+        self.assertEqual(check.state, MARKER_STATE_PENDING_RETRY)
+        self.assertFalse(check.is_stale)
 
 
 # ---------------------------------------------------------------------------
@@ -550,7 +581,11 @@ class StaleMarkerVariantsReEnqueueTests(unittest.TestCase):
             PHANTOM_MARKER_REASON_WRONG_SESSION,
         )
 
-    def test_terminal_row_marker_self_heals(self) -> None:
+    def test_terminal_row_marker_is_NOT_self_healed(self) -> None:
+        """P1-C — FAILED_TERMINAL row 는 producer 가 절대 새로 enqueue
+        하면 안 됨 (dispatch 결과로 인정). 옛 P0-Z 가 stale 로 잘못 분류
+        했던 회귀를 핀."""
+
         self._insert_row(
             job_id="job-dead",
             job_type=JOB_TYPE_CODING_EXECUTE,
@@ -559,12 +594,8 @@ class StaleMarkerVariantsReEnqueueTests(unittest.TestCase):
         )
         session = _ready_session("s-term", marker={"job_id": "job-dead"})
         dispatched, _ = self._drive(session)
-        self.assertEqual(len(dispatched), 1)
-        self.assertTrue(dispatched[0].created)
-        self.assertEqual(
-            dispatched[0].stale_marker_reason,
-            PHANTOM_MARKER_REASON_TERMINAL,
-        )
+        # 새 row 생성 안 됨
+        self.assertEqual(dispatched, ())
 
 
 if __name__ == "__main__":

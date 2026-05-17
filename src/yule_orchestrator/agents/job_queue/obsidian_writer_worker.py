@@ -88,6 +88,11 @@ NOTE_KIND_BLOG_DRAFT: str = "blog-draft"
 # their legacy short forms so an unauthorised write never lands.
 NOTE_KIND_KNOWLEDGE_NOTE: str = "knowledge-note"
 NOTE_KIND_DECISION_RECORD: str = "decision-record"
+# P1-B — coding executor progress posts a ``task-log`` note via
+# :func:`coding_execute_progress._maybe_enqueue_obsidian`. The producer
+# pre-renders the body in ``metadata['rendered_markdown']``; the
+# default renderer just wraps it for vault save (no extra synthesis).
+NOTE_KIND_TASK_LOG: str = "task-log"
 
 
 # Skipped reasons surfaced via :class:`ObsidianWriteJobOutcome`.
@@ -652,6 +657,9 @@ _DEFAULT_RENDER_KINDS: frozenset[str] = frozenset(
         NOTE_KIND_FAILURE_POSTMORTEM,
         NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL,
         NOTE_KIND_BLOG_DRAFT,
+        # P1-B — coding executor progress lands here. Producer pre-renders
+        # the body so the default render just wraps it.
+        NOTE_KIND_TASK_LOG,
     }
 )
 
@@ -663,6 +671,7 @@ _M10B_AUTONOMOUS_KINDS: frozenset[str] = frozenset(
         NOTE_KIND_FAILURE_POSTMORTEM,
         NOTE_KIND_SELF_IMPROVEMENT_PROPOSAL,
         NOTE_KIND_BLOG_DRAFT,
+        NOTE_KIND_TASK_LOG,
     }
 )
 

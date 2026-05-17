@@ -131,9 +131,19 @@ _ACTIVE_DISPATCH_STATES: FrozenSet[Any] = frozenset(
 MARKER_STATE_VALID: str = "valid"
 MARKER_STATE_MISSING: str = "missing"
 MARKER_STATE_STALE: str = "stale"
+# P1-C — failed_retryable / saved / failed_terminal 는 옛 P0-Z 코드에서
+# 모두 phantom 으로 합쳐 처리했지만, 실제로는 "queue 가 이미 그 dispatch
+# 의 결과를 알고 있는 상태" 다. 새 row 를 만들면 attempt 카운터가
+# 초기화돼 ``max_attempts`` / backoff 가 무력화되고 infinite re-enqueue
+# 가 일어난다. 본 2 종은 producer 가 절대 새로 enqueue 하면 안 되며,
+# queue 의 retry semantics (``requeue_retryable``) 가 책임진다.
+MARKER_STATE_PENDING_RETRY: str = "pending_retry"
+MARKER_STATE_TERMINAL: str = "terminal"
 PHANTOM_MARKER_REASON_NO_ROW: str = "marker_job_id_not_in_queue"
 PHANTOM_MARKER_REASON_WRONG_TYPE: str = "marker_wrong_job_type"
 PHANTOM_MARKER_REASON_WRONG_SESSION: str = "marker_wrong_session_id"
+# P1-C: kept for backward-compat — older callers/tests reference this
+# string. Producer 의 새 동작은 PENDING_RETRY / TERMINAL 분기로 분리.
 PHANTOM_MARKER_REASON_TERMINAL: str = "marker_row_terminal_or_inactive"
 
 
@@ -165,6 +175,15 @@ class DispatchMarkerCheck:
     @property
     def is_stale(self) -> bool:
         return self.state == MARKER_STATE_STALE
+
+
+# P1-C — queue retry semantics 를 producer 가 침범하지 않게 분리.
+_PENDING_RETRY_STATES: FrozenSet[Any] = frozenset(
+    {JobState.FAILED_RETRYABLE}
+)
+_TERMINAL_STATES: FrozenSet[Any] = frozenset(
+    {JobState.SAVED, JobState.FAILED_TERMINAL}
+)
 
 
 def validate_coding_dispatch_marker(
@@ -227,6 +246,23 @@ def validate_coding_dispatch_marker(
             marker_job_id=job_id,
         )
     row_state = getattr(row, "state", None)
+    if row_state in _PENDING_RETRY_STATES:
+        # P1-C: queue retry semantics (``requeue_retryable``) 가 책임지는
+        # 상태. producer 가 새 row 를 만들면 attempt 카운터 / backoff 가
+        # 무력화돼 무한 재실행. caller (iter_ready_coding_jobs) 가 skip.
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_PENDING_RETRY,
+            reason=None,
+            marker_job_id=job_id,
+        )
+    if row_state in _TERMINAL_STATES:
+        # SAVED / FAILED_TERMINAL — dispatch 는 이미 결과까지 도달. producer
+        # 가 다시 enqueue 할 일은 없음.
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_TERMINAL,
+            reason=None,
+            marker_job_id=job_id,
+        )
     if row_state not in _ACTIVE_DISPATCH_STATES:
         return DispatchMarkerCheck(
             state=MARKER_STATE_STALE,
@@ -284,14 +320,19 @@ class ReadyCodingJob:
     def has_been_dispatched(
         self, *, queue: Optional[Any] = None
     ) -> bool:
-        """Return True iff a marker exists AND (no queue given OR queue
-        confirms the row is still active).
+        """Return True iff a marker exists AND queue confirms the row is
+        in a state the producer should NOT bypass.
 
-        P0-Z phantom-marker fix: 옛 동작은 marker.job_id 존재만 보고 True
-        반환했는데, queue row 가 사라진 경우에도 영원히 skip 되는 stranded
-        deadlock 의 직접 원인. *queue* 가 inject 되면 실제 row 와 cross-check
-        해서 stale marker 를 phantom 으로 분류, 호출자가 re-enqueue 할 수
-        있게 False 반환.
+        P0-Z + P1-C: 옛 동작은 marker 존재만 보고 True 반환 → stranded
+        deadlock. P0-Z 가 queue-aware 검증 도입했지만 ``failed_retryable``
+        도 phantom 으로 잡아 infinite re-enqueue. 본 함수는 다음을
+        "dispatched (producer skip)" 로 본다:
+
+          * MARKER_STATE_VALID (active row)
+          * MARKER_STATE_PENDING_RETRY (queue retry semantics handle)
+          * MARKER_STATE_TERMINAL (saved / failed_terminal)
+
+        나머지 (missing / stale) 만 caller 가 re-enqueue 후보로 본다.
         """
 
         extra = getattr(self.session, "extra", None) or {}
@@ -300,10 +341,14 @@ class ReadyCodingJob:
             return False
         if queue is None:
             return True
-        is_valid, _ = _validate_dispatch_marker_against_queue(
-            marker=marker, session_id=self.session_id, queue=queue
+        check = validate_coding_dispatch_marker(
+            session=self.session, queue=queue
         )
-        return is_valid
+        return check.state in (
+            MARKER_STATE_VALID,
+            MARKER_STATE_PENDING_RETRY,
+            MARKER_STATE_TERMINAL,
+        )
 
     def dispatch_marker_phantom_reason(
         self, *, queue: Any
@@ -727,7 +772,17 @@ def dispatch_ready_coding_jobs(
             stale_check = validate_coding_dispatch_marker(
                 session=ready.session, queue=queue_for_validation
             )
-            if stale_check.is_stale:
+            # P1-C: pending_retry / terminal 는 producer 가 새 row 를 만들
+            # 일이 아니다 — has_been_dispatched 가 이미 caller (iter_…)
+            # 에서 skip 했지만, 만약 unusual race 로 여기까지 왔다면 stale
+            # 라고 attribution 하지 않게 None 으로 reset.
+            if stale_check.state in (
+                MARKER_STATE_PENDING_RETRY,
+                MARKER_STATE_TERMINAL,
+                MARKER_STATE_VALID,
+            ):
+                stale_check = None
+            if stale_check is not None and stale_check.is_stale:
                 # P0-Z: NEVER silent — operator surface 가 self-heal 을
                 # 한 줄로 본다. warning level (not info) 로 status surface
                 # 에서도 noisy.
@@ -882,7 +937,9 @@ __all__ = (
     "ENV_DRY_RUN",
     "JOB_TYPE_CODING_EXECUTE",
     "MARKER_STATE_MISSING",
+    "MARKER_STATE_PENDING_RETRY",
     "MARKER_STATE_STALE",
+    "MARKER_STATE_TERMINAL",
     "MARKER_STATE_VALID",
     "PHANTOM_MARKER_REASON_NO_ROW",
     "PHANTOM_MARKER_REASON_TERMINAL",
