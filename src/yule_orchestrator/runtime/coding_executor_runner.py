@@ -140,6 +140,23 @@ async def _lease_keepalive_loop(
             continue
 
 
+ENV_TARGET_REPO_RECOVERY_INTERVAL: str = (
+    "YULE_CODING_EXECUTE_TARGET_REPO_RECOVERY_INTERVAL_SECONDS"
+)
+DEFAULT_TARGET_REPO_RECOVERY_INTERVAL_SECONDS: float = 60.0
+
+
+def _resolve_target_repo_recovery_interval() -> float:
+    raw = (os.environ.get(ENV_TARGET_REPO_RECOVERY_INTERVAL) or "").strip()
+    if not raw:
+        return DEFAULT_TARGET_REPO_RECOVERY_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_TARGET_REPO_RECOVERY_INTERVAL_SECONDS
+    return max(10.0, value)
+
+
 async def _producer_loop(
     *,
     worker: CodingExecutorWorker,
@@ -250,11 +267,19 @@ async def run_coding_executor(
     producer_interval = _resolve_producer_interval()
     pick_lease_seconds = _resolve_pick_lease_seconds()
     keepalive_interval = _resolve_keepalive_interval_seconds()
+    target_repo_recovery_interval = _resolve_target_repo_recovery_interval()
     producer_task = asyncio.create_task(
         _producer_loop(
             worker=worker,
             shutdown_event=shutdown_event,
             interval_seconds=producer_interval,
+        )
+    )
+    target_repo_recovery_task = asyncio.create_task(
+        _target_repo_recovery_loop(
+            queue=queue,
+            shutdown_event=shutdown_event,
+            interval_seconds=target_repo_recovery_interval,
         )
     )
 
@@ -263,6 +288,31 @@ async def run_coding_executor(
     # ``11917bf1e75d`` 처럼 한 번 reaped 된 job 도 runtime restart 한 번
     # 으로 깨어나서 keepalive 보호 아래 다시 시도된다.
     _recover_lease_expired_rows(queue=queue, log_fn=logger.info)
+
+    # P1-D startup recovery — operator 가 target repo checkout 을 만든
+    # 직후 runtime restart 한 번으로 ``target_repo_checkout_missing`` 으로
+    # 멈춘 row 가 자동 revive 되게 한다. recovery 는 resolver 가 실제
+    # 디렉터리를 확인한 row 만 revive — repo 가 아직 없으면 skip,
+    # queue churn 없음.
+    try:
+        from ..agents.job_queue.coding_execute_recovery import (
+            recover_target_repo_missing_rows,
+        )
+
+        revived = recover_target_repo_missing_rows(
+            queue=queue, log_fn=lambda msg, _exc: logger.info(msg)
+        )
+        if revived:
+            logger.info(
+                "coding_execute target-repo recovery: revived %d row(s) "
+                "after operator created/registered the missing checkout",
+                len(revived),
+            )
+    except Exception:  # noqa: BLE001 - never crash startup
+        logger.warning(
+            "coding_execute target-repo recovery: startup sweep raised",
+            exc_info=True,
+        )
 
     async def _process(job):
         # Spawn a per-job keepalive task. picked_by 는 pick(...) 시점에
@@ -309,8 +359,56 @@ async def run_coding_executor(
             await producer_task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
+        target_repo_recovery_task.cancel()
+        try:
+            await target_repo_recovery_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
 
     return EXIT_OK
+
+
+async def _target_repo_recovery_loop(
+    *,
+    queue: JobQueue,
+    shutdown_event: asyncio.Event,
+    interval_seconds: float,
+) -> None:
+    """Periodic sweep — re-check target repo availability for blocked
+    ``coding_execute`` rows so a runtime that's already up auto-recovers
+    the moment operator creates the missing checkout (no restart
+    required).
+
+    Sweep is bounded (``max_per_run=50``) and the recovery helper itself
+    only flips state when ``Path(...).is_dir()`` returns True — so a
+    perpetually-missing checkout doesn't cause churn.
+    """
+
+    from ..agents.job_queue.coding_execute_recovery import (
+        recover_target_repo_missing_rows,
+    )
+
+    while not shutdown_event.is_set():
+        try:
+            revived = recover_target_repo_missing_rows(queue=queue)
+        except Exception:  # noqa: BLE001 - never crash sweep
+            logger.warning(
+                "coding_execute target-repo recovery tick raised",
+                exc_info=True,
+            )
+            revived = ()
+        if revived:
+            logger.warning(
+                "coding_execute target-repo recovery tick: revived "
+                "%d row(s) after checkout availability change",
+                len(revived),
+            )
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(), timeout=interval_seconds
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 def _recover_lease_expired_rows(
@@ -384,10 +482,13 @@ __all__ = (
     "DEFAULT_KEEPALIVE_INTERVAL_SECONDS",
     "DEFAULT_PICK_LEASE_SECONDS",
     "DEFAULT_PRODUCER_INTERVAL_SECONDS",
+    "DEFAULT_TARGET_REPO_RECOVERY_INTERVAL_SECONDS",
     "ENV_KEEPALIVE_INTERVAL",
     "ENV_PICK_LEASE_SECONDS",
     "ENV_PRODUCER_INTERVAL",
+    "ENV_TARGET_REPO_RECOVERY_INTERVAL",
     "_lease_keepalive_loop",
     "_recover_lease_expired_rows",
+    "_target_repo_recovery_loop",
     "run_coding_executor",
 )
