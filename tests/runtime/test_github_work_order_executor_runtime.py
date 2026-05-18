@@ -234,7 +234,7 @@ class RunUntilShutdownTests(unittest.TestCase):
             repo="yule-studio/naver-search-clone",
             dry_run=False,
             issue_auto_create_plan={
-                "title": "[기능] 회원가입",
+                "title": "[Feature] 회원가입",
                 "body": "## 어떤 기능인가요?\n> live\n",
                 "labels": ["✨ Feature"],
                 "assignees": [],

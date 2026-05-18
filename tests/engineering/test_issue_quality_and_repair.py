@@ -92,8 +92,8 @@ class FallbackTitleQualityTests(unittest.TestCase):
             request_summary=_NAVER_PROMPT,
             session_id="sess-x",
         )
-        # 사용자가 명시한 기대 형태와 같은 골격: `[기능] ... 풀스택 MVP 구축 (...)`
-        self.assertTrue(plan.title.startswith("[기능]"))
+        # 사용자가 명시한 기대 형태와 같은 골격: `[Feature] ... 풀스택 MVP 구축 (...)`
+        self.assertTrue(plan.title.startswith("[Feature]"))
         self.assertIn("풀스택 MVP", plan.title)
         self.assertIn("(인증/검색/블로그/메일)", plan.title)
         # 도메인 토큰 (네이버 검색형) 도 들어감
@@ -211,7 +211,7 @@ class ObsidianFallbackTests(unittest.TestCase):
             "template_source: `obsidian_fallback`", plan.body
         )
         # title 은 여전히 Korean synthesizer 적용
-        self.assertTrue(plan.title.startswith("[기능]"))
+        self.assertTrue(plan.title.startswith("[Feature]"))
 
     def test_obsidian_loader_none_falls_through(self) -> None:
         """loader 가 빈 텍스트 / None 반환 → Yule default 로 fall through."""
@@ -255,7 +255,7 @@ class IssueRepairTests(unittest.TestCase):
         self.assertTrue(outcome.dry_run)
         self.assertEqual(outcome.skipped_reason, "no_client_wired")
         # plan 은 quality fallback 으로 생성
-        self.assertTrue(outcome.plan.title.startswith("[기능]"))
+        self.assertTrue(outcome.plan.title.startswith("[Feature]"))
         self.assertIn(LABEL_FULL_STACK, outcome.plan.labels)
 
     def test_live_update_calls_client(self) -> None:
@@ -291,7 +291,7 @@ class IssueRepairTests(unittest.TestCase):
         self.assertEqual(sent["repo"], "yule-studio/naver-search-clone")
         self.assertEqual(sent["issue_number"], 1)
         # 새 title 이 한국어 명확
-        self.assertTrue(sent["title"].startswith("[기능]"))
+        self.assertTrue(sent["title"].startswith("[Feature]"))
         self.assertIn("풀스택 MVP", sent["title"])
         # labels 가 비어있지 않음
         self.assertGreater(len(sent["labels"]), 0)
@@ -360,7 +360,7 @@ class IssueLessAutoCreateRegression(unittest.TestCase):
         # plan 생성 성공 + 새 quality 적용됨
         self.assertIsNotNone(outcome.plan)
         plan = outcome.plan
-        self.assertTrue(plan.title.startswith("[기능]"))
+        self.assertTrue(plan.title.startswith("[Feature]"))
         self.assertGreater(len(plan.labels), 0)
         self.assertEqual(outcome.audit_reason, AUDIT_TEMPLATE_FALLBACK)
 

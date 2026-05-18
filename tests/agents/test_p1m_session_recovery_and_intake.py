@@ -411,7 +411,7 @@ class HumanTitleTests(unittest.TestCase):
         title = build_issue_title(
             session_prompt=_PROMPT_AUTONOMOUS, slice_spec=slice_spec
         )
-        self.assertIn("[기능]", title)
+        self.assertIn("[Feature]", title)
         self.assertIn("검색", title)
         self.assertNotIn("autonomous_merge", title.lower())
 

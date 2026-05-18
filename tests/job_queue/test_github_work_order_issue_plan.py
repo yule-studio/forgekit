@@ -27,7 +27,7 @@ from yule_orchestrator.agents.job_queue.github_work_order import (
 
 def _sample_plan() -> dict:
     return {
-        "title": "[기능] 회원가입/검색 기능",
+        "title": "[Feature] 회원가입/검색 기능",
         "body": "## 어떤 기능인가요?\n> 본문\n",
         "labels": ["✨ Feature", "📃 Docs"],
         "assignees": [],

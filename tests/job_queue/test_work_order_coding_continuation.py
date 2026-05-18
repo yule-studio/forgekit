@@ -60,7 +60,7 @@ def _anchor(issue_number: int = 77) -> Mapping[str, Any]:
     return {
         "issue_number": issue_number,
         "html_url": f"https://github.com/yule-studio/naver-search-clone/issues/{issue_number}",
-        "title": "[기능] 회원가입",
+        "title": "[Feature] 회원가입",
         "created_via": "auto_create",
         "approval_id": "a1",
         "approved_by": "masterway",

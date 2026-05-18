@@ -53,7 +53,7 @@ from yule_orchestrator.agents.job_queue.github_work_order import (
 _FEATURE_TEMPLATE = (
     "---\n"
     'name: "[Feature] Issue Template"\n'
-    'title: "[기능]"\n'
+    'title: "[Feature]"\n'
     'labels: "✨ Feature, 📃 Docs"\n'
     "---\n"
     "\n"
@@ -207,7 +207,7 @@ class EndToEndIssueAutoCreateTests(unittest.TestCase):
         kind, kwargs = client.calls[0]
         self.assertEqual(kind, "create_issue")
         self.assertEqual(kwargs["repo"], "yule-studio/naver-search-clone")
-        self.assertTrue(kwargs["title"].startswith("[기능]"))
+        self.assertTrue(kwargs["title"].startswith("[Feature]"))
         self.assertIn("Next.js + NestJS", kwargs["title"])
         self.assertIn("✨ Feature", kwargs["labels"])
 

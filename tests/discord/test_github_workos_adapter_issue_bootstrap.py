@@ -39,7 +39,7 @@ from yule_orchestrator.discord.integrations.github_workos_adapter import (
 _FEATURE_TEMPLATE = (
     "---\n"
     'name: "[Feature] Issue Template"\n'
-    'title: "[기능]"\n'
+    'title: "[Feature]"\n'
     'labels: "✨ Feature, 📃 Docs"\n'
     "---\n"
     "\n"
@@ -80,7 +80,7 @@ class BuildProposalIssuePlanTests(unittest.TestCase):
         assert proposal.issue_auto_create_plan is not None
         plan = proposal.issue_auto_create_plan
         self.assertEqual(plan["audit_reason"], "template_used")
-        self.assertTrue(plan["title"].startswith("[기능]"))
+        self.assertTrue(plan["title"].startswith("[Feature]"))
         self.assertIn("✨ Feature", plan["labels"])
         # extras 에 audit_reason 흔적
         self.assertEqual(

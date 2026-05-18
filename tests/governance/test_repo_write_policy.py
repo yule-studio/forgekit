@@ -175,7 +175,7 @@ class IssueAnchorRequiredTests(unittest.TestCase):
 
 class HumanReadableTitleTests(unittest.TestCase):
     def test_issue_title_valid_korean(self) -> None:
-        r = validate_issue_title("[기능] 네이버 검색 MVP - 인증/검색 홈 1차")
+        r = validate_issue_title("[Feature] 네이버 검색 MVP - 인증/검색 홈 1차")
         self.assertTrue(r.ok)
 
     def test_pr_title_valid_korean(self) -> None:
@@ -227,7 +227,7 @@ class HappyPathTests(unittest.TestCase):
         )
         # All four validators pass
         self.assertTrue(validate_commit_message(commit).ok)
-        self.assertTrue(validate_issue_title("[기능][인증] 회원가입 API 추가").ok)
+        self.assertTrue(validate_issue_title("[Feature][인증] 회원가입 API 추가").ok)
         self.assertTrue(
             validate_pr_title("[구현][인증] 회원가입 API 1차 (#7)").ok
         )
@@ -241,7 +241,7 @@ class HappyPathTests(unittest.TestCase):
         enforce_commit_message(
             "✨ 추가\n\n변경 이유\n- a\n\n주요 변경 사항\n- b\n\n비고\n- 없음"
         )
-        enforce_issue_title("[기능] 인증 추가")
+        enforce_issue_title("[Feature] 인증 추가")
         enforce_pr_title("[구현] 인증 API 추가")
         enforce_issue_anchor(IssueAnchorContext(issue_number_hint=1))
 
