@@ -314,6 +314,31 @@ async def run_coding_executor(
             exc_info=True,
         )
 
+    # P1-I startup recovery — operator 가 ``YULE_CODING_EXECUTOR_
+    # GREENFIELD_BOOTSTRAP_ENABLED=1`` 으로 opt-in 한 직후 runtime
+    # restart 한 번으로 ``bootstrap_required:*editor_record_only_insufficient*``
+    # 또는 ``bootstrap_required:live_editor_unavailable:*`` 로 멈춘 row
+    # 가 자동 revive 되게 한다. env off 면 sweep 자체가 no-op (churn 0).
+    try:
+        from ..agents.job_queue.coding_execute_recovery import (
+            recover_bootstrap_required_rows,
+        )
+
+        revived_boot = recover_bootstrap_required_rows(
+            queue=queue, log_fn=lambda msg, _exc: logger.info(msg)
+        )
+        if revived_boot:
+            logger.info(
+                "coding_execute bootstrap-required recovery: revived %d "
+                "row(s) after operator opted into greenfield bootstrap",
+                len(revived_boot),
+            )
+    except Exception:  # noqa: BLE001 - never crash startup
+        logger.warning(
+            "coding_execute bootstrap-required recovery: startup sweep raised",
+            exc_info=True,
+        )
+
     async def _process(job):
         # Spawn a per-job keepalive task. picked_by 는 pick(...) 시점에
         # service_id 로 설정되므로 worker_id 도 동일.
@@ -374,17 +399,18 @@ async def _target_repo_recovery_loop(
     shutdown_event: asyncio.Event,
     interval_seconds: float,
 ) -> None:
-    """Periodic sweep — re-check target repo availability for blocked
-    ``coding_execute`` rows so a runtime that's already up auto-recovers
-    the moment operator creates the missing checkout (no restart
-    required).
+    """Periodic sweep — re-check target repo availability AND greenfield
+    bootstrap capability for blocked ``coding_execute`` rows so a runtime
+    that's already up auto-recovers the moment operator either creates
+    the missing checkout OR opts into bootstrap (no restart required).
 
-    Sweep is bounded (``max_per_run=50``) and the recovery helper itself
-    only flips state when ``Path(...).is_dir()`` returns True — so a
-    perpetually-missing checkout doesn't cause churn.
+    Sweep is bounded (``max_per_run=50`` each) and helpers themselves
+    skip when their gate is unsatisfied — perpetually-missing checkout
+    or env-off bootstrap doesn't cause churn.
     """
 
     from ..agents.job_queue.coding_execute_recovery import (
+        recover_bootstrap_required_rows,
         recover_target_repo_missing_rows,
     )
 
@@ -403,6 +429,24 @@ async def _target_repo_recovery_loop(
                 "%d row(s) after checkout availability change",
                 len(revived),
             )
+
+        # P1-I: bootstrap-required sweep runs on the same tick. If env
+        # opt-in is off the helper returns () immediately — no churn.
+        try:
+            revived_boot = recover_bootstrap_required_rows(queue=queue)
+        except Exception:  # noqa: BLE001 - never crash sweep
+            logger.warning(
+                "coding_execute bootstrap-required recovery tick raised",
+                exc_info=True,
+            )
+            revived_boot = ()
+        if revived_boot:
+            logger.warning(
+                "coding_execute bootstrap-required recovery tick: revived "
+                "%d row(s) after bootstrap capability change",
+                len(revived_boot),
+            )
+
         try:
             await asyncio.wait_for(
                 shutdown_event.wait(), timeout=interval_seconds
