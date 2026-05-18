@@ -1095,6 +1095,66 @@ class CodingCommitError(RuntimeError):
 def _commit_message(
     request: CodingExecuteRequest, context: WorktreeContext
 ) -> str:
+    """commit message — record-only / live-edit 구분.
+
+    P1-W — 옛 wiring 은 항상 "RecordOnly editor 의 dry 산출" 본문을
+    찍어서, P1-V 이후 LiveCodeEditor 가 실제로 코드 수정한 commit 도
+    record-only 라고 거짓말했다. ``context.metadata["live_editor_apply"]``
+    가 있으면 진짜 LLM 편집이라는 신호 → 다른 gitmoji + 본문.
+
+    gitmoji 휴리스틱: live edit 은 ✨ (새 기능). 운영자가 더 정확한
+    gitmoji 가 필요하면 ``metadata["commit_gitmoji_override"]`` 지정.
+    """
+
+    live_audit = (context.metadata or {}).get("live_editor_apply") if isinstance(
+        context.metadata, Mapping
+    ) else None
+    is_live_edit = bool(live_audit) and bool(context.edited_files)
+    override = None
+    if isinstance(context.metadata, Mapping):
+        override = context.metadata.get("commit_gitmoji_override")
+
+    if is_live_edit:
+        gitmoji = (str(override).strip() if override else "") or "✨"
+        head = (
+            f"{gitmoji} #{request.issue_number} coding-executor 구현"
+            if request.issue_number
+            else f"{gitmoji} coding-executor 구현"
+        )
+        provider = str(live_audit.get("provider", "?")) if isinstance(live_audit, Mapping) else "?"
+        model = str(live_audit.get("model", "?")) if isinstance(live_audit, Mapping) else "?"
+        changed = list(context.edited_files or ())
+        sample_lines = [f"- {rel}" for rel in changed[:5]]
+        if len(changed) > 5:
+            sample_lines.append(f"- … ({len(changed) - 5} 개 추가 파일 생략)")
+        if not sample_lines:
+            sample_lines = ["- 없음"]
+        refused = list((live_audit or {}).get("refused_by_scope") or []) if isinstance(live_audit, Mapping) else []
+        refused_forbidden = list((live_audit or {}).get("refused_by_forbidden") or []) if isinstance(live_audit, Mapping) else []
+        note_lines = [
+            f"- live LLM editor (provider={provider}, model={model}) 가 worktree {len(changed)} 개 파일 수정",
+            f"- branch={context.branch} (from {request.base_branch})",
+        ]
+        if refused:
+            note_lines.append(
+                f"- write_scope 밖이라 거부된 파일: {', '.join(refused[:3])}"
+                + (" …" if len(refused) > 3 else "")
+            )
+        if refused_forbidden:
+            note_lines.append(
+                f"- forbidden_scope 매칭으로 거부된 파일: {', '.join(refused_forbidden[:3])}"
+                + (" …" if len(refused_forbidden) > 3 else "")
+            )
+        return (
+            f"{head}\n"
+            "\n변경 이유\n"
+            f"- coding_execute job (executor={request.executor_role}) 의 live LLM editor 산출\n"
+            "\n주요 변경 사항\n"
+            + "\n".join(sample_lines)
+            + "\n\n비고\n"
+            + "\n".join(note_lines)
+        )
+
     head = (
         f"📝 #{request.issue_number} coding-executor 계획 기록"
         if request.issue_number
