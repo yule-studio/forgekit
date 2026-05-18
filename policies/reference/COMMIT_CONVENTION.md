@@ -7,6 +7,29 @@
 현재는 1인 프로젝트이므로 복잡한 규칙보다 일관성을 우선한다.
 추후 Jira 연동이 완료되면 Jira 티켓 키를 포함하는 방식으로 확장할 수 있다.
 
+## 적용 범위 (cross-repo)
+
+본 컨벤션은 `yule-studio-agent` 내부 커밋뿐 아니라 **봇이 GitHub write 를 수행하는 모든 target repo** (예: `yule-studio/naver-search-clone`, 향후 engineering runtime 이 coding_execute / github_work_order / draft PR 을 만드는 모든 repo) 에 동일하게 적용된다. repo-local stricter policy 가 있으면 그것을 우선 적용하되, 기본은 본 SSoT 를 상속한다.
+
+코드 차원 SSoT — [`src/yule_orchestrator/agents/governance/repo_write_policy.py`](../../src/yule_orchestrator/agents/governance/repo_write_policy.py) 가 commit / issue title / PR title / issue anchor 4-종 hard guard 를 한 자리에 모은다. live path (GithubAppCommitter / GithubAppDraftPRCreator / GithubWriter.create_issue 등) 가 그 validator 를 호출하고 실패 시 raise.
+
+## Initial commit 특수 규칙
+
+새 repo 의 첫 non-merge 커밋 (bootstrap / scaffold flow 의 repo initialization commit 포함) 은 반드시 다음 제목을 사용한다:
+
+```
+:tada: initial commit
+```
+
+- 이 규칙은 일반 gitmoji whitelist 의 예외다.
+- 본문 (변경 이유 / 주요 변경 사항 / 비고) 는 일반 규칙 유지.
+- 첫 커밋 이후에는 `:tada:` 사용 금지.
+- 첫 커밋 판별이 ambiguous 하면 enforcement layer 가 `initial_commit_detection_ambiguous` blocker 로 surface.
+
+판별 기준 (`repo_write_policy.is_initial_commit_context`):
+1. repo 의 첫 non-merge commit (HEAD 이전 commit count == 0)
+2. caller (bootstrap / scaffold flow) 가 명시적으로 `initial_commit=True` 를 hint 로 전달
+
 ## 커밋 템플릿
 
 `.gitmessage.txt` 는 편의를 위한 Git commit template 역할만 한다. 규칙의 정의·해석은 항상 이 문서를 따르고, `.gitmessage.txt` 의 빈 줄·주석은 형식의 권위가 아니다.

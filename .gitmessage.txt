@@ -19,3 +19,12 @@
 # - 내용이 없는 항목도 생략하지 않고 `- 없음`으로 둔다
 # - 규칙의 source of truth: policies/reference/COMMIT_CONVENTION.md
 # - 이 파일은 편의용 템플릿이며, 형식 해석 기준은 위 문서를 따른다
+#
+# Initial commit (새 repo 의 첫 non-merge 커밋) 특수 규칙:
+# - 제목은 반드시 정확히 `:tada: initial commit`
+# - 본문 (변경 이유 / 주요 변경 사항 / 비고) 는 일반 규칙 유지
+# - 첫 커밋 이후에는 `:tada:` 사용 금지
+#
+# 검증 hook 설치 (commit-msg):
+#   ln -sf ../../scripts/validate_commit_msg.py .git/hooks/commit-msg
+# 분류 ambiguous 시 환경변수: YULE_COMMIT_IS_INITIAL=1/0

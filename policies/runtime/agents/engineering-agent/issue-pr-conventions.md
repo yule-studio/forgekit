@@ -147,22 +147,43 @@ issue body 와 동일하되 추가:
 
 ## 3. Commit 컨벤션 (2026-05-12 갱신 — 분리 정책)
 
-### 3.1 메시지 포맷
+> **Source of truth**: [`policies/reference/COMMIT_CONVENTION.md`](../../../reference/COMMIT_CONVENTION.md).
+> 본 §3 은 그 SSoT 의 운영 적용 가이드일 뿐이며, 형식 충돌 시 항상 SSoT 가 우선.
+
+### 3.1 메시지 포맷 (SSoT 사본)
+
+**plain text section header** 를 사용한다 (`##` markdown 헤더 금지 — SSoT 와 동일):
 
 ```
 <gitmoji> #<n> <Type 한국어 한 줄 요약>
 
-## 변경 이유
+변경 이유
 - ...
 
-## 주요 변경 사항
+주요 변경 사항
 - ...
 
-## 비고
-- 회귀 결과, 후속, blocker
+비고
+- 회귀 결과, 후속, blocker (없으면 `- 없음`)
 ```
 
 **금지**: `Co-Authored-By` trailer, 🤖 생성 trailer, `Generated with Claude` 류 메시지.
+
+**Initial commit 특수 규칙** — 새 repo 의 첫 non-merge 커밋 (bootstrap / scaffold flow 의 repo initialization commit 포함) 은 반드시 다음 제목을 사용한다:
+
+```
+:tada: initial commit
+```
+
+- 이 규칙은 일반 gitmoji whitelist 의 예외다.
+- 첫 커밋 이후에는 `:tada:` 사용 금지 (다음 커밋부터 일반 whitelist 적용).
+- 첫 커밋 판별이 ambiguous 하면 enforcement layer 가 `initial_commit_detection_ambiguous` blocker 로 surface 한다.
+
+### 3.0 적용 범위 (cross-repo)
+
+본 컨벤션은 `yule-studio-agent` 내부에 한정되지 않는다. **봇이 GitHub write 를 수행하는 모든 target repo** (예: `yule-studio/naver-search-clone`, 향후 engineering runtime 이 coding_execute / github_work_order / draft PR 을 만드는 모든 repo) 에 동일하게 적용된다. repo-local stricter policy 가 있으면 그것이 우선하되, 기본은 본 SSoT 를 상속한다.
+
+코드 SSoT — [`src/yule_orchestrator/agents/governance/repo_write_policy.py`](../../../../src/yule_orchestrator/agents/governance/repo_write_policy.py) 가 commit / issue title / PR title / issue anchor 4-종 hard guard 를 한 자리에 모은다. live path (GithubAppCommitter / GithubAppDraftPRCreator / GithubWriter.create_issue 등) 가 그 validator 를 호출하고 실패 시 raise.
 
 ### 3.2 커밋 분리 정책 (필수)
 
