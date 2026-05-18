@@ -98,6 +98,12 @@ REASON_WORKTREE_FAILED: str = "worktree_provision_failed"
 # editor capability 정보까지 포함 (e.g.
 # ``bootstrap_required:empty_or_greenfield_repo+editor_record_only_insufficient``).
 REASON_BOOTSTRAP_REQUIRED: str = "bootstrap_required"
+# P1-M F — non-greenfield + record-only editor + ``YULE_CODING_EXECUTOR_
+# PLANNING_ONLY_PR_FORBIDDEN=1`` 일 때. planning-only PR 가 production 까지
+# 반복되는 회귀를 차단하기 위한 honest blocker.
+REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE: str = (
+    "non_greenfield_real_edit_unavailable"
+)
 
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
@@ -649,6 +655,29 @@ class CodingExecutorWorker:
                         reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
                         branch=branch,
                     )
+                if exc_name == "NonGreenfieldRealEditUnavailable":
+                    # P1-M F — planning-only PR 가 production main 까지
+                    # 흘러가는 사고 차단. live editor wiring 전까지는 다음
+                    # slice 가 굴러가지 않는다.
+                    self._stamp_progress(
+                        session_id=request.session_id,
+                        marker=PROGRESS_CODING_BLOCKED,
+                        detail={
+                            "job_id": in_progress.job_id,
+                            "reason": REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE,
+                            "branch": branch,
+                            "repo_full_name": request.repo_full_name,
+                            "worktree_path": getattr(exc, "worktree_path", ""),
+                            "code_editor": type(self._editor).__name__,
+                            "detail": _short(exc),
+                        },
+                    )
+                    return self._fail(
+                        in_progress,
+                        terminal=True,
+                        reason=REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE,
+                        branch=branch,
+                    )
                 if exc_name == "BootstrapApplyFailed":
                     # P1-J: BootstrapApplyFailed.sub_reason is one of
                     # ``scaffold_apply_failed`` (disk/perm) or
@@ -1152,6 +1181,7 @@ __all__ = (
     "REASON_PR_FAILED",
     "REASON_PROTECTED_BRANCH",
     "REASON_BOOTSTRAP_REQUIRED",
+    "REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE",
     "REASON_PUSH_FAILED",
     "REASON_TARGET_REPO_MISSING",
     "REASON_TEST_FAILED",

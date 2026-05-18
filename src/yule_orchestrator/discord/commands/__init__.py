@@ -725,6 +725,24 @@ def _run_engineer_intake(
         user_id=user_id,
     )
 
+    # P1-M A — slash command path 도 session.extra 에 work_mode /
+    # topology / scope / mode_decided_* 를 영속해야 한다. 옛 wiring 은
+    # 채널 router path 만 ``prepare_coding_session_context`` 를 거쳤기
+    # 때문에 `/engineer_intake` 슬래시 세션은 work_mode=None 으로 떨어졌고,
+    # background pr_merge_continuation_loop 가 approval_required 로 fallback
+    # 됐다 (회귀: session fe5eedc65196).
+    try:
+        _persist_intake_mode_and_backlog(
+            session=result.session, prompt_text=prompt
+        )
+    except Exception:  # noqa: BLE001 - never block intake response
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "engineer_intake: mode/backlog 영속화 실패 — 본문 응답은 그대로 진행",
+            exc_info=True,
+        )
+
     # P0-T smoke fix (session c5278a9043f2 repro):
     # /engineer_intake 슬래시 명령이 issue-less full-stack coding 요청을
     # 받았을 때 본문 응답만 게시하고 `#승인-대기` 카드는 누락되던 회귀
@@ -747,6 +765,42 @@ def _run_engineer_intake(
                 exc_info=True,
             )
     return result
+
+
+def _persist_intake_mode_and_backlog(
+    *, session: Any, prompt_text: str
+) -> None:
+    """P1-M — slash command intake 직후 mode/backlog 영속화.
+
+    1. ``prepare_coding_session_context`` 로 work_mode/topology/scope
+       /mode_decided_* 계산 후 session.extra 머지.
+    2. full_stack_single_repo 의도면 ``seed_coding_backlog`` 호출해
+       backlog 8 개 slice 를 stamp (이미 있으면 보존).
+    """
+
+    if session is None:
+        return
+    try:
+        from ..engineering_channel_router.session_persistence import (
+            _persist_coding_session_context,
+        )
+    except Exception:  # noqa: BLE001 - partial install
+        return
+
+    refs = list(getattr(session, "references_user", None) or ())
+    user_links = tuple(str(r) for r in refs)
+    _persist_coding_session_context(
+        session,
+        message_text=prompt_text or "",
+        user_links=user_links,
+    )
+
+    try:
+        from ...agents.coding.coding_backlog_seed import seed_coding_backlog
+
+        seed_coding_backlog(session_id=getattr(session, "session_id", None))
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:

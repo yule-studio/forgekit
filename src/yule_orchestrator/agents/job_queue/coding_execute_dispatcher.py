@@ -584,6 +584,27 @@ def build_coding_execute_request(
         list(coding_job.get("review_roles") or ()),
     )
 
+    # P1-M D — slice_spec + session_prompt + work_mode 도 forward 해서
+    # PR 생성 단계의 한국어 humanizer 가 사용. slice_spec 은 backlog 의
+    # 첫 항목 또는 coding_job 자체의 spec.
+    session_extra_meta = getattr(ready.session, "extra", None) or {}
+    if isinstance(session_extra_meta, Mapping):
+        slice_spec = (
+            coding_job.get("slice_spec")
+            if isinstance(coding_job, Mapping)
+            else None
+        )
+        if slice_spec is None:
+            slice_spec = session_extra_meta.get("current_coding_slice")
+        if isinstance(slice_spec, Mapping):
+            forwarded_metadata["slice_spec"] = dict(slice_spec)
+        prompt_for_title = str(getattr(ready.session, "prompt", "") or "")
+        if prompt_for_title:
+            forwarded_metadata["session_prompt"] = prompt_for_title
+        work_mode_val = session_extra_meta.get("work_mode")
+        if work_mode_val:
+            forwarded_metadata["work_mode"] = str(work_mode_val)
+
     return CodingExecuteRequest(
         session_id=ready.session_id,
         executor_role=ready.executor_role(),
