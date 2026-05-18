@@ -143,6 +143,19 @@ _GREENFIELD_BENIGN_NAMES: frozenset[str] = frozenset(
 )
 
 
+# P1-K live-smoke fix — record-only editor 가 이전 run 에서 `runs/
+# coding-executor-plans/<slug>.md` 를 commit 했다면 같은 branch 의 새
+# worktree 에 그 파일이 그대로 들어와 ``_looks_greenfield`` 가 False
+# 반환 → detect_bootstrap_mode 가 None → silent delegate 로 scaffold
+# 가 영원히 실행되지 않는 회귀의 직접 원인.  본 경로는 executor 자체가
+# 만드는 audit / plan 파일들이라 user content 가 아니다 — greenfield
+# 판정에서 제외해야 한다.
+_GREENFIELD_BENIGN_DIR_PREFIXES: tuple = (
+    "runs/coding-executor-plans",
+    "runs/coding-executor-bootstrap",
+)
+
+
 def _looks_greenfield(worktree: Path) -> bool:
     try:
         entries = list(worktree.iterdir())
@@ -151,8 +164,34 @@ def _looks_greenfield(worktree: Path) -> bool:
     for entry in entries:
         if entry.name in _GREENFIELD_BENIGN_NAMES:
             continue
+        # P1-K — executor 가 자체적으로 만드는 `runs/` 디렉터리 안의
+        # plan/audit 만 있고 user content (package.json / src / apps 등)
+        # 가 없으면 여전히 greenfield 로 본다.
+        if entry.is_dir() and entry.name == "runs":
+            if _runs_dir_only_contains_executor_artifacts(entry):
+                continue
+            return False
         return False
     return True
+
+
+def _runs_dir_only_contains_executor_artifacts(runs_dir: Path) -> bool:
+    """`runs/` 안에 executor-owned 하위 디렉터리만 있고 user-owned 파일
+    이 없으면 True."""
+
+    try:
+        for child in runs_dir.rglob("*"):
+            if not child.is_file():
+                continue
+            rel = child.relative_to(runs_dir.parent).as_posix()
+            if not any(
+                rel.startswith(prefix + "/") or rel == prefix
+                for prefix in _GREENFIELD_BENIGN_DIR_PREFIXES
+            ):
+                return False
+        return True
+    except OSError:
+        return False
 
 
 def _request_text(request: Any) -> str:
