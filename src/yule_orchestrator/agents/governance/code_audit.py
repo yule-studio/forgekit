@@ -159,6 +159,11 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "process_job pipeline, reason classification, progress stamping",
     },
+    "src/yule_orchestrator/runtime/coding_executor_runner.py": {
+        "deadline": "2026-06-21",
+        "owner": "codwithyc",
+        "axes": "background loops (producer / target_repo / pr_merge_continuation) + executor builders (live merge + approval enqueuer + next slice dispatcher) + recovery sweeps",
+    },
 }
 
 
