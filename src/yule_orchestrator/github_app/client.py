@@ -50,7 +50,15 @@ TOKEN_REDACTED: str = "<redacted>"
 
 
 class GitHubAppHTTPError(RuntimeError):
-    """Generic HTTP failure outside the typed 401/403/404/5xx set."""
+    """Generic HTTP failure outside the typed 401/403/404/5xx set.
+
+    P1-P — ``body`` 도 optional kwarg 로 받는다.  옛 시그니처는 (message,
+    status, url) 만 받아서 ``live_client._get`` 의 404 처리에서
+    ``GitHubAppNotFoundError(msg, status=404, body=response.body)`` 호출이
+    TypeError 로 떨어졌고, 그게 pr_merge_continuation_loop 의 noisy
+    traceback 회귀의 직접 원인이었다.  본 클래스의 base signature 가
+    SSoT 이므로 모든 subclass 가 동일 인자 contract 를 상속한다.
+    """
 
     def __init__(
         self,
@@ -58,10 +66,12 @@ class GitHubAppHTTPError(RuntimeError):
         *,
         status: Optional[int] = None,
         url: Optional[str] = None,
+        body: Any = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.url = url
+        self.body = body
 
 
 class GitHubAppAuthError(GitHubAppHTTPError):
