@@ -1,7 +1,7 @@
 ---
 name: "[Feature] Issue Template"
 about: 모든 라벨 관리 이슈 템플릿
-title: "[Feat]"
+title: "[Feature]"
 labels: "\U0001F970 Accessibility, \U0001F4EC API, \U0001F41E BugFix, \U0001F4BB CrossBrowsing,
   \U0001F30F Deploy, \U0001F4C3 Docs, ✨ Feature, \U0001F3A8 Html&css, \U0001F64B‍♂️
   Question, \U0001F528 Refactor, ⚙ Setting, ✅ Test"

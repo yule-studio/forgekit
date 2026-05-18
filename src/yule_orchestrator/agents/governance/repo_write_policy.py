@@ -11,7 +11,7 @@ engineering-agent/issue-pr-conventions.md).
 
 검증 항목
   1. ``validate_commit_message`` — gitmoji whitelist + 3-section format
-  2. ``validate_issue_title`` — 한국어 + [기능]/[구현]/... prefix 강제
+  2. ``validate_issue_title`` — 한국어 본문 + 영문 issue prefix 강제
   3. ``validate_pr_title``    — 동일 패턴 + 모드 토큰 금지
   4. ``validate_issue_anchor``— branch / PR body 에 ``issue-N`` anchor 필수
   5. ``is_initial_commit_context`` + ``validate_initial_commit_message``
@@ -373,7 +373,22 @@ def validate_initial_commit_decision(
 
 
 _KOREAN_RE = re.compile(r"[가-힣]")  # Hangul syllables
-_ALLOWED_TITLE_PREFIXES: tuple = ("[기능]", "[구현]", "[수정]", "[문서]", "[설정]", "[테스트]", "[리팩토링]")
+_ALLOWED_ISSUE_TITLE_PREFIXES: tuple = (
+    "[Feature]",
+    "[Bug]",
+    "[Docs]",
+    "[Chore]",
+    "[Test]",
+    "[Refactor]",
+)
+_ALLOWED_PR_TITLE_PREFIXES: tuple = (
+    "[구현]",
+    "[수정]",
+    "[문서]",
+    "[설정]",
+    "[테스트]",
+    "[리팩토링]",
+)
 
 
 def _title_has_korean(text: str) -> bool:
@@ -473,7 +488,12 @@ def _validate_human_title(
             fields={"title": text, "korean_char_count": korean_chars},
         )
 
-    if not any(text.startswith(p) for p in _ALLOWED_TITLE_PREFIXES):
+    allowed_prefixes = (
+        _ALLOWED_ISSUE_TITLE_PREFIXES
+        if kind == "issue"
+        else _ALLOWED_PR_TITLE_PREFIXES
+    )
+    if not any(text.startswith(p) for p in allowed_prefixes):
         return PolicyResult(
             ok=False,
             reason=(
@@ -483,10 +503,10 @@ def _validate_human_title(
             ),
             detail=(
                 "title must start with one of "
-                + ", ".join(_ALLOWED_TITLE_PREFIXES)
+                + ", ".join(allowed_prefixes)
                 + " (use agents/coding/human_titles.py to build correctly)"
             ),
-            fields={"title": text, "allowed_prefixes": list(_ALLOWED_TITLE_PREFIXES)},
+            fields={"title": text, "allowed_prefixes": list(allowed_prefixes)},
         )
 
     return PolicyResult(ok=True, fields={"title": text})

@@ -9,7 +9,7 @@ slice 영역** 으로 만든다. 같은 helper 를 issue creator (work_order) /
 PR creator (coding executor) 가 공유.
 
 규칙
-  * Issue 제목: ``[기능] <세션 prompt 요약> — <slice 영역>``
+  * Issue 제목: ``[Feature] <세션 prompt 요약> — <slice 영역>``
   * PR 제목:    ``[구현][<영역>] <slice title>``  (slice 가 있을 때)
                  ``[구현] <세션 prompt 요약>``    (slice 없을 때)
   * 100자 cap (GitHub UI truncation 방지) + 줄바꿈 제거.
@@ -82,7 +82,7 @@ def build_issue_title(
     slice_spec: Optional[Mapping[str, Any]] = None,
     fallback_short_purpose: Optional[str] = None,
 ) -> str:
-    """Issue 제목 — ``[기능] <요약> — <영역>`` 한국어.
+    """Issue 제목 — ``[Feature] <요약> — <영역>`` 한국어.
 
     slice_spec 이 있으면 slice 의 title 을 우선 사용.
     """
@@ -92,15 +92,15 @@ def build_issue_title(
         if title:
             area = _resolve_area(slice_spec)
             if area and area not in title:
-                composed = f"[기능][{area}] {title}"
+                composed = f"[Feature][{area}] {title}"
             else:
-                composed = f"[기능] {title}"
+                composed = f"[Feature] {title}"
             return composed[:_TITLE_MAX_LEN]
 
     summary = _strip_to_summary(session_prompt or "")
     if not summary:
         summary = (fallback_short_purpose or "코딩 작업").strip()
-    return f"[기능] {summary}"[:_TITLE_MAX_LEN]
+    return f"[Feature] {summary}"[:_TITLE_MAX_LEN]
 
 
 _KOREAN_RE_BUILDER = re.compile(r"[가-힣]")
