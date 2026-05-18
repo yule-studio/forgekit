@@ -93,13 +93,25 @@ def _full_stack_request() -> CodingExecuteRequest:
 
 class StartupAvailabilityAuditTests(unittest.TestCase):
     def test_availability_label_reflects_bootstrap_env_on(self) -> None:
-        """case 1 — env on → label says ``greenfield_bootstrap+record_only_delegate``."""
+        """case 1 — greenfield env on (live editor 미설정) → label 은
+        ``greenfield_bootstrap+record_only_delegate``.  P1-T 이후 blocker
+        는 빈 string 이 아니라 "live editor 켜면 non-greenfield real edit
+        path" 안내 — non-greenfield repo 가 record-only 로 빠지는 옛 회귀를
+        명시 surface 하기 위한 변경."""
 
-        with _env_scope(**{ENV_GREENFIELD_BOOTSTRAP_ENABLED: "1"}):
+        with _env_scope(
+            **{
+                ENV_GREENFIELD_BOOTSTRAP_ENABLED: "1",
+                "YULE_LIVE_EDITOR_ENABLED": None,
+                "YULE_LIVE_EDITOR_PROVIDER": None,
+            }
+        ):
             avail = detect_live_executor_availability(repo_root="/tmp/x")
         self.assertIn("greenfield_bootstrap", avail.code_editor)
         self.assertIn("delegate", avail.code_editor)
-        self.assertEqual(avail.code_editor_blocker, "")
+        # P1-T: blocker 가 live editor upgrade path 를 안내 — non-greenfield
+        # 에서 record-only 로 빠지는 회귀를 더 이상 silent 로 두지 않음.
+        self.assertIn("YULE_LIVE_EDITOR_ENABLED", avail.code_editor_blocker)
 
     def test_availability_label_reflects_bootstrap_env_off(self) -> None:
         """env off → label is disabled + blocker message names the env var."""
