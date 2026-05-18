@@ -79,6 +79,12 @@ def _approval_request_from_proposal(
     )
     requested_action = "PR merge approval — 5-step gate 통과 시 merge"
 
+    # P1-L-3 — proposal extra 에 session_id 까지 박아 둠. reply router
+    # 가 merge 성공 직후 next slice continuation 을 ``session_id`` 기준으로
+    # 찾는다.  ``PRMergeProposal.from_extra`` 가 알 수 없는 키를 그대로
+    # proposal.extra 로 복원하므로 round-trip 안전.
+    extras: dict = dict(proposal.to_extra())
+    extras["session_id"] = str(session_id)
     return ApprovalRequest(
         session_id=session_id,
         approval_kind=APPROVAL_KIND_PR_MERGE,
@@ -89,7 +95,7 @@ def _approval_request_from_proposal(
         source_channel_id=source_channel_id,
         source_thread_id=source_thread_id,
         source_message_id=source_message_id,
-        extra=dict(proposal.to_extra()),
+        extra=extras,
     )
 
 

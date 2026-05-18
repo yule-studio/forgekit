@@ -8,7 +8,7 @@ import time as time_module
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Any, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 
 from ...agents import (
     Dispatcher,
@@ -1442,6 +1442,26 @@ async def _route_engineering_approval_reply(
         except Exception:  # noqa: BLE001 - best-effort lookup
             return ()
 
+    # P1-L-3 — production wiring: live PRMergeExecutor + on_result 콜백.
+    # env (YULE_GITHUB_APP_MERGE_OPT_IN + GITHUB_APP_*) 가 갖춰지면 실제
+    # merge 호출, 아니면 None — handle_pr_merge_approval_reply 가
+    # ``merge_disabled`` 결과를 반환해 RESPONSE_PR_MERGE_DISABLED 로 ack.
+    pr_merge_executor = _build_pr_merge_executor_for_bot()
+
+    def _on_pr_merge_result(result):
+        """approval reply 가 merge 성공한 직후 호출되는 후크.
+
+        merge_sha 가 있으면 ``pr_merged`` stage 로 advance + next slice
+        dispatch. background continuation loop 가 이미 같은 작업을
+        한다 — 두 경로 모두 idempotent (advance_stage / next_slice
+        dispatcher 가 pr_merge_stage 가드).
+        """
+
+        try:
+            _advance_to_merged_and_dispatch_next_slice(result=result)
+        except Exception:  # noqa: BLE001 - never crash reply router
+            pass
+
     return await route_approval_channel_message(
         message=message,
         bot_user=bot_user,
@@ -1451,6 +1471,96 @@ async def _route_engineering_approval_reply(
         approval_channel_name=approval_channel_name,
         session_lister=_session_lister,
         send_chunks=send_chunks,
+        pr_merge_executor=pr_merge_executor,
+        on_pr_merge_result=_on_pr_merge_result,
+    )
+
+
+def _build_pr_merge_executor_for_bot():
+    """env 가 갖춰지면 live :data:`PRMergeExecutor` 반환. 없으면 None.
+
+    `runtime.coding_executor_runner._maybe_build_live_pr_merge_executor`
+    와 정확히 동일한 환경 contract — 두 군데 동시 wiring 보장.
+    """
+
+    try:
+        from ...runtime.coding_executor_runner import (
+            _maybe_build_live_pr_merge_executor,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return _maybe_build_live_pr_merge_executor()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _advance_to_merged_and_dispatch_next_slice(*, result) -> None:
+    """reply router 가 merge 성공 직후 호출.
+
+    1. result.proposal 에서 session_id 추출 (proposal.extra 에 stamp)
+    2. session.extra 를 ``pr_merged`` stage 로 advance + audit
+    3. dispatch_next_coding_slice 호출 (backlog 있으면 다음 slice 자동
+       enqueue, 비어있으면 session done)
+    """
+
+    proposal = getattr(result, "proposal", None)
+    merge_result = getattr(result, "merge_result", None) or {}
+    merge_sha = str(merge_result.get("merge_sha") or "")
+    if proposal is None or not merge_sha:
+        return
+    extra = dict(proposal.extra or {})
+    session_id = str(extra.get("session_id") or "")
+    if not session_id:
+        return
+
+    from ...agents.job_queue.next_slice_dispatcher import (
+        dispatch_next_coding_slice,
+    )
+    from ...agents.job_queue.pr_merge_continuation import (
+        STAGE_PR_MERGED,
+        advance_stage,
+    )
+    from ...agents.workflow_state import load_session
+    from ...runtime.coding_executor_runner import (
+        _build_next_slice_dispatcher,
+        _persist_session_extra,
+    )
+
+    session = load_session(session_id)
+    if session is None:
+        return
+    current_extra = getattr(session, "extra", None) or {}
+    if not isinstance(current_extra, dict):
+        current_extra = dict(current_extra) if current_extra else {}
+    # 같은 sha 로 이미 pr_merged 면 no-op — 사람 reply + bg loop 가
+    # 동시에 들어와도 중복 advance 방지.
+    from ...agents.job_queue.pr_merge_continuation import EXTRA_PR_MERGE_STAGE
+
+    if current_extra.get(EXTRA_PR_MERGE_STAGE) == STAGE_PR_MERGED:
+        return
+    new_extra = advance_stage(
+        current_extra,
+        new_stage=STAGE_PR_MERGED,
+        reason="approval_reply_merged",
+        merge_sha=merge_sha,
+        method=str(merge_result.get("method") or "squash"),
+    )
+    _persist_session_extra(session_id, new_extra)
+
+    enqueue_slice, on_done = _build_next_slice_dispatcher()
+
+    def _persist(updated: Mapping[str, Any], _sid=session_id) -> None:
+        _persist_session_extra(_sid, updated)
+
+    fresh = load_session(session_id)
+    fresh_extra = getattr(fresh, "extra", None) or {} if fresh else {}
+    dispatch_next_coding_slice(
+        session_id=session_id,
+        session_extra=fresh_extra,
+        persist_extra=_persist,
+        enqueue_slice=enqueue_slice,
+        on_session_done=on_done,
     )
 
 
