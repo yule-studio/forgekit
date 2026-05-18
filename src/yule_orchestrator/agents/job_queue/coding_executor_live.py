@@ -572,9 +572,37 @@ class GreenfieldBootstrapEditor:
         mode = detect_bootstrap_mode(
             request=request, worktree_path=context.worktree_path
         )
+        # P1-K — per-apply audit emitted regardless of branch so operator
+        # status surface can see WHICH path executed (delegate / refuse /
+        # scaffold) and at WHICH worktree. silent delegate 가 가장 진단
+        # 하기 어려웠던 회귀의 직접 원인.
+        logger.info(
+            "GreenfieldBootstrapEditor.apply: worktree=%s repo_full_name=%s "
+            "detected_mode=%s bootstrap_enabled=%s",
+            context.worktree_path,
+            request.repo_full_name,
+            mode,
+            self.is_bootstrap_capable,
+        )
         if mode is None:
             # Not a greenfield case — keep ordinary record-only behaviour.
-            return self._delegate.apply(request=request, context=context)
+            # Stamp audit so operator sees WHY scaffold didn't run.
+            new_metadata = dict(context.metadata or {})
+            new_metadata["bootstrap_apply"] = {
+                "mode": None,
+                "decision": "delegate_record_only",
+                "reason": (
+                    "detect_bootstrap_mode returned None — repo not greenfield "
+                    "OR request text has no full-stack/python signals"
+                ),
+                "worktree_path": context.worktree_path,
+                "repo_full_name": request.repo_full_name,
+                "bootstrap_enabled": self.is_bootstrap_capable,
+            }
+            from dataclasses import replace as _replace
+
+            delegated = self._delegate.apply(request=request, context=context)
+            return _replace(delegated, metadata=new_metadata)
 
         if not self.is_bootstrap_capable:
             # Greenfield detected but operator hasn't opted into live
@@ -1141,19 +1169,40 @@ def detect_live_executor_availability(
     repo_root: Optional[str] = None,
     live_client: Optional[Any] = None,
 ) -> LiveExecutorAvailability:
-    """Inspect environment + injected resources, return an availability summary."""
+    """Inspect environment + injected resources, return an availability summary.
+
+    P1-K — actual editor wiring is no longer the stale ``"record_only"``
+    string. ``build_live_executor`` injects ``GreenfieldBootstrapEditor``
+    (which delegates to record-only behavior for non-greenfield repos),
+    and the bootstrap path activates only when
+    ``YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED=1``. The audit
+    string here reflects that so operator surface stops claiming
+    "record_only" when bootstrap is actually wired.
+    """
 
     pusher = "github_app" if live_client is not None else "blocked"
     pr = "github_app" if live_client is not None else "blocked"
     pusher_blocker = "" if live_client else "LiveGithubAppClient 미주입 (.env.local 의 YULE_GITHUB_APP_* 필요)"
     pr_blocker = pusher_blocker
+    bootstrap_on = _greenfield_bootstrap_enabled()
+    editor_label = (
+        "greenfield_bootstrap+record_only_delegate"
+        if bootstrap_on
+        else "greenfield_bootstrap (disabled — env off)"
+    )
+    editor_blocker = (
+        ""
+        if bootstrap_on
+        else (
+            "greenfield bootstrap disabled — set "
+            f"{ENV_GREENFIELD_BOOTSTRAP_ENABLED}=1 to enable scaffold "
+            "of empty target repos"
+        )
+    )
     return LiveExecutorAvailability(
         worktree_provisioner=bool(repo_root),
-        code_editor="record_only",
-        code_editor_blocker=(
-            "live LLM editor (claude / codex CLI + secret) 미연결 — "
-            "운영자 승인 후 별도 PR 에서 ClaudeCodeCodeEditor 등 추가"
-        ),
+        code_editor=editor_label,
+        code_editor_blocker=editor_blocker,
         test_runner=True,
         committer=True,
         pusher=pusher,

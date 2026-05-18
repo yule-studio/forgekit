@@ -255,6 +255,21 @@ async def run_coding_executor(
         heartbeats=heartbeats,
         **bundle,
     )
+
+    # P1-K — explicit startup audit so operator can see the actual
+    # editor wiring + bootstrap env state without inferring from
+    # downstream failure reasons.
+    code_editor_obj = bundle.get("code_editor")
+    code_editor_class = type(code_editor_obj).__name__ if code_editor_obj else "(none)"
+    bootstrap_enabled = bool(
+        getattr(code_editor_obj, "is_bootstrap_capable", False)
+    )
+    logger.info(
+        "coding_executor wired: editor=%s bootstrap_enabled=%s "
+        "(env=YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED)",
+        code_editor_class,
+        bootstrap_enabled,
+    )
     obsidian_progress_writer = ObsidianWriterWorker(
         queue=queue,
         heartbeats=heartbeats,

@@ -382,7 +382,10 @@ class FactoryAndAvailabilityTests(unittest.TestCase):
         availability = detect_live_executor_availability(
             repo_root="/tmp/x", live_client=None
         )
-        self.assertEqual(availability.code_editor, "record_only")
+        # P1-K — code_editor label now reflects the actual wired editor
+        # (GreenfieldBootstrapEditor; with delegate behavior for
+        # non-greenfield repos). Old "record_only" string was stale.
+        self.assertIn("greenfield_bootstrap", availability.code_editor)
         self.assertEqual(availability.pusher, "blocked")
         self.assertIn("LiveGithubAppClient", availability.pusher_blocker)
 
