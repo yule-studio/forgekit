@@ -231,6 +231,7 @@ async def route_approval_channel_message(
     now_iso: Optional[str] = None,
     pr_merge_executor: Optional[PRMergeExecutor] = None,
     on_pr_merge_result: Optional[Callable[[PRMergeReplyResult], Any]] = None,
+    pr_merge_ready_for_review_action: Optional[Callable[..., Any]] = None,
 ) -> ApprovalReplyRouteResult:
     """Inspect *message* for an approval reply in the approval
     channel; if so, route through :func:`handle_approval_reply`
@@ -346,6 +347,7 @@ async def route_approval_channel_message(
         message=message,
         merge_executor=pr_merge_executor,
         on_result=on_pr_merge_result,
+        ready_for_review_action=pr_merge_ready_for_review_action,
     )
     if pr_merge_outcome is not None:
         return pr_merge_outcome
@@ -406,6 +408,7 @@ async def _try_handle_pr_merge_reply(
     message: Any,
     merge_executor: Optional[PRMergeExecutor],
     on_result: Optional[Callable[[PRMergeReplyResult], Any]],
+    ready_for_review_action: Optional[Callable[..., Any]] = None,
 ) -> Optional[ApprovalReplyRouteResult]:
     """P1-L-2 — PR merge approval card 응답 처리.
 
@@ -434,6 +437,7 @@ async def _try_handle_pr_merge_reply(
         source_thread_id=source_thread_id,
         approved_at=approved_at or "",
         merge_executor=merge_executor,
+        ready_for_review_action=ready_for_review_action,
     )
 
     response = _render_pr_merge_result(result)

@@ -536,6 +536,7 @@ async def handle_pr_merge_approval_reply(
     source_thread_id: Optional[int] = None,
     approved_at: str = "",
     merge_executor: Optional[PRMergeExecutor] = None,
+    ready_for_review_action: Optional[Callable[..., Any]] = None,
 ) -> PRMergeReplyResult:
     """Route a user's reply for a PR merge approval card.
 
@@ -634,6 +635,39 @@ async def handle_pr_merge_approval_reply(
         approved_at=approved_at,
         source_message_id=source_message_id,
     )
+
+    # P1-Q — draft escalation branch.  proposal 이 draft_escalation 플래그를
+    # 가지고 있고 ready_for_review_action 이 wiring 돼 있으면 사용자 승인
+    # 직후 draft 해제 후 gate 재실행.  ready_for_review 실패면 그 사유
+    # 그대로 surface.
+    is_draft_escalation = bool(
+        (proposal.extra or {}).get("draft_escalation")
+    )
+    if is_draft_escalation and ready_for_review_action is not None:
+        try:
+            ready_action_result = ready_for_review_action(
+                repo=proposal.repo, pr_number=proposal.pr_number
+            )
+            if hasattr(ready_action_result, "__await__"):
+                ready_action_result = await ready_action_result  # type: ignore[assignment]
+        except Exception as exc:  # noqa: BLE001
+            return PRMergeReplyResult(
+                intent=intent,
+                approval_job_id=approval_job.job_id,
+                proposal=proposal,
+                gate_failed_step="draft_ready_for_review",
+                gate_reason=str(exc)[:240],
+                audit={
+                    "approved_by": approved_by,
+                    "approved_at": approved_at,
+                    "draft_escalation": True,
+                    "ready_for_review_error": type(exc).__name__,
+                    "ready_for_review_message": str(exc)[:240],
+                },
+            )
+        # gate rerun — merge_executor 가 새 PR state (이제 draft=False) 로
+        # snapshot 빌드한 뒤 gate evaluate.  성공하면 merge_sha 반환.
+
     raw = merge_executor(dispatch)
     if hasattr(raw, "__await__"):
         raw = await raw  # type: ignore[assignment]

@@ -1473,7 +1473,41 @@ async def _route_engineering_approval_reply(
         send_chunks=send_chunks,
         pr_merge_executor=pr_merge_executor,
         on_pr_merge_result=_on_pr_merge_result,
+        pr_merge_ready_for_review_action=_build_ready_for_review_action_for_bot(),
     )
+
+
+def _build_ready_for_review_action_for_bot():
+    """env 가 갖춰지면 live ``mark_pull_request_ready_for_review`` callable
+    반환.  없으면 None — 그 경우 draft escalation 승인은 ``draft_ready_
+    for_review_failed`` 로 reject + audit 에 사유 명시.
+
+    P1-Q D — draft escalation reply path 전용.  merge executor 와 동일
+    env contract (``YULE_GITHUB_APP_MERGE_OPT_IN`` + GitHub App config)
+    재사용.
+    """
+
+    try:
+        from ...runtime.coding_executor_runner import (
+            ENV_GITHUB_APP_MERGE_OPT_IN,
+            _opt_in_enabled,
+        )
+        from ...github_app.live_client import build_live_client_from_env
+    except Exception:  # noqa: BLE001
+        return None
+    if not _opt_in_enabled():
+        return None
+    try:
+        live = build_live_client_from_env()
+    except Exception:  # noqa: BLE001
+        return None
+
+    def _action(*, repo: str, pr_number: int, **_kwargs):
+        return live.mark_pull_request_ready_for_review(
+            repo=repo, pr_number=int(pr_number)
+        )
+
+    return _action
 
 
 def _build_pr_merge_executor_for_bot():
