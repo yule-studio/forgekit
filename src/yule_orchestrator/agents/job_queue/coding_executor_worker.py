@@ -644,8 +644,13 @@ class CodingExecutorWorker:
                         branch=branch,
                     )
                 if exc_name == "BootstrapApplyFailed":
+                    # P1-J: BootstrapApplyFailed.sub_reason is one of
+                    # ``scaffold_apply_failed`` (disk/perm) or
+                    # ``scope_refused_bootstrap_files`` (write_scope
+                    # rejected every essential scaffold path).
+                    sub_token = getattr(exc, "sub_reason", "scaffold_apply_failed")
                     sub_reason = (
-                        f"scaffold_apply_failed:{getattr(exc, 'mode', 'unknown')}"
+                        f"{sub_token}:{getattr(exc, 'mode', 'unknown')}"
                     )
                     self._stamp_progress(
                         session_id=request.session_id,

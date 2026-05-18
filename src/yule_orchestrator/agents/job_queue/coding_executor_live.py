@@ -594,7 +594,14 @@ class GreenfieldBootstrapEditor:
             worktree_path=context.worktree_path,
             plan=plan,
             write_scope=tuple(request.write_scope or ()),
+            forbidden_scope=tuple(request.forbidden_scope or ()),
+            allow_bootstrap_essentials=True,
         )
+        # P1-J — distinguish two failure shapes so operator sees the
+        # actual cause instead of the misleading "no_stack_detected"
+        # loop on the next run:
+        #   * write_errors (disk/permissions) → ``scaffold_apply_failed``
+        #   * 0 created but ≥1 refused → ``scope_refused_bootstrap_files``
         if result.write_errors and not result.files_created:
             raise BootstrapApplyFailed(
                 mode=plan.mode,
@@ -602,6 +609,17 @@ class GreenfieldBootstrapEditor:
                     f"all scaffold files failed: "
                     f"{result.write_errors[:2]} (truncated)"
                 ),
+                sub_reason="scaffold_apply_failed",
+            )
+        if result.all_files_refused_by_scope:
+            raise BootstrapApplyFailed(
+                mode=plan.mode,
+                message=(
+                    f"all scaffold files refused — scope={list(request.write_scope or ())[:3]} "
+                    f"refused_by_scope={list(result.files_refused_by_scope)[:5]} "
+                    f"refused_by_forbidden={list(result.files_refused_by_forbidden)[:3]}"
+                ),
+                sub_reason="scope_refused_bootstrap_files",
             )
         # Also write the plan note for audit (mirroring record-only path).
         slug = _slugify(context.branch)
@@ -639,13 +657,27 @@ class BootstrapLiveEditorUnavailable(RuntimeError):
 
 
 class BootstrapApplyFailed(RuntimeError):
-    """All scaffold writes failed (e.g. permissions). Worker surfaces
-    as ``REASON_BOOTSTRAP_REQUIRED:scaffold_apply_failed``.
+    """All scaffold writes failed. Two sub-reasons:
+
+      * ``scaffold_apply_failed`` — disk/permissions errors (real OSError)
+      * ``scope_refused_bootstrap_files`` — write_scope refused every
+        scaffold path even after the bootstrap-essential allowlist
+        exception ran. operator must widen scope OR run with bootstrap
+        env on a different role whose scope includes the scaffold paths.
+
+    Worker surfaces as ``REASON_BOOTSTRAP_REQUIRED:<sub_reason>:<mode>``.
     """
 
-    def __init__(self, *, mode: str, message: str) -> None:
+    def __init__(
+        self,
+        *,
+        mode: str,
+        message: str,
+        sub_reason: str = "scaffold_apply_failed",
+    ) -> None:
         super().__init__(message)
         self.mode = mode
+        self.sub_reason = sub_reason
 
 
 def _render_bootstrap_plan_markdown(
