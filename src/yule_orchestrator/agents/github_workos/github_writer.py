@@ -478,6 +478,19 @@ class GithubWriter:
             str(a).strip() for a in assignees if str(a).strip()
         )
         title_snippet = (title or "").strip().splitlines()[0][:80]
+
+        # P1-N — cross-repo issue title hard guard. 사람이 GitHub 목록에서
+        # 바로 이해 가능한 한글 제목인지 검사. 옛 wiring 은 영문 / 기계형
+        # 제목이 그대로 통과해서 사용자가 무슨 issue 인지 알 수 없었음.
+        try:
+            from ..governance.repo_write_policy import enforce_issue_title
+
+            enforce_issue_title(title)
+        except Exception:
+            # PolicyViolation 그대로 raise — caller (work_order executor 등)
+            # 가 progress marker 에 reason 토큰을 stamp 한다.
+            raise
+
         return self._run(
             action=ACTION_GITHUB_ISSUE_CREATE,
             autonomy_level=autonomy_level,

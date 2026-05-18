@@ -13,7 +13,7 @@ truncated, body = 4 섹션 minimal, labels = caller 가 준 extra 만" 이었다
 이 모듈은 사용자가 명시한 §A~§F 를 코드로 박는다:
 
 * :func:`synthesize_korean_title` — intent 분류 기반 한국어 명확 제목
-  (예: ``[Feat] 네이버 검색형 풀스택 MVP 구축 (인증/검색/블로그/메일)``)
+  (예: ``[기능] 네이버 검색형 풀스택 MVP 구축 (인증/검색/블로그/메일)``)
 * :func:`derive_default_labels` — deterministic label mapping
   (full-stack/feature → ``✨ Feature``, docs → ``📃 Docs``, …)
 * :func:`build_quality_default_body` — 운영 규칙에 맞는 default body
@@ -147,14 +147,17 @@ def detect_scopes(request_text: str, *, max_scopes: int = 4) -> Tuple[str, ...]:
 # ---------------------------------------------------------------------------
 
 
+# P1-N — 한국어 prefix 로 통일 (repo_write_policy.validate_issue_title 의
+# allowlist 와 매칭).  옛 영문 prefix 는 사람이 GitHub 목록에서 작업
+# 내용을 인지하기 어려워 user 가 직접 reject 함.
 _INTENT_TITLE_PREFIX: Mapping[str, str] = {
-    INTENT_FULL_STACK_MVP: "[Feat]",
-    INTENT_FEATURE: "[Feat]",
-    INTENT_DOCS: "[Docs]",
-    INTENT_TEST: "[Test]",
-    INTENT_REFACTOR: "[Refactor]",
-    INTENT_BUGFIX: "[Fix]",
-    INTENT_CHORE: "[Chore]",
+    INTENT_FULL_STACK_MVP: "[기능]",
+    INTENT_FEATURE: "[기능]",
+    INTENT_DOCS: "[문서]",
+    INTENT_TEST: "[테스트]",
+    INTENT_REFACTOR: "[리팩토링]",
+    INTENT_BUGFIX: "[수정]",
+    INTENT_CHORE: "[설정]",
 }
 
 
@@ -212,7 +215,7 @@ def synthesize_korean_title(
     resolved_intent = (intent or detect_intent(request_text)).strip().lower()
     resolved_scopes = tuple(scopes) if scopes is not None else detect_scopes(request_text)
 
-    prefix = _INTENT_TITLE_PREFIX.get(resolved_intent, "[Feat]")
+    prefix = _INTENT_TITLE_PREFIX.get(resolved_intent, "[기능]")
     phrase = _INTENT_TITLE_PHRASE.get(resolved_intent, "신규 기능 추가")
     domain = _detect_domain_label(request_text)
 

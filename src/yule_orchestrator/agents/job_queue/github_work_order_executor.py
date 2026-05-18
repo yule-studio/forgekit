@@ -27,7 +27,7 @@ session 갱신 키
 {
   "issue_number": 77,                          # 생성/재사용된 번호
   "html_url": "https://github.com/.../issues/77",
-  "title": "[Feat] 회원가입 ...",
+  "title": "[기능] 회원가입 ...",
   "labels": ["✨ Feature", "📃 Docs"],
   "approval_id": "approval-1",
   "approved_by": "masterway",

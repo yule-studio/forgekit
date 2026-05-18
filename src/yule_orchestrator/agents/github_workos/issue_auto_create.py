@@ -91,7 +91,7 @@ class IssueTemplate:
     name
         frontmatter `name:` — 사람 친화 라벨. 없으면 파일명 stem.
     title_prefix
-        frontmatter `title:` — issue 제목에 자동 prefix 됨. 예: ``[Feat]``.
+        frontmatter `title:` — issue 제목에 자동 prefix 됨. 예: ``[기능]``.
     labels
         frontmatter `labels:` 에 명시된 라벨 시퀀스.
     assignees
@@ -353,14 +353,14 @@ def fill_issue_template(
       `> ` quote 형식으로 prepend. 본 자리는 GitHub issue template 의
       가장 흔한 "추가하려는 기능에 대해 간결하게 설명해주세요" 라인.
     - placeholder 가 없으면 본문 끝에 `## 작업 컨텍스트` 섹션을 append.
-    - frontmatter title prefix 가 있으면 결합: ``[Feat] <summary>``.
+    - frontmatter title prefix 가 있으면 결합: ``[기능] <summary>``.
     """
 
     summary = (request_summary or "").strip()
     title = (title_override or "").strip() or summary or template.name
     if template.title_prefix:
         prefix = template.title_prefix.strip()
-        # GitHub default templates 자주 ``[Feat]`` 같은 prefix 만 두고 빈
+        # GitHub default templates 자주 ``[기능]`` 같은 prefix 만 두고 빈
         # 자리를 남김. 사용자가 요청 본문에 같은 prefix 를 안 가지고 있다면
         # 결합.
         if prefix and not title.lower().startswith(prefix.lower()):

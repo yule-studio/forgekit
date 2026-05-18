@@ -64,7 +64,7 @@ from yule_orchestrator.discord.integrations.github_workos_adapter import (
 _FEATURE_TEMPLATE = (
     "---\n"
     'name: "[Feature] Issue Template"\n'
-    'title: "[Feat]"\n'
+    'title: "[기능]"\n'
     'labels: "✨ Feature"\n'
     "---\n"
     "\n"

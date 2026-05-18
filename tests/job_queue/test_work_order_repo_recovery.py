@@ -136,7 +136,7 @@ class _Fixture(unittest.TestCase):
 
     def _sample_plan(self) -> Mapping[str, Any]:
         return {
-            "title": "[Feat] live recover",
+            "title": "[기능] live recover",
             "body": "## 어떤 기능인가요?\n> recover\n",
             "labels": ["✨ Feature"],
             "assignees": [],
