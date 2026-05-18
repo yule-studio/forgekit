@@ -197,6 +197,28 @@ class RecordOnlyPRBodyTests(unittest.TestCase):
         self.assertTrue(result.ok, result)
         self.assertEqual(result.missing_sections, ())
 
+    def test_live_audit_with_plan_markdown_only_stays_record_only(self) -> None:
+        ctx = WorktreeContext(
+            branch="feat/search-issue-5",
+            worktree_path="/tmp/wt-fake",
+            base_commit_sha="cafe1234",
+            edited_files=("runs/coding-executor-plans/feat-search-issue-5.md",),
+            commit_sha="deadbeefcafef00d",
+            metadata={
+                "live_editor_apply": {
+                    "provider": "claude-cli",
+                    "model": "claude-sonnet-4-6",
+                    "detected_changed_files": [
+                        "runs/coding-executor-plans/feat-search-issue-5.md"
+                    ],
+                }
+            },
+        )
+        body = _draft_pr_body(_request(), ctx)
+        self.assertIn("`RecordOnlyCodeEditor` 가 만든 계획 markdown 만 포함", body)
+        self.assertIn("RecordOnly editor", body)
+        self.assertNotIn("live LLM editor", body)
+
 
 # ---------------------------------------------------------------------------
 # Source-grep guard

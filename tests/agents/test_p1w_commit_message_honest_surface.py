@@ -215,6 +215,27 @@ class RecordOnlyCommitMessageTests(unittest.TestCase):
         msg = _commit_message(_request(), ctx)
         self.assertTrue(msg.splitlines()[0].startswith("📝"))
 
+    def test_live_audit_with_plan_markdown_only_stays_record_only(self) -> None:
+        ctx = WorktreeContext(
+            branch="feat/search-issue-5",
+            worktree_path="/tmp/wt-fake",
+            base_commit_sha="cafe1234",
+            edited_files=("runs/coding-executor-plans/feat-search-issue-5.md",),
+            metadata={
+                "live_editor_apply": {
+                    "provider": "claude-cli",
+                    "model": "claude-sonnet-4-6",
+                    "detected_changed_files": [
+                        "runs/coding-executor-plans/feat-search-issue-5.md"
+                    ],
+                }
+            },
+        )
+        msg = _commit_message(_request(), ctx)
+        self.assertTrue(msg.splitlines()[0].startswith("📝"), msg)
+        self.assertIn("RecordOnly editor 의 dry 산출", msg)
+        self.assertNotIn("live LLM editor", msg)
+
 
 # ---------------------------------------------------------------------------
 # Source-grep guard
