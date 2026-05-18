@@ -50,6 +50,12 @@ from ..governance.runtime_policy import (
 from .heartbeat import HeartbeatStore
 from .state_machine import JobState
 from .store import Job, JobQueue
+from .pr_merge_continuation import (
+    EXTRA_PR_MERGE_AUDIT,
+    EXTRA_PR_MERGE_STAGE,
+    PostPRAction,
+    decide_post_pr_action,
+)
 from .work_order_coding_continuation import (
     PROGRESS_CODING_BLOCKED,
     PROGRESS_CODING_IN_PROGRESS,
@@ -829,6 +835,20 @@ class CodingExecutorWorker:
                 "pr_url": ctx.pr_url,
             },
         )
+
+        # P1-L — work_mode 분기. autonomous_merge 면 background 머지 루프가
+        # pick 할 stage 를, approval_required 면 background producer 가
+        # approval card 를 올릴 stage 를 session.extra 에 stamp.
+        self._stamp_pr_merge_continuation(
+            session_id=request.session_id,
+            job_id=in_progress.job_id,
+            repo_full_name=request.repo_full_name,
+            pr_number=ctx.pr_number,
+            pr_url=ctx.pr_url,
+            head_sha=ctx.commit_sha,
+            base_branch=request.base_branch or "main",
+            dry_run=bool(request.dry_run),
+        )
         return self._success(
             in_progress,
             branch=ctx.branch,
@@ -933,6 +953,96 @@ class CodingExecutorWorker:
             _update(updated, now=datetime.now(tz=timezone.utc))
         except Exception:  # noqa: BLE001
             pass
+
+    def _stamp_pr_merge_continuation(
+        self,
+        *,
+        session_id: str,
+        job_id: str,
+        repo_full_name: Optional[str],
+        pr_number: Optional[int],
+        pr_url: Optional[str],
+        head_sha: Optional[str],
+        base_branch: str,
+        dry_run: bool,
+    ) -> None:
+        """P1-L — draft PR 직후 work_mode 분기 stage 를 session.extra 에 stamp.
+
+        세션이 없거나 PR 메타가 부족하면 silent skip (caller flow 영향 X).
+        autonomous_merge 분기는 background 머지 루프가 pick, approval_required
+        분기는 background producer 가 approval card 를 올릴 신호.
+        """
+
+        if not session_id or dry_run:
+            return
+        try:
+            from ..workflow_state import load_session as _load
+            from ..workflow_state import update_session as _update
+            from dataclasses import replace as _replace
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            session = _load(session_id)
+        except Exception:  # noqa: BLE001
+            return
+        if session is None:
+            return
+
+        existing_extra = getattr(session, "extra", None) or {}
+        if not isinstance(existing_extra, Mapping):
+            existing_extra = {}
+
+        decision = decide_post_pr_action(
+            session_id=session_id,
+            session_extra=existing_extra,
+            repo_full_name=repo_full_name,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            head_sha=head_sha,
+            base_branch=base_branch,
+            dry_run=dry_run,
+        )
+        if decision.action == PostPRAction.SKIP:
+            return
+
+        merged_extra = dict(existing_extra)
+        for key, value in decision.extra_updates.items():
+            merged_extra[key] = value
+        audit_entry = {
+            "stage": merged_extra.get(EXTRA_PR_MERGE_STAGE),
+            "action": decision.action.value,
+            "reason": decision.reason,
+            "job_id": job_id,
+            "pr_number": pr_number,
+            "pr_url": pr_url,
+            "head_sha": head_sha,
+            "at": datetime.now(tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00"
+            ),
+        }
+        existing_audit = list(merged_extra.get(EXTRA_PR_MERGE_AUDIT) or ())
+        existing_audit.append(audit_entry)
+        merged_extra[EXTRA_PR_MERGE_AUDIT] = existing_audit
+
+        try:
+            updated = _replace(session, extra=merged_extra)
+            _update(updated, now=datetime.now(tz=timezone.utc))
+        except Exception:  # noqa: BLE001
+            return
+
+        # Operator-visible 줄. progress marker 도 한 줄 같이 찍어서 #봇-상태
+        # 가 stage 변화를 timeline 위에서 본다.
+        self._stamp_progress(
+            session_id=session_id,
+            marker="pr_merge_pending",
+            detail={
+                "job_id": job_id,
+                "pr_number": pr_number,
+                "pr_url": pr_url,
+                "work_mode_action": decision.action.value,
+                "reason": decision.reason,
+            },
+        )
 
     def _fail(
         self,

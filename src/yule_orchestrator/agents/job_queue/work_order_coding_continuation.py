@@ -89,6 +89,12 @@ PROGRESS_CODING_JOB_READY: str = "coding_job_ready"
 PROGRESS_CODING_DISPATCH_QUEUED: str = "coding_dispatch_queued"
 PROGRESS_CODING_IN_PROGRESS: str = "coding_in_progress"
 PROGRESS_DRAFT_PR_OPENED: str = "draft_pr_opened"
+# P1-L — draft PR 이 열린 뒤 work_mode 분기 결과. autonomous_merge 면
+# 백그라운드 머지 루프가 pick, approval_required 면 approval card 가
+# 올라간 뒤 사용자 회신을 기다림.
+PROGRESS_PR_MERGE_PENDING: str = "pr_merge_pending"
+PROGRESS_PR_MERGED: str = "pr_merged"
+PROGRESS_PR_MERGE_BLOCKED: str = "pr_merge_blocked"
 PROGRESS_CODING_BLOCKED: str = "coding_blocked"
 
 
@@ -98,6 +104,8 @@ PROGRESS_TIMELINE: tuple = (
     PROGRESS_CODING_DISPATCH_QUEUED,
     PROGRESS_CODING_IN_PROGRESS,
     PROGRESS_DRAFT_PR_OPENED,
+    PROGRESS_PR_MERGE_PENDING,
+    PROGRESS_PR_MERGED,
 )
 
 
@@ -684,6 +692,9 @@ __all__ = (
     "PROGRESS_CODING_JOB_READY",
     "PROGRESS_DRAFT_PR_OPENED",
     "PROGRESS_ISSUE_CREATED",
+    "PROGRESS_PR_MERGE_BLOCKED",
+    "PROGRESS_PR_MERGE_PENDING",
+    "PROGRESS_PR_MERGED",
     "PROGRESS_TIMELINE",
     "REPAIR_OUTCOME_ALREADY_READY",
     "REPAIR_OUTCOME_NO_ANCHOR",
