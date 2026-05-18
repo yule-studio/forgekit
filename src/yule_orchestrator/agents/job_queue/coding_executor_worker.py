@@ -105,6 +105,13 @@ REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE: str = (
     "non_greenfield_real_edit_unavailable"
 )
 
+# P1-U — live editor 가 호출됐지만 실제 파일 수정 0건인 경우.  옛 wiring
+# 은 이 케이스를 generic ``commit_failed`` 로 surface 했지만, 실제로는
+# commit 명령이 실행조차 안 됨 (committer 가 edited_files 비면 early
+# return).  본 reason 으로 operator 에게 "LLM call OK 였지만 파일 수정
+# 0 — prompt 보강 / provider / write_scope 점검 필요" 라는 명확한 신호.
+REASON_LIVE_EDITOR_NO_EDITS_PRODUCED: str = "live_editor_no_edits_produced"
+
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
     {"main", "master", "develop", "dev", "prod", "release"}
@@ -707,6 +714,46 @@ class CodingExecutorWorker:
                     )
                 raise
 
+            # P1-U C — live editor no-op detection.  옛 wiring 은
+            # LiveCodeEditor 가 호출됐지만 실제 파일 0건 수정 시 committer
+            # 가 edited_files 비어서 early-return commit_sha="" → worker 가
+            # generic REASON_COMMIT_FAILED 로 surface.  사용자는 "왜 commit
+            # 실패했는지" 가 아니라 "왜 LLM 이 파일을 안 만들었는지" 를
+            # 알아야 한다.
+            # 본 분기는 live editor 일 때만 firing — RecordOnly / Greenfield
+            # 같은 plan-only editor 의 정상 동작은 무영향.
+            editor_class_name = type(self._editor).__name__
+            is_live_editor = editor_class_name == "LiveCodeEditor"
+            if is_live_editor and not (ctx.edited_files or ()):
+                provider = getattr(self._editor, "provider", "unknown")
+                model = getattr(self._editor, "model", "unknown")
+                detail_audit = {
+                    "job_id": in_progress.job_id,
+                    "reason": REASON_LIVE_EDITOR_NO_EDITS_PRODUCED,
+                    "branch": branch,
+                    "code_editor": editor_class_name,
+                    "provider": provider,
+                    "model": model,
+                    "worktree_path": ctx.worktree_path,
+                    "changed_files_count": 0,
+                    "detail": (
+                        "live editor call completed but produced 0 modified "
+                        "files — operator may need to refine prompt, check "
+                        "write_scope, or verify provider response"
+                    ),
+                }
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail=detail_audit,
+                )
+                return self._fail(
+                    in_progress,
+                    terminal=False,
+                    reason=REASON_LIVE_EDITOR_NO_EDITS_PRODUCED,
+                    branch=branch,
+                )
+
             ctx = self._tests.run(request=request, context=ctx)
             # P1-G: test runner 가 bootstrap_required 로 short-circuit
             # 한 경우 — repo 에 detectable stack 이 없음. record-only
@@ -1181,6 +1228,7 @@ __all__ = (
     "REASON_PR_FAILED",
     "REASON_PROTECTED_BRANCH",
     "REASON_BOOTSTRAP_REQUIRED",
+    "REASON_LIVE_EDITOR_NO_EDITS_PRODUCED",
     "REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE",
     "REASON_PUSH_FAILED",
     "REASON_TARGET_REPO_MISSING",
