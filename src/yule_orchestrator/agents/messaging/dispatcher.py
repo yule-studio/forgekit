@@ -200,7 +200,29 @@ _KEYWORD_RULES: Sequence[tuple[TaskType, Sequence[str]]] = (
     (TaskType.ONBOARDING_FLOW, ("onboarding", "온보딩", "signup flow", "가입 흐름", "first-run")),
     (TaskType.EMAIL_CAMPAIGN, ("email", "이메일", "campaign", "캠페인", "광고", "ad creative")),
     (TaskType.LANDING_PAGE, ("landing", "랜딩", "marketing page")),
-    (TaskType.QA_TEST, ("regression", "회귀", "qa", "test plan", "테스트 시나리오")),
+    # P0-W classification fix — bare "qa" / "회귀" substring was matching
+    # unrelated coding prompts ("naver-quasar", "회귀분석" 같은 일반어) and
+    # mis-routing them to qa-engineer executor. 본 PR 부터는 강한 QA 신호
+    # 만 인정 — 한 단어 substring 으로 결정하지 않는다.
+    (
+        TaskType.QA_TEST,
+        (
+            "regression test",
+            "회귀 테스트",
+            "회귀 시나리오",
+            " qa ",
+            "qa-engineer",
+            "qa engineer",
+            "qa test",
+            "qa 시나리오",
+            "qa 자동화",
+            "test plan",
+            "테스트 시나리오",
+            "테스트 케이스",
+            "테스트 자동화",
+            "테스트 커버리지",
+        ),
+    ),
     # P0-J / P0-T smoke fix — `docker` 단독 매칭 제거. Docker / Docker
     # Compose / K8s 가 *full-stack 요청 안에서* 언급되면 본 keyword 매칭
     # 전에 stack_detector 가 FULL_STACK_APP 분류하도록 ``classify`` 위
@@ -327,6 +349,15 @@ class Dispatcher:
                 detection = None
             if detection is not None:
                 if detection.is_full_stack:
+                    return TaskType.FULL_STACK_APP
+                # P0-W — `풀스택` 같은 explicit hint 가 있고 tier 가 0 인
+                # 한국어 prompt 도 qa-test 같은 약한 fallback 으로 떨어
+                # 지면 안 된다. write_requested 가 켜진 상태에서 explicit
+                # full-stack hint 가 있으면 FULL_STACK_APP 으로 commit.
+                if (
+                    getattr(detection, "explicit_full_stack_hint", False)
+                    and request.write_requested
+                ):
                     return TaskType.FULL_STACK_APP
                 if detection.is_infra_only:
                     return TaskType.PLATFORM_INFRA

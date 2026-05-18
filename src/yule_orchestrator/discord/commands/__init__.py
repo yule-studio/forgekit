@@ -20,6 +20,7 @@ from ...agents.review_loop import (
     ReviewSeverity,
     ReviewSource,
 )
+from ..engineering.help_surface import render_engineer_help_message
 from ..ui.formatter import (
     format_checkpoints_message,
     format_plan_today_message,
@@ -253,6 +254,48 @@ def _register_engineering_commands_impl(
     discord: Any,
     app_commands: Any,
 ) -> None:
+    async def _send_help_response(interaction: "discord.Interaction") -> None:
+        if not await _safe_defer(interaction, discord_module=discord):
+            return
+        await _send_message_chunks(
+            interaction,
+            render_engineer_help_message(),
+            allowed_mentions=allowed_mentions,
+            discord_module=discord,
+        )
+
+    @bot.tree.command(
+        name="help",
+        description="engineering-agent 봇 사용법 (자유 대화 vs intake, 주요 명령, 예시).",
+        guild=guild,
+    )
+    async def help_command(interaction: "discord.Interaction") -> None:
+        try:
+            await _send_help_response(interaction)
+        except Exception as exc:  # noqa: BLE001
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="help",
+                exc=exc,
+                discord_module=discord,
+            )
+
+    @bot.tree.command(
+        name="engineer_help",
+        description="`/help` 와 동일 — 명령 이름 충돌 시 fallback 으로 호출하세요.",
+        guild=guild,
+    )
+    async def engineer_help_command(interaction: "discord.Interaction") -> None:
+        try:
+            await _send_help_response(interaction)
+        except Exception as exc:  # noqa: BLE001
+            await _surface_unexpected_engineer_error(
+                interaction,
+                command_name="engineer_help",
+                exc=exc,
+                discord_module=discord,
+            )
+
     @bot.tree.command(
         name="engineer_intake",
         description="engineering-agent에게 작업을 위임합니다 (접수 메시지를 채널에 게시).",
@@ -706,6 +749,97 @@ def _run_engineer_intake(
     return result
 
 
+def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
+    """If *session.extra* lacks ``coding_proposal``, build one from
+    *prompt_text* and persist it. Idempotent — existing payload wins.
+
+    P0-W slash intake fix — engineering channel router 의 coding gate 가
+    "코딩 권한 제안" 단어를 받아야만 stamp 하던 것을, slash command path
+    에서도 동일 stamp 가 일어나도록 한다. 결과:
+
+      * `_maybe_post_intake_approval_card` 시점에 session.extra 에 코딩
+        proposal payload 가 살아있음.
+      * 이후 `promote_session_to_coding_ready` 가 anchor 만 받아도 곧장
+        coding_job=ready 로 promote 가능 (no_coding_proposal noop 제거).
+    """
+
+    extra = getattr(session, "extra", None) or {}
+    if isinstance(extra, Mapping) and isinstance(
+        extra.get("coding_proposal"), Mapping
+    ):
+        return  # 이미 있음 — 덮어쓰지 않는다
+
+    try:
+        from ...agents.coding.authorization import recommend_authorization
+        from ..engineering_channel_router.session_persistence import (
+            _persist_coding_proposal,
+        )
+    except Exception:  # noqa: BLE001 - partial install fallback
+        return
+
+    try:
+        proposal = recommend_authorization(
+            user_request=prompt_text or "",
+            session_id=getattr(session, "session_id", None),
+        )
+    except Exception:  # noqa: BLE001 - never block intake on proposal failure
+        return
+    if proposal is None:
+        return
+    try:
+        _persist_coding_proposal(session, proposal)
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _extract_repo_from_session(session: Any, prompt_text: str) -> Optional[str]:
+    """Resolve canonical ``owner/repo`` from session refs or prompt text.
+
+    Producer path (P0-T live smoke fix): without this `_maybe_post_intake_approval_card`
+    builds a proposal with empty repo → work_order executor lands
+    ``github_work_order_no_repo`` failed_retryable.
+
+    Resolution order — first match wins:
+      1. ``session.references_user`` (extracted from prompt by intake)
+      2. ``session.extra['coding_repo_full_name']``
+      3. raw scan of *prompt_text* via ``parse_github_target``
+
+    Returns the canonical ``owner/repo`` string, or ``None`` when no
+    GitHub URL fragment is found (operator did not give a repo).
+    """
+
+    try:
+        from ...agents.git.github_url import parse_github_target
+    except Exception:  # noqa: BLE001 - partial install
+        return None
+
+    refs = list(getattr(session, "references_user", None) or ())
+    extra = getattr(session, "extra", None) or {}
+    if isinstance(extra, Mapping):
+        existing = str(extra.get("coding_repo_full_name") or "").strip()
+        if existing and "/" in existing:
+            return existing
+
+    candidates: list[str] = []
+    candidates.extend(str(r) for r in refs)
+    # parse_github_target only consumes one URL at a time; we'll feed it
+    # any URL-looking fragment from the prompt text too.
+    for token in (prompt_text or "").split():
+        token = token.strip().strip("(),.;<>")
+        if token.startswith(("http://", "https://", "github.com")):
+            candidates.append(token)
+
+    for raw in candidates:
+        target = parse_github_target(raw)
+        if target is None:
+            continue
+        owner = (target.owner or "").strip()
+        repo = (target.repo or "").strip()
+        if owner and repo:
+            return f"{owner}/{repo}"
+    return None
+
+
 def _maybe_post_intake_approval_card(
     *,
     session: Any,
@@ -766,6 +900,14 @@ def _maybe_post_intake_approval_card(
     if not eligible:
         return
 
+    # P0-W — slash intake 가 coding intent 로 인정된 시점에 즉시
+    # `session.extra['coding_proposal']` 를 stamp. 이전엔 engineering
+    # channel router 의 `_run_coding_authorization_gate` 만 stamp 해서
+    # slash command 단독 경로는 coding_proposal 이 영원히 비어 있었고,
+    # work_order continuation 이 `no_coding_proposal` 으로 noop 처리됐다.
+    # 본 helper 가 idempotent — 이미 있으면 skip.
+    _ensure_coding_proposal_on_session(session, prompt_text)
+
     queue = JobQueue()
     worker = ApprovalWorker(
         queue=queue,
@@ -774,12 +916,19 @@ def _maybe_post_intake_approval_card(
         channel_resolver=build_approval_channel_resolver(),
     )
 
+    # P0-T live smoke fix — repo 가 비어있어 work_order executor 가
+    # `github_work_order_no_repo` failed_retryable 로 떨어지던 회귀
+    # 차단. session.references_user / extra / prompt 에서 canonical
+    # owner/repo 추출해 enqueue_github_work_approval 로 forwarding.
+    resolved_repo = _extract_repo_from_session(session, prompt_text)
+
     async def _go():
         return await enqueue_github_work_approval(
             session=session,
             request_text=prompt_text,
             approval_worker=worker,
             requested_by=requested_by,
+            repo=resolved_repo,
         )
 
     try:
@@ -901,7 +1050,8 @@ def _format_engineer_reject_message(session) -> str:
         f"상태: {session.state.value}",
         f"사유: {session.rejection_reason or 'rejected'}",
         "",
-        "거절된 세션은 재개할 수 없습니다. 필요하면 `/engineer_intake`로 새 세션을 시작해주세요.",
+        "거절된 세션은 재개할 수 없습니다. 새로 시작하시려면 채널에서 자연어로 그냥 말씀하시거나 "
+        "`/engineer_intake` 로 정식 등록해 주세요. 도움이 필요하면 `/help` 로 사용법을 확인할 수 있어요.",
     ]
     return "\n".join(lines)
 

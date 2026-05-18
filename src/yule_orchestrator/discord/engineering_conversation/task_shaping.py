@@ -85,7 +85,27 @@ _TASK_TYPE_KEYWORDS: tuple[tuple[TaskType, tuple[str, ...]], ...] = (
         ("email", "이메일", "campaign", "캠페인", "광고", "ad creative"),
     ),
     (TaskType.LANDING_PAGE, ("landing", "랜딩", "marketing page", "히어로")),
-    (TaskType.QA_TEST, ("regression", "회귀", "qa", "test plan", "테스트 시나리오")),
+    # P0-W — see dispatcher.py 의 QA_TEST 가드. SSoT 가 두 곳으로 갈라
+    # 있어 이 곳도 동시에 강한 신호만 인정.
+    (
+        TaskType.QA_TEST,
+        (
+            "regression test",
+            "회귀 테스트",
+            "회귀 시나리오",
+            " qa ",
+            "qa-engineer",
+            "qa engineer",
+            "qa test",
+            "qa 시나리오",
+            "qa 자동화",
+            "test plan",
+            "테스트 시나리오",
+            "테스트 케이스",
+            "테스트 자동화",
+            "테스트 커버리지",
+        ),
+    ),
     # P0-J (#145): PLATFORM_INFRA 키워드에서 단독으로 흔히 등장하는 "docker"
     # 제거. Docker / Docker Compose / K8s 가 *full-stack 요청 안에서* 언급되면
     # 본 매칭 전에 stack_detector 의 is_full_stack 가 우선해 FULL_STACK_APP 분류.

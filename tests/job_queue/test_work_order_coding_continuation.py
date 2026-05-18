@@ -28,6 +28,7 @@ from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
     CONTINUATION_NOOP_BUILD_FAILED,
     CONTINUATION_NOOP_NO_PROPOSAL,
     PROGRESS_CODING_DISPATCH_QUEUED,
+    PROGRESS_CODING_JOB_READY,
     PROGRESS_CODING_IN_PROGRESS,
     PROGRESS_DRAFT_PR_OPENED,
     PROGRESS_ISSUE_CREATED,
@@ -95,7 +96,10 @@ class PromoteTests(unittest.TestCase):
         assert outcome.new_extra is not None
         progress = outcome.new_extra[SESSION_EXTRA_PROGRESS_KEY]
         self.assertIn(PROGRESS_ISSUE_CREATED, progress)
-        self.assertIn(PROGRESS_CODING_DISPATCH_QUEUED, progress)
+        # P0-Y: promote_session_to_coding_ready 는 coding_job_ready 만
+        # stamp 하고 dispatch_queued 는 실제 enqueue (dispatcher) 가 stamp.
+        self.assertIn(PROGRESS_CODING_JOB_READY, progress)
+        self.assertNotIn(PROGRESS_CODING_DISPATCH_QUEUED, progress)
         self.assertEqual(
             progress[PROGRESS_ISSUE_CREATED]["detail"]["issue_number"], 77
         )

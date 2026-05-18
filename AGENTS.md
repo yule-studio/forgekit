@@ -54,6 +54,7 @@ docs/
 | Vault / 지식 / inbox / retrieval | `docs/memory.md` (§"Curated 정책" / §"Retrieval eval") |
 | 테스트 작성 / 회귀 가이드 | `docs/testing.md` |
 | 성능 개선 / 고도화 opening criteria | `docs/engineering-company-runtime-master-plan.md` §"Post-test hardening" |
+| Troubleshooting / 실수 기록 / preflight | `docs/troubleshooting-mandatory.md` (mandatory capture · 8 섹션 스키마 · mistake ledger 자동 승격) |
 
 규칙:
 - 위 표에 없는 토픽이면 그 작업과 가장 가까운 디렉터리의 `CLAUDE.md`,

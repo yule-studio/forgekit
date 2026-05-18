@@ -474,6 +474,74 @@ class JobQueue:
             updated_at=now_ts,
         )
 
+    def renew_lease(
+        self,
+        job_id: str,
+        *,
+        lease_seconds: float = DEFAULT_LEASE_SECONDS,
+        worker_id: Optional[str] = None,
+        now: Optional[float] = None,
+    ) -> Optional[Job]:
+        """Extend ``picked_until`` on an in-flight job without changing
+        state. Returns the refreshed :class:`Job`, or None when the row
+        is no longer in an active state (someone else reaped it; caller
+        should bail).
+
+        P1-A long-running job lease keepalive — coding executor pipeline
+        (worktree + edits + tests + commit + push + PR) can legitimately
+        exceed the default 60s lease. The producer wraps each
+        ``process_job`` call with a background ticker that calls this
+        helper periodically so the supervisor reaper doesn't bounce an
+        actively-running job to ``failed_retryable``.
+
+        Optional *worker_id* — when set, the renewal SQL also requires
+        ``picked_by = ?`` so two workers fighting over the same row
+        can't extend each other's lease by accident.
+        """
+
+        now_ts = now if now is not None else _utc_now()
+        until_ts = now_ts + max(1.0, float(lease_seconds))
+        active_states = (
+            JobState.ASSIGNED.value,
+            JobState.IN_PROGRESS.value,
+            JobState.RESEARCHING.value,
+            JobState.READY_FOR_OBSIDIAN.value,
+            JobState.WAITING_FOR_ROLE.value,
+            JobState.PENDING_APPROVAL.value,
+        )
+        with SQLITE_WRITE_LOCK, _connect(self._db_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM job_queue WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            if row is None:
+                conn.execute("ROLLBACK")
+                return None
+            current = _row_to_job(row)
+            if current.state.value not in active_states:
+                conn.execute("ROLLBACK")
+                return None
+            if worker_id is not None and (
+                current.picked_by or ""
+            ) != worker_id:
+                conn.execute("ROLLBACK")
+                return None
+            conn.execute(
+                """
+                UPDATE job_queue
+                SET picked_until = ?,
+                    updated_at = ?
+                WHERE job_id = ?
+                """,
+                (until_ts, now_ts, job_id),
+            )
+            conn.execute("COMMIT")
+        return replace(
+            current,
+            picked_until=until_ts,
+            updated_at=now_ts,
+        )
+
     # ------------------------------------------------------------------
     # Read helpers
     # ------------------------------------------------------------------
@@ -625,21 +693,42 @@ class JobQueue:
                     # right place to fail loud, the next sweep will
                     # try again with up-to-date state.
                     continue
+                # P1-A: stamp a structured ``lease_expired`` reason into
+                # result_json so operator / status surface can tell a
+                # timeout-reaped row apart from a worker-reported failure.
+                # Preserve any existing result keys via merge.
+                reaped_result = dict(job.result or {})
+                reaped_result.update(
+                    {
+                        "error": "lease_expired",
+                        "reaped_at": now_ts,
+                        "previous_picked_by": job.picked_by,
+                        "previous_picked_until": job.picked_until,
+                        "previous_state": job.state.value,
+                    }
+                )
                 conn.execute(
                     """
                     UPDATE job_queue
                     SET state = ?,
+                        result_json = ?,
                         picked_by = NULL,
                         picked_until = NULL,
                         updated_at = ?
                     WHERE job_id = ?
                     """,
-                    (target.value, now_ts, job.job_id),
+                    (
+                        target.value,
+                        json.dumps(reaped_result, ensure_ascii=False),
+                        now_ts,
+                        job.job_id,
+                    ),
                 )
                 moved.append(
                     replace(
                         job,
                         state=target,
+                        result=reaped_result,
                         picked_by=None,
                         picked_until=None,
                         updated_at=now_ts,

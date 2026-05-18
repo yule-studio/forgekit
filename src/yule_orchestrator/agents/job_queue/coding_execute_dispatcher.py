@@ -53,6 +53,7 @@ from datetime import datetime, timezone
 from typing import (
     Any,
     Callable,
+    FrozenSet,
     Iterable,
     Iterator,
     Mapping,
@@ -60,6 +61,8 @@ from typing import (
     Sequence,
     Tuple,
 )
+
+from .state_machine import JobState
 
 from .coding_executor_worker import (
     CodingExecuteRequest,
@@ -103,6 +106,200 @@ READY_STATUSES: frozenset[str] = frozenset({"ready"})
 # ---------------------------------------------------------------------------
 
 
+# P0-Z: 어떤 JobState 들이 "dispatch 가 아직 살아있다" 로 인정되는지.
+# 본 집합 밖이면 (e.g., FAILED_TERMINAL / SAVED 후 시간이 지난 row) 의
+# 이전 dispatch marker 는 phantom 으로 분류, ready session 을 다시 enqueue
+# 한다. canonical session ``11917bf1e75d`` 처럼 marker.job_id 는 있지만
+# queue row 자체가 통째로 사라진 케이스가 본 분기의 핵심 motivation.
+_ACTIVE_DISPATCH_STATES: FrozenSet[Any] = frozenset(
+    {
+        JobState.DISCOVERED,
+        JobState.QUEUED,
+        JobState.ASSIGNED,
+        JobState.IN_PROGRESS,
+        JobState.WAITING_FOR_ROLE,
+        JobState.RESEARCHING,
+        JobState.PENDING_APPROVAL,
+        JobState.READY_FOR_OBSIDIAN,
+    }
+)
+
+
+# Status tokens surfaced via DispatchedCodingJob.audit + status surface
+# so operators can grep "phantom" / "stale" / "marker_*" in CI / Discord
+# / troubleshooting ledger.
+MARKER_STATE_VALID: str = "valid"
+MARKER_STATE_MISSING: str = "missing"
+MARKER_STATE_STALE: str = "stale"
+# P1-C — failed_retryable / saved / failed_terminal 는 옛 P0-Z 코드에서
+# 모두 phantom 으로 합쳐 처리했지만, 실제로는 "queue 가 이미 그 dispatch
+# 의 결과를 알고 있는 상태" 다. 새 row 를 만들면 attempt 카운터가
+# 초기화돼 ``max_attempts`` / backoff 가 무력화되고 infinite re-enqueue
+# 가 일어난다. 본 2 종은 producer 가 절대 새로 enqueue 하면 안 되며,
+# queue 의 retry semantics (``requeue_retryable``) 가 책임진다.
+MARKER_STATE_PENDING_RETRY: str = "pending_retry"
+MARKER_STATE_TERMINAL: str = "terminal"
+PHANTOM_MARKER_REASON_NO_ROW: str = "marker_job_id_not_in_queue"
+PHANTOM_MARKER_REASON_WRONG_TYPE: str = "marker_wrong_job_type"
+PHANTOM_MARKER_REASON_WRONG_SESSION: str = "marker_wrong_session_id"
+# P1-C: kept for backward-compat — older callers/tests reference this
+# string. Producer 의 새 동작은 PENDING_RETRY / TERMINAL 분기로 분리.
+PHANTOM_MARKER_REASON_TERMINAL: str = "marker_row_terminal_or_inactive"
+
+
+@dataclass(frozen=True)
+class DispatchMarkerCheck:
+    """Outcome of :func:`validate_coding_dispatch_marker`.
+
+    *state* is one of:
+
+      * ``valid``   — marker 존재 + queue row 존재 + active state.
+      * ``missing`` — marker 자체가 없음 (한 번도 dispatch 안 됨 OR
+        cleared 됨). caller 는 새로 enqueue 가능.
+      * ``stale``  — marker 는 있지만 queue 와 invariant 어긋남
+        (phantom row / cross-talk / terminal). caller 는 self-heal
+        후 re-enqueue 해야 한다.
+
+    *reason* 은 stale 일 때만 ``PHANTOM_MARKER_REASON_*`` 중 하나.
+    *marker_job_id* 는 audit 용 (없으면 None).
+    """
+
+    state: str
+    reason: Optional[str] = None
+    marker_job_id: Optional[str] = None
+
+    @property
+    def is_valid(self) -> bool:
+        return self.state == MARKER_STATE_VALID
+
+    @property
+    def is_stale(self) -> bool:
+        return self.state == MARKER_STATE_STALE
+
+
+# P1-C — queue retry semantics 를 producer 가 침범하지 않게 분리.
+_PENDING_RETRY_STATES: FrozenSet[Any] = frozenset(
+    {JobState.FAILED_RETRYABLE}
+)
+_TERMINAL_STATES: FrozenSet[Any] = frozenset(
+    {JobState.SAVED, JobState.FAILED_TERMINAL}
+)
+
+
+def validate_coding_dispatch_marker(
+    *, session: Any, queue: Any
+) -> DispatchMarkerCheck:
+    """**Public SSoT** — session.extra ↔ job_queue invariant check.
+
+    Invariant (P0-Z fix): ``session.extra['coding_execute_dispatch']``
+    가 존재하면 그 ``job_id`` 의 queue row 도 같은 사실을 들고 있어야
+    한다. 구체적으로:
+
+      * queue.get(job_id) exists
+      * row.job_type == ``coding_execute``
+      * row.session_id == current session
+      * row.state ∈ ``_ACTIVE_DISPATCH_STATES``
+
+    위 중 하나라도 어긋나면 stale marker 로 분류. caller (producer /
+    status / troubleshooting) 가 동일 SSoT 를 호출해 같은 결정을 내릴
+    수 있도록 본 함수만 새로 추가 / 옛 ``has_been_dispatched`` 도 본
+    함수를 호출하게 정렬했다.
+
+    Queue lookup 자체가 raise 하면 보수적으로 valid 로 본다 — DB hiccup
+    한 번이 active row 를 잘못 phantom 처리해 중복 enqueue 되는 걸
+    막는다.
+    """
+
+    extra = getattr(session, "extra", None) or {}
+    marker = extra.get(SESSION_EXTRA_DISPATCH_KEY)
+    if not isinstance(marker, Mapping):
+        return DispatchMarkerCheck(state=MARKER_STATE_MISSING)
+    job_id = str(marker.get("job_id") or "").strip()
+    if not job_id:
+        return DispatchMarkerCheck(state=MARKER_STATE_MISSING)
+
+    session_id = str(getattr(session, "session_id", "") or "").strip()
+    try:
+        row = queue.get(job_id)
+    except Exception:  # noqa: BLE001 - DB hiccup → assume valid
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_VALID, marker_job_id=job_id
+        )
+    if row is None:
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_STALE,
+            reason=PHANTOM_MARKER_REASON_NO_ROW,
+            marker_job_id=job_id,
+        )
+    row_type = str(getattr(row, "job_type", "") or "").strip()
+    if row_type and row_type != JOB_TYPE_CODING_EXECUTE:
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_STALE,
+            reason=PHANTOM_MARKER_REASON_WRONG_TYPE,
+            marker_job_id=job_id,
+        )
+    row_session = str(getattr(row, "session_id", "") or "").strip()
+    if row_session and session_id and row_session != session_id:
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_STALE,
+            reason=PHANTOM_MARKER_REASON_WRONG_SESSION,
+            marker_job_id=job_id,
+        )
+    row_state = getattr(row, "state", None)
+    if row_state in _PENDING_RETRY_STATES:
+        # P1-C: queue retry semantics (``requeue_retryable``) 가 책임지는
+        # 상태. producer 가 새 row 를 만들면 attempt 카운터 / backoff 가
+        # 무력화돼 무한 재실행. caller (iter_ready_coding_jobs) 가 skip.
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_PENDING_RETRY,
+            reason=None,
+            marker_job_id=job_id,
+        )
+    if row_state in _TERMINAL_STATES:
+        # SAVED / FAILED_TERMINAL — dispatch 는 이미 결과까지 도달. producer
+        # 가 다시 enqueue 할 일은 없음.
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_TERMINAL,
+            reason=None,
+            marker_job_id=job_id,
+        )
+    if row_state not in _ACTIVE_DISPATCH_STATES:
+        return DispatchMarkerCheck(
+            state=MARKER_STATE_STALE,
+            reason=PHANTOM_MARKER_REASON_TERMINAL,
+            marker_job_id=job_id,
+        )
+    return DispatchMarkerCheck(
+        state=MARKER_STATE_VALID, marker_job_id=job_id
+    )
+
+
+def _validate_dispatch_marker_against_queue(
+    *,
+    marker: Mapping[str, Any],
+    session_id: str,
+    queue: Any,
+) -> Tuple[bool, Optional[str]]:
+    """Thin tuple-style wrapper around :func:`validate_coding_dispatch_marker`.
+
+    Preserved so older internal callers keep their import path. New code
+    should call :func:`validate_coding_dispatch_marker` directly to get
+    the structured :class:`DispatchMarkerCheck`.
+    """
+
+    # build a transient session view honoring the existing marker contract
+    transient = type(
+        "_TransientSession",
+        (),
+        {
+            "extra": {SESSION_EXTRA_DISPATCH_KEY: dict(marker)},
+            "session_id": session_id,
+        },
+    )()
+    check = validate_coding_dispatch_marker(session=transient, queue=queue)
+    return check.is_valid, (None if check.is_valid else check.reason)
+
+
 @dataclass(frozen=True)
 class ReadyCodingJob:
     """Snapshot of an approved-coding_job session ready for dispatch.
@@ -120,12 +317,54 @@ class ReadyCodingJob:
     def executor_role(self) -> str:
         return str(self.coding_job.get("executor_role") or "").strip()
 
-    def has_been_dispatched(self) -> bool:
+    def has_been_dispatched(
+        self, *, queue: Optional[Any] = None
+    ) -> bool:
+        """Return True iff a marker exists AND queue confirms the row is
+        in a state the producer should NOT bypass.
+
+        P0-Z + P1-C: 옛 동작은 marker 존재만 보고 True 반환 → stranded
+        deadlock. P0-Z 가 queue-aware 검증 도입했지만 ``failed_retryable``
+        도 phantom 으로 잡아 infinite re-enqueue. 본 함수는 다음을
+        "dispatched (producer skip)" 로 본다:
+
+          * MARKER_STATE_VALID (active row)
+          * MARKER_STATE_PENDING_RETRY (queue retry semantics handle)
+          * MARKER_STATE_TERMINAL (saved / failed_terminal)
+
+        나머지 (missing / stale) 만 caller 가 re-enqueue 후보로 본다.
+        """
+
         extra = getattr(self.session, "extra", None) or {}
         marker = extra.get(SESSION_EXTRA_DISPATCH_KEY)
-        if not isinstance(marker, Mapping):
+        if not isinstance(marker, Mapping) or not marker.get("job_id"):
             return False
-        return bool(marker.get("job_id"))
+        if queue is None:
+            return True
+        check = validate_coding_dispatch_marker(
+            session=self.session, queue=queue
+        )
+        return check.state in (
+            MARKER_STATE_VALID,
+            MARKER_STATE_PENDING_RETRY,
+            MARKER_STATE_TERMINAL,
+        )
+
+    def dispatch_marker_phantom_reason(
+        self, *, queue: Any
+    ) -> Optional[str]:
+        """Return the phantom reason token (or None when marker is valid /
+        absent). Useful for audit / log lines.
+        """
+
+        extra = getattr(self.session, "extra", None) or {}
+        marker = extra.get(SESSION_EXTRA_DISPATCH_KEY)
+        if not isinstance(marker, Mapping) or not marker.get("job_id"):
+            return None
+        is_valid, reason = _validate_dispatch_marker_against_queue(
+            marker=marker, session_id=self.session_id, queue=queue
+        )
+        return None if is_valid else reason
 
 
 def _read_coding_job(session: Any) -> Optional[Mapping[str, Any]]:
@@ -142,6 +381,7 @@ def iter_ready_coding_jobs(
     *,
     session_loader: Optional[Callable[[], Iterable[Any]]] = None,
     include_dispatched: bool = False,
+    queue: Optional[Any] = None,
 ) -> Iterator[ReadyCodingJob]:
     """Yield workflow sessions whose persisted coding_job is ``ready``.
 
@@ -152,6 +392,12 @@ def iter_ready_coding_jobs(
     Sessions that already have a dispatch marker are skipped unless
     *include_dispatched* is True (selector-side queries set this so
     the runtime's "what next?" surface still sees in-flight work).
+
+    P0-Z phantom-marker fix: *queue* 가 inject 되면 marker 의 job_id 를
+    queue 와 cross-check 한다. queue row 가 없거나 wrong type / wrong
+    session / terminal state 면 phantom marker 로 분류, 본 함수가 ready
+    session 을 yield 해서 caller (dispatcher) 가 새 row 를 enqueue 할 수
+    있게 한다. 옛 동작 (queue=None) 은 변경 없음.
     """
 
     loader = session_loader or _default_session_loader
@@ -175,7 +421,7 @@ def iter_ready_coding_jobs(
         )
         if not ready.session_id or not ready.executor_role():
             continue
-        if not include_dispatched and ready.has_been_dispatched():
+        if not include_dispatched and ready.has_been_dispatched(queue=queue):
             continue
         yield ready
 
@@ -380,6 +626,11 @@ class DispatchedCodingJob:
     ``error`` is non-empty when the enqueue raised; the marker is NOT
     persisted in that case so a transient failure self-recovers on
     the next tick.
+
+    P0-Z phantom-marker fix: ``stale_marker_reason`` 가 set 되면 본
+    session 의 옛 marker 가 phantom 으로 판정돼 본 tick 이 self-heal
+    re-enqueue 를 수행했다는 뜻. operator surface (status / log /
+    troubleshooting) 가 silent heal 이 되지 않게 노출한다.
     """
 
     session_id: str
@@ -388,6 +639,8 @@ class DispatchedCodingJob:
     created: bool
     request: Optional[CodingExecuteRequest] = None
     error: Optional[str] = None
+    stale_marker_reason: Optional[str] = None
+    stale_marker_job_id: Optional[str] = None
 
 
 def _persist_dispatch_marker(
@@ -425,6 +678,40 @@ def _persist_dispatch_marker(
         "repo_full_name": request.repo_full_name,
         "base_branch": request.base_branch,
     }
+
+    # P0-Y marker correctness — actual queue row exists now, so progress
+    # bucket gets the real ``coding_dispatch_queued`` marker (not the
+    # earlier ``coding_job_ready`` stamp). operator surface 가 "큐에
+    # 들어갔다" 고 말할 수 있는 정확한 시점.
+    try:
+        from .work_order_coding_continuation import (
+            PROGRESS_CODING_DISPATCH_QUEUED,
+            SESSION_EXTRA_PROGRESS_KEY,
+        )
+    except Exception:  # noqa: BLE001 - partial install
+        PROGRESS_CODING_DISPATCH_QUEUED = None
+        SESSION_EXTRA_PROGRESS_KEY = None
+    if PROGRESS_CODING_DISPATCH_QUEUED and SESSION_EXTRA_PROGRESS_KEY:
+        bucket = extra.get(SESSION_EXTRA_PROGRESS_KEY)
+        if not isinstance(bucket, Mapping):
+            bucket = {}
+        bucket = dict(bucket)
+        existing_entry = bucket.get(PROGRESS_CODING_DISPATCH_QUEUED)
+        first_at = (
+            existing_entry.get("at")
+            if isinstance(existing_entry, Mapping) and existing_entry.get("at")
+            else when
+        )
+        bucket[PROGRESS_CODING_DISPATCH_QUEUED] = {
+            "at": first_at,
+            "detail": {
+                "job_id": job_id,
+                "executor_role": request.executor_role,
+                "repo_full_name": request.repo_full_name,
+            },
+        }
+        extra[SESSION_EXTRA_PROGRESS_KEY] = bucket
+
     try:
         updated = _replace(session, extra=extra)
     except TypeError:
@@ -455,6 +742,7 @@ def dispatch_ready_coding_jobs(
     update_session_fn: Optional[Callable[..., Any]] = None,
     env: Optional[Mapping[str, str]] = None,
     now: Optional[datetime] = None,
+    validate_marker_against_queue: bool = True,
 ) -> Tuple[DispatchedCodingJob, ...]:
     """Run one producer cycle.
 
@@ -463,10 +751,56 @@ def dispatch_ready_coding_jobs(
     ``find_active`` dedup), then stamps the dispatch marker so the
     next call skips. Safe to invoke from a periodic scheduler tick or
     directly after the user's "수정 승인" message.
+
+    P0-Z phantom-marker fix: *validate_marker_against_queue* (default
+    True) 는 ``iter_ready_coding_jobs`` 에 worker._queue 를 inject 해
+    marker 의 실제 queue row 존재성을 검증한다. phantom marker session
+    은 본 함수가 normally yield → 같은 자리에서 re-enqueue 됨. duplicate
+    enqueue 는 worker.find_active(...) 가 막아주므로 안전.
     """
 
+    queue_for_validation = (
+        getattr(worker, "_queue", None) if validate_marker_against_queue else None
+    )
+
     out: list[DispatchedCodingJob] = []
-    for ready in iter_ready_coding_jobs(session_loader=session_loader):
+    for ready in iter_ready_coding_jobs(
+        session_loader=session_loader, queue=queue_for_validation
+    ):
+        stale_check: Optional[DispatchMarkerCheck] = None
+        if queue_for_validation is not None:
+            stale_check = validate_coding_dispatch_marker(
+                session=ready.session, queue=queue_for_validation
+            )
+            # P1-C: pending_retry / terminal 는 producer 가 새 row 를 만들
+            # 일이 아니다 — has_been_dispatched 가 이미 caller (iter_…)
+            # 에서 skip 했지만, 만약 unusual race 로 여기까지 왔다면 stale
+            # 라고 attribution 하지 않게 None 으로 reset.
+            if stale_check.state in (
+                MARKER_STATE_PENDING_RETRY,
+                MARKER_STATE_TERMINAL,
+                MARKER_STATE_VALID,
+            ):
+                stale_check = None
+            if stale_check is not None and stale_check.is_stale:
+                # P0-Z: NEVER silent — operator surface 가 self-heal 을
+                # 한 줄로 본다. warning level (not info) 로 status surface
+                # 에서도 noisy.
+                logger.warning(
+                    "coding_execute dispatcher: stale dispatch marker on "
+                    "session=%s — reason=%s phantom_job_id=%s — re-enqueueing",
+                    ready.session_id,
+                    stale_check.reason,
+                    stale_check.marker_job_id,
+                )
+        stale_reason_token = (
+            stale_check.reason if stale_check is not None and stale_check.is_stale else None
+        )
+        stale_job_id_token = (
+            stale_check.marker_job_id
+            if stale_check is not None and stale_check.is_stale
+            else None
+        )
         try:
             request = build_coding_execute_request(ready, env=env)
         except Exception as exc:  # noqa: BLE001 - bad payload shouldn't kill loop
@@ -482,6 +816,8 @@ def dispatch_ready_coding_jobs(
                     job_id=None,
                     created=False,
                     error=f"build_request failed: {exc}",
+                    stale_marker_reason=stale_reason_token,
+                    stale_marker_job_id=stale_job_id_token,
                 )
             )
             continue
@@ -502,6 +838,8 @@ def dispatch_ready_coding_jobs(
                     created=False,
                     request=request,
                     error=f"enqueue failed: {exc}",
+                    stale_marker_reason=stale_reason_token,
+                    stale_marker_job_id=stale_job_id_token,
                 )
             )
             continue
@@ -520,6 +858,8 @@ def dispatch_ready_coding_jobs(
                 job_id=job.job_id,
                 created=created,
                 request=request,
+                stale_marker_reason=stale_reason_token,
+                stale_marker_job_id=stale_job_id_token,
             )
         )
     return tuple(out)
@@ -591,16 +931,27 @@ class WorkflowSessionState:
 __all__ = (
     "DEFAULT_BASE_BRANCH",
     "DispatchedCodingJob",
+    "DispatchMarkerCheck",
     "ENV_DEFAULT_BASE_BRANCH",
     "ENV_DEFAULT_REPO",
     "ENV_DRY_RUN",
     "JOB_TYPE_CODING_EXECUTE",
+    "MARKER_STATE_MISSING",
+    "MARKER_STATE_PENDING_RETRY",
+    "MARKER_STATE_STALE",
+    "MARKER_STATE_TERMINAL",
+    "MARKER_STATE_VALID",
+    "PHANTOM_MARKER_REASON_NO_ROW",
+    "PHANTOM_MARKER_REASON_TERMINAL",
+    "PHANTOM_MARKER_REASON_WRONG_SESSION",
+    "PHANTOM_MARKER_REASON_WRONG_TYPE",
     "READY_STATUSES",
     "ReadyCodingJob",
     "SESSION_EXTRA_CODING_JOB_KEY",
     "SESSION_EXTRA_DISPATCH_KEY",
     "WorkflowSessionState",
     "build_coding_execute_request",
+    "validate_coding_dispatch_marker",
     "dispatch_ready_coding_jobs",
     "iter_ready_coding_jobs",
 )

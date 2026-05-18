@@ -126,12 +126,33 @@ class BuildProposalIssuePlanTests(unittest.TestCase):
         self.assertEqual(proposal.existing_issue_number, 42)
         self.assertIsNone(proposal.issue_auto_create_plan)
 
-    def test_no_repo_contract_keeps_legacy_behavior(self) -> None:
-        # repo_contract 미주입 시 기존 호출 흐름과 호환 — plan 은 None
+    def test_no_repo_contract_falls_back_to_minimal_plan(self) -> None:
+        # P0-U live smoke fix — repo_contract 미주입이라도 *repo 만* 주어지면
+        # minimal RepoContract 를 즉석에서 구성해 default fallback plan 을
+        # 생성한다. 이전엔 plan 이 None 으로 남아 executor 가
+        # `github_work_order_missing_plan_or_issue` 로 떨어졌다.
         proposal = build_github_work_order_proposal(
             session=_session(),
             request_text="버그 고쳐서 PR 올려",
             repo="yule-studio/naver-search-clone",
+        )
+        assert proposal is not None
+        self.assertIsNotNone(proposal.issue_auto_create_plan)
+        self.assertIsNone(proposal.existing_issue_number)
+        # caller 가 본격 repo_contract 없이 주입했다는 marker 가 extras 에 stamp
+        self.assertEqual(
+            (proposal.extra or {}).get("issue_auto_create_contract_source"),
+            "minimal_repo_string",
+        )
+
+    def test_no_repo_and_no_repo_contract_keeps_plan_none(self) -> None:
+        # repo / repo_contract 둘 다 없으면 plan 은 여전히 None — 이 경우는
+        # caller 가 repo 정보 자체를 안 가지고 있는 상황이라 fallback 의미
+        # 없음.
+        proposal = build_github_work_order_proposal(
+            session=_session(),
+            request_text="버그 고쳐서 PR 올려",
+            repo=None,
         )
         assert proposal is not None
         self.assertIsNone(proposal.issue_auto_create_plan)

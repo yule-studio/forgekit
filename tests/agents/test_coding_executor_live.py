@@ -113,13 +113,20 @@ class SubprocessTestRunnerTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.worktree = Path(self._tmp.name)
+        # P1-G: stack-aware selection 이 빈 worktree 를 bootstrap_required
+        # 로 분류하지 않도록 Python 시그널을 seed — 본 test 들은 runner 의
+        # subprocess mechanics (success / failure / override) 만 검증한다.
+        (self.worktree / "pytest.ini").write_text("[pytest]\n")
 
     def test_success_command_records_status_ok(self) -> None:
         runner = SubprocessTestRunner(default_command=("python3", "-c", "print('ok')"))
         ctx = WorktreeContext(
             branch="agent/x/y", worktree_path=str(self.worktree)
         )
-        new_ctx = runner.run(request=_request(), context=ctx)
+        new_ctx = runner.run(
+            request=_request(metadata={"test_command": ["python3", "-c", "print('ok')"]}),
+            context=ctx,
+        )
         self.assertEqual(new_ctx.test_summary["status"], "ok")
         self.assertIn("ok", new_ctx.test_summary["stdout_tail"])
 
@@ -130,7 +137,12 @@ class SubprocessTestRunnerTests(unittest.TestCase):
         ctx = WorktreeContext(
             branch="agent/x/y", worktree_path=str(self.worktree)
         )
-        new_ctx = runner.run(request=_request(), context=ctx)
+        new_ctx = runner.run(
+            request=_request(
+                metadata={"test_command": ["python3", "-c", "import sys; sys.exit(2)"]}
+            ),
+            context=ctx,
+        )
         self.assertEqual(new_ctx.test_summary["status"], "failed")
         self.assertEqual(new_ctx.test_summary["exit_code"], 2)
 
@@ -176,8 +188,13 @@ class WorktreeProvisionerIntegrationTests(unittest.TestCase):
         self.head = _init_git_repo(self.repo)
 
     def test_provision_creates_worktree_at_root(self) -> None:
+        # P1-B: tests use a temp git repo as the target — bypass the
+        # real cross-repo resolver by injecting a permissive one that
+        # always maps to ``self.repo``.
         provisioner = LocalGitWorktreeProvisioner(
-            repo_root=str(self.repo), worktree_root=str(self.worktree_root)
+            repo_root=str(self.repo),
+            worktree_root=str(self.worktree_root),
+            repo_root_resolver=lambda _n: str(self.repo),
         )
         ctx = provisioner.provision(
             request=_request(), branch="agent/backend-engineer/issue-99-fix"
@@ -187,8 +204,13 @@ class WorktreeProvisionerIntegrationTests(unittest.TestCase):
         provisioner.cleanup(force=True)
 
     def test_cleanup_removes_worktree(self) -> None:
+        # P1-B: tests use a temp git repo as the target — bypass the
+        # real cross-repo resolver by injecting a permissive one that
+        # always maps to ``self.repo``.
         provisioner = LocalGitWorktreeProvisioner(
-            repo_root=str(self.repo), worktree_root=str(self.worktree_root)
+            repo_root=str(self.repo),
+            worktree_root=str(self.worktree_root),
+            repo_root_resolver=lambda _n: str(self.repo),
         )
         ctx = provisioner.provision(
             request=_request(), branch="agent/backend-engineer/cleanup-1"
@@ -209,7 +231,10 @@ class LocalGitCommitterIntegrationTests(unittest.TestCase):
         self.worktree_root = Path(self._wt_tmp.name)
         _init_git_repo(self.repo)
         self.provisioner = LocalGitWorktreeProvisioner(
-            repo_root=str(self.repo), worktree_root=str(self.worktree_root)
+            repo_root=str(self.repo),
+            worktree_root=str(self.worktree_root),
+            # P1-B: bypass cross-repo resolver — see WorktreeProvisionerIntegrationTests.
+            repo_root_resolver=lambda _n: str(self.repo),
         )
         self.addCleanup(lambda: self.provisioner.cleanup(force=True))
 
@@ -357,7 +382,10 @@ class FactoryAndAvailabilityTests(unittest.TestCase):
         availability = detect_live_executor_availability(
             repo_root="/tmp/x", live_client=None
         )
-        self.assertEqual(availability.code_editor, "record_only")
+        # P1-K — code_editor label now reflects the actual wired editor
+        # (GreenfieldBootstrapEditor; with delegate behavior for
+        # non-greenfield repos). Old "record_only" string was stale.
+        self.assertIn("greenfield_bootstrap", availability.code_editor)
         self.assertEqual(availability.pusher, "blocked")
         self.assertIn("LiveGithubAppClient", availability.pusher_blocker)
 

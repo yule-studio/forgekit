@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 from pathlib import Path
@@ -70,7 +71,20 @@ from ..agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
     run_worker_loop,
 )
+from .discord_runner import (
+    install_role_runner_dispatch_for_run_service as _install_role_runner_dispatch_for_run_service_impl,
+    run_discord_gateway as _run_discord_gateway_impl,
+    run_discord_member_bot as _run_discord_member_bot_impl,
+)
+from .heartbeats import (
+    heartbeat_loop as _heartbeat_loop_impl,
+    record_graceful_disable as _record_graceful_disable_impl,
+)
 from .services import ServiceKind, ServiceSpec, resolve_service
+from .work_order_executor_runner import (
+    maybe_build_live_github_client as _maybe_build_live_github_client_impl,
+    run_github_work_order_executor as _run_github_work_order_executor_impl,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -138,6 +152,13 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
         autonomy_tick_fn, autonomy_interval = _build_autonomy_producer_tick(
             queue=queue, heartbeats=heartbeats
         )
+        (
+            si_detect_fn,
+            si_dispatch_fn,
+            si_interval,
+        ) = _build_self_improvement_loop(
+            queue=queue, heartbeats=heartbeats
+        )
         await run_supervisor_watch_loop(
             heartbeat_store=heartbeats,
             job_queue=queue,
@@ -147,14 +168,43 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
             autonomy_producer_tick_fn=autonomy_tick_fn,
             autonomy_producer_interval_seconds=autonomy_interval,
             autonomy_producer_on_report=_supervisor_autonomy_on_report,
+            self_improvement_detect_fn=si_detect_fn,
+            self_improvement_dispatch_fn=si_dispatch_fn,
+            self_improvement_interval_seconds=si_interval,
         )
         return EXIT_OK
 
     if spec.kind == ServiceKind.DISCORD_GATEWAY:
-        return await _run_discord_gateway(spec, shutdown_event=shutdown_event)
+        return await _run_discord_gateway(
+            spec, shutdown_event=shutdown_event, db_path=db_path
+        )
 
     if spec.kind == ServiceKind.DISCORD_MEMBER_BOT:
-        return await _run_discord_member_bot(spec, shutdown_event=shutdown_event)
+        return await _run_discord_member_bot(
+            spec, shutdown_event=shutdown_event, db_path=db_path
+        )
+
+    if spec.kind == ServiceKind.GITHUB_WORK_ORDER_EXECUTOR:
+        return await _run_github_work_order_executor(
+            spec,
+            queue=queue,
+            heartbeats=heartbeats,
+            shutdown_event=shutdown_event,
+        )
+
+    if spec.kind == ServiceKind.CODING_EXECUTOR:
+        # P0-Y: producer/consumer 분리. dispatch_ready_coding_jobs 는
+        # 별도 background task 로 주기 호출 — coding_execute queue 가
+        # 비어 있어도 ready coding_job 이 enqueue 된다 (옛 chicken-and-egg
+        # deadlock 해소).
+        from .coding_executor_runner import run_coding_executor
+
+        return await run_coding_executor(
+            spec,
+            queue=queue,
+            heartbeats=heartbeats,
+            shutdown_event=shutdown_event,
+        )
 
     if spec.kind == ServiceKind.DIGEST_SCHEDULER:
         from ..agents.digest.scheduler import run_scheduler
@@ -176,202 +226,23 @@ async def _run_async(spec: ServiceSpec, *, db_path: Optional[Path]) -> int:
     return EXIT_OK
 
 
-async def _run_discord_gateway(
-    spec: ServiceSpec,
-    *,
-    shutdown_event: asyncio.Event,
-) -> int:
-    """Run the engineering gateway under ``run-service``.
-
-    Resolves the gateway token, layers the planning-bot env
-    overrides via :func:`build_gateway_env_overrides`, then drives
-    the bot through :func:`run_engineering_gateway_until_shutdown`
-    so SIGTERM at the runtime level translates into
-    ``await bot.close()`` instead of relying on discord.py's
-    internal signal handlers (which only fire when ``bot.run``
-    owns the main thread — under ``run-service`` the runtime owns
-    the loop, so the legacy thread path saw the runtime swallow
-    the signal first and the bot kept running until the parent
-    killed it).
-    """
-
-    from ..discord.bot import (
-        build_engineering_gateway_bot,
-        run_engineering_gateway_until_shutdown,
-    )
-    from .gateway_env import (
-        build_gateway_env_overrides,
-        resolve_gateway_token,
-    )
-    import os
-
-    token = resolve_gateway_token()
-    if token is None:
-        sys.stderr.write(
-            "yule run-service: ENGINEERING_AGENT_BOT_GATEWAY_TOKEN unset; "
-            "engineering gateway cannot start.\n"
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    overrides = build_gateway_env_overrides(gateway_token=token)
-    # Apply overrides in-place so the bot's env reads see the
-    # gateway-only view.
-    for key, value in overrides.items():
-        os.environ[key] = value
-
-    # A-M11b: install the role-runner dispatcher from env *before* the
-    # bot starts. ``build_engineering_gateway_bot`` also calls the
-    # installer (legacy ``run_discord_bot`` direct path), so this call
-    # is idempotent — last-one-wins on the dispatcher binding. We
-    # install here so an operator running ``yule run-service
-    # eng-discord-gateway`` sees the trace stdout line *before* the
-    # bot's discord login attempt, which makes "왜 fallback 떨어졌어?"
-    # answerable from the run-service logs alone.
-    _install_role_runner_dispatch_for_run_service()
-
-    repo_root = Path(os.environ.get("YULE_REPO_ROOT", os.getcwd()))
-    try:
-        await run_engineering_gateway_until_shutdown(
-            shutdown_event=shutdown_event,
-            bot_factory=lambda: build_engineering_gateway_bot(repo_root),
-            token=token,
-        )
-    except KeyboardInterrupt:
-        return EXIT_OK
-    return EXIT_OK
+# Heartbeat helpers live in ``runtime.heartbeats`` — extracted from
+# this module as part of the P0-T split (governance/code_audit pending
+# `runtime/run_service.py`). The thin module-level aliases here keep
+# tests + existing callers binding to the original names while the
+# implementation moves out of the monolith.
+_heartbeat_loop = _heartbeat_loop_impl
+_record_graceful_disable = _record_graceful_disable_impl
 
 
-async def _run_discord_member_bot(
-    spec: ServiceSpec,
-    *,
-    shutdown_event: asyncio.Event,
-) -> int:
-    """Run a single engineering member bot under ``run-service``. (P0-C #132)
-
-    Hard rails (matching docs/operations.md §0.1 promise):
-
-      * ``spec.role`` must be set — enforced by the inventory schema.
-      * Token lookup uses :func:`member_bots.env_key_for` so the env
-        contract stays identical to ``yule discord up`` (one source
-        of truth).
-      * Graceful disable on missing / placeholder-shape token:
-        emit a stderr line with the env_key + reason, return
-        :data:`EXIT_UNKNOWN_SERVICE` (78). Both the subprocess
-        supervisor and systemd unit treat 78 as "stop, don't
-        restart" so the rest of the company keeps running.
-      * Valid token → drive the bot through the SIGTERM-aware
-        :func:`run_member_bot_until_shutdown` so the runtime's
-        shutdown event translates into a graceful Discord disconnect.
-
-    The function never mutates ``os.environ`` because the per-role
-    token already lives at its dedicated env_key — the bot reads it
-    directly via the resolved profile, no override layering needed.
-    """
-
-    if not spec.role:
-        sys.stderr.write(
-            f"yule run-service: {spec.service_id} is DISCORD_MEMBER_BOT "
-            "but spec.role is empty; cannot resolve the member token.\n"
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    from ..discord.member.bot import run_member_bot_until_shutdown
-    from ..discord.member.bots import (
-        env_key_for,
-        looks_like_real_discord_token,
-        MemberBotProfile,
-    )
-    import os
-
-    env_key = env_key_for("engineering-agent", spec.role)
-    raw = os.environ.get(env_key)
-    token = raw.strip() if isinstance(raw, str) and raw.strip() else None
-
-    if not token:
-        sys.stderr.write(
-            f"yule run-service: {spec.service_id} graceful-disable — "
-            f"{env_key} is empty. Add the bot token to .env.local then "
-            f"'yule run-service {spec.service_id}' (or 'yule runtime up') "
-            "to bring this role bot online.\n"
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    if not looks_like_real_discord_token(token):
-        sys.stderr.write(
-            f"yule run-service: {spec.service_id} graceful-disable — "
-            f"{env_key} is set but doesn't match the Discord bot token "
-            "shape (placeholder or wrong format). Regenerate the token "
-            "in the Discord developer portal and update .env.local.\n"
-        )
-        return EXIT_UNKNOWN_SERVICE
-
-    profile = MemberBotProfile(
-        agent_id="engineering-agent",
-        role=spec.role,
-        env_key=env_key,
-        token=token,
-        display_label=f"engineering-agent/{spec.role}",
-    )
-
-    try:
-        await run_member_bot_until_shutdown(
-            profile=profile,
-            shutdown_event=shutdown_event,
-        )
-    except KeyboardInterrupt:
-        return EXIT_OK
-    return EXIT_OK
-
-
-def _install_role_runner_dispatch_for_run_service() -> None:
-    """Best-effort role-runner wiring shim for the run-service path.
-
-    Mirrors the bot.py installer so a ``yule run-service`` start
-    publishes the same env-derived dispatcher. Sanitised stdout line
-    on success / fallback. Failure is swallowed — the gateway must
-    boot even if the role-runner subsystem is misconfigured.
-    """
-
-    try:
-        from ..agents.runners.bootstrap import (
-            install_engineering_role_runner_dispatch,
-        )
-    except Exception as exc:  # noqa: BLE001 - partial install fallback
-        sys.stderr.write(
-            f"warning: role-runner bootstrap import failed ({type(exc).__name__}); "
-            "gateway continues with deterministic in-process role bodies\n"
-        )
-        return
-
-    def _on_failure(exc: BaseException) -> None:
-        sys.stderr.write(
-            "warning: role-runner dispatch install failed "
-            f"({type(exc).__name__}); using deterministic fallback\n"
-        )
-
-    try:
-        trace = install_engineering_role_runner_dispatch(
-            on_install_failure=_on_failure
-        )
-    except Exception as exc:  # noqa: BLE001 - bootstrap must not kill run-service
-        _on_failure(exc)
-        return
-    if trace is None:
-        return
-    if trace.deterministic_fallback_only:
-        configured = [e.provider for e in trace.entries if e.configured]
-        sys.stderr.write(
-            "role-runner dispatch installed: deterministic fallback only "
-            f"(opted-in providers: {configured or 'none'})\n"
-        )
-    else:
-        available = [
-            e.provider for e in trace.entries if e.configured and e.available
-        ]
-        sys.stderr.write(
-            f"role-runner dispatch installed: priority={available} "
-            "+ deterministic terminal\n"
-        )
+# Discord gateway / member bot / role-runner installer — extracted to
+# ``runtime.discord_runner`` (split_now_pending). Module-level aliases
+# preserve binding for existing callers/tests.
+_run_discord_gateway = _run_discord_gateway_impl
+_run_discord_member_bot = _run_discord_member_bot_impl
+_install_role_runner_dispatch_for_run_service = (
+    _install_role_runner_dispatch_for_run_service_impl
+)
 
 
 # ---------------------------------------------------------------------------
@@ -641,33 +512,7 @@ def _record_coding_progress_after_outcome(
         )
 
 
-def _maybe_build_live_github_client(*, env: Mapping[str, str]) -> Optional[Any]:
-    """Return a live GitHub App client if env is set, else None.
-
-    The factory only fires when *all three* env keys are present —
-    we don't want a partial config (e.g. app id but no key path) to
-    silently force a stub through. Errors at construction are
-    swallowed so the consumer falls back to dry-run-only.
-    """
-
-    needed = (
-        "YULE_GITHUB_APP_ID",
-        "YULE_GITHUB_APP_INSTALLATION_ID",
-        "YULE_GITHUB_APP_PRIVATE_KEY_PATH",
-    )
-    if not all((env.get(name) or "").strip() for name in needed):
-        return None
-    try:
-        from ..github_app.live_client import build_live_client_from_env
-
-        return build_live_client_from_env(env)
-    except Exception:  # noqa: BLE001 - log and continue dry-run
-        logger.warning(
-            "coding executor: build_live_client_from_env raised; falling "
-            "back to push-blocked bundle",
-            exc_info=True,
-        )
-        return None
+_maybe_build_live_github_client = _maybe_build_live_github_client_impl
 
 
 def _pick_filters_for(spec: ServiceSpec):
@@ -683,7 +528,12 @@ def _pick_filters_for(spec: ServiceSpec):
         return (("obsidian_write",), ())
     if spec.kind == ServiceKind.CODING_EXECUTOR:
         return (("coding_execute",), ())
+    if spec.kind == ServiceKind.GITHUB_WORK_ORDER_EXECUTOR:
+        return (("github_work_order",), ())
     return ((), ())
+
+
+_run_github_work_order_executor = _run_github_work_order_executor_impl
 
 
 # M6.1b-1 landed the production post_fn (build_production_post_fn).
@@ -973,6 +823,115 @@ def _log_decision_port_trace(
         skipped,
         live_marker,
     )
+
+
+# ---------------------------------------------------------------------------
+# Self-improvement runtime loop wiring (P0-SI)
+# ---------------------------------------------------------------------------
+#
+# Bridges :class:`SelfImprovementDispatcher` into the supervisor watch
+# loop's ``self_improvement_detect_fn`` + ``self_improvement_dispatch_fn``
+# hook pair. Disabled by default — the operator opts in via
+# ``YULE_SELF_IMPROVEMENT_ENABLED=1`` so an unconfigured production host
+# behaves exactly like before this PR landed.
+#
+# Hard rails:
+#   * No auto-merge / push to protected branches / deploy / secret modify
+#     ever runs through this path — the delegated_operator policy's
+#     permanent escalation list blocks those at the boundary, and the
+#     executor handoff hook stamps ``draft_pr_only=True`` so a downstream
+#     coding executor that *did* support auto-merge could not.
+#   * Failures are logged + swallowed by the watch loop's own try/except
+#     so this never crashes the supervisor.
+
+
+def _build_self_improvement_loop(*, queue, heartbeats):
+    """Return ``(detect_fn, dispatch_fn, interval_seconds)`` for the
+    supervisor watch loop.
+
+    Returns ``(None, None, None)`` when the operator hasn't opted in
+    via ``YULE_SELF_IMPROVEMENT_ENABLED`` — that's the M6.0 default and
+    keeps the supervisor identical to before for installations that
+    don't want autonomous problem handling.
+    """
+
+    try:
+        from ..agents.lifecycle.runtime_self_improvement_wiring import (
+            build_self_improvement_dispatcher,
+            is_enabled,
+            resolve_interval_seconds,
+        )
+    except Exception:  # noqa: BLE001 - import failure must not kill supervisor
+        logger.warning(
+            "self-improvement runtime wiring import failed", exc_info=True
+        )
+        return None, None, None
+
+    if not is_enabled():
+        return None, None, None
+
+    interval = resolve_interval_seconds()
+
+    try:
+        dispatcher = build_self_improvement_dispatcher(
+            job_queue=queue,
+            heartbeat_store=heartbeats,
+        )
+    except Exception:  # noqa: BLE001 - never crash supervisor on wiring
+        logger.warning(
+            "self-improvement dispatcher construction failed; "
+            "supervisor will tick without self-improvement loop",
+            exc_info=True,
+        )
+        return None, None, None
+
+    logger.info(
+        "self-improvement runtime loop enabled "
+        "(interval=%.1fs, ledger=%s)",
+        interval,
+        dispatcher.problem_ledger._path,  # type: ignore[attr-defined]
+    )
+
+    # Wrap dispatch_fn so each per-signal dispatch also updates the
+    # process-local journal — operator status post + journalctl both
+    # read from there. Failures are logged + swallowed so a journaling
+    # bug never crashes the supervisor.
+    from ..agents.lifecycle.runtime_self_improvement_loop import (
+        SelfImprovementTickReport,
+    )
+    from .self_improvement_status import record_tick
+
+    raw_dispatch_fn = dispatcher.dispatch_fn
+
+    def _wrapped_dispatch(signal, plan):
+        outcome = raw_dispatch_fn(signal, plan)
+        try:
+            # Build a single-signal pseudo-report so the journal entry
+            # still surfaces in the absence of a paired run_tick call.
+            problem = outcome.problem
+            single_report = SelfImprovementTickReport(
+                detected_signals=(signal,),
+                new_problems=(problem,) if problem.occurrence_count == 1 else (),
+                handled=(outcome,),
+                skipped_terminal=(),
+                delegated_count=1 if outcome.problem.delegated_ok else 0,
+                waiting_operator_count=(
+                    1
+                    if outcome.final_status.value == "waiting_operator"
+                    else 0
+                ),
+                blocked_count=(
+                    1 if outcome.final_status.value == "blocked" else 0
+                ),
+            )
+            record_tick(single_report)
+        except Exception:  # noqa: BLE001 - journaling must not break dispatch
+            logger.warning(
+                "self-improvement status journal record raised", exc_info=True
+            )
+        return outcome
+
+    return dispatcher.detect_fn, _wrapped_dispatch, interval
 
 
 # ---------------------------------------------------------------------------

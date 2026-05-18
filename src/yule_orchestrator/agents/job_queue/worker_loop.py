@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass
 from typing import (
@@ -283,6 +284,12 @@ async def run_supervisor_watch_loop(
     sleep_fn = sleep_fn or asyncio.sleep
     clock = time_fn or time.time
     iterations = 0
+    # P0-T runtime status visibility fix — supervisor watch 자체가
+    # heartbeat 를 기록해야 `yule runtime status` 가 ALIVE 로 본다.
+    # 본 service_id 는 services.py 의 ServiceSpec(service_id=
+    # "eng-supervisor-watch") 와 1:1.
+    supervisor_service_id = "eng-supervisor-watch"
+    supervisor_pid = os.getpid()
     last_post_at: Optional[float] = None
     last_si_detect_at: Optional[float] = None
     last_autonomy_tick_at: Optional[float] = None
@@ -312,6 +319,32 @@ async def run_supervisor_watch_loop(
         if max_iterations is not None and iterations >= max_iterations:
             break
         iterations += 1
+
+        # P0-T heartbeat: supervisor 가 매 sweep iteration 시작 시
+        # 자기 자신의 heartbeat 를 기록. 본 라인 없으면 status surface 에서
+        # eng-supervisor-watch 가 영원히 UNKNOWN 으로 보인다. now=None →
+        # record 가 내부 time.time() 사용 (caller-supplied time_fn 의 cadence
+        # 를 변경하지 않음 — 기존 status_post/si/autonomy 의 interval gate
+        # 가 깨지지 않게).
+        try:
+            heartbeat_store.record(
+                supervisor_service_id,
+                pid=supervisor_pid,
+                metadata={
+                    "iteration": iterations,
+                    "deadline_seconds": float(deadline_seconds),
+                    "post_enabled": bool(post_enabled),
+                    "autonomy_enabled": bool(autonomy_enabled),
+                    "si_enabled": bool(si_enabled),
+                },
+            )
+        except Exception:  # noqa: BLE001 — heartbeat 실패는 sweep 을 막지 않는다
+            logger.warning(
+                "supervisor heartbeat record failed (status surface may "
+                "stay UNKNOWN until next iteration)",
+                exc_info=True,
+            )
+
         try:
             report = sweep_fn(
                 heartbeat_store=heartbeat_store,

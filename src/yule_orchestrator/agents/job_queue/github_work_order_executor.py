@@ -60,6 +60,7 @@ recording client + permissive policy gate 로 driven.
 from __future__ import annotations
 
 import logging
+import asyncio
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -256,20 +257,29 @@ class GitHubWorkOrderWorker:
             )
             raise
 
-        # Reject early: no repo means we can't call GitHub. Mark
-        # failed_retryable so an operator who corrects the proposal can
-        # requeue without losing the row.
+        # P0-T live smoke fix — repo 가 work_order payload 에 비어있을
+        # 때 session / prompt 에서 canonical owner/repo 복구. 이전에
+        # producer bug 로 SKIPPED_NO_REPO failed_retryable 로 떨어진
+        # rows 도 fix 후 supervisor requeue → executor 가 본 fallback
+        # 으로 재개 가능. invalid guess 는 거부 — canonical owner/repo
+        # 만 허용.
         if not (work_order.repo or "").strip():
-            self._queue.transition(
-                in_progress.job_id,
-                JobState.FAILED_RETRYABLE,
-                result={"error": SKIPPED_NO_REPO},
-                clear_lease=True,
-                now=now,
-            )
-            return GitHubWorkOrderExecutionOutcome(
-                job=in_progress, skipped_reason=SKIPPED_NO_REPO
-            )
+            recovered_repo = self._recover_repo_for_work_order(work_order)
+            if recovered_repo:
+                from dataclasses import replace as _replace
+
+                work_order = _replace(work_order, repo=recovered_repo)
+            else:
+                self._queue.transition(
+                    in_progress.job_id,
+                    JobState.FAILED_RETRYABLE,
+                    result={"error": SKIPPED_NO_REPO},
+                    clear_lease=True,
+                    now=now,
+                )
+                return GitHubWorkOrderExecutionOutcome(
+                    job=in_progress, skipped_reason=SKIPPED_NO_REPO
+                )
 
         # Branch 1 — existing issue anchor. Just stamp session and exit.
         if (
@@ -284,16 +294,31 @@ class GitHubWorkOrderWorker:
         # Branch 2 — auto-create plan. Need writer + plan.
         plan = work_order.issue_auto_create_plan
         if not isinstance(plan, Mapping) or not plan:
-            self._queue.transition(
-                in_progress.job_id,
-                JobState.FAILED_RETRYABLE,
-                result={"error": SKIPPED_MISSING_PLAN},
-                clear_lease=True,
-                now=now,
-            )
-            return GitHubWorkOrderExecutionOutcome(
-                job=in_progress, skipped_reason=SKIPPED_MISSING_PLAN
-            )
+            # P0-V live smoke fix — executor self-heal: 옛 PR 이전에
+            # producer 가 plan 을 빠뜨리고 enqueue 한 row 들은 그대로
+            # 두면 영원히 `SKIPPED_MISSING_PLAN` 으로 남는다. payload 에
+            # repo 만 있어도 minimal RepoContract 로 plan 을 재구성해서
+            # 같은 자리에서 다시 진행 — 동일 사고 재발 차단 + 기존
+            # failed_retryable row 도 requeue 후 자연 복구.
+            recovered = _recover_plan_from_work_order(work_order)
+            if recovered is not None:
+                plan = recovered
+                from dataclasses import replace as _replace
+
+                work_order = _replace(
+                    work_order, issue_auto_create_plan=plan
+                )
+            else:
+                self._queue.transition(
+                    in_progress.job_id,
+                    JobState.FAILED_RETRYABLE,
+                    result={"error": SKIPPED_MISSING_PLAN},
+                    clear_lease=True,
+                    now=now,
+                )
+                return GitHubWorkOrderExecutionOutcome(
+                    job=in_progress, skipped_reason=SKIPPED_MISSING_PLAN
+                )
 
         writer, autonomy_level = self._writer_factory(work_order)
         if writer is None:
@@ -507,6 +532,69 @@ class GitHubWorkOrderWorker:
     # Session writer
     # ------------------------------------------------------------------
 
+    def _recover_repo_for_work_order(
+        self,
+        work_order: GitHubWorkOrder,
+    ) -> Optional[str]:
+        """Fallback owner/repo extractor when payload.repo is empty.
+
+        Resolution order — first canonical match wins:
+          1. session.references_user (set by ``Orchestrator.intake`` from
+             the intake prompt URLs)
+          2. session.extra['coding_repo_full_name']
+          3. work_order.request_summary 안의 GitHub URL fragment
+          4. session.prompt 안의 GitHub URL fragment
+
+        Returns ``"owner/repo"`` or None — invalid guesses (no GitHub
+        URL anywhere) return None so the caller still lands SKIPPED_NO_REPO
+        loudly.
+        """
+
+        try:
+            from ..git.github_url import parse_github_target
+        except Exception:  # noqa: BLE001 - partial install
+            return None
+
+        session = None
+        try:
+            session = self._load_session(work_order.session_id)
+        except Exception:  # noqa: BLE001
+            session = None
+
+        candidates: list[str] = []
+        if session is not None:
+            refs = getattr(session, "references_user", None) or ()
+            candidates.extend(str(r) for r in refs)
+            extra = getattr(session, "extra", None) or {}
+            if isinstance(extra, Mapping):
+                stored = str(extra.get("coding_repo_full_name") or "").strip()
+                if stored and "/" in stored:
+                    return stored
+            for source in (
+                getattr(session, "prompt", None),
+                work_order.request_summary,
+            ):
+                for token in (source or "").split():
+                    token = token.strip().strip("(),.;<>")
+                    if token.startswith(("http://", "https://", "github.com")):
+                        candidates.append(token)
+        else:
+            # session missing — last-chance scan of request_summary alone
+            for token in (work_order.request_summary or "").split():
+                token = token.strip().strip("(),.;<>")
+                if token.startswith(("http://", "https://", "github.com")):
+                    candidates.append(token)
+
+        for raw in candidates:
+            target = parse_github_target(raw)
+            if target is None:
+                continue
+            owner = (target.owner or "").strip()
+            repo = (target.repo or "").strip()
+            if owner and repo:
+                return f"{owner}/{repo}"
+        return None
+
     def _continue_to_coding(
         self,
         *,
@@ -532,6 +620,10 @@ class GitHubWorkOrderWorker:
         existing_extra = getattr(session, "extra", None) or {}
         if not isinstance(existing_extra, Mapping):
             existing_extra = {}
+        # P0-X: pass session.prompt + session_id so promote_session_to_coding_ready
+        # 가 coding_proposal 누락 시 즉석에서 재구성한다 (slash intake 가
+        # proposal stamp 를 건너뛴 옛 / 새 session 모두 self-heal).
+        prompt_for_rebuild = str(getattr(session, "prompt", "") or "") or None
         outcome = promote_session_to_coding_ready(
             session_extra=existing_extra,
             anchor=anchor,
@@ -541,6 +633,9 @@ class GitHubWorkOrderWorker:
             approval_id=work_order.approval_id or None,
             approved_by=work_order.approved_by or None,
             approved_at=work_order.approved_at or None,
+            session_prompt=prompt_for_rebuild,
+            session_id_for_proposal=getattr(session, "session_id", None),
+            auto_rebuild_proposal=True,
         )
         if outcome.new_extra is None:
             return outcome
@@ -625,6 +720,108 @@ class GitHubWorkOrderWorker:
         return self.process_job(picked, now=now)
 
 
+# Recovery helpers live in ``github_work_order_recovery`` — extracted to
+# keep this executor module under the governance/code_audit LOC threshold.
+# Re-exported here so existing callers / tests keep their import sites.
+from .github_work_order_recovery import (
+    recover_plan_from_work_order as _recover_plan_from_work_order,
+    repair_stranded_coding_sessions,
+    requeue_missing_plan_failures,
+    requeue_no_repo_failures,
+)
+
+
+async def run_until_shutdown(
+    worker: "GitHubWorkOrderWorker",
+    *,
+    shutdown_event: asyncio.Event,
+    interval_seconds: float = 5.0,
+    heartbeats: Optional[HeartbeatStore] = None,
+    heartbeat_interval_seconds: float = 30.0,
+    log_fn: Optional[Callable[[str, Optional[Any]], None]] = None,
+) -> None:
+    """Drain the github_work_order queue until *shutdown_event* fires.
+
+    P0-T live smoke fix — `runtime up` 으로 spawn 가능한 background
+    consumer. process 자체가 자체 heartbeat 도 기록해 status surface
+    에서 ALIVE 로 보이게 한다.
+
+    pattern:
+      - 매 *interval_seconds* 마다 ``worker.run_one()`` 호출
+      - outcome 이 None 이면 idle, 있으면 outcome 로깅
+      - ``heartbeats`` 가 inject 되면 ``heartbeat_interval_seconds`` 간격
+        으로 ``SERVICE_ID_GITHUB_WORK_ORDER_EXECUTOR`` heartbeat
+      - shutdown 시 graceful exit
+    """
+
+    pid = os.getpid()
+    last_heartbeat_at: float = 0.0
+
+    def _record_heartbeat() -> None:
+        if heartbeats is None:
+            return
+        try:
+            heartbeats.record(
+                SERVICE_ID_GITHUB_WORK_ORDER_EXECUTOR,
+                pid=pid,
+                metadata={
+                    "state": "online",
+                    "interval_seconds": float(interval_seconds),
+                },
+            )
+        except Exception:  # noqa: BLE001 - heartbeat is observability only
+            pass
+
+    # 초기 heartbeat — supervisor 가 status 를 즉시 ALIVE 로 본다
+    _record_heartbeat()
+    last_heartbeat_at = _monotonic_now()
+
+    while not shutdown_event.is_set():
+        try:
+            outcome = worker.run_one()
+        except Exception as exc:  # noqa: BLE001 — drain 은 절대 죽지 않음
+            if log_fn is not None:
+                try:
+                    log_fn("github_work_order_executor: run_one raised", exc)
+                except Exception:  # noqa: BLE001
+                    pass
+            outcome = None
+
+        if outcome is not None and log_fn is not None:
+            try:
+                log_fn(
+                    f"github_work_order_executor: drained job — "
+                    f"created_via={outcome.created_via}, "
+                    f"issue_number={outcome.issue_number}, "
+                    f"skipped={outcome.skipped_reason}",
+                    None,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        now = _monotonic_now()
+        if heartbeats is not None and (
+            now - last_heartbeat_at >= heartbeat_interval_seconds
+        ):
+            _record_heartbeat()
+            last_heartbeat_at = now
+
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(), timeout=interval_seconds
+            )
+        except asyncio.TimeoutError:
+            continue
+
+    # 최종 heartbeat (shutdown 직전) 은 생략 — 곧 STALE 로 표시되는 게 의도
+
+
+def _monotonic_now() -> float:
+    import time as _time
+
+    return _time.monotonic()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -655,4 +852,8 @@ __all__ = (
     "SKIPPED_NO_WRITER",
     "UpdateSessionFn",
     "WriterFactory",
+    "repair_stranded_coding_sessions",
+    "requeue_missing_plan_failures",
+    "requeue_no_repo_failures",
+    "run_until_shutdown",
 )

@@ -71,20 +71,41 @@ SESSION_EXTRA_PROGRESS_KEY: str = "github_work_order_progress"
 
 
 # Progress markers — operator surface 에서 "어디까지 갔는지" 즉시 보이는 키.
-# 본 모듈은 처음 2 종만 stamp. 나머지는 후속 단계 (coding_executor,
-# operator_action_reply) 가 stamp.
+# P0-Y marker correctness: 이전엔 ``coding_dispatch_queued`` 가 coding_job
+# stamp 시점에 찍혔는데, 실제 ``coding_execute`` queue row 는 그 이후
+# dispatcher 가 enqueue 해야 생긴다. operator surface 가 "queued 됐다"
+# 고 거짓말하는 회귀를 끊기 위해 두 단계로 분리:
+#
+#   * ``coding_job_ready`` — proposal → CodingJob(status=ready) 가
+#     session.extra 에 stamp 된 시점. queue row 는 아직 없음.
+#   * ``coding_dispatch_queued`` — ``dispatch_ready_coding_jobs`` 가
+#     실제 queue row 를 만들고 ``coding_execute_dispatch`` marker 까지
+#     찍은 시점. 이때만 operator 에게 "큐에 들어갔다" 고 말한다.
+#
+# 후속 단계 (``coding_in_progress`` / ``draft_pr_opened`` / ``coding_blocked``)
+# 는 coding executor / operator_action 핸들러가 stamp.
 PROGRESS_ISSUE_CREATED: str = "issue_created"
+PROGRESS_CODING_JOB_READY: str = "coding_job_ready"
 PROGRESS_CODING_DISPATCH_QUEUED: str = "coding_dispatch_queued"
 PROGRESS_CODING_IN_PROGRESS: str = "coding_in_progress"
 PROGRESS_DRAFT_PR_OPENED: str = "draft_pr_opened"
+# P1-L — draft PR 이 열린 뒤 work_mode 분기 결과. autonomous_merge 면
+# 백그라운드 머지 루프가 pick, approval_required 면 approval card 가
+# 올라간 뒤 사용자 회신을 기다림.
+PROGRESS_PR_MERGE_PENDING: str = "pr_merge_pending"
+PROGRESS_PR_MERGED: str = "pr_merged"
+PROGRESS_PR_MERGE_BLOCKED: str = "pr_merge_blocked"
 PROGRESS_CODING_BLOCKED: str = "coding_blocked"
 
 
 PROGRESS_TIMELINE: tuple = (
     PROGRESS_ISSUE_CREATED,
+    PROGRESS_CODING_JOB_READY,
     PROGRESS_CODING_DISPATCH_QUEUED,
     PROGRESS_CODING_IN_PROGRESS,
     PROGRESS_DRAFT_PR_OPENED,
+    PROGRESS_PR_MERGE_PENDING,
+    PROGRESS_PR_MERGED,
 )
 
 
@@ -120,6 +141,9 @@ def promote_session_to_coding_ready(
     approved_by: Optional[str] = None,
     approved_at: Optional[str] = None,
     now: Optional[datetime] = None,
+    session_prompt: Optional[str] = None,
+    session_id_for_proposal: Optional[str] = None,
+    auto_rebuild_proposal: bool = True,
 ) -> ContinuationOutcome:
     """*session_extra* 를 pure 하게 갱신해 coding_job=ready 상태로 promote.
 
@@ -129,7 +153,15 @@ def promote_session_to_coding_ready(
     idempotent 동작:
       - coding_job 이 이미 ready 이고 그 metadata 의 ``issue_number`` /
         ``approval_id`` 가 anchor 와 같으면 noop.
-      - coding_proposal 이 session.extra 에 없으면 noop ("비표준 진입").
+      - coding_proposal 이 session.extra 에 없고 *session_prompt* 가
+        주어졌고 *auto_rebuild_proposal* True 면 즉석에서 재구성. 그렇지
+        않으면 (옛 동작) noop.
+
+    P0-X self-heal: slash command intake 가 (a) coding_proposal 을
+    stamp 하기 전에 race 로 anchor 가 먼저 만들어졌거나, (b) intake
+    경로 자체가 stamp 를 건너뛴 경우, 모두 continuation 단계에서 prompt
+    만 있으면 자체적으로 회복한다. 동일 사고의 silent stall (라이브
+    canonical session ``11917bf1e75d``) 재발 방지.
 
     progress markers:
       - 항상 ``issue_created`` 를 추가 (anchor 가 존재한다는 사실 자체).
@@ -151,16 +183,24 @@ def promote_session_to_coding_ready(
         },
     )
 
-    # 2. coding_proposal 없으면 promote 불가 — issue_created marker 만 반환
+    # 2. coding_proposal 없으면 — P0-X 자동 재구성 시도 후에도 비어있을 때만 noop.
     proposal_payload = extra.get(SESSION_EXTRA_CODING_PROPOSAL_KEY)
     if not isinstance(proposal_payload, Mapping) or not proposal_payload:
-        return ContinuationOutcome(
-            promoted=False,
-            coding_job=None,
-            new_extra=extra,
-            noop_reason=CONTINUATION_NOOP_NO_PROPOSAL,
-            progress_markers=progress_markers,
-        )
+        rebuilt = None
+        if auto_rebuild_proposal:
+            rebuilt = _rebuild_proposal_payload(
+                prompt=session_prompt, session_id=session_id_for_proposal
+            )
+        if rebuilt is None:
+            return ContinuationOutcome(
+                promoted=False,
+                coding_job=None,
+                new_extra=extra,
+                noop_reason=CONTINUATION_NOOP_NO_PROPOSAL,
+                progress_markers=progress_markers,
+            )
+        extra[SESSION_EXTRA_CODING_PROPOSAL_KEY] = dict(rebuilt)
+        proposal_payload = extra[SESSION_EXTRA_CODING_PROPOSAL_KEY]
 
     # 3. 같은 anchor 로 이미 ready 인지 확인
     existing_job = extra.get(SESSION_EXTRA_CODING_JOB_KEY)
@@ -234,10 +274,14 @@ def promote_session_to_coding_ready(
 
     extra[SESSION_EXTRA_CODING_JOB_KEY] = job_payload
 
-    # 5. 두 번째 progress marker
+    # 5. P0-Y marker correctness: 이 시점은 coding_job=ready stamp 만
+    # 완료된 상태 — queue row 는 아직 ``dispatch_ready_coding_jobs`` 가
+    # 만들지 않았다. 따라서 ``coding_job_ready`` 만 stamp 하고,
+    # ``coding_dispatch_queued`` 는 dispatcher 가 실제 enqueue 한 뒤에
+    # ``_persist_dispatch_marker`` 가 stamp 한다.
     progress_markers = _ensure_progress_marker(
         extra,
-        marker=PROGRESS_CODING_DISPATCH_QUEUED,
+        marker=PROGRESS_CODING_JOB_READY,
         at=_now_iso(now),
         detail={
             "issue_number": anchor_issue_number,
@@ -327,6 +371,316 @@ def _now_iso(now: Optional[datetime]) -> str:
     return dt.replace(microsecond=0).isoformat()
 
 
+def _rebuild_proposal_payload(
+    *,
+    prompt: Optional[str],
+    session_id: Optional[str],
+) -> Optional[Mapping[str, Any]]:
+    """Rebuild a ``coding_proposal`` payload from *prompt* alone.
+
+    SSoT 는 ``agents.coding.authorization.recommend_authorization`` —
+    `_persist_coding_proposal` 가 stamp 하는 모양과 똑같이 serialise
+    한다. 본 helper 는 storage 와 무관하게 pure dict 를 반환한다.
+
+    Returns None when:
+      * prompt 가 비어있어 의미 있는 proposal 을 만들 수 없을 때.
+      * import / build 실패 (partial install 등).
+    """
+
+    text = str(prompt or "").strip()
+    if not text:
+        return None
+    try:
+        from ..coding.authorization import recommend_authorization
+    except Exception:  # noqa: BLE001 - partial install
+        return None
+    try:
+        proposal = recommend_authorization(
+            user_request=text, session_id=session_id
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if proposal is None:
+        return None
+    return {
+        "session_id": proposal.session_id,
+        "user_request": proposal.user_request,
+        "executor_role": proposal.executor_role,
+        "review_roles": list(proposal.review_roles),
+        "participant_roles": list(proposal.participant_roles),
+        "write_scope": list(proposal.write_scope),
+        "forbidden_scope": list(proposal.forbidden_scope),
+        "reason": proposal.reason,
+        "safety_rules": list(proposal.safety_rules),
+        "approval_required": bool(proposal.approval_required),
+        "metadata": {**dict(proposal.metadata), "rebuilt_by": "continuation_self_heal"},
+        "lifecycle_mode": proposal.lifecycle_mode,
+        "research_leads": list(proposal.research_leads),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Repair helper — 잘못 분류돼 멈춘 session 의 coding_proposal 재구성
+# ---------------------------------------------------------------------------
+
+
+REPAIR_OUTCOME_REPAIRED: str = "repaired"
+REPAIR_OUTCOME_NO_SESSION: str = "session_not_found"
+REPAIR_OUTCOME_NO_ANCHOR: str = "no_github_work_order_anchor"
+REPAIR_OUTCOME_NO_PROMPT: str = "session_prompt_empty"
+REPAIR_OUTCOME_PROPOSAL_BUILD_FAILED: str = "proposal_build_failed"
+REPAIR_OUTCOME_ALREADY_READY: str = "coding_job_already_ready"
+
+
+@dataclass(frozen=True)
+class SessionRepairOutcome:
+    """:func:`repair_session_for_coding_dispatch` 결과.
+
+    ``outcome`` 은 ``REPAIR_OUTCOME_*`` 상수 중 하나.
+    ``coding_proposal_rebuilt`` True 면 본 호출이 proposal 을 새로
+    persist 했다는 뜻. ``promoted`` True 면 추가로 coding_job=ready
+    로 promote 됐다는 뜻 — 둘은 독립적이다 (proposal 만 rebuild 하고
+    promote 는 idempotent noop 일 수 있음).
+    """
+
+    outcome: str
+    coding_proposal_rebuilt: bool = False
+    task_type_reclassified: bool = False
+    promoted: bool = False
+    continuation: Optional[ContinuationOutcome] = None
+    detail: Mapping[str, Any] = None  # type: ignore[assignment]
+
+
+def repair_session_for_coding_dispatch(
+    *,
+    session_id: str,
+    load_session_fn,
+    update_session_fn,
+    now: Optional[datetime] = None,
+    reclassify_task_type: bool = True,
+) -> SessionRepairOutcome:
+    """Repair a session that already has an issue anchor but can't
+    advance to ``coding_execute``.
+
+    Live live-smoke scenario (canonical session ``11917bf1e75d``):
+
+      * ``session.task_type`` 가 ``qa-test`` 로 잘못 분류돼 있고
+      * ``session.extra['coding_proposal']`` 가 비어있고
+      * ``session.extra['github_work_order_issue']`` 가 issue 1 anchor 를
+        들고 있음
+
+      → executor 가 anchor 까지 만들었지만 continuation 이
+      ``CONTINUATION_NOOP_NO_PROPOSAL`` 로 멈춘 상태.
+
+    Repair steps:
+
+      1. *load_session_fn(session_id)* → session
+      2. anchor 가 없으면 ``REPAIR_OUTCOME_NO_ANCHOR`` 로 종료.
+      3. prompt 가 비어있으면 ``REPAIR_OUTCOME_NO_PROMPT`` 로 종료.
+      4. ``coding_proposal`` 가 없으면 :func:`recommend_authorization` 로
+         재구성. *reclassify_task_type* True 면 dispatcher.classify 로
+         task_type / executor_role 도 재정렬.
+      5. session 갱신 후 :func:`promote_session_to_coding_ready` 호출.
+         (anchor 가 이미 있으므로 같은 anchor 로 promote — idempotent.)
+
+    Caller (CLI / repair script) 가 load/update injection 으로 storage
+    선택. production 은 ``workflow_state.load_session`` + ``update_session``.
+    """
+
+    session = load_session_fn(session_id)
+    if session is None:
+        return SessionRepairOutcome(
+            outcome=REPAIR_OUTCOME_NO_SESSION,
+            detail={"session_id": session_id},
+        )
+
+    extra = dict(getattr(session, "extra", None) or {})
+    anchor = extra.get("github_work_order_issue")
+    if not isinstance(anchor, Mapping) or not _coerce_int(
+        anchor.get("issue_number")
+    ):
+        return SessionRepairOutcome(
+            outcome=REPAIR_OUTCOME_NO_ANCHOR,
+            detail={"session_id": session_id},
+        )
+
+    prompt = str(getattr(session, "prompt", "") or "").strip()
+    if not prompt:
+        return SessionRepairOutcome(
+            outcome=REPAIR_OUTCOME_NO_PROMPT,
+            detail={"session_id": session_id},
+        )
+
+    coding_proposal_rebuilt = False
+    task_type_reclassified = False
+
+    existing_proposal = extra.get(SESSION_EXTRA_CODING_PROPOSAL_KEY)
+    if not isinstance(existing_proposal, Mapping) or not existing_proposal:
+        try:
+            from ..coding.authorization import recommend_authorization
+        except Exception as exc:  # noqa: BLE001 - partial install
+            return SessionRepairOutcome(
+                outcome=REPAIR_OUTCOME_PROPOSAL_BUILD_FAILED,
+                detail={"reason": f"import_failed:{type(exc).__name__}"},
+            )
+        try:
+            proposal = recommend_authorization(
+                user_request=prompt, session_id=session_id
+            )
+        except Exception as exc:  # noqa: BLE001
+            return SessionRepairOutcome(
+                outcome=REPAIR_OUTCOME_PROPOSAL_BUILD_FAILED,
+                detail={"reason": str(exc)},
+            )
+        try:
+            from ...discord.engineering_channel_router.session_persistence import (
+                _proposal_to_dict,
+            )
+        except Exception:  # noqa: BLE001
+            _proposal_to_dict = None  # type: ignore[assignment]
+        if _proposal_to_dict is None:
+            return SessionRepairOutcome(
+                outcome=REPAIR_OUTCOME_PROPOSAL_BUILD_FAILED,
+                detail={"reason": "proposal_serializer_missing"},
+            )
+        extra[SESSION_EXTRA_CODING_PROPOSAL_KEY] = dict(
+            _proposal_to_dict(proposal)
+        )
+        coding_proposal_rebuilt = True
+
+    # Optional reclassification — pure (no side-effect 외에 task_type 갱신)
+    new_task_type: Optional[str] = None
+    new_executor_role: Optional[str] = None
+    if reclassify_task_type:
+        classified = None
+        try:
+            from ..messaging.dispatcher import (
+                DispatchRequest,
+                Dispatcher,
+                TASK_EXECUTOR_ROLE,
+            )
+            from ..messaging.registry import ParticipantsPool
+
+            dispatcher = Dispatcher(
+                ParticipantsPool(
+                    agent_id="engineering-agent", runners={}, warnings=()
+                )
+            )
+            request = DispatchRequest(
+                prompt=prompt, task_type=None, write_requested=True
+            )
+            classified = dispatcher.classify(request)
+        except Exception:  # noqa: BLE001 - reclassification is best-effort
+            classified = None
+        if classified is not None:
+            new_task_type = classified.value
+            new_executor_role = TASK_EXECUTOR_ROLE.get(classified)
+            current_task_type = getattr(session, "task_type", None)
+            if (
+                current_task_type != new_task_type
+                or getattr(session, "executor_role", None) != new_executor_role
+            ):
+                task_type_reclassified = True
+
+    # Apply updates to session: extra + (optionally) task_type / executor_role
+    try:
+        from dataclasses import replace as _replace
+    except Exception:  # noqa: BLE001
+        _replace = None  # type: ignore[assignment]
+
+    updated = session
+    fields_to_replace: dict = {"extra": extra}
+    if task_type_reclassified:
+        if new_task_type is not None:
+            fields_to_replace["task_type"] = new_task_type
+        if new_executor_role is not None:
+            fields_to_replace["executor_role"] = new_executor_role
+
+    # P0-Y session normalization — stale qa-engineer block reason 등 옛
+    # 분류의 흔적이 남아있으면 operator surface 가 헷갈린다. anchor +
+    # coding_proposal 까지 도달했다는 사실 자체가 "write 가 사실상 승인
+    # 된" 상태이므로 write_blocked_reason 도 비운다.
+    current_block_reason = (
+        str(getattr(session, "write_blocked_reason", "") or "")
+    )
+    stale_qa_marker = (
+        "qa-engineer" in current_block_reason
+        or "qa_engineer" in current_block_reason
+    )
+    needs_block_reason_clear = bool(current_block_reason) and (
+        stale_qa_marker
+        or task_type_reclassified  # 재분류됐으면 옛 reason 는 stale
+    )
+    if needs_block_reason_clear:
+        fields_to_replace["write_blocked_reason"] = None
+    if _replace is not None:
+        try:
+            updated = _replace(session, **fields_to_replace)
+        except TypeError:
+            # Non-dataclass stub — apply in-place
+            for key, value in fields_to_replace.items():
+                try:
+                    setattr(updated, key, value)
+                except Exception:  # noqa: BLE001
+                    pass
+    update_session_fn(updated, extra)
+
+    # 4. promote_session_to_coding_ready — anchor 가 이미 있으므로 같은
+    # anchor 로 promote (idempotent — 이미 ready 면 noop)
+    continuation = promote_session_to_coding_ready(
+        session_extra=extra,
+        anchor=anchor,
+        repo=str(anchor.get("repo") or "") or None,
+        base_branch=None,
+        dry_run=bool(anchor.get("dry_run", True)),
+        approval_id=anchor.get("approval_id"),
+        approved_by=anchor.get("approved_by"),
+        approved_at=anchor.get("approved_at"),
+        now=now,
+    )
+    if continuation.promoted and continuation.new_extra is not None:
+        # 두 번째 update — coding_job 까지 stamp. WorkflowSession 처럼
+        # frozen 인 경우 ``_replace`` 가 새 인스턴스를 만드는데, 그 과정
+        # 에서 위에서 in-place setattr 로 채운 task_type/executor_role 가
+        # dropped 되지 않도록 둘 다 다시 명시 전달.
+        new_extra_dict = dict(continuation.new_extra)
+        second_fields: dict = {"extra": new_extra_dict}
+        if task_type_reclassified:
+            if new_task_type is not None:
+                second_fields["task_type"] = new_task_type
+            if new_executor_role is not None:
+                second_fields["executor_role"] = new_executor_role
+        if needs_block_reason_clear:
+            second_fields["write_blocked_reason"] = None
+        updated_after = updated
+        if _replace is not None:
+            try:
+                updated_after = _replace(updated, **second_fields)
+            except TypeError:
+                for key, value in second_fields.items():
+                    try:
+                        setattr(updated, key, value)
+                    except Exception:  # noqa: BLE001
+                        pass
+                updated_after = updated
+        update_session_fn(updated_after, new_extra_dict)
+
+    return SessionRepairOutcome(
+        outcome=REPAIR_OUTCOME_REPAIRED,
+        coding_proposal_rebuilt=coding_proposal_rebuilt,
+        task_type_reclassified=task_type_reclassified,
+        promoted=bool(continuation.promoted),
+        continuation=continuation,
+        detail={
+            "session_id": session_id,
+            "anchor_issue_number": _coerce_int(anchor.get("issue_number")),
+            "new_task_type": new_task_type,
+            "new_executor_role": new_executor_role,
+            "continuation_noop_reason": continuation.noop_reason,
+        },
+    )
+
+
 __all__ = (
     "CONTINUATION_NOOP_ALREADY_READY",
     "CONTINUATION_NOOP_BUILD_FAILED",
@@ -335,12 +689,24 @@ __all__ = (
     "PROGRESS_CODING_BLOCKED",
     "PROGRESS_CODING_DISPATCH_QUEUED",
     "PROGRESS_CODING_IN_PROGRESS",
+    "PROGRESS_CODING_JOB_READY",
     "PROGRESS_DRAFT_PR_OPENED",
     "PROGRESS_ISSUE_CREATED",
+    "PROGRESS_PR_MERGE_BLOCKED",
+    "PROGRESS_PR_MERGE_PENDING",
+    "PROGRESS_PR_MERGED",
     "PROGRESS_TIMELINE",
+    "REPAIR_OUTCOME_ALREADY_READY",
+    "REPAIR_OUTCOME_NO_ANCHOR",
+    "REPAIR_OUTCOME_NO_PROMPT",
+    "REPAIR_OUTCOME_NO_SESSION",
+    "REPAIR_OUTCOME_PROPOSAL_BUILD_FAILED",
+    "REPAIR_OUTCOME_REPAIRED",
     "SESSION_EXTRA_CODING_JOB_KEY",
     "SESSION_EXTRA_CODING_PROPOSAL_KEY",
     "SESSION_EXTRA_PROGRESS_KEY",
+    "SessionRepairOutcome",
     "promote_session_to_coding_ready",
+    "repair_session_for_coding_dispatch",
     "stamp_progress_marker",
 )

@@ -50,6 +50,12 @@ from ..governance.runtime_policy import (
 from .heartbeat import HeartbeatStore
 from .state_machine import JobState
 from .store import Job, JobQueue
+from .pr_merge_continuation import (
+    EXTRA_PR_MERGE_AUDIT,
+    EXTRA_PR_MERGE_STAGE,
+    PostPRAction,
+    decide_post_pr_action,
+)
 from .work_order_coding_continuation import (
     PROGRESS_CODING_BLOCKED,
     PROGRESS_CODING_IN_PROGRESS,
@@ -83,6 +89,15 @@ REASON_EDIT_FAILED: str = "edit_failed"
 REASON_COMMIT_FAILED: str = "commit_failed"
 REASON_NOT_IMPLEMENTED: str = "executor_not_wired_yet"
 REASON_INVALID_REQUEST: str = "invalid_request"
+# P1-B — worktree / target repo specific failures (generic subprocess
+# exit 255 대신 operator 가 즉시 이해 가능한 token 으로 분기).
+REASON_TARGET_REPO_MISSING: str = "target_repo_checkout_missing"
+REASON_WORKTREE_FAILED: str = "worktree_provision_failed"
+# P1-G — repo 가 detectable stack 이 하나도 없어 ``test_failed`` 가
+# 의미 없음. record-only editor + greenfield 조합 이면 sub-reason 에
+# editor capability 정보까지 포함 (e.g.
+# ``bootstrap_required:empty_or_greenfield_repo+editor_record_only_insufficient``).
+REASON_BOOTSTRAP_REQUIRED: str = "bootstrap_required"
 
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
@@ -237,6 +252,7 @@ class WorktreeContext:
     pushed: bool = False
     pr_number: Optional[int] = None
     pr_url: str = ""
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 class WorktreeProvisioner(Protocol):
@@ -545,9 +561,161 @@ class CodingExecutorWorker:
                     audit_reason=REASON_DRY_RUN,
                 )
 
-            ctx = self._worktree.provision(request=request, branch=branch)
-            ctx = self._editor.apply(request=request, context=ctx)
+            # P1-B: separate worktree provisioning from editor so we can
+            # surface specific failure tokens (target_repo_checkout_missing
+            # / worktree_provision_failed) instead of generic edit_failed.
+            try:
+                ctx = self._worktree.provision(request=request, branch=branch)
+            except Exception as exc:  # noqa: BLE001 - mapped below
+                target_repo_unavail = (
+                    type(exc).__name__ == "TargetRepoUnavailableError"
+                )
+                worktree_specific = (
+                    type(exc).__name__ == "WorktreeProvisionError"
+                )
+                if target_repo_unavail:
+                    reason_token = REASON_TARGET_REPO_MISSING
+                    # P1-D: target checkout missing is *recoverable infra
+                    # state*, not a permanent business failure. operator
+                    # creates the checkout (or sets env mapping) → the
+                    # dedicated recovery hook revives the row on next
+                    # tick. attempts still bounded by max_attempts so a
+                    # tight retry burst stops naturally.
+                    terminal = False
+                elif worktree_specific:
+                    reason_token = (
+                        f"{REASON_WORKTREE_FAILED}:{getattr(exc, 'reason', 'unknown')}"
+                    )
+                    terminal = False
+                else:
+                    # fallthrough — keep old edit_failed behaviour via
+                    # the outer except, re-raise so the broad handler
+                    # below catches.
+                    raise
+                # P1-D: progress marker distinguishes "waiting on operator
+                # checkout / env" (recoverable) from "worktree subprocess
+                # failed" (different recovery path).
+                progress_marker = PROGRESS_CODING_BLOCKED
+                progress_detail = {
+                    "job_id": in_progress.job_id,
+                    "reason": reason_token,
+                    "branch": branch,
+                    "detail": _short(exc),
+                    "repo_full_name": request.repo_full_name,
+                }
+                if target_repo_unavail:
+                    progress_detail["status"] = "waiting_for_operator_checkout"
+                    progress_detail["searched_roots"] = list(
+                        getattr(exc, "searched_roots", ()) or ()
+                    )
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=progress_marker,
+                    detail=progress_detail,
+                )
+                return self._fail(
+                    in_progress,
+                    terminal=terminal,
+                    reason=f"{reason_token}: {_short(exc)}",
+                    branch=branch,
+                )
+            # P1-H — editor 가 greenfield bootstrap 경로를 가지고 있고
+            # capability gap (env opt-in 안 됨) 이거나 scaffold 자체가
+            # 실패하면 두 specialized exception 으로 surface. 둘 다
+            # ``REASON_BOOTSTRAP_REQUIRED`` 로 mapping 후 terminal 처리.
+            try:
+                ctx = self._editor.apply(request=request, context=ctx)
+            except Exception as exc:  # noqa: BLE001 - mapped below
+                exc_name = type(exc).__name__
+                if exc_name == "BootstrapLiveEditorUnavailable":
+                    sub_reason = (
+                        f"live_editor_unavailable:{getattr(exc, 'mode', 'unknown')}"
+                    )
+                    self._stamp_progress(
+                        session_id=request.session_id,
+                        marker=PROGRESS_CODING_BLOCKED,
+                        detail={
+                            "job_id": in_progress.job_id,
+                            "reason": REASON_BOOTSTRAP_REQUIRED,
+                            "sub_reason": sub_reason,
+                            "branch": branch,
+                            "code_editor": type(self._editor).__name__,
+                            "detail": _short(exc),
+                        },
+                    )
+                    return self._fail(
+                        in_progress,
+                        terminal=True,
+                        reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
+                        branch=branch,
+                    )
+                if exc_name == "BootstrapApplyFailed":
+                    # P1-J: BootstrapApplyFailed.sub_reason is one of
+                    # ``scaffold_apply_failed`` (disk/perm) or
+                    # ``scope_refused_bootstrap_files`` (write_scope
+                    # rejected every essential scaffold path).
+                    sub_token = getattr(exc, "sub_reason", "scaffold_apply_failed")
+                    sub_reason = (
+                        f"{sub_token}:{getattr(exc, 'mode', 'unknown')}"
+                    )
+                    self._stamp_progress(
+                        session_id=request.session_id,
+                        marker=PROGRESS_CODING_BLOCKED,
+                        detail={
+                            "job_id": in_progress.job_id,
+                            "reason": REASON_BOOTSTRAP_REQUIRED,
+                            "sub_reason": sub_reason,
+                            "branch": branch,
+                            "code_editor": type(self._editor).__name__,
+                            "detail": _short(exc),
+                        },
+                    )
+                    return self._fail(
+                        in_progress,
+                        terminal=True,
+                        reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
+                        branch=branch,
+                    )
+                raise
+
             ctx = self._tests.run(request=request, context=ctx)
+            # P1-G: test runner 가 bootstrap_required 로 short-circuit
+            # 한 경우 — repo 에 detectable stack 이 없음. record-only
+            # editor + greenfield 조합이면 sub-reason 에 capability
+            # 부족까지 명시. terminal=True 로 무한 retry churn 차단 (생산
+            # 차원의 fix: live editor / repo scaffolding 작업이 필요).
+            test_summary_mapping = (
+                ctx.test_summary if isinstance(ctx.test_summary, Mapping) else {}
+            )
+            if test_summary_mapping.get("status") == "bootstrap_required":
+                sub_reason = (
+                    test_summary_mapping.get("bootstrap_sub_reason") or "no_signals"
+                )
+                editor_class = type(self._editor).__name__
+                editor_audit = editor_class
+                if editor_class == "RecordOnlyCodeEditor":
+                    sub_reason = (
+                        f"{sub_reason}+editor_record_only_insufficient"
+                    )
+                self._stamp_progress(
+                    session_id=request.session_id,
+                    marker=PROGRESS_CODING_BLOCKED,
+                    detail={
+                        "job_id": in_progress.job_id,
+                        "reason": REASON_BOOTSTRAP_REQUIRED,
+                        "sub_reason": sub_reason,
+                        "branch": branch,
+                        "selection": test_summary_mapping.get("selection"),
+                        "code_editor": editor_audit,
+                    },
+                )
+                return self._fail(
+                    in_progress,
+                    terminal=True,
+                    reason=f"{REASON_BOOTSTRAP_REQUIRED}:{sub_reason}",
+                    branch=branch,
+                    test_summary=dict(test_summary_mapping),
+                )
             if not _tests_passed(ctx.test_summary):
                 self._stamp_progress(
                     session_id=request.session_id,
@@ -667,6 +835,20 @@ class CodingExecutorWorker:
                 "pr_url": ctx.pr_url,
             },
         )
+
+        # P1-L — work_mode 분기. autonomous_merge 면 background 머지 루프가
+        # pick 할 stage 를, approval_required 면 background producer 가
+        # approval card 를 올릴 stage 를 session.extra 에 stamp.
+        self._stamp_pr_merge_continuation(
+            session_id=request.session_id,
+            job_id=in_progress.job_id,
+            repo_full_name=request.repo_full_name,
+            pr_number=ctx.pr_number,
+            pr_url=ctx.pr_url,
+            head_sha=ctx.commit_sha,
+            base_branch=request.base_branch or "main",
+            dry_run=bool(request.dry_run),
+        )
         return self._success(
             in_progress,
             branch=ctx.branch,
@@ -771,6 +953,96 @@ class CodingExecutorWorker:
             _update(updated, now=datetime.now(tz=timezone.utc))
         except Exception:  # noqa: BLE001
             pass
+
+    def _stamp_pr_merge_continuation(
+        self,
+        *,
+        session_id: str,
+        job_id: str,
+        repo_full_name: Optional[str],
+        pr_number: Optional[int],
+        pr_url: Optional[str],
+        head_sha: Optional[str],
+        base_branch: str,
+        dry_run: bool,
+    ) -> None:
+        """P1-L — draft PR 직후 work_mode 분기 stage 를 session.extra 에 stamp.
+
+        세션이 없거나 PR 메타가 부족하면 silent skip (caller flow 영향 X).
+        autonomous_merge 분기는 background 머지 루프가 pick, approval_required
+        분기는 background producer 가 approval card 를 올릴 신호.
+        """
+
+        if not session_id or dry_run:
+            return
+        try:
+            from ..workflow_state import load_session as _load
+            from ..workflow_state import update_session as _update
+            from dataclasses import replace as _replace
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            session = _load(session_id)
+        except Exception:  # noqa: BLE001
+            return
+        if session is None:
+            return
+
+        existing_extra = getattr(session, "extra", None) or {}
+        if not isinstance(existing_extra, Mapping):
+            existing_extra = {}
+
+        decision = decide_post_pr_action(
+            session_id=session_id,
+            session_extra=existing_extra,
+            repo_full_name=repo_full_name,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            head_sha=head_sha,
+            base_branch=base_branch,
+            dry_run=dry_run,
+        )
+        if decision.action == PostPRAction.SKIP:
+            return
+
+        merged_extra = dict(existing_extra)
+        for key, value in decision.extra_updates.items():
+            merged_extra[key] = value
+        audit_entry = {
+            "stage": merged_extra.get(EXTRA_PR_MERGE_STAGE),
+            "action": decision.action.value,
+            "reason": decision.reason,
+            "job_id": job_id,
+            "pr_number": pr_number,
+            "pr_url": pr_url,
+            "head_sha": head_sha,
+            "at": datetime.now(tz=timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%S+00:00"
+            ),
+        }
+        existing_audit = list(merged_extra.get(EXTRA_PR_MERGE_AUDIT) or ())
+        existing_audit.append(audit_entry)
+        merged_extra[EXTRA_PR_MERGE_AUDIT] = existing_audit
+
+        try:
+            updated = _replace(session, extra=merged_extra)
+            _update(updated, now=datetime.now(tz=timezone.utc))
+        except Exception:  # noqa: BLE001
+            return
+
+        # Operator-visible 줄. progress marker 도 한 줄 같이 찍어서 #봇-상태
+        # 가 stage 변화를 timeline 위에서 본다.
+        self._stamp_progress(
+            session_id=session_id,
+            marker="pr_merge_pending",
+            detail={
+                "job_id": job_id,
+                "pr_number": pr_number,
+                "pr_url": pr_url,
+                "work_mode_action": decision.action.value,
+                "reason": decision.reason,
+            },
+        )
 
     def _fail(
         self,
@@ -879,8 +1151,11 @@ __all__ = (
     "REASON_NOT_IMPLEMENTED",
     "REASON_PR_FAILED",
     "REASON_PROTECTED_BRANCH",
+    "REASON_BOOTSTRAP_REQUIRED",
     "REASON_PUSH_FAILED",
+    "REASON_TARGET_REPO_MISSING",
     "REASON_TEST_FAILED",
+    "REASON_WORKTREE_FAILED",
     "SERVICE_ID_CODING_EXECUTOR",
     "TestRunner",
     "WorktreeContext",

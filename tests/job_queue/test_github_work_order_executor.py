@@ -319,7 +319,14 @@ class FailureBranchTests(_Fixture):
             self.sessions.sessions["sess-no-repo"].extra,
         )
 
-    def test_missing_plan_and_no_existing_fails(self) -> None:
+    def test_missing_plan_and_no_existing_self_heals_when_repo_present(self) -> None:
+        """P0-V — repo 가 있으면 executor 가 plan 을 즉석에서 재구성해 성공.
+
+        이전 동작은 즉시 SKIPPED_MISSING_PLAN failed_retryable 였지만,
+        producer 가 plan 을 빠뜨려도 (옛 row 든 race 든) executor 가
+        live smoke 를 멈추게 두지 말아야 한다.
+        """
+
         self.sessions.add("sess-no-plan")
         wo = GitHubWorkOrder(
             proposal_id="p5",
@@ -327,14 +334,47 @@ class FailureBranchTests(_Fixture):
             approval_id="a5",
             approved_by="m",
             approved_at="2026-05-15T10:00:00+00:00",
-            request_summary="x",
+            request_summary="네이버 검색 풀스택 MVP 구현해줘",
             repo="yule-studio/naver-search-clone",
-            # 둘 다 비어있음
+            # plan 도 existing_issue 도 비어있음 — self-heal 발동.
+        )
+        self._enqueue(wo)
+        outcome = self.worker.run_one()
+        assert outcome is not None
+        self.assertIsNone(
+            outcome.skipped_reason,
+            "self-heal 으로 plan 을 재구성했어야 함",
+        )
+        # writer 가 호출돼 fake issue 가 생성됨
+        self.assertGreaterEqual(len(self.writer.calls), 1)
+        _, call_kwargs = self.writer.calls[-1]
+        self.assertEqual(call_kwargs["repo"], "yule-studio/naver-search-clone")
+        self.assertTrue(call_kwargs["title"])
+        self.assertTrue(call_kwargs["body"])
+
+    def test_missing_plan_and_no_repo_still_fails_loudly(self) -> None:
+        """P0-V defensive — repo 도 비어있으면 self-heal 도 불가능 → 그대로 fail."""
+
+        self.sessions.add("sess-no-plan-no-repo")
+        wo = GitHubWorkOrder(
+            proposal_id="p5b",
+            session_id="sess-no-plan-no-repo",
+            approval_id="a5b",
+            approved_by="m",
+            approved_at="2026-05-15T10:00:00+00:00",
+            request_summary="x",
+            repo=None,
+            # plan 도 existing_issue 도 비어있음 + repo 없음 → SKIPPED_NO_REPO
+            # branch 가 먼저 잡음
         )
         job = self._enqueue(wo)
         outcome = self.worker.run_one()
         assert outcome is not None
-        self.assertEqual(outcome.skipped_reason, SKIPPED_MISSING_PLAN)
+        # repo 가 없으면 NO_REPO 가 먼저 가드 (executor 책임 순서) — 그래도
+        # 실패 한 단계 통과시 둘 다 결국 failed_retryable 로 떨어진다.
+        self.assertIn(
+            outcome.skipped_reason, (SKIPPED_MISSING_PLAN, "github_work_order_no_repo")
+        )
         refreshed = self.queue.get(job.job_id)
         self.assertEqual(refreshed.state, JobState.FAILED_RETRYABLE)
 

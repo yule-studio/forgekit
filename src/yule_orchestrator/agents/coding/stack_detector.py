@@ -122,6 +122,38 @@ _LEXICON: Tuple[StackEntry, ...] = (
     StackEntry("Auth0", TIER_AUTH, ("auth0",)),
     StackEntry("Clerk", TIER_AUTH, ("clerk",)),
     StackEntry("NextAuth", TIER_AUTH, ("nextauth", "next-auth")),
+    # --- Korean tier hints (P0-W) -----------------------------------------
+    # 한국어로만 작성된 prompt 도 full-stack 으로 분류될 수 있게 한국어
+    # tier hint 를 추가한다. 카테고리 단어 (`프론트`, `백엔드`) 는 특정
+    # 도구가 아니라 tier 자체를 가리키므로 canonical 은 "한국어 tier"
+    # 라벨로 둠. ``is_full_stack`` 은 tier 단위로 계산하므로 동일 효과.
+    StackEntry("한국어 프론트", TIER_FRONTEND, ("프론트엔드", "프론트")),
+    StackEntry("한국어 백엔드", TIER_BACKEND, ("백엔드", "백앤드")),
+    StackEntry(
+        "한국어 데이터베이스",
+        TIER_DATABASE,
+        ("데이터베이스", "디비 ", " 디비", "디비를", "디비에"),
+    ),
+    StackEntry("한국어 도커", TIER_INFRA, ("도커",)),
+    StackEntry("한국어 쿠버네티스", TIER_INFRA, ("쿠버네티스",)),
+    StackEntry(
+        "한국어 인증",
+        TIER_AUTH,
+        ("회원가입", "로그인", "소셜 로그인", "인증/인가", "auth/인증"),
+    ),
+)
+
+
+# 명시적 한국어 full-stack 키워드 — 단독으로 등장해도 ``is_full_stack``
+# True 가 되도록 ``detect_stacks`` 결과의 explicit 신호로 반영한다.
+# tier 한 종만 매칭되더라도 본 키워드가 같이 있으면 full-stack 으로
+# 분류해야 mvp / 풀스택 / single repo 요청이 qa-test 로 흘러내리지 않는다.
+_EXPLICIT_FULL_STACK_HINTS: Tuple[str, ...] = (
+    "풀스택",
+    "fullstack",
+    "full stack",
+    "full-stack",
+    "mvp 풀스택",
 )
 
 
@@ -134,11 +166,16 @@ class StackDetection:
     ``mentioned_aliases`` is the raw alias substring that matched —
     useful for surfacing back to the user ("Next.js detected via
     'next.js'") or seeding queries.
+    ``explicit_full_stack_hint`` is True when the prompt 자체에 "풀스택"
+    / "fullstack" 같이 application 전체를 함께 만든다는 의도가 명시되어
+    있을 때. tier 가 한 종만 잡혀도 본 hint 와 함께면 full-stack 으로
+    분류 (qa-test 같은 약한 fallback 으로 떨어지지 않게).
     """
 
     stacks: Tuple[str, ...]
     tiers_present: Tuple[str, ...]
     mentioned_aliases: Mapping[str, str]  # canonical → alias-as-matched
+    explicit_full_stack_hint: bool = False
 
     @property
     def has_any(self) -> bool:
@@ -146,8 +183,12 @@ class StackDetection:
 
     @property
     def is_full_stack(self) -> bool:
-        """≥2 distinct tiers among (frontend / backend / database / cache / queue / auth)
-        — i.e. genuine *application* stack, not pure infra.
+        """``True`` if 둘 중 하나라도 만족:
+
+          1. 2 이상의 application tier 가 동시 등장 (기존 동작), OR
+          2. 명시적 풀스택 hint (`풀스택` / `fullstack` 등) 가 있고 app
+             tier 가 최소 1 개 존재 — 한국어 prompt 가 tier 토큰을 하나만
+             담아도 의도가 분명하면 full-stack 으로 분류한다.
         """
 
         app_tiers = {
@@ -158,7 +199,12 @@ class StackDetection:
             TIER_QUEUE,
             TIER_AUTH,
         }
-        return len(set(self.tiers_present) & app_tiers) >= 2
+        present_app_tiers = set(self.tiers_present) & app_tiers
+        if len(present_app_tiers) >= 2:
+            return True
+        if self.explicit_full_stack_hint and len(present_app_tiers) >= 1:
+            return True
+        return False
 
     @property
     def is_infra_only(self) -> bool:
@@ -186,7 +232,7 @@ def detect_stacks(text: str) -> StackDetection:
     """
 
     if not text:
-        return StackDetection((), (), {})
+        return StackDetection((), (), {}, False)
     lowered = text.lower()
     found: list[Tuple[str, str, str]] = []  # (canonical, tier, matched alias)
     seen_canonical: set = set()
@@ -201,7 +247,15 @@ def detect_stacks(text: str) -> StackDetection:
     stacks = tuple(name for name, _, _ in found)
     tiers = tuple(_unique_preserve(tier for _, tier, _ in found))
     mentioned = {name: alias for name, _, alias in found}
-    return StackDetection(stacks=stacks, tiers_present=tiers, mentioned_aliases=mentioned)
+    explicit_full_stack = any(
+        hint.lower() in lowered for hint in _EXPLICIT_FULL_STACK_HINTS
+    )
+    return StackDetection(
+        stacks=stacks,
+        tiers_present=tiers,
+        mentioned_aliases=mentioned,
+        explicit_full_stack_hint=explicit_full_stack,
+    )
 
 
 def classify_full_stack(text: str) -> bool:

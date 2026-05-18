@@ -513,6 +513,7 @@ def _maybe_enqueue_obsidian(
     if not entry.session_id:
         return None, "missing_session_id"
     try:
+        rendered = render_progress_markdown(entry)
         request = ObsidianWriteRequest(
             session_id=entry.session_id,
             note_kind=TASK_LOG_NOTE_KIND,
@@ -526,7 +527,13 @@ def _maybe_enqueue_obsidian(
                 "completion_status": entry.completion_status,
                 "executor_role": entry.executor_role,
                 "reason": entry.reason,
-                "rendered_markdown": render_progress_markdown(entry),
+                # P1-B: ``body`` is the canonical key consumed by
+                # ``render_simple_body_note`` (the default renderer for
+                # task-log / postmortem / blog-draft kinds). Keep
+                # ``rendered_markdown`` for backwards compatibility with
+                # any consumer that already read it.
+                "body": rendered,
+                "rendered_markdown": rendered,
             },
         )
     except Exception:  # noqa: BLE001
