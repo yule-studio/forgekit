@@ -61,6 +61,25 @@ EXTRA_SCOPE = "scope"
 EXTRA_DECIDED_AT = "mode_decided_at"
 EXTRA_DECIDED_BY = "mode_decided_by"
 
+# P1-R — intake governance contract 확장.  사용자 명시 5 새 키.  운영자가
+# 한눈에 "이 세션은 어떤 거버넌스 모드인지" 보고 라우터 / executor /
+# merge continuation 도 분기 시 동일 contract 를 본다.
+BRANCH_STRATEGY_GIT_FLOW = "git_flow"
+BRANCH_STRATEGY_VALUES = (BRANCH_STRATEGY_GIT_FLOW,)
+BRANCH_STRATEGY_DEFAULT = BRANCH_STRATEGY_GIT_FLOW
+
+RELEASE_STRATEGY_TAGGED = "tagged_release"
+RELEASE_STRATEGY_VALUES = (RELEASE_STRATEGY_TAGGED,)
+RELEASE_STRATEGY_DEFAULT = RELEASE_STRATEGY_TAGGED
+
+ISSUE_POLICY_REQUIRED = "issue_required"
+ISSUE_POLICY_VALUES = (ISSUE_POLICY_REQUIRED,)
+ISSUE_POLICY_DEFAULT = ISSUE_POLICY_REQUIRED
+
+EXTRA_BRANCH_STRATEGY = "branch_strategy"
+EXTRA_RELEASE_STRATEGY = "release_strategy"
+EXTRA_ISSUE_POLICY = "issue_policy"
+
 
 @dataclass(frozen=True)
 class SessionMode:
@@ -326,10 +345,34 @@ def parse_mode_hints(text: str) -> Mapping[str, Optional[str]]:
     value ``None`` when not detected. Never raises.
     """
 
-    out: dict = {"work_mode": None, "topology": None, "scope": None}
+    out: dict = {
+        "work_mode": None,
+        "topology": None,
+        "scope": None,
+        # P1-R — intake governance contract 확장.  prompt 토큰으로 명시
+        # 가능; 명시 없으면 default (git_flow / tagged_release / issue_required).
+        "branch_strategy": None,
+        "release_strategy": None,
+        "issue_policy": None,
+    }
     if not text:
         return out
     lowered = text.lower()
+
+    # branch_strategy / release_strategy / issue_policy
+    if any(
+        token in lowered for token in ("git_flow", "git-flow", "git flow")
+    ):
+        out["branch_strategy"] = BRANCH_STRATEGY_GIT_FLOW
+    if any(
+        token in lowered
+        for token in ("tagged_release", "tagged release", "tag release")
+    ):
+        out["release_strategy"] = RELEASE_STRATEGY_TAGGED
+    if any(
+        token in lowered for token in ("issue_required", "issue required")
+    ):
+        out["issue_policy"] = ISSUE_POLICY_REQUIRED
 
     # work_mode
     if any(
@@ -395,6 +438,39 @@ def _persist(
     extra[EXTRA_SCOPE] = scope
     extra[EXTRA_DECIDED_BY] = decided_by
     extra[EXTRA_DECIDED_AT] = _now_iso(now)
+    # P1-R — intake governance contract 확장.  branch_strategy /
+    # release_strategy / issue_policy 도 같이 영속 — 모두 default 값.
+    # 명시적 override 는 ensure_session_mode_governance 헬퍼 또는 직접
+    # caller 가 prompt 파싱 후 setdefault 로 가능.
+    extra.setdefault(EXTRA_BRANCH_STRATEGY, BRANCH_STRATEGY_DEFAULT)
+    extra.setdefault(EXTRA_RELEASE_STRATEGY, RELEASE_STRATEGY_DEFAULT)
+    extra.setdefault(EXTRA_ISSUE_POLICY, ISSUE_POLICY_DEFAULT)
+
+
+def apply_governance_hints(
+    extra: dict,
+    *,
+    branch_strategy: Optional[str] = None,
+    release_strategy: Optional[str] = None,
+    issue_policy: Optional[str] = None,
+) -> None:
+    """P1-R — prompt 파싱 결과 (또는 explicit override) 를 extra 에 머지.
+
+    값이 None 또는 알 수 없는 값이면 default 보존.  명시 hint 만 영속.
+    """
+
+    if branch_strategy and branch_strategy in BRANCH_STRATEGY_VALUES:
+        extra[EXTRA_BRANCH_STRATEGY] = branch_strategy
+    elif EXTRA_BRANCH_STRATEGY not in extra:
+        extra[EXTRA_BRANCH_STRATEGY] = BRANCH_STRATEGY_DEFAULT
+    if release_strategy and release_strategy in RELEASE_STRATEGY_VALUES:
+        extra[EXTRA_RELEASE_STRATEGY] = release_strategy
+    elif EXTRA_RELEASE_STRATEGY not in extra:
+        extra[EXTRA_RELEASE_STRATEGY] = RELEASE_STRATEGY_DEFAULT
+    if issue_policy and issue_policy in ISSUE_POLICY_VALUES:
+        extra[EXTRA_ISSUE_POLICY] = issue_policy
+    elif EXTRA_ISSUE_POLICY not in extra:
+        extra[EXTRA_ISSUE_POLICY] = ISSUE_POLICY_DEFAULT
 
 
 def _now_iso(now: Optional[datetime]) -> str:
@@ -410,10 +486,23 @@ def _str_or_none(value: Any) -> Optional[str]:
 
 
 __all__ = (
+    "BRANCH_STRATEGY_DEFAULT",
+    "BRANCH_STRATEGY_GIT_FLOW",
+    "BRANCH_STRATEGY_VALUES",
     "DECIDED_BY_INFERRED",
     "DECIDED_BY_USER",
+    "EXTRA_BRANCH_STRATEGY",
     "EXTRA_DECIDED_AT",
     "EXTRA_DECIDED_BY",
+    "EXTRA_ISSUE_POLICY",
+    "EXTRA_RELEASE_STRATEGY",
+    "ISSUE_POLICY_DEFAULT",
+    "ISSUE_POLICY_REQUIRED",
+    "ISSUE_POLICY_VALUES",
+    "RELEASE_STRATEGY_DEFAULT",
+    "RELEASE_STRATEGY_TAGGED",
+    "RELEASE_STRATEGY_VALUES",
+    "apply_governance_hints",
     "EXTRA_SCOPE",
     "EXTRA_TOPOLOGY",
     "EXTRA_WORK_MODE",

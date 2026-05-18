@@ -590,30 +590,304 @@ def enforce_issue_anchor(ctx: IssueAnchorContext) -> None:
     _raise(validate_issue_anchor(ctx))
 
 
+# ---------------------------------------------------------------------------
+# P1-R — Git Flow branch validator + tag policy + approval card quality
+# ---------------------------------------------------------------------------
+
+REASON_INVALID_GIT_FLOW_BRANCH: str = "invalid_git_flow_branch"
+REASON_MISSING_RELEASE_TAG: str = "missing_release_tag"
+REASON_INVALID_RELEASE_TAG: str = "invalid_release_tag"
+REASON_APPROVAL_CARD_MISSING_SECTIONS: str = "approval_card_missing_sections"
+REASON_PROTECTED_BRANCH_DIRECT_WORK: str = "protected_branch_direct_work"
+
+# Git Flow whitelist — release / hotfix 는 issue-N anchor 면제 (release
+# branch 는 보통 여러 issue 묶음, hotfix 는 긴급 dispatch).
+GIT_FLOW_BRANCH_PREFIXES: tuple = (
+    "feature/",
+    "bugfix/",
+    "fix/",
+    "hotfix/",
+    "release/",
+    "refactor/",
+    "chore/",
+    "docs/",
+    "test/",
+    "agent/",  # engineering-agent 가 만드는 branch
+)
+
+# protected — direct 작업 절대 금지.  worktree 생성 자체를 거부.
+PROTECTED_BRANCHES: frozenset = frozenset(
+    {"main", "master", "develop", "dev", "prod", "production", "release"}
+)
+
+# release / hotfix 가 머지될 때 tag 요구.
+_RELEASE_TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:[-+][\w.\-+]+)?$")
+_BRANCH_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._\-]*$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class GitFlowBranchContext:
+    branch: str
+    issue_number_hint: Optional[int] = None
+
+
+def validate_git_flow_branch(ctx: GitFlowBranchContext) -> PolicyResult:
+    """branch 이름이 Git Flow 규칙을 따르는지.
+
+    1. protected branch (main/master/develop/...) 직접 작업 금지.
+    2. 허용 prefix (feature/bugfix/hotfix/release/refactor/chore/...) 중 하나.
+    3. feature/bugfix/fix/refactor 는 issue-N anchor 가 필요 (issue-first 와 정합).
+    4. release/hotfix 는 issue anchor 면제 (그러나 release/hotfix 의 tag 요구는
+       별 validator 가 강제).
+    5. slug 부분이 kebab-case / lowercase 알파넘 + `_-.` 만.
+    """
+
+    branch = (ctx.branch or "").strip()
+    if not branch:
+        return PolicyResult(
+            ok=False,
+            reason=REASON_INVALID_GIT_FLOW_BRANCH,
+            detail="branch name is empty",
+        )
+
+    if branch.lower() in PROTECTED_BRANCHES or branch.lower().startswith(
+        ("release/", "hotfix/")
+    ) is False and branch.lower() in PROTECTED_BRANCHES:
+        return PolicyResult(
+            ok=False,
+            reason=REASON_PROTECTED_BRANCH_DIRECT_WORK,
+            detail=(
+                f"branch {branch!r} is a protected branch — work must happen on "
+                f"a feature/bugfix/hotfix branch, never directly on protected"
+            ),
+            fields={"branch": branch},
+        )
+
+    if not any(
+        branch.startswith(prefix) for prefix in GIT_FLOW_BRANCH_PREFIXES
+    ):
+        return PolicyResult(
+            ok=False,
+            reason=REASON_INVALID_GIT_FLOW_BRANCH,
+            detail=(
+                f"branch {branch!r} must start with one of {list(GIT_FLOW_BRANCH_PREFIXES)} "
+                f"(Git Flow / repo branching policy)"
+            ),
+            fields={"branch": branch, "allowed_prefixes": list(GIT_FLOW_BRANCH_PREFIXES)},
+        )
+
+    suffix = branch.split("/", 1)[1] if "/" in branch else ""
+    if not suffix:
+        return PolicyResult(
+            ok=False,
+            reason=REASON_INVALID_GIT_FLOW_BRANCH,
+            detail=f"branch {branch!r} missing slug after prefix",
+            fields={"branch": branch},
+        )
+
+    # release/hotfix 는 issue anchor 면제 — version slug 만 검증
+    if branch.startswith("release/") or branch.startswith("hotfix/"):
+        if not _BRANCH_SLUG_RE.match(suffix.replace("/", "-")):
+            return PolicyResult(
+                ok=False,
+                reason=REASON_INVALID_GIT_FLOW_BRANCH,
+                detail=(
+                    f"release/hotfix slug {suffix!r} must be kebab/version-like "
+                    f"(allowed chars: [A-Za-z0-9._-])"
+                ),
+                fields={"branch": branch},
+            )
+        return PolicyResult(
+            ok=True,
+            fields={"branch": branch, "kind": branch.split("/", 1)[0]},
+        )
+
+    # feature/bugfix/fix/refactor → issue anchor 필수
+    anchor_required_prefixes = ("feature/", "bugfix/", "fix/", "refactor/", "agent/")
+    if any(branch.startswith(p) for p in anchor_required_prefixes):
+        if not (
+            _BRANCH_ISSUE_RE.search(branch)
+            or (ctx.issue_number_hint and ctx.issue_number_hint > 0)
+        ):
+            return PolicyResult(
+                ok=False,
+                reason=REASON_ISSUE_REQUIRED_FOR_REPO_WORK,
+                detail=(
+                    f"branch {branch!r} requires `issue-<n>` anchor OR explicit "
+                    f"issue_number_hint (issue-first hard guard)"
+                ),
+                fields={"branch": branch},
+            )
+
+    return PolicyResult(
+        ok=True,
+        fields={"branch": branch, "kind": branch.split("/", 1)[0]},
+    )
+
+
+def enforce_git_flow_branch(ctx: GitFlowBranchContext) -> None:
+    _raise(validate_git_flow_branch(ctx))
+
+
+@dataclass(frozen=True)
+class ReleaseTagContext:
+    """release/hotfix branch 의 머지/배포 마감 시 tag 검증."""
+
+    branch: str
+    tag: Optional[str] = None  # None 이면 missing
+
+
+def validate_release_tag(ctx: ReleaseTagContext) -> PolicyResult:
+    """release/hotfix branch 면 tag (vX.Y.Z) 필수.  그 외 branch 는 no-op."""
+
+    branch = (ctx.branch or "").strip()
+    if not (
+        branch.startswith("release/") or branch.startswith("hotfix/")
+    ):
+        return PolicyResult(ok=True, fields={"applies": False})
+
+    if not ctx.tag:
+        return PolicyResult(
+            ok=False,
+            reason=REASON_MISSING_RELEASE_TAG,
+            detail=(
+                f"release/hotfix branch {branch!r} 완료에 tag 가 필수 — vX.Y.Z "
+                f"(또는 그 변형) 을 명시한 뒤 완료 처리해야 합니다"
+            ),
+            fields={"branch": branch},
+        )
+    if not _RELEASE_TAG_RE.match(ctx.tag):
+        return PolicyResult(
+            ok=False,
+            reason=REASON_INVALID_RELEASE_TAG,
+            detail=(
+                f"tag {ctx.tag!r} 는 ``vMAJOR.MINOR.PATCH`` (선택 ``-suffix``) "
+                f"형식이어야 합니다 (semver)"
+            ),
+            fields={"branch": branch, "tag": ctx.tag},
+        )
+    return PolicyResult(ok=True, fields={"branch": branch, "tag": ctx.tag})
+
+
+def enforce_release_tag(ctx: ReleaseTagContext) -> None:
+    _raise(validate_release_tag(ctx))
+
+
+# ---------------------------------------------------------------------------
+# Approval card quality — Korean 4 sections
+# ---------------------------------------------------------------------------
+
+
+_APPROVAL_CARD_REQUIRED_SECTIONS: tuple = (
+    "작업 내용",
+    "목적",
+    "영향 범위",
+    "다음 단계",
+)
+
+
+@dataclass(frozen=True)
+class ApprovalCardQualityContext:
+    """approval card body text — `#승인-대기` 카드의 summary 본문."""
+
+    body: str
+    approval_kind: Optional[str] = None
+    work_mode: Optional[str] = None  # autonomous_merge 등 분기용
+
+
+def validate_approval_card_quality(
+    ctx: ApprovalCardQualityContext,
+) -> PolicyResult:
+    """approval_required 모드 카드는 4 섹션 한국어 요약 필수.
+
+    autonomous_merge 모드는 본 enforcement 적용 X — autonomous 는 사람
+    승인 카드를 최소로 쓰는 모드 (operator_action 카드만).
+    """
+
+    if (ctx.work_mode or "").strip() == "autonomous_merge":
+        return PolicyResult(ok=True, fields={"applies": False})
+
+    body = ctx.body or ""
+    if not body.strip():
+        return PolicyResult(
+            ok=False,
+            reason=REASON_APPROVAL_CARD_MISSING_SECTIONS,
+            detail="approval card body is empty",
+        )
+
+    missing: List[str] = []
+    for section in _APPROVAL_CARD_REQUIRED_SECTIONS:
+        if section not in body:
+            missing.append(section)
+    if missing:
+        return PolicyResult(
+            ok=False,
+            reason=REASON_APPROVAL_CARD_MISSING_SECTIONS,
+            detail=(
+                "approval card body 가 한국어 요약 4 섹션 ("
+                + " / ".join(_APPROVAL_CARD_REQUIRED_SECTIONS)
+                + ") 중 일부 누락: "
+                + ", ".join(missing)
+                + ".  vague / machine-like 본문 금지 — operator 가 한눈에 이해 가능한 한국어 요약 강제."
+            ),
+            fields={"missing_sections": missing},
+        )
+    if not _KOREAN_RE.search(body):
+        return PolicyResult(
+            ok=False,
+            reason=REASON_APPROVAL_CARD_MISSING_SECTIONS,
+            detail=(
+                "approval card body 에 한국어가 전혀 없음 — 4 섹션 + Korean 요약 강제"
+            ),
+            fields={"missing_korean": True},
+        )
+    return PolicyResult(ok=True, fields={"sections_ok": True})
+
+
+def enforce_approval_card_quality(ctx: ApprovalCardQualityContext) -> None:
+    _raise(validate_approval_card_quality(ctx))
+
+
 __all__ = (
     "ALLOWED_GITMOJI",
+    "ApprovalCardQualityContext",
+    "GIT_FLOW_BRANCH_PREFIXES",
+    "GitFlowBranchContext",
     "INITIAL_COMMIT_TITLE_EXACT",
     "InitialCommitDecision",
     "IssueAnchorContext",
+    "PROTECTED_BRANCHES",
     "PolicyResult",
     "PolicyViolation",
+    "REASON_APPROVAL_CARD_MISSING_SECTIONS",
     "REASON_INITIAL_COMMIT_DETECTION_AMBIGUOUS",
     "REASON_INVALID_COMMIT_BODY_SECTIONS",
     "REASON_INVALID_COMMIT_GITMOJI",
+    "REASON_INVALID_GIT_FLOW_BRANCH",
     "REASON_INVALID_INITIAL_COMMIT_TITLE",
     "REASON_INVALID_ISSUE_TITLE",
     "REASON_INVALID_PR_TITLE",
+    "REASON_INVALID_RELEASE_TAG",
     "REASON_ISSUE_REQUIRED_FOR_REPO_WORK",
+    "REASON_MISSING_RELEASE_TAG",
+    "REASON_PROTECTED_BRANCH_DIRECT_WORK",
     "REASON_TADA_OUTSIDE_INITIAL_COMMIT",
     "REQUIRED_SECTIONS",
+    "ReleaseTagContext",
+    "enforce_approval_card_quality",
     "enforce_commit_message",
+    "enforce_git_flow_branch",
     "enforce_issue_anchor",
     "enforce_issue_title",
     "enforce_pr_title",
+    "enforce_release_tag",
     "is_initial_commit_context",
+    "validate_approval_card_quality",
     "validate_commit_message",
+    "validate_git_flow_branch",
     "validate_initial_commit_decision",
     "validate_issue_anchor",
     "validate_issue_title",
     "validate_pr_title",
+    "validate_release_tag",
 )

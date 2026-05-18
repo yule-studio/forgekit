@@ -122,6 +122,19 @@ def prepare_coding_session_context(
     )
     mode = decision.mode
 
+    # P1-R — intake governance contract 확장.  prompt 에 명시된 또는
+    # default 값으로 branch_strategy / release_strategy / issue_policy 도
+    # 영속.  ensure_session_mode 가 첫 _persist 에서 default 를 setdefault
+    # 했지만, prompt 에 explicit 값이 있으면 그것으로 덮어쓴다.
+    from ..lifecycle.session_mode import apply_governance_hints
+
+    apply_governance_hints(
+        extra_in,
+        branch_strategy=hints.get("branch_strategy"),
+        release_strategy=hints.get("release_strategy"),
+        issue_policy=hints.get("issue_policy"),
+    )
+
     mode_question = build_mode_question_text(decision) if decision.needs_question else None
 
     # 4. Coding handoff packet (always built; cheap).
@@ -147,6 +160,10 @@ def prepare_coding_session_context(
             "scope",
             "mode_decided_at",
             "mode_decided_by",
+            # P1-R — intake governance contract 확장
+            "branch_strategy",
+            "release_strategy",
+            "issue_policy",
         ):
             if key in extra_in:
                 extras_update[key] = extra_in[key]
