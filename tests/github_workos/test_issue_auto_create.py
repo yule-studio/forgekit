@@ -51,7 +51,7 @@ _REAL_FEATURE_TEMPLATE = (
     "---\n"
     'name: "[Feature] Issue Template"\n'
     'about: 모든 라벨 관리 이슈 템플릿\n'
-    'title: "[Feat]"\n'
+    'title: "[기능]"\n'
     'labels: "✨ Feature, 📃 Docs"\n'
     "assignees: ''\n"
     "---\n"
@@ -91,7 +91,7 @@ class TemplateParsingTests(unittest.TestCase):
             text=_REAL_FEATURE_TEMPLATE,
         )
         self.assertEqual(tpl.name, "[Feature] Issue Template")
-        self.assertEqual(tpl.title_prefix, "[Feat]")
+        self.assertEqual(tpl.title_prefix, "[기능]")
         self.assertEqual(tpl.labels, ("✨ Feature", "📃 Docs"))
         self.assertEqual(tpl.assignees, ())
         self.assertIn("어떤 기능인가요?", tpl.body)
@@ -167,7 +167,7 @@ class FillTemplateTests(unittest.TestCase):
             request_summary="회원가입/로그인 구현",
             session_id="sess-1",
         )
-        self.assertTrue(plan.title.startswith("[Feat]"))
+        self.assertTrue(plan.title.startswith("[기능]"))
         self.assertIn("회원가입/로그인 구현", plan.title)
         # quote 삽입 위치 검증
         self.assertIn("> 회원가입/로그인 구현", plan.body)

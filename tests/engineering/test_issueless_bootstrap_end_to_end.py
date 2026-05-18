@@ -62,7 +62,7 @@ from yule_orchestrator.discord.integrations.github_workos_adapter import (
 _FEATURE_TEMPLATE = (
     "---\n"
     'name: "[Feature] Issue Template"\n'
-    'title: "[Feat]"\n'
+    'title: "[기능]"\n'
     'labels: "✨ Feature, 📃 Docs"\n'
     "---\n"
     "\n"
@@ -214,7 +214,7 @@ class IssuelessBootstrapEndToEndTests(unittest.TestCase):
         plan = proposal_payload.get("issue_auto_create_plan")
         self.assertIsNotNone(plan)
         assert plan is not None
-        self.assertTrue(plan["title"].startswith("[Feat]"))
+        self.assertTrue(plan["title"].startswith("[기능]"))
 
         # 2. operator 승인 → work order dispatch
         dispatch_outcome = handle_github_work_approval_reply(

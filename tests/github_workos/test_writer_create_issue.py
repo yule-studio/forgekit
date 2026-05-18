@@ -83,7 +83,7 @@ class WriterCreateIssueDryRunTests(unittest.TestCase):
         writer = GithubWriter(client=client)
         result = writer.create_issue(
             repo="owner/repo",
-            title="[Feat] 회원가입",
+            title="[기능] 회원가입",
             body="요약",
             labels=("✨ Feature",),
             assignees=("codwithyc",),
@@ -104,8 +104,8 @@ class WriterCreateIssuePolicyTests(unittest.TestCase):
         )
         result = writer.create_issue(
             repo="owner/repo",
-            title="t",
-            body="b",
+            title="[기능] 정책 거부 회귀 테스트",
+            body="정책 거부 테스트 본문",
         )
         self.assertEqual(result.outcome, OUTCOME_DENIED_BY_POLICY)
         self.assertEqual(client.calls, [])
@@ -123,7 +123,7 @@ class WriterCreateIssueLiveTests(unittest.TestCase):
         )
         result = writer.create_issue(
             repo="owner/repo",
-            title="[Feat] 회원가입",
+            title="[기능] 회원가입",
             body="설명",
             labels=(" ✨ Feature ", "", "📃 Docs"),
             assignees=("codwithyc",),
@@ -227,7 +227,7 @@ class LiveGithubAppClientIssueTests(unittest.TestCase):
         client = _build_live_client(http)
         response = client.create_issue(
             repo="owner/repo",
-            title="[Feat] X",
+            title="[기능] X",
             body="body",
             labels=("✨ Feature", "📃 Docs"),
             assignees=("codwithyc",),
@@ -237,7 +237,7 @@ class LiveGithubAppClientIssueTests(unittest.TestCase):
         issue_reqs = [r for r in http.posted if r["url"].endswith("/repos/owner/repo/issues")]
         self.assertEqual(len(issue_reqs), 1)
         body = issue_reqs[0]["body"]
-        self.assertEqual(body["title"], "[Feat] X")
+        self.assertEqual(body["title"], "[기능] X")
         self.assertEqual(body["body"], "body")
         self.assertEqual(body["labels"], ["✨ Feature", "📃 Docs"])
         self.assertEqual(body["assignees"], ["codwithyc"])

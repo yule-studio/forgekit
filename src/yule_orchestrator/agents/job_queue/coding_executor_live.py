@@ -995,6 +995,42 @@ class LocalGitCommitter:
             return replace(context, commit_sha="")
 
         message = _commit_message(request, context)
+
+        # P1-N — cross-repo commit convention hard guard.
+        # initial commit 여부는 worktree (target repo) 의 git log 로 판별 +
+        # caller (bootstrap flow) 가 ``metadata["initial_commit"]`` hint 를 줄
+        # 수 있다.  ambiguous 시 honest blocker raise.
+        try:
+            from ..governance.repo_write_policy import (
+                enforce_commit_message,
+                is_initial_commit_context,
+                PolicyViolation,
+                validate_initial_commit_decision,
+            )
+
+            explicit_hint = None
+            metadata = request.metadata or {}
+            if isinstance(metadata, Mapping):
+                if "initial_commit" in metadata:
+                    explicit_hint = bool(metadata.get("initial_commit"))
+            decision = is_initial_commit_context(
+                repo_root=wt,
+                explicit_hint=explicit_hint,
+                branch_hint=context.branch,
+            )
+            decision_result = validate_initial_commit_decision(decision)
+            if not decision_result.ok and decision_result.reason:
+                raise PolicyViolation(
+                    reason=decision_result.reason,
+                    detail=decision_result.detail,
+                    fields=decision_result.fields,
+                )
+            enforce_commit_message(message, is_initial=decision.is_initial)
+        except PolicyViolation as exc:
+            raise CodingCommitError(
+                f"commit policy violation: {exc.reason}: {exc.detail}"
+            ) from exc
+
         try:
             self._runner(
                 ["git", "-C", wt, "commit", "-m", message],
@@ -1152,6 +1188,31 @@ class GithubAppDraftPRCreator:
                 else f"📝 coding-executor draft — {context.branch}"
             )
         body = _draft_pr_body(request, context)
+
+        # P1-N — cross-repo PR title + issue anchor hard guard.
+        # 옛 wiring 은 "coding-executor draft #4" 같은 기계 제목 / issue
+        # 없는 PR 가 그대로 GitHub 로 흘러갔다. 본 가드가 PR 생성 직전
+        # raise 해서 다음 PR 부터는 위반 자체가 막힌다.
+        try:
+            from ..governance.repo_write_policy import (
+                IssueAnchorContext,
+                enforce_issue_anchor,
+                enforce_pr_title,
+            )
+
+            enforce_pr_title(title)
+            enforce_issue_anchor(
+                IssueAnchorContext(
+                    branch=context.branch,
+                    pr_body=body,
+                    issue_number_hint=request.issue_number,
+                )
+            )
+        except Exception as policy_exc:  # noqa: BLE001 — surface as RuntimeError
+            # Re-raise so worker maps to REASON_PR_FAILED with policy detail.
+            # PolicyViolation 의 reason/detail 이 그대로 worker progress
+            # marker 에 노출됨.
+            raise
 
         # P0-T: runtime governance policy gate — PR body 가 5 섹션 +
         # audit block 을 갖는지 검사. caller-driven gate 원칙: validation

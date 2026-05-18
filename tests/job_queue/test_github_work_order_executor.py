@@ -168,7 +168,7 @@ class _Fixture(unittest.TestCase):
 
     def _sample_plan(self, audit_reason: str = "template_used") -> Mapping[str, Any]:
         return {
-            "title": "[Feat] 회원가입/검색 구현",
+            "title": "[기능] 회원가입/검색 구현",
             "body": "## 어떤 기능인가요?\n> 본문\n",
             "labels": ["✨ Feature", "📃 Docs"],
             "assignees": [],
@@ -208,7 +208,7 @@ class AutoCreateBranchTests(_Fixture):
         # writer called with plan content
         self.assertEqual(len(self.writer.calls), 1)
         _, call_kwargs = self.writer.calls[0]
-        self.assertTrue(call_kwargs["title"].startswith("[Feat]"))
+        self.assertTrue(call_kwargs["title"].startswith("[기능]"))
         self.assertIn("✨ Feature", call_kwargs["labels"])
         # session extra anchor
         anchor = self.sessions.sessions["sess-1"].extra[SESSION_EXTRA_GITHUB_ISSUE_KEY]
