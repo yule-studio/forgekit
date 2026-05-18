@@ -45,6 +45,7 @@ from .pr_merge_continuation import (
     EXTRA_PR_MERGE_PR_URL,
     EXTRA_PR_MERGE_REPO,
     EXTRA_PR_MERGE_STAGE,
+    STAGE_AWAITING_DRAFT_APPROVAL,
     STAGE_PR_MERGE_BLOCKED,
     STAGE_PR_MERGE_PENDING,
     STAGE_PR_MERGED,
@@ -80,6 +81,35 @@ ACTION_AUTONOMOUS_MERGE_BLOCKED: str = "autonomous_merge_blocked"
 ACTION_AUTONOMOUS_MERGE_SUCCEEDED: str = "autonomous_merge_succeeded"
 ACTION_SKIPPED_NO_EXECUTOR: str = "no_executor_wired"
 ACTION_SKIPPED_NO_APPROVAL_WORKER: str = "no_approval_worker_wired"
+
+# P1-Q — draft PR escalation reason 토큰 / action 토큰.
+# autonomous_merge 가 gate 1단계에서 draft 거부 시 hard fail 대신 사람
+# 승인 카드 경로로 escalate.  audit event 도 dedicated 이름으로 표시 —
+# 추후 recovery 가 stripping 할 때 일반 approval_card_enqueued 와 구분.
+REASON_APPROVAL_NEEDED_FOR_READY_FOR_REVIEW: str = (
+    "approval_needed_for_ready_for_review"
+)
+REASON_DRAFT_READY_FOR_REVIEW_FAILED: str = "draft_ready_for_review_failed"
+ACTION_DRAFT_ESCALATED_TO_APPROVAL: str = "draft_escalated_to_approval_card"
+
+
+def _draft_escalation_already_enqueued(
+    session_extra: Optional[Mapping[str, Any]],
+) -> bool:
+    """draft escalation card 가 이미 한 번 게시됐는지 — 중복 방지.
+
+    audit list 의 ``approval_card_enqueued_draft_escalation`` event 확인.
+    head_sha 가 바뀌면 새 카드 사이클이 시작되므로 caller (recovery 등)
+    가 audit 을 strip 해야 다시 게시 가능.
+    """
+
+    for entry in (session_extra or {}).get(EXTRA_PR_MERGE_AUDIT) or ():
+        if (
+            isinstance(entry, Mapping)
+            and entry.get("event") == "approval_card_enqueued_draft_escalation"
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -339,6 +369,70 @@ async def advance_pending_session(
                 merge_sha=merge_sha,
             )
 
+        # P1-Q — draft escalation 분기.  gate 1단계가 draft 라고 거부했고
+        # approval_enqueuer 가 wiring 돼 있으면, hard-fail 대신 사람 승인
+        # 카드로 escalate.  사용자가 카드에 승인 → reply router 가
+        # ready_for_review action 호출 → gate rerun → merge.
+        if (
+            result.get("gate_failed_step") == "draft"
+            and approval_enqueuer is not None
+            and not _draft_escalation_already_enqueued(session_extra)
+        ):
+            proposal_with_flag = _proposal_from_session_extra(
+                session_extra, requested_by="autonomous_merge_draft_escalation"
+            )
+            if proposal_with_flag is not None:
+                from dataclasses import replace as _replace
+
+                escalation_extra = dict(proposal_with_flag.extra or {})
+                escalation_extra["draft_escalation"] = True
+                escalation_extra["escalation_source"] = (
+                    "autonomous_merge_draft_block"
+                )
+                proposal_with_flag = _replace(
+                    proposal_with_flag, extra=escalation_extra
+                )
+                enq_outcome = await approval_enqueuer(
+                    session=approval_session_obj or {"session_id": session_id},
+                    proposal=proposal_with_flag,
+                )
+                approval_job_id_esc = getattr(
+                    enq_outcome, "approval_job_id", None
+                )
+                new_extra = advance_stage(
+                    session_extra,
+                    new_stage=STAGE_AWAITING_DRAFT_APPROVAL,
+                    reason=REASON_APPROVAL_NEEDED_FOR_READY_FOR_REVIEW,
+                    approval_job_id=approval_job_id_esc,
+                    gate_failed_step="draft",
+                    gate_reason=str(result.get("gate_reason") or ""),
+                )
+                # audit event 별도 stamp — recovery / dedup 헬퍼가 한눈에 본다
+                existing_audit = list(new_extra.get(EXTRA_PR_MERGE_AUDIT) or ())
+                existing_audit.append(
+                    {
+                        "event": "approval_card_enqueued_draft_escalation",
+                        "approval_job_id": approval_job_id_esc,
+                        "at": _now_iso(),
+                    }
+                )
+                new_extra[EXTRA_PR_MERGE_AUDIT] = existing_audit
+                persist_extra(new_extra)
+                logger.info(
+                    "advance_pending_session: session=%s draft escalated to "
+                    "approval card (job=%s)",
+                    session_id,
+                    approval_job_id_esc,
+                )
+                return PRMergeContinuationOutcome(
+                    session_id=session_id,
+                    action=ACTION_DRAFT_ESCALATED_TO_APPROVAL,
+                    work_mode=work_mode,
+                    new_stage=STAGE_AWAITING_DRAFT_APPROVAL,
+                    reason=REASON_APPROVAL_NEEDED_FOR_READY_FOR_REVIEW,
+                    approval_job_id=approval_job_id_esc,
+                )
+
         # blocked 경로 — gate 실패, merge disabled, merge api 실패 모두 동일
         reason_token = "blocked"
         audit_fields: dict = {}
@@ -400,6 +494,7 @@ __all__ = (
     "ACTION_APPROVAL_CARD_ENQUEUED",
     "ACTION_AUTONOMOUS_MERGE_BLOCKED",
     "ACTION_AUTONOMOUS_MERGE_SUCCEEDED",
+    "ACTION_DRAFT_ESCALATED_TO_APPROVAL",
     "ACTION_SKIPPED_ALREADY_ENQUEUED",
     "ACTION_SKIPPED_NOT_PENDING",
     "ACTION_SKIPPED_NO_APPROVAL_WORKER",
@@ -407,6 +502,8 @@ __all__ = (
     "ApprovalEnqueuer",
     "NextSliceDispatcher",
     "PRMergeContinuationOutcome",
+    "REASON_APPROVAL_NEEDED_FOR_READY_FOR_REVIEW",
+    "REASON_DRAFT_READY_FOR_REVIEW_FAILED",
     "advance_pending_session",
     "iter_pending_session_ids",
 )

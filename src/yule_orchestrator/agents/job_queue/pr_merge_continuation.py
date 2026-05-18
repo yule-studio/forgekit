@@ -71,9 +71,18 @@ STAGE_PR_MERGED: str = "pr_merged"
 STAGE_PR_MERGE_BLOCKED: str = "pr_merge_blocked"
 """gate fail / merge API 실패 / merge env disabled — 운영자가 봐야 함."""
 
+# P1-Q — draft PR escalation 전용 stage.
+# autonomous_merge 가 gate 1단계에서 draft 를 만나면 옛 wiring 은 즉시
+# pr_merge_blocked 로 끝났지만, 본 stage 는 사람 승인 카드를 게시한 뒤
+# 사용자가 "draft 해제 + 머지 진행" 을 명시 승인하면 ready_for_review +
+# gate rerun 으로 다음 단계로 넘어간다.  reply path 가 이 stage 만 보고
+# escalation 분기를 가동.
+STAGE_AWAITING_DRAFT_APPROVAL: str = "awaiting_draft_approval"
+
 
 PR_MERGE_STAGES: tuple = (
     STAGE_PR_MERGE_PENDING,
+    STAGE_AWAITING_DRAFT_APPROVAL,
     STAGE_PR_MERGE_APPROVED,
     STAGE_PR_MERGED,
     STAGE_PR_MERGE_BLOCKED,
@@ -291,6 +300,7 @@ __all__ = (
     "EXTRA_PR_MERGE_STAGE",
     "PR_MERGE_STAGES",
     "PostPRAction",
+    "STAGE_AWAITING_DRAFT_APPROVAL",
     "STAGE_PR_MERGE_APPROVED",
     "STAGE_PR_MERGE_BLOCKED",
     "STAGE_PR_MERGED",
