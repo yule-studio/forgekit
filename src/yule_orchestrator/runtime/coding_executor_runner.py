@@ -504,29 +504,53 @@ def _maybe_build_live_pr_merge_executor():
 def _maybe_build_approval_enqueuer():
     """approval_required mode 에서 카드 게시용 ApprovalEnqueuer.
 
-    ApprovalWorker 가 활성화되어야만 동작. 없으면 None — 사용자에게
-    카드 게시 없이 stage 가 그대로 유지된다 (operator 가 보이는 진단:
-    ``no_approval_worker_wired`` action).
+    P1-M B 회귀 수정 — ``ApprovalWorker`` 가 ``post_fn`` + ``channel_resolver``
+    를 필수로 받는다. 옛 wiring 은 두 인자 모두 생략해 TypeError → silent
+    None 으로 떨어졌고 startup log 가 ``approval_enqueuer=no`` 로 나왔다.
+    본 helper 는 ``run_service`` 의 production wiring 과 동일하게
+    ``build_production_post_fn`` + ``build_approval_channel_resolver`` 를
+    재사용한다.
+
+    Discord/runtime 의존성이 빠진 env 에서는 두 헬퍼 중 하나가 raise →
+    None 반환 + log warning 으로 운영자에게 실패 사유 노출.
     """
 
     try:
         from ..agents.job_queue.approval_worker import ApprovalWorker
+        from ..agents.job_queue.approval_discord_poster import (
+            build_approval_channel_resolver,
+            build_production_post_fn,
+        )
         from ..agents.job_queue.heartbeat import HeartbeatStore
         from ..agents.job_queue.store import JobQueue
         from ..discord.integrations.pr_merge_adapter import (
             enqueue_pr_merge_approval,
         )
     except Exception:  # noqa: BLE001
+        logger.warning(
+            "pr_merge_continuation: ApprovalEnqueuer build skipped "
+            "(imports unavailable)",
+            exc_info=True,
+        )
         return None
 
     queue = JobQueue()
     heartbeats = HeartbeatStore()
     try:
+        production_post_fn = build_production_post_fn()
+        channel_resolver = build_approval_channel_resolver()
         approval_worker = ApprovalWorker(
             queue=queue,
             heartbeats=heartbeats,
+            post_fn=production_post_fn,
+            channel_resolver=channel_resolver,
         )
     except Exception:  # noqa: BLE001
+        logger.warning(
+            "pr_merge_continuation: ApprovalEnqueuer build skipped "
+            "(post_fn/channel_resolver/ApprovalWorker init failed)",
+            exc_info=True,
+        )
         return None
 
     async def _enqueue(*, session, proposal, **kwargs):
