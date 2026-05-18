@@ -25,7 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from ..agents.job_queue import (
     CodingExecutorWorker,
@@ -157,6 +157,28 @@ def _resolve_target_repo_recovery_interval() -> float:
     return max(10.0, value)
 
 
+# P1-L-3 — pr_merge_pending stage 소비 주기. autonomous_merge 면 매 tick
+# 마다 merge gate 호출 — 너무 빠르면 GitHub API rate 부담, 너무 느리면
+# operator 가 "stuck" 으로 인식. 기본 30s.
+ENV_PR_MERGE_CONTINUATION_INTERVAL: str = (
+    "YULE_PR_MERGE_CONTINUATION_INTERVAL_SECONDS"
+)
+DEFAULT_PR_MERGE_CONTINUATION_INTERVAL_SECONDS: float = 30.0
+
+
+def _resolve_pr_merge_continuation_interval() -> float:
+    raw = (
+        os.environ.get(ENV_PR_MERGE_CONTINUATION_INTERVAL) or ""
+    ).strip()
+    if not raw:
+        return DEFAULT_PR_MERGE_CONTINUATION_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_PR_MERGE_CONTINUATION_INTERVAL_SECONDS
+    return max(10.0, value)
+
+
 async def _producer_loop(
     *,
     worker: CodingExecutorWorker,
@@ -283,6 +305,7 @@ async def run_coding_executor(
     pick_lease_seconds = _resolve_pick_lease_seconds()
     keepalive_interval = _resolve_keepalive_interval_seconds()
     target_repo_recovery_interval = _resolve_target_repo_recovery_interval()
+    pr_merge_continuation_interval = _resolve_pr_merge_continuation_interval()
     producer_task = asyncio.create_task(
         _producer_loop(
             worker=worker,
@@ -295,6 +318,16 @@ async def run_coding_executor(
             queue=queue,
             shutdown_event=shutdown_event,
             interval_seconds=target_repo_recovery_interval,
+        )
+    )
+    # P1-L-3 — pr_merge_pending 소비 루프. live merge env 미설정이면
+    # autonomous_merge 가 skipped 로 표시될 뿐 loop 자체는 동작 — startup
+    # log 가 wiring 상태를 명시한다.
+    pr_merge_continuation_task = asyncio.create_task(
+        _pr_merge_continuation_loop(
+            queue=queue,
+            shutdown_event=shutdown_event,
+            interval_seconds=pr_merge_continuation_interval,
         )
     )
 
@@ -404,8 +437,297 @@ async def run_coding_executor(
             await target_repo_recovery_task
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
+        pr_merge_continuation_task.cancel()
+        try:
+            await pr_merge_continuation_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
 
     return EXIT_OK
+
+
+def _persist_session_extra(session_id: str, new_extra: Mapping[str, Any]) -> None:
+    """workflow_state persistence — pr_merge_continuation 콜백용.
+
+    silent skip when session 이 사라졌거나 store 가 raise. loop 가 죽지 않게.
+    """
+
+    try:
+        from dataclasses import replace as _replace
+        from datetime import datetime, timezone as _tz
+        from ..agents.workflow_state import load_session, update_session
+    except Exception:  # noqa: BLE001 - partial install
+        return
+    try:
+        session = load_session(session_id)
+    except Exception:  # noqa: BLE001
+        return
+    if session is None:
+        return
+    try:
+        updated = _replace(session, extra=dict(new_extra))
+        update_session(updated, now=datetime.now(tz=_tz.utc))
+    except Exception:  # noqa: BLE001 - best-effort
+        return
+
+
+def _maybe_build_live_pr_merge_executor():
+    """env 가 갖춰지면 live ``PRMergeExecutor`` 반환. 아니면 None.
+
+    ``GitHubAppConfigError`` 면 None — env 미설정 환경에서는 autonomous
+    merge 가 동작하지 않을 뿐 loop 자체는 죽지 않는다.
+    """
+
+    try:
+        from ..agents.job_queue.coding_executor_live import (
+            ENV_GITHUB_APP_MERGE_OPT_IN,
+        )
+        from ..github_app.live_client import build_live_client_from_env
+        from ..github_app.pr_merge_executor import build_pr_merge_executor
+    except Exception:  # noqa: BLE001
+        return None
+    # merge opt-in env 가 없으면 안전을 위해 None — autonomous merge 가
+    # placeholder 단계에서 실수로 raise 하지 않게.
+    if (os.environ.get(ENV_GITHUB_APP_MERGE_OPT_IN) or "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        return None
+    try:
+        live_client = build_live_client_from_env()
+    except Exception:  # noqa: BLE001
+        return None
+    return build_pr_merge_executor(client=live_client)
+
+
+def _maybe_build_approval_enqueuer():
+    """approval_required mode 에서 카드 게시용 ApprovalEnqueuer.
+
+    ApprovalWorker 가 활성화되어야만 동작. 없으면 None — 사용자에게
+    카드 게시 없이 stage 가 그대로 유지된다 (operator 가 보이는 진단:
+    ``no_approval_worker_wired`` action).
+    """
+
+    try:
+        from ..agents.job_queue.approval_worker import ApprovalWorker
+        from ..agents.job_queue.heartbeat import HeartbeatStore
+        from ..agents.job_queue.store import JobQueue
+        from ..discord.integrations.pr_merge_adapter import (
+            enqueue_pr_merge_approval,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+    queue = JobQueue()
+    heartbeats = HeartbeatStore()
+    try:
+        approval_worker = ApprovalWorker(
+            queue=queue,
+            heartbeats=heartbeats,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+    async def _enqueue(*, session, proposal, **kwargs):
+        return await enqueue_pr_merge_approval(
+            session=session,
+            proposal=proposal,
+            approval_worker=approval_worker,
+            drive_consumer=True,
+            **kwargs,
+        )
+
+    return _enqueue
+
+
+def _build_next_slice_dispatcher():
+    """merge 후 next coding slice 를 enqueue 하는 콜백.
+
+    minimal MVP — ``coding_backlog`` (list[dict]) 에서 첫 항목 pop 해서
+    ``coding_proposal`` 빌더에 넘긴다. 빌드 실패 / backlog 비어있으면
+    silent — ``dispatch_next_coding_slice`` 가 audit 에 남김.
+    """
+
+    def _enqueue_slice(session_id: str, slice_spec: Mapping[str, Any]) -> None:
+        try:
+            from ..agents.job_queue.work_order_coding_continuation import (
+                promote_session_to_coding_ready,
+            )
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            promote_session_to_coding_ready(
+                session_id=session_id,
+                session_prompt=str(slice_spec.get("prompt") or ""),
+                auto_rebuild_proposal=True,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "next_slice promote raised for session %s",
+                session_id,
+                exc_info=True,
+            )
+
+    def _on_done(session_id: str) -> None:
+        try:
+            from dataclasses import replace as _replace
+            from datetime import datetime, timezone as _tz
+            from ..agents.workflow_state import (
+                WorkflowState,
+                load_session,
+                update_session,
+            )
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            session = load_session(session_id)
+        except Exception:  # noqa: BLE001
+            return
+        if session is None:
+            return
+        try:
+            updated = _replace(session, state=WorkflowState.COMPLETED)
+            update_session(updated, now=datetime.now(tz=_tz.utc))
+        except Exception:  # noqa: BLE001
+            return
+
+    return _enqueue_slice, _on_done
+
+
+async def _pr_merge_continuation_loop(
+    *,
+    queue: JobQueue,
+    shutdown_event: asyncio.Event,
+    interval_seconds: float,
+) -> None:
+    """P1-L-3 — pr_merge_pending 세션 주기적 advance.
+
+    각 tick 마다:
+      1. ``list_sessions`` 로 최근 세션 100 개 가져옴
+      2. ``iter_pending_session_ids`` 로 pr_merge_pending 필터
+      3. 각 session 에 대해 ``advance_pending_session`` 호출
+         - approval_required → ApprovalEnqueuer 가 카드 한 번 게시
+           (audit ``approval_card_enqueued`` event 로 dedup)
+         - autonomous_merge → PRMergeExecutor 가 gate + merge 시도
+      4. merge 성공 시 ``dispatch_next_coding_slice`` 로 backlog 진행
+
+    loop 가 절대 raise 하지 않게 모든 단계 swallow + warning. 같은
+    session 이 한 tick 안에 두 번 advance 되지 않게 dedup 은 helper 가
+    감당.
+    """
+
+    from ..agents.job_queue.next_slice_dispatcher import (
+        dispatch_next_coding_slice,
+    )
+    from ..agents.job_queue.pr_merge_continuation import (
+        EXTRA_PR_MERGE_STAGE,
+        STAGE_PR_MERGED,
+    )
+    from ..agents.job_queue.pr_merge_continuation_worker import (
+        advance_pending_session,
+        iter_pending_session_ids,
+    )
+    from ..agents.workflow_state import list_sessions
+
+    approval_enqueuer = _maybe_build_approval_enqueuer()
+    pr_merge_executor = _maybe_build_live_pr_merge_executor()
+    enqueue_slice, on_done = _build_next_slice_dispatcher()
+
+    logger.info(
+        "pr_merge_continuation loop wired: approval_enqueuer=%s "
+        "merge_executor=%s (env=YULE_GITHUB_APP_MERGE_OPT_IN)",
+        "yes" if approval_enqueuer is not None else "no",
+        "yes" if pr_merge_executor is not None else "no",
+    )
+
+    while not shutdown_event.is_set():
+        try:
+            sessions = list_sessions(limit=100)
+        except Exception:  # noqa: BLE001 - never crash loop
+            logger.warning(
+                "pr_merge_continuation: list_sessions raised",
+                exc_info=True,
+            )
+            sessions = ()
+
+        pending_ids = iter_pending_session_ids(sessions)
+        for sid in pending_ids:
+            session = next(
+                (s for s in sessions if getattr(s, "session_id", "") == sid),
+                None,
+            )
+            if session is None:
+                continue
+            extra = getattr(session, "extra", None) or {}
+            if not isinstance(extra, Mapping):
+                continue
+
+            def _persist(new_extra: Mapping[str, Any], _sid=sid) -> None:
+                _persist_session_extra(_sid, new_extra)
+
+            try:
+                outcome = await advance_pending_session(
+                    session_id=sid,
+                    session_extra=extra,
+                    persist_extra=_persist,
+                    approval_enqueuer=approval_enqueuer,
+                    merge_executor=pr_merge_executor,
+                    next_slice_dispatcher=lambda _sid, _extra: None,
+                    approval_session_obj=session,
+                )
+            except Exception:  # noqa: BLE001 - one bad session can't kill loop
+                logger.warning(
+                    "pr_merge_continuation: advance_pending_session raised "
+                    "for session %s",
+                    sid,
+                    exc_info=True,
+                )
+                continue
+
+            try:
+                logger.info(
+                    "pr_merge_continuation tick: session=%s action=%s "
+                    "work_mode=%s new_stage=%s",
+                    sid,
+                    outcome.action,
+                    outcome.work_mode,
+                    outcome.new_stage,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+            # merge 성공 직후에만 next slice 진행. dispatch_next_coding_slice
+            # 자체가 pr_merge_stage != pr_merged 면 SKIPPED 하므로 race-safe.
+            if outcome.new_stage == STAGE_PR_MERGED:
+                try:
+                    from ..agents.workflow_state import load_session
+
+                    fresh = load_session(sid)
+                    fresh_extra = (
+                        getattr(fresh, "extra", None) or {} if fresh else {}
+                    )
+                    dispatch_next_coding_slice(
+                        session_id=sid,
+                        session_extra=fresh_extra,
+                        persist_extra=_persist,
+                        enqueue_slice=enqueue_slice,
+                        on_session_done=on_done,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "pr_merge_continuation: next slice dispatch raised "
+                        "for session %s",
+                        sid,
+                        exc_info=True,
+                    )
+
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(), timeout=interval_seconds
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 async def _target_repo_recovery_loop(
@@ -540,13 +862,20 @@ def _recover_lease_expired_rows(
 __all__ = (
     "DEFAULT_KEEPALIVE_INTERVAL_SECONDS",
     "DEFAULT_PICK_LEASE_SECONDS",
+    "DEFAULT_PR_MERGE_CONTINUATION_INTERVAL_SECONDS",
     "DEFAULT_PRODUCER_INTERVAL_SECONDS",
     "DEFAULT_TARGET_REPO_RECOVERY_INTERVAL_SECONDS",
     "ENV_KEEPALIVE_INTERVAL",
     "ENV_PICK_LEASE_SECONDS",
+    "ENV_PR_MERGE_CONTINUATION_INTERVAL",
     "ENV_PRODUCER_INTERVAL",
     "ENV_TARGET_REPO_RECOVERY_INTERVAL",
+    "_build_next_slice_dispatcher",
     "_lease_keepalive_loop",
+    "_maybe_build_approval_enqueuer",
+    "_maybe_build_live_pr_merge_executor",
+    "_persist_session_extra",
+    "_pr_merge_continuation_loop",
     "_recover_lease_expired_rows",
     "_target_repo_recovery_loop",
     "run_coding_executor",
