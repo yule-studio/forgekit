@@ -805,6 +805,7 @@ async def _pr_merge_continuation_loop(
                     merge_executor=pr_merge_executor,
                     next_slice_dispatcher=lambda _sid, _extra: None,
                     approval_session_obj=session,
+                    queue=queue,  # P1-Q-2 — old pr_merge card supersede 용
                 )
             except Exception:  # noqa: BLE001 - one bad session can't kill loop
                 logger.warning(

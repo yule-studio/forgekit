@@ -348,11 +348,17 @@ class AdvanceStageTests(unittest.TestCase):
 
 
 class StageVocabularyTests(unittest.TestCase):
-    def test_all_four_stages_exposed(self) -> None:
+    def test_all_five_stages_exposed(self) -> None:
+        # P1-Q — STAGE_AWAITING_DRAFT_APPROVAL 추가됨 (총 5 stage)
+        from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+            STAGE_AWAITING_DRAFT_APPROVAL,
+        )
+
         self.assertEqual(
             set(PR_MERGE_STAGES),
             {
                 STAGE_PR_MERGE_PENDING,
+                STAGE_AWAITING_DRAFT_APPROVAL,
                 STAGE_PR_MERGE_APPROVED,
                 STAGE_PR_MERGED,
                 STAGE_PR_MERGE_BLOCKED,

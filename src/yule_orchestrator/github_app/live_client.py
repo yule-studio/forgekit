@@ -441,6 +441,34 @@ class LiveGithubAppClient:
         except GitHubAppNotFoundError:
             return None
 
+    def mark_pull_request_ready_for_review(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        env: Optional[Mapping[str, str]] = None,
+    ) -> Mapping[str, Any]:
+        """draft PR 을 ready for review 로 전환 — P1-Q B.
+
+        ``PATCH /repos/{owner}/{repo}/pulls/{pull_number}`` body ``draft=false``.
+        merge 와 동일한 strict opt-in (``YULE_GITHUB_MERGE_ENABLED``) 가드
+        — 운영자가 명시 승인한 환경에서만 draft 해제 가능.
+
+        approval reply 의 draft 승인 분기에서 호출되어, ready-for-review
+        성공 후 호출 측이 다시 5-step gate 를 돌린다.  본 함수 자체는
+        gate 를 안 본다 (gate 는 ``pr_approval.evaluate_merge_gate`` SSoT).
+        """
+
+        if not _is_merge_enabled(env):
+            raise LiveGithubAppMergeDisabled(
+                "mark_pull_request_ready_for_review: "
+                "YULE_GITHUB_MERGE_ENABLED is not set to true",
+                status=503,
+                url=f"{self._api_base}/repos/{repo}/pulls/{int(pr_number)}",
+            )
+        url = f"{self._api_base}/repos/{repo}/pulls/{int(pr_number)}"
+        return self._patch(url, body={"draft": False})
+
     def merge_pull_request(
         self,
         *,

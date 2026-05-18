@@ -34,6 +34,8 @@ from ...agents.job_queue.approval_reply import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalIntent,
     ApprovalReplyOutcome,
+    find_approval_by_posted_message_id,
+    find_open_approval_cards_by_kind,
     find_replyable_approval,
     handle_approval_reply,
     parse_approval_intent,
@@ -146,6 +148,15 @@ RESPONSE_PR_MERGE_NO_CARD: str = (
     "❓ 답신에 매칭되는 PR merge 카드를 못 찾았어요."
 )
 
+# P1-Q-2 — ambiguous reply (`#승인-대기` 글로벌 채널에 같은 종류의 카드가
+# 여러 장 있을 때) 처리.  옛 wiring 은 most-recent session fallback 으로
+# 무관한 fixture 카드에 답이 가는 회귀의 직접 원인이었다.  본 응답은
+# operator 에게 카드에 직접 reply 하라고 명시 안내.
+RESPONSE_PR_MERGE_AMBIGUOUS: str = (
+    "ℹ️ 여러 PR merge 카드가 열려 있어 어느 카드의 답인지 알 수 없어요. "
+    "정확한 카드에 직접 답글로 `승인` 을 적어 주세요."
+)
+
 
 _OPERATOR_OK_RESPONSES: dict[OperatorActionType, str] = {
     OperatorActionType.INFO_REQUIRED: RESPONSE_OPERATOR_INFO_OK,
@@ -231,6 +242,7 @@ async def route_approval_channel_message(
     now_iso: Optional[str] = None,
     pr_merge_executor: Optional[PRMergeExecutor] = None,
     on_pr_merge_result: Optional[Callable[[PRMergeReplyResult], Any]] = None,
+    pr_merge_ready_for_review_action: Optional[Callable[..., Any]] = None,
 ) -> ApprovalReplyRouteResult:
     """Inspect *message* for an approval reply in the approval
     channel; if so, route through :func:`handle_approval_reply`
@@ -346,6 +358,7 @@ async def route_approval_channel_message(
         message=message,
         merge_executor=pr_merge_executor,
         on_result=on_pr_merge_result,
+        ready_for_review_action=pr_merge_ready_for_review_action,
     )
     if pr_merge_outcome is not None:
         return pr_merge_outcome
@@ -406,6 +419,7 @@ async def _try_handle_pr_merge_reply(
     message: Any,
     merge_executor: Optional[PRMergeExecutor],
     on_result: Optional[Callable[[PRMergeReplyResult], Any]],
+    ready_for_review_action: Optional[Callable[..., Any]] = None,
 ) -> Optional[ApprovalReplyRouteResult]:
     """P1-L-2 — PR merge approval card 응답 처리.
 
@@ -414,16 +428,61 @@ async def _try_handle_pr_merge_reply(
     호출 후 결과를 친절한 한국어로 ack.
     """
 
-    # 빠른 사전 체크 — 같은 session 에 PR merge 카드가 있는지.
-    matching = find_replyable_approval(
-        queue=queue,
-        session_id=session_id,
-        approval_kind=APPROVAL_KIND_PR_MERGE,
-        source_message_id=source_message_id,
-        source_thread_id=source_thread_id,
+    # P1-Q-2 — 카드 기준 매칭 우선.  옛 wiring 은 session_id 추정 (most-
+    # recent fallback) 후 그 세션 안에서 카드 찾았다.  global `#승인-대기`
+    # 채널에서 generic reply 가 무관한 세션 (fixture 등) 으로 잘못 라우팅
+    # 되는 회귀의 직접 원인.  본 분기는 replied_message_id (Discord reply
+    # reference) 로 모든 세션의 SAVED pr_merge 카드를 scan 해서 정확한
+    # 카드 (그리고 그 카드의 session_id) 를 먼저 찾는다.
+    replied_message_id = _safe_int(
+        getattr(getattr(message, "reference", None), "message_id", None)
     )
+    matching = None
+    matched_via_reply = False
+    if replied_message_id is not None:
+        matching = find_approval_by_posted_message_id(
+            queue=queue,
+            posted_message_id=replied_message_id,
+            approval_kind=APPROVAL_KIND_PR_MERGE,
+        )
+        if matching is not None:
+            matched_via_reply = True
+            # 카드 payload 의 session_id 를 우선 사용 — caller 가 넘긴
+            # session_id (`_resolve_session_for_reply` 의 most-recent
+            # fallback 결과) 가 다르더라도 카드 기준으로 덮어쓴다.
+            payload = matching.payload or {}
+            card_session = str(payload.get("session_id") or "")
+            if card_session:
+                session_id = card_session
+
+    if matching is None:
+        # session_id 기반 일반 매칭 — replied_message_id 없거나 매칭 실패.
+        matching = find_replyable_approval(
+            queue=queue,
+            session_id=session_id,
+            approval_kind=APPROVAL_KIND_PR_MERGE,
+            source_message_id=source_message_id,
+            source_thread_id=source_thread_id,
+        )
+
     if matching is None:
         return None
+
+    # P1-Q-2 — ambiguity 가드.  replied_message_id 없이 generic reply 인데
+    # 채널에 같은 kind 의 open 카드가 2 장 이상 있으면 잘못된 세션으로
+    # 보내지 말고 사용자에게 "카드에 직접 답하라" 안내.
+    if not matched_via_reply and replied_message_id is None:
+        open_cards = find_open_approval_cards_by_kind(
+            queue=queue, approval_kind=APPROVAL_KIND_PR_MERGE
+        )
+        if len(open_cards) >= 2:
+            await send_chunks(message.channel, RESPONSE_PR_MERGE_AMBIGUOUS)
+            return ApprovalReplyRouteResult(
+                handled=True,
+                outcome=None,
+                response_sent=RESPONSE_PR_MERGE_AMBIGUOUS,
+                skipped_reason="pr_merge_card_ambiguous",
+            )
 
     result = await handle_pr_merge_approval_reply(
         queue=queue,
@@ -434,6 +493,7 @@ async def _try_handle_pr_merge_reply(
         source_thread_id=source_thread_id,
         approved_at=approved_at or "",
         merge_executor=merge_executor,
+        ready_for_review_action=ready_for_review_action,
     )
 
     response = _render_pr_merge_result(result)
@@ -740,6 +800,7 @@ __all__ = (
     "RESPONSE_PR_MERGE_DISABLED",
     "RESPONSE_PR_MERGE_GATE_FAILED",
     "RESPONSE_PR_MERGE_MERGED",
+    "RESPONSE_PR_MERGE_AMBIGUOUS",
     "RESPONSE_PR_MERGE_NO_CARD",
     "RESPONSE_PR_MERGE_REJECTED",
     "RESPONSE_PR_MERGE_REVISE",
