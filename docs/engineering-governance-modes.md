@@ -75,23 +75,58 @@ tag 없이 release/hotfix 머지 완료 처리는 `repo_write_policy.enforce_rel
 
 **cross-repo** — yule-studio-agent 본 repo 뿐 아니라 봇이 GitHub write 하는 모든 target repo (예: `naver-search-clone`) 에 동일 적용.
 
-## 6. intake prompt 예시
+## 6. intake — slash option 권장 (P1-R-2)
 
-명시적 intake (권장):
+### 6.1 권장 방식 — `/engineer_intake` 명시 옵션
+
+운영자 UX 우선.  prompt 는 업무 내용 중심, governance 는 슬래시 옵션으로 선택:
+
+| option | choices |
+|---|---|
+| `work_mode` | `approval_required` / `autonomous_merge` |
+| `branch_strategy` | `git_flow` |
+| `release_strategy` | `tagged_release` |
+| `issue_policy` | `issue_required` |
+| `topology` | `single_repo` / `multi_repo` |
+| `scope` | `single_scope` / `full_stack_single_repo` / `layer_scoped` / `cross_repo_program` |
+
+예시:
+```
+/engineer_intake
+  prompt: 네이버 검색 풀스택 MVP 구현해줘 https://github.com/yule-studio/naver-search-clone
+  work_mode: autonomous_merge
+  branch_strategy: git_flow
+  release_strategy: tagged_release
+  issue_policy: issue_required
+  topology: single_repo
+  scope: full_stack_single_repo
+  write_requested: true
+```
+
+intake 직후 접수 메시지 끝에 `🛡 거버넌스 contract (intake 시점에 확정)` 블록이 자동 표시 — operator 가 6 키 + `mode_decided_by` 한눈에 확인.
+
+### 6.2 우선순위 (`slash option > prompt token > default`)
+
+slash option 이 prompt 토큰보다 강하다.  예:
+- option `work_mode=approval_required` + prompt `"autonomous_merge"` 포함 → 결과 `approval_required` (slash 우선).
+- option 생략 + prompt `"autonomous_merge"` → 결과 `autonomous_merge` (prompt fallback).
+- 둘 다 생략 → default `approval_required` (안전측).
+
+`mode_decided_by` 값:
+- `slash_option_explicit` — slash option 으로 결정
+- `user_explicit` — prompt 토큰으로 결정 (모든 3축 명시)
+- `gateway_inferred` — default 또는 일부만 명시
+
+### 6.3 prompt fallback (backward compatibility)
+
+slash option 없이도 옛 prompt 방식 그대로 동작:
 
 ```
 approval_required, git_flow, tagged_release, issue_required, single_repo, full_stack_single_repo
 네이버 검색 풀스택 MVP 구현해줘
-https://github.com/yule-studio/naver-search-clone
 ```
 
-```
-autonomous_merge, git_flow, tagged_release, issue_required, single_repo, full_stack_single_repo
-네이버 검색 풀스택 MVP 끝까지 자율로 진행
-https://github.com/yule-studio/naver-search-clone
-```
-
-생략 토큰은 default 적용.  `parse_mode_hints` 가 한국어/영문 변형 모두 인식 (`자율 머지`, `승인 필요`, `git flow`, `tag release`, `issue required` 등).
+`parse_mode_hints` 가 한국어/영문 변형 모두 인식 (`자율 머지`, `승인 필요`, `git flow`, `tag release`, `issue required` 등).
 
 ## 7. 모드별 operator 운영 절차
 
