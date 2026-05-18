@@ -150,6 +150,46 @@ def recover_session_full(
             f"mode persist 보정 → work_mode={final_work_mode} "
             f"topology={final_topology} scope={final_scope}"
         )
+
+        # P1-P — work_mode 가 바뀌면 stale approval-mode audit event 를
+        # 정리한다.  옛 ``approval_card_enqueued`` event 가 남아있으면
+        # continuation loop 의 ``is_pending_approval_card`` 가 False 를
+        # 반환해 새 모드 (autonomous_merge) 에서도 영원히 ``ACTION_SKIPPED_
+        # ALREADY_ENQUEUED`` 로 stuck.  본 라인이 그 회귀의 직접 fix.
+        prior_work_mode = extra.get(EXTRA_WORK_MODE)
+        if (
+            prior_work_mode != final_work_mode
+            and final_work_mode == WORK_MODE_AUTONOMOUS
+        ):
+            from ..job_queue.pr_merge_continuation import EXTRA_PR_MERGE_AUDIT
+
+            existing_audit = list(new_extra.get(EXTRA_PR_MERGE_AUDIT) or ())
+            filtered_audit = [
+                entry
+                for entry in existing_audit
+                if not (
+                    isinstance(entry, Mapping)
+                    and entry.get("event") == "approval_card_enqueued"
+                )
+            ]
+            stripped = len(existing_audit) - len(filtered_audit)
+            # 모드 전환 자체를 audit 에 한 줄 명시 — operator 가 이 시점에
+            # 무엇이 일어났는지 본다.
+            filtered_audit.append(
+                {
+                    "event": "mode_recovered",
+                    "prior_work_mode": prior_work_mode,
+                    "new_work_mode": final_work_mode,
+                    "stripped_approval_card_events": stripped,
+                    "at": _now_iso(),
+                }
+            )
+            new_extra[EXTRA_PR_MERGE_AUDIT] = filtered_audit
+            if stripped > 0:
+                notes.append(
+                    f"stale approval-mode audit event {stripped}건 정리 — "
+                    f"continuation loop 가 autonomous_merge 경로로 재평가 가능"
+                )
     else:
         notes.append("mode 키 변경 없음 (이미 영속됨 또는 단서 부족)")
 

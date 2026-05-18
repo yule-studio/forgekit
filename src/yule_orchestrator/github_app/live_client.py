@@ -73,6 +73,10 @@ class LiveGithubAppHTTPError(RuntimeError):
     G3 writer's failure path so an operator sees "GitHub returned
     422 — Validation Failed" without the writer needing to know the
     HTTP layer.
+
+    P1-P — ``body`` 도 optional kwarg.  GitHubAppHTTPError 와 동일
+    contract — caller 가 두 exception class 를 같은 인자로 raise 할 수
+    있게 통일.
     """
 
     def __init__(
@@ -81,10 +85,12 @@ class LiveGithubAppHTTPError(RuntimeError):
         *,
         status: Optional[int] = None,
         url: Optional[str] = None,
+        body: Any = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.url = url
+        self.body = body
 
 
 class LiveGithubAppMergeDisabled(LiveGithubAppHTTPError):

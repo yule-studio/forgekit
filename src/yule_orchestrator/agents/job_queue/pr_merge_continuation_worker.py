@@ -100,6 +100,17 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
+def _truncate(text: str, *, limit: int = 240) -> str:
+    """audit field 용 짧은 message — operator log 에 한 줄로 들어가게."""
+
+    if text is None:
+        return ""
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
 def _proposal_from_session_extra(
     session_extra: Mapping[str, Any],
     *,
@@ -241,9 +252,61 @@ async def advance_pending_session(
             approved_at=_now_iso(),
             source_message_id=None,
         )
-        raw = merge_executor(dispatch)
-        if hasattr(raw, "__await__"):
-            raw = await raw  # type: ignore[assignment]
+
+        # P1-P — live GitHub 가 PR 을 못 찾으면 (404) 또는 다른 HTTP
+        # 에러를 raise 하면 loop 가 noisy traceback 을 뿜는 대신 세션을
+        # ``pr_merge_blocked`` 로 advance + audit reason ``pr_not_found`` /
+        # ``http_error`` stamp.  다음 tick 에서는 not-pending 이므로 같은
+        # 세션을 다시 건드리지 않는다 (fixture 세션 noise 차단).
+        try:
+            raw = merge_executor(dispatch)
+            if hasattr(raw, "__await__"):
+                raw = await raw  # type: ignore[assignment]
+        except Exception as exc:  # noqa: BLE001 — translate to blocked outcome
+            exc_name = type(exc).__name__
+            if exc_name == "GitHubAppNotFoundError":
+                reason_token = "pr_not_found"
+            elif exc_name in (
+                "LiveGithubAppHTTPError",
+                "GitHubAppHTTPError",
+                "GitHubAppAuthError",
+                "GitHubAppPermissionError",
+                "GitHubAppServerError",
+            ):
+                reason_token = f"github_http_error:{exc_name}"
+            else:
+                reason_token = f"merge_executor_raised:{exc_name}"
+            audit_fields_err = {
+                "exception_class": exc_name,
+                "error": _truncate(str(exc)),
+            }
+            status_attr = getattr(exc, "status", None)
+            if status_attr is not None:
+                audit_fields_err["status"] = status_attr
+            url_attr = getattr(exc, "url", None)
+            if url_attr is not None:
+                audit_fields_err["url"] = str(url_attr)
+            new_extra = advance_stage(
+                session_extra,
+                new_stage=STAGE_PR_MERGE_BLOCKED,
+                reason=reason_token,
+                **audit_fields_err,
+            )
+            persist_extra(new_extra)
+            logger.info(
+                "advance_pending_session: session=%s blocked (%s) — %s",
+                session_id,
+                reason_token,
+                _truncate(str(exc), limit=160),
+            )
+            return PRMergeContinuationOutcome(
+                session_id=session_id,
+                action=ACTION_AUTONOMOUS_MERGE_BLOCKED,
+                work_mode=work_mode,
+                new_stage=STAGE_PR_MERGE_BLOCKED,
+                reason=reason_token,
+                extra_audit_fields=audit_fields_err,
+            )
         result: Mapping[str, Any] = dict(raw or {})
 
         merge_sha = str(result.get("merge_sha") or "")
