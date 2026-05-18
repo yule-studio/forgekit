@@ -139,6 +139,35 @@ approval_required, git_flow, tagged_release, issue_required, single_repo, full_s
 | 완료 보고 | 매 단계 카드 / 답신 | final completion 한 줄 |
 | secret / access / blocker | operator_action 카드 (둘 다 동일) | operator_action 카드 |
 
+## 7.5 Live LLM editor env contract (P1-T)
+
+Non-greenfield repo (이미 코드가 있는 target repo, 예: `naver-search-clone`) 에서 실제 product code 를 수정하려면 live LLM editor 를 명시 활성화해야 한다.  옛 wiring 은 `build_live_executor` 가 무조건 `GreenfieldBootstrapEditor` 만 선택해서 non-greenfield 에 record-only delegate 가 되는 회귀가 있었음.  P1-T 부터 다음 env 가 갖춰지면 `LiveCodeEditor` 가 우선 선택.
+
+| env | 의미 | 필수/권장/기본 |
+|---|---|---|
+| `YULE_LIVE_EDITOR_ENABLED` | live LLM editor 활성화 | **필수 (`true` 일 때만 동작)** |
+| `YULE_LIVE_EDITOR_PROVIDER` | LLM provider | **필수 — 현재 MVP 는 `claude-cli` 만 |
+| `YULE_LIVE_EDITOR_MODEL` | 모델 ID | 권장 (기본 `claude-sonnet-4-6`) |
+| `YULE_LIVE_EDITOR_MAX_RETRIES` | 재시도 횟수 | 기본 3 |
+| `claude` 바이너리 PATH 등록 | claude CLI 가 worktree 디렉터리 안에서 호출됨 | **필수** (`shutil.which("claude")` 가 찾아야 함) |
+| `YULE_CODING_EXECUTOR_PLANNING_ONLY_PR_FORBIDDEN` | non-greenfield 에서 plan-only delegate 차단 | 권장 (`1`) — 위 live editor env 없이도 silent record-only 회귀를 잡아냄 |
+| `YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED` | 빈 repo scaffold (Next.js/NestJS/Postgres 기본) | live editor 가 있으면 불필요. greenfield 만 다루는 fallback 모드용 |
+
+선택 우선순위 (`build_live_executor`):
+1. live editor env 모두 충족 → `LiveCodeEditor(provider=claude-cli)` 선택
+2. live editor 부재 + `GREENFIELD_BOOTSTRAP_ENABLED=1` → greenfield 시 scaffold, non-greenfield 시 record-only delegate
+3. 둘 다 부재 → record-only delegate (기본 — `PLANNING_ONLY_PR_FORBIDDEN=1` 로 차단 권장)
+
+startup log 가 어느 분기를 탔는지 명시:
+```
+build_live_executor: live code editor selected — LiveCodeEditor(provider=claude-cli) (env=YULE_LIVE_EDITOR_ENABLED + YULE_LIVE_EDITOR_PROVIDER)
+```
+
+availability surface (`detect_live_executor_availability`) 도 같은 분기 반영:
+- `code_editor=live_llm(claude-cli)` (env on)
+- `code_editor=greenfield_bootstrap+record_only_delegate` (greenfield only)
+- `code_editor=greenfield_bootstrap (disabled — env off)` (어떤 env 도 없음)
+
 ## 8. 강제 위치 (live path hard guard)
 
 | 검증 | 호출 지점 | 위반 시 |
