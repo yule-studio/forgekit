@@ -361,13 +361,20 @@ def _minimal_repo_contract_from_repo(repo: Optional[str]) -> Optional[RepoContra
 def _coerce_existing_issue(
     explicit: Optional[int], session: Any
 ) -> Optional[int]:
-    """Caller-provided existing issue > session anchor > None.
+    """Caller-provided existing issue > prompt anchor > session anchor > None.
 
-    The anchor key (``github_work_order_issue.issue_number``) is set by
-    a previous run of :class:`GitHubWorkOrderWorker` after a successful
-    auto-create. If the operator restarts the flow for the same session
-    (e.g. re-runs intake), we treat the existing anchor as the issue
-    number so a second issue isn't created.
+    Priority (P1-U):
+
+      1. ``explicit`` (slash option / caller-injected) — strongest signal.
+      2. ``session.extra["existing_issue_number"]`` — prompt URL / `#N`
+         / `issue N` anchor extracted by ``prepare_coding_session_context``.
+      3. ``session.extra["github_work_order_issue"].issue_number`` — anchor
+         stamped by a previous run of :class:`GitHubWorkOrderWorker` after
+         a successful auto-create.
+
+    옛 wiring 은 (2) 가 없어서 사용자가 prompt 에 issue URL / `#5` 를
+    명시해도 work_order 가 auto-create 로 새 issue 를 생성했다.  본
+    helper 가 (2) 우선순위로 잡아 reuse 강제.
     """
 
     if explicit is not None:
@@ -380,6 +387,18 @@ def _coerce_existing_issue(
     extra = getattr(session, "extra", None)
     if not isinstance(extra, Mapping):
         return None
+
+    # P1-U — prompt URL / 텍스트 anchor 우선
+    prompt_anchor = extra.get("existing_issue_number")
+    if prompt_anchor is not None:
+        try:
+            value = int(prompt_anchor)
+        except (TypeError, ValueError):
+            value = 0
+        if value > 0:
+            return value
+
+    # 옛 anchor (이미 auto-create 거친 세션의 anchor)
     anchor = extra.get("github_work_order_issue")
     if not isinstance(anchor, Mapping):
         return None

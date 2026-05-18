@@ -27,8 +27,41 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
+import re
 from ..git.github_url import GithubTarget, parse_github_targets
 from ..git.repo_contract import RepoContract, discover_repo_contract
+
+
+# P1-U — prompt 안의 `#5` / `issue 5` / `이슈 5` 같은 explicit issue
+# anchor 패턴.  github URL 의 issue number 도 같이 잡지만 URL 은 이미
+# parse_github_targets 가 처리하므로 본 regex 는 plain-text 케이스 전용.
+_ISSUE_ANCHOR_PATTERNS: tuple = (
+    re.compile(r"이슈\s*#?\s*(\d+)", re.IGNORECASE),
+    re.compile(r"issue\s*#?\s*(\d+)", re.IGNORECASE),
+    re.compile(r"(?<![\w/])#(\d+)\b"),
+)
+
+
+def _extract_explicit_issue_number(text: str) -> Optional[int]:
+    """prompt 안의 explicit issue anchor 숫자 추출.
+
+    여러 패턴 중 첫 매칭만 사용.  URL 안에 이미 있으면 caller 가 그것
+    우선.  추출된 숫자가 > 0 일 때만 반환 (0 / "#000" 같은 의미 없는
+    값 무시).
+    """
+
+    if not text:
+        return None
+    for pattern in _ISSUE_ANCHOR_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                value = int(match.group(1))
+            except (TypeError, ValueError):
+                continue
+            if value > 0:
+                return value
+    return None
 from ..lifecycle.session_mode import (
     SessionMode,
     SessionModeDecision,
@@ -171,8 +204,24 @@ def prepare_coding_session_context(
         extras_update["github_target"] = dict(primary_target.to_dict())
         if primary_target.kind == "pull_request":
             extras_update["pull_request_number"] = primary_target.number
+        # P1-U — issue URL (예: github.com/.../issues/5) 의 number 도
+        # session.extra 에 영속해서 work_order 가 auto-create 대신 reuse.
+        # 옛 wiring 은 pull_request_number 만 추출하고 issue 번호는
+        # 흘려보냈고, 그게 사용자가 "기존 issue #5 사용" 명시했는데도
+        # auto-create issue #6 으로 떨어진 회귀의 직접 원인.
+        if primary_target.kind == "issue" and primary_target.number:
+            extras_update["existing_issue_number"] = int(primary_target.number)
+            extras_update["existing_issue_source"] = "prompt_url"
         if primary_target.branch_or_sha:
             extras_update["branch_name"] = primary_target.branch_or_sha
+
+    # P1-U — URL 외에도 prompt text 의 `#5` / `issue 5` / `이슈 5` 같은
+    # explicit anchor 도 추출.  URL 안에서 이미 잡혔으면 보존 (URL 우선).
+    if "existing_issue_number" not in extras_update:
+        text_issue = _extract_explicit_issue_number(message_text or "")
+        if text_issue is not None:
+            extras_update["existing_issue_number"] = text_issue
+            extras_update["existing_issue_source"] = "prompt_text"
     if repo_contract is not None:
         extras_update["repo_contract"] = dict(repo_contract.to_dict())
         extras_update["repo_contract_summary"] = repo_contract.summary_line()
