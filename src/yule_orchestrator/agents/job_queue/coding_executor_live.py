@@ -76,6 +76,11 @@ DEFAULT_TEST_COMMAND: Tuple[str, ...] = (
 DEFAULT_PLAN_FILE_REL: str = "runs/coding-executor-plans/{branch_slug}.md"
 
 
+def _is_record_only_plan_artifact(rel_path: str) -> bool:
+    rel = str(rel_path or "").strip().replace("\\", "/")
+    return rel.startswith("runs/coding-executor-plans/") and rel.endswith(".md")
+
+
 @dataclass(frozen=True)
 class LiveExecutorAvailability:
     """What the live executor can wire in the current environment.
@@ -1109,7 +1114,11 @@ def _commit_message(
     live_audit = (context.metadata or {}).get("live_editor_apply") if isinstance(
         context.metadata, Mapping
     ) else None
-    is_live_edit = bool(live_audit) and bool(context.edited_files)
+    changed = list(context.edited_files or ())
+    material_changed = [
+        rel for rel in changed if not _is_record_only_plan_artifact(rel)
+    ]
+    is_live_edit = bool(live_audit) and bool(material_changed)
     override = None
     if isinstance(context.metadata, Mapping):
         override = context.metadata.get("commit_gitmoji_override")
@@ -1123,16 +1132,17 @@ def _commit_message(
         )
         provider = str(live_audit.get("provider", "?")) if isinstance(live_audit, Mapping) else "?"
         model = str(live_audit.get("model", "?")) if isinstance(live_audit, Mapping) else "?"
-        changed = list(context.edited_files or ())
-        sample_lines = [f"- {rel}" for rel in changed[:5]]
-        if len(changed) > 5:
-            sample_lines.append(f"- … ({len(changed) - 5} 개 추가 파일 생략)")
+        sample_lines = [f"- {rel}" for rel in material_changed[:5]]
+        if len(material_changed) > 5:
+            sample_lines.append(
+                f"- … ({len(material_changed) - 5} 개 추가 파일 생략)"
+            )
         if not sample_lines:
             sample_lines = ["- 없음"]
         refused = list((live_audit or {}).get("refused_by_scope") or []) if isinstance(live_audit, Mapping) else []
         refused_forbidden = list((live_audit or {}).get("refused_by_forbidden") or []) if isinstance(live_audit, Mapping) else []
         note_lines = [
-            f"- live LLM editor (provider={provider}, model={model}) 가 worktree {len(changed)} 개 파일 수정",
+            f"- live LLM editor (provider={provider}, model={model}) 가 worktree {len(material_changed)} 개 파일 수정",
             f"- branch={context.branch} (from {request.base_branch})",
         ]
         if refused:
@@ -1400,8 +1410,11 @@ def _draft_pr_body(
     live_audit = (context.metadata or {}).get("live_editor_apply") if isinstance(
         context.metadata, Mapping
     ) else None
-    is_live_edit = bool(live_audit) and bool(context.edited_files)
     changed = list(context.edited_files or ())
+    material_changed = [
+        rel for rel in changed if not _is_record_only_plan_artifact(rel)
+    ]
+    is_live_edit = bool(live_audit) and bool(material_changed)
 
     if is_live_edit:
         provider = str((live_audit or {}).get("provider", "?")) if isinstance(live_audit, Mapping) else "?"
@@ -1411,11 +1424,13 @@ def _draft_pr_body(
 
         purpose_lines = [
             f"- coding_execute job (executor=`{request.executor_role}`) 의 live LLM editor 산출.",
-            f"- live editor (provider=`{provider}`, model=`{model}`) 가 worktree 내 {len(changed)} 개 파일 실제 수정.",
+            f"- live editor (provider=`{provider}`, model=`{model}`) 가 worktree 내 {len(material_changed)} 개 파일 실제 수정.",
         ]
-        files_block = [f"- `{rel}`" for rel in changed[:8]]
-        if len(changed) > 8:
-            files_block.append(f"- … ({len(changed) - 8} 개 추가 파일 생략 — full list 는 commit diff)")
+        files_block = [f"- `{rel}`" for rel in material_changed[:8]]
+        if len(material_changed) > 8:
+            files_block.append(
+                f"- … ({len(material_changed) - 8} 개 추가 파일 생략 — full list 는 commit diff)"
+            )
         risk_lines = [
             "- safety_rules 준수: " + (", ".join(request.safety_rules) if request.safety_rules else "(미지정)"),
             "- live LLM 편집 PR — reviewer 가 diff 직접 검토 필요. operator 가 머지 결정.",
