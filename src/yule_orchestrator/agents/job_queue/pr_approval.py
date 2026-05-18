@@ -266,15 +266,32 @@ def render_pr_merge_summary(proposal: PRMergeProposal) -> str:
     lines.append(header)
     lines.append("")
 
+    # P1-R — 한국어 4 섹션 (작업 내용 / 목적 / 영향 범위 / 다음 단계) 강제.
+    # repo_write_policy.validate_approval_card_quality 가 본 텍스트를 검증
+    # 하므로 4 섹션 헤더는 항상 명시.
+    lines.append("작업 내용")
     if proposal.body_excerpt:
-        lines.append("📋 무엇이 바뀌나")
-        lines.append(proposal.body_excerpt)
-        lines.append("")
+        lines.append(f"- {proposal.body_excerpt}")
+    else:
+        lines.append(f"- PR #{proposal.pr_number} 머지")
+    lines.append("")
 
+    lines.append("목적")
+    is_draft_escalation = bool(
+        (proposal.extra or {}).get("draft_escalation")
+    )
+    if is_draft_escalation:
+        lines.append("- draft PR 을 ready for review 로 전환한 뒤 머지")
+    else:
+        lines.append("- 검토 완료된 PR 을 머지하여 다음 작업 단계 진행")
+    lines.append("")
+
+    lines.append("영향 범위")
     if proposal.scope_labels:
         scope = " / ".join(proposal.scope_labels)
-        lines.append(f"🎯 영향 범위: {scope}")
-
+        lines.append(f"- {scope}")
+    else:
+        lines.append(f"- {proposal.repo} (base: {proposal.base_branch})")
     risk_label = {
         "LOW": "LOW",
         "MEDIUM": "MEDIUM",
@@ -283,15 +300,23 @@ def render_pr_merge_summary(proposal: PRMergeProposal) -> str:
     risk_emoji = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🔴"}.get(
         risk_label, "⚠️"
     )
-    lines.append(f"{risk_emoji} 위험도: {risk_label}")
-
+    lines.append(f"- 위험도: {risk_emoji} {risk_label}")
     if proposal.check_runs_summary:
-        lines.append(proposal.check_runs_summary)
+        lines.append(f"- {proposal.check_runs_summary}")
     if proposal.branch_protection_summary:
-        lines.append(proposal.branch_protection_summary)
+        lines.append(f"- {proposal.branch_protection_summary}")
+    lines.append("")
+
+    lines.append("다음 단계")
+    if is_draft_escalation:
+        lines.append(
+            "- 승인 시 ready_for_review 전환 → 5-step gate 재실행 → merge"
+        )
+    else:
+        lines.append("- 승인 시 5-step gate 통과 후 머지 + 다음 slice 진행")
+    lines.append("")
 
     if proposal.pr_url:
-        lines.append("")
         lines.append(f"🔗 {proposal.pr_url}")
         lines.append("")
 

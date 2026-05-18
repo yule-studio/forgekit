@@ -328,19 +328,30 @@ class LocalGitWorktreeProvisioner:
     def provision(
         self, *, request: CodingExecuteRequest, branch: str
     ) -> WorktreeContext:
-        # P1-Q E — Issue-first hard guard.  어떤 agent 가 호출하든 branch
-        # 생성 전에 issue anchor 가 반드시 있어야 한다.  branch name 에
-        # ``issue-<n>`` 또는 request.issue_number > 0.  옛 wiring 은 issue
-        # 없이도 branch / commit / draft PR 까지 그대로 가능했고, 그게 사
-        # 용자가 명시 reject 한 회귀의 직접 원인.  cross-repo 적용 — repo
-        # 와 무관하게 동일.
+        # P1-Q E — Issue-first hard guard + P1-R Git Flow branch validator.
+        # 어떤 agent (Claude Code / Codex / engineering / 보조) 든 branch
+        # 생성 전에 두 검증 모두 통과해야 한다.  Git Flow 검증이 issue
+        # anchor 도 동시에 본다 — feature/bugfix/fix/refactor/agent prefix
+        # 면 issue-N 필수, release/hotfix 는 면제 + tag 별도.
         try:
             from ..governance.repo_write_policy import (
+                GitFlowBranchContext,
                 IssueAnchorContext,
                 PolicyViolation,
+                enforce_git_flow_branch,
                 enforce_issue_anchor,
             )
 
+            # 1. Git Flow branch prefix + slug 검증 (protected branch 차단
+            #    포함)
+            enforce_git_flow_branch(
+                GitFlowBranchContext(
+                    branch=branch,
+                    issue_number_hint=request.issue_number,
+                )
+            )
+            # 2. issue anchor 검증 — Git Flow 가 release/hotfix 면제 했지만
+            #    일반 feature 가 이미 통과한 경우에도 한 번 더 명시 검증.
             enforce_issue_anchor(
                 IssueAnchorContext(
                     branch=branch,
@@ -351,9 +362,10 @@ class LocalGitWorktreeProvisioner:
             raise WorktreeProvisionError(
                 reason=exc.reason,
                 message=(
-                    f"issue-first hard guard: {exc.detail}. "
+                    f"governance hard guard: {exc.detail}. "
                     "Create a GitHub issue first and reference it via "
-                    "`issue-<n>` in branch_hint OR pass request.issue_number."
+                    "`issue-<n>` in a Git Flow branch (feature/bugfix/fix/"
+                    "refactor/...) OR pass request.issue_number."
                 ),
             ) from exc
 

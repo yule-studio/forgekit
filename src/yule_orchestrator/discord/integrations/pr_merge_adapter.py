@@ -85,11 +85,36 @@ def _approval_request_from_proposal(
     # proposal.extra 로 복원하므로 round-trip 안전.
     extras: dict = dict(proposal.to_extra())
     extras["session_id"] = str(session_id)
+
+    summary_body = render_pr_merge_summary(proposal)
+
+    # P1-R — approval_required 모드 카드는 한국어 4 섹션 (작업 내용 /
+    # 목적 / 영향 범위 / 다음 단계) 필수.  render_pr_merge_summary 가
+    # 4 섹션을 명시 작성하지만, future regression 차단을 위해 enqueue
+    # 직전에도 한 번 더 enforce.  autonomous_merge 모드는 본 검증 스킵
+    # (validate_approval_card_quality 가 work_mode 분기).
+    try:
+        from ...agents.governance.repo_write_policy import (
+            ApprovalCardQualityContext,
+            enforce_approval_card_quality,
+        )
+
+        work_mode = str((proposal.extra or {}).get("work_mode") or "")
+        enforce_approval_card_quality(
+            ApprovalCardQualityContext(
+                body=summary_body,
+                approval_kind=APPROVAL_KIND_PR_MERGE,
+                work_mode=work_mode or None,
+            )
+        )
+    except Exception:
+        raise  # PolicyViolation 그대로 호출자 (worker) 까지 surface
+
     return ApprovalRequest(
         session_id=session_id,
         approval_kind=APPROVAL_KIND_PR_MERGE,
         title=title,
-        summary=render_pr_merge_summary(proposal),
+        summary=summary_body,
         requested_action=requested_action,
         created_by=proposal.requested_by or "",
         source_channel_id=source_channel_id,
