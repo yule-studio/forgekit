@@ -164,6 +164,16 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "background loops (producer / target_repo / pr_merge_continuation) + executor builders (live merge + approval enqueuer + next slice dispatcher) + recovery sweeps",
     },
+    # P1-Z B — terminal session resurrection 차단 helper 분리 이후에도
+    # session iteration + marker validation + dispatch + audit persistence
+    # 가 한 파일에 남아있어 책임 2 종 (recovery_orchestration +
+    # state_persistence) 트리거.  다음 round 에서 producer loop /
+    # marker_validation / persistence 3 모듈로 추가 split 예정.
+    "src/yule_orchestrator/agents/job_queue/coding_execute_dispatcher.py": {
+        "deadline": "2026-06-21",
+        "owner": "codwithyc",
+        "axes": "session iter + marker validation + dispatch + persistence",
+    },
 }
 
 

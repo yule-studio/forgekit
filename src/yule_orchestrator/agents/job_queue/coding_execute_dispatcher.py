@@ -101,6 +101,17 @@ DEFAULT_BASE_BRANCH: str = "main"
 READY_STATUSES: frozenset[str] = frozenset({"ready"})
 
 
+# P1-Z B — terminal session resurrection 차단 — sibling module 위임.
+# helpers 본체는 ``coding_execute_terminal_skip`` 모듈에 있다 (dispatcher
+# 자체 LOC 를 1000 임계 안에 유지).  여기서는 re-export 만.
+from .coding_execute_terminal_skip import (
+    SESSION_EXTRA_TERMINAL_SKIP_KEY,
+    TERMINAL_SESSION_STATES,
+    is_terminal_session as _is_terminal_session,
+    stamp_terminal_session_skip as _stamp_terminal_session_skip_external,
+)
+
+
 # ---------------------------------------------------------------------------
 # Session iteration helpers
 # ---------------------------------------------------------------------------
@@ -408,6 +419,12 @@ def iter_ready_coding_jobs(
         return
 
     for session in sessions:
+        # P1-Z B — terminal session 은 marker self-heal 대상에서 제외.
+        # rejected/completed 인데 coding_job=ready 가 extra 에 남아있으면
+        # 옛 wiring 은 새 coding_execute row 를 만들었다.  operator 가
+        # 폐기한 세션이 runtime restart 후 살아나는 회귀의 직접 원인.
+        if _is_terminal_session(session):
+            continue
         coding_job = _read_coding_job(session)
         if not coding_job:
             continue
@@ -424,6 +441,8 @@ def iter_ready_coding_jobs(
         if not include_dispatched and ready.has_been_dispatched(queue=queue):
             continue
         yield ready
+
+
 
 
 def _default_session_loader() -> Sequence[Any]:
@@ -756,6 +775,24 @@ def _default_update_session(session: Any, *, now: datetime) -> Any:
     return update_session(session, now=now)
 
 
+def _stamp_terminal_session_skip(
+    *,
+    session_loader: Optional[Callable[[], Iterable[Any]]] = None,
+    update_session_fn: Optional[Callable[..., Any]] = None,
+    now: Optional[datetime] = None,
+) -> int:
+    """본체는 ``coding_execute_terminal_skip`` 모듈에 — 본 함수는 thin wrapper."""
+
+    return _stamp_terminal_session_skip_external(
+        session_loader=session_loader,
+        update_session_fn=update_session_fn,
+        coding_job_reader=_read_coding_job,
+        dispatch_marker_key=SESSION_EXTRA_DISPATCH_KEY,
+        ready_statuses=READY_STATUSES,
+        now=now,
+    )
+
+
 def dispatch_ready_coding_jobs(
     *,
     worker: CodingExecutorWorker,
@@ -782,6 +819,15 @@ def dispatch_ready_coding_jobs(
 
     queue_for_validation = (
         getattr(worker, "_queue", None) if validate_marker_against_queue else None
+    )
+
+    # P1-Z B — pre-pass: rejected/completed session 에 ready coding_job 또는
+    # dispatch marker 가 남아있으면 operator surface 에 ``terminal_session_skip``
+    # audit 를 한 번 stamp 하고 넘어간다.  re-enqueue 는 absolutely 안 함.
+    _stamp_terminal_session_skip(
+        session_loader=session_loader,
+        update_session_fn=update_session_fn,
+        now=now,
     )
 
     out: list[DispatchedCodingJob] = []
