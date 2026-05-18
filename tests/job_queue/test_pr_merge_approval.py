@@ -154,13 +154,19 @@ class RenderSummaryTests(unittest.TestCase):
         )
 
     def test_renders_scope_and_risk(self) -> None:
+        # P1-R — render_pr_merge_summary 가 한국어 4 섹션 (작업 내용 /
+        # 목적 / 영향 범위 / 다음 단계) 형식으로 변경됨.  scope/risk 는
+        # "영향 범위" 섹션 안의 bullet 으로 들어감.
         text = render_pr_merge_summary(_proposal())
-        self.assertIn("영향 범위: docs / agents / tests", text)
-        self.assertIn("🟢 위험도: LOW", text)
+        self.assertIn("영향 범위", text)
+        self.assertIn("docs / agents / tests", text)
+        self.assertIn("🟢", text)
+        self.assertIn("LOW", text)
 
     def test_high_risk_emoji_red(self) -> None:
         text = render_pr_merge_summary(_proposal(risk="HIGH"))
-        self.assertIn("🔴 위험도: HIGH", text)
+        self.assertIn("🔴", text)
+        self.assertIn("HIGH", text)
 
     def test_includes_check_run_and_branch_protection_lines(self) -> None:
         text = render_pr_merge_summary(_proposal())

@@ -102,7 +102,10 @@ class EnqueueHappyPathTests(_AdapterFixture):
         self.assertEqual(request.approval_kind, APPROVAL_KIND_PR_MERGE)
         self.assertIn("PR 머지 승인 — #127", request.title)
         self.assertIn("F15 corporate structure", request.title)
-        self.assertIn("위험도: LOW", rendered)
+        # P1-R — render layout 변경: "위험도" 가 "영향 범위" 섹션 안의
+        # bullet 으로 들어감.  label + 값 둘 다 별도 검사.
+        self.assertIn("위험도", rendered)
+        self.assertIn("LOW", rendered)
         self.assertIn(
             "https://github.com/yule-studio/yule-studio-agent/pull/127",
             rendered,

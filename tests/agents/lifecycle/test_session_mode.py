@@ -199,9 +199,20 @@ class HintParserTests(unittest.TestCase):
         self.assertEqual(hints["scope"], SCOPE_LAYER)
 
     def test_no_hint(self) -> None:
+        # P1-R — parse_mode_hints 가 governance contract 확장으로 추가 키
+        # (branch_strategy / release_strategy / issue_policy) 도 None 으로
+        # 반환.  토큰 명시 없으면 None.
         hints = parse_mode_hints("그냥 작업해 줘")
         self.assertEqual(
-            hints, {"work_mode": None, "topology": None, "scope": None}
+            hints,
+            {
+                "work_mode": None,
+                "topology": None,
+                "scope": None,
+                "branch_strategy": None,
+                "release_strategy": None,
+                "issue_policy": None,
+            },
         )
 
 
