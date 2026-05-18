@@ -208,8 +208,12 @@ class ProviderDispatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             ctx = _worktree_ctx(Path(tmp))
             new_ctx = editor.apply(request=_request(), context=ctx)
+        # P1-V — fake runner 가 "ok" 만 돌려주면 worktree 스캔이 변경
+        # 0건으로 떨어져 context 가 그대로 반환된다.  진짜 0-edit no-op
+        # 경로는 worker 의 P1-U C 가 surface.
         self.assertIs(new_ctx, ctx)
-        self.assertEqual(len(fake.calls), 1)
+        # P1-V — 이제 claude call + git status --porcelain 2 호출.
+        self.assertEqual(len(fake.calls), 2)
         cmd, kwargs = fake.calls[0]
         self.assertEqual(cmd[0], "claude")
         self.assertEqual(cmd[1], "-p")
@@ -217,6 +221,12 @@ class ProviderDispatchTests(unittest.TestCase):
         self.assertIn("--model", cmd)
         self.assertIn("claude-sonnet-4-6", cmd)
         self.assertEqual(kwargs.get("cwd"), str(Path(tmp)))
+        # P1-V — 두 번째 call 은 worktree 변경 수집.
+        status_cmd, status_kwargs = fake.calls[1]
+        self.assertEqual(tuple(status_cmd[:2]), ("git", "-C"))
+        self.assertIn("status", status_cmd)
+        self.assertIn("--porcelain", status_cmd)
+        self.assertTrue(status_kwargs.get("capture_output"))
 
     def test_claude_cli_no_runner_blocks(self) -> None:
         editor = LiveCodeEditor(
