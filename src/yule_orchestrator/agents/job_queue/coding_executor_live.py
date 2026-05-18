@@ -1382,7 +1382,13 @@ def _draft_pr_body(
 ) -> str:
     """draft PR body. P0-T runtime_policy.validate_pr_body 통과하도록
     5 섹션 (purpose / scope / risks / tests / issue_linkage) + audit block
-    을 모두 갖춘다."""
+    을 모두 갖춘다.
+
+    P1-X — context.metadata["live_editor_apply"] 있고 edited_files 가
+    plan markdown 외 진짜 파일을 포함하면 live-edit 분기.  옛 wiring 은
+    항상 "RecordOnlyCodeEditor 가 만든 계획 markdown 만" 본문을 emit 해서
+    reviewer 가 실제 LLM 편집 PR 도 record-only 라고 오해 → fake success.
+    """
 
     test_summary = context.test_summary or {}
     test_status = (
@@ -1390,6 +1396,76 @@ def _draft_pr_body(
         if isinstance(test_summary, Mapping)
         else None
     ) or ("dry_run" if test_summary.get("dry_run") else "unknown")
+
+    live_audit = (context.metadata or {}).get("live_editor_apply") if isinstance(
+        context.metadata, Mapping
+    ) else None
+    is_live_edit = bool(live_audit) and bool(context.edited_files)
+    changed = list(context.edited_files or ())
+
+    if is_live_edit:
+        provider = str((live_audit or {}).get("provider", "?")) if isinstance(live_audit, Mapping) else "?"
+        model = str((live_audit or {}).get("model", "?")) if isinstance(live_audit, Mapping) else "?"
+        refused_scope = list((live_audit or {}).get("refused_by_scope") or []) if isinstance(live_audit, Mapping) else []
+        refused_forbidden = list((live_audit or {}).get("refused_by_forbidden") or []) if isinstance(live_audit, Mapping) else []
+
+        purpose_lines = [
+            f"- coding_execute job (executor=`{request.executor_role}`) 의 live LLM editor 산출.",
+            f"- live editor (provider=`{provider}`, model=`{model}`) 가 worktree 내 {len(changed)} 개 파일 실제 수정.",
+        ]
+        files_block = [f"- `{rel}`" for rel in changed[:8]]
+        if len(changed) > 8:
+            files_block.append(f"- … ({len(changed) - 8} 개 추가 파일 생략 — full list 는 commit diff)")
+        risk_lines = [
+            "- safety_rules 준수: " + (", ".join(request.safety_rules) if request.safety_rules else "(미지정)"),
+            "- live LLM 편집 PR — reviewer 가 diff 직접 검토 필요. operator 가 머지 결정.",
+        ]
+        if refused_scope:
+            risk_lines.append(
+                "- write_scope 밖이라 거부된 파일: " + ", ".join(f"`{p}`" for p in refused_scope[:5])
+            )
+        if refused_forbidden:
+            risk_lines.append(
+                "- forbidden_scope 매칭으로 거부된 파일: " + ", ".join(f"`{p}`" for p in refused_forbidden[:5])
+            )
+
+        parts = [
+            "## 📌 관련 이슈",
+            f"- close #{request.issue_number}" if request.issue_number else "- (no issue)",
+            "",
+            "## ✨ 과제 내용 (목적)",
+            *purpose_lines,
+            "",
+            "## 🎯 범위 (scope)",
+            f"- in_scope: write_scope={list(request.write_scope) or '(미지정)'}",
+            f"- out_of_scope: forbidden_scope={list(request.forbidden_scope) or '(미지정)'}",
+            "- 실제 수정 파일:",
+            *[f"  {line}" for line in files_block],
+            "",
+            "## ⚠️ 리스크 (risks)",
+            *risk_lines,
+            "",
+            "## ✅ 테스트 (tests)",
+            f"- test_status: `{test_status}`",
+            f"- test_summary: `{dict(test_summary) if isinstance(test_summary, Mapping) else test_summary}`",
+            "",
+            "## :camera_with_flash: 스크린샷(선택)",
+            "_(N/A)_",
+            "",
+            "## 📚 참고 (references)",
+            f"- session_id: `{request.session_id}`",
+            f"- branch: `{context.branch}` (from `{request.base_branch}`)",
+            f"- commit: `{context.commit_sha[:10] if context.commit_sha else '-'}`",
+            "",
+            "## 🤖 Agent WorkOS Audit",
+            f"- branch: `{context.branch}` (from `{request.base_branch}`)",
+            f"- repo: `{request.repo_full_name}`",
+            f"- role: `{request.executor_role}`",
+            f"- engineering-agent runtime_policy: branch/PR/tag hard rails 적용",
+            f"- mode: `live` (G6 LiveGithubAppClient — LiveCodeEditor provider=`{provider}`)",
+            "- merge: do-not-merge until operator review",
+        ]
+        return "\n".join(parts) + "\n"
 
     parts = [
         "## 📌 관련 이슈",
