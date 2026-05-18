@@ -510,6 +510,43 @@ class RecordOnlyCodeEditor:
 # P1-H — env-gated greenfield bootstrap.
 ENV_GREENFIELD_BOOTSTRAP_ENABLED: str = "YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED"
 
+# P1-M F — env-gated 정직한 blocker. 옛 wiring 은 non-greenfield 에
+# RecordOnlyCodeEditor 가 plan markdown 만 commit 하면 planning-only PR
+# 이 진짜 구현 PR 처럼 production main 까지 흘러갔다. 본 env 가 truthy
+# 면 worker 가 ``REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE`` 로 blocker
+# 노출 — operator 가 live editor wiring 한 뒤에야 다음 slice 굴러간다.
+ENV_PLANNING_ONLY_PR_FORBIDDEN: str = (
+    "YULE_CODING_EXECUTOR_PLANNING_ONLY_PR_FORBIDDEN"
+)
+
+
+def _planning_only_pr_forbidden(
+    env: Optional[Mapping[str, str]] = None,
+) -> bool:
+    import os as _os
+
+    src = env if env is not None else _os.environ
+    return (src.get(ENV_PLANNING_ONLY_PR_FORBIDDEN) or "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+class NonGreenfieldRealEditUnavailable(RuntimeError):
+    """non-greenfield repo + record-only editor + env opt-in 시 raise.
+
+    worker 가 ``REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE`` 로 매핑.
+    """
+
+    def __init__(self, *, repo_full_name: Optional[str], worktree_path: str) -> None:
+        super().__init__(
+            f"non-greenfield repo {repo_full_name!r} requires real-edit "
+            f"capability. Set YULE_CODING_EXECUTOR_PLANNING_ONLY_PR_FORBIDDEN=0 "
+            f"to allow planning-only PR (NOT recommended) OR wire a real LLM "
+            f"editor. worktree={worktree_path}"
+        )
+        self.repo_full_name = repo_full_name
+        self.worktree_path = worktree_path
+
 
 def _greenfield_bootstrap_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
     import os as _os
@@ -585,8 +622,23 @@ class GreenfieldBootstrapEditor:
             self.is_bootstrap_capable,
         )
         if mode is None:
-            # Not a greenfield case — keep ordinary record-only behaviour.
-            # Stamp audit so operator sees WHY scaffold didn't run.
+            # Not a greenfield case.
+            # P1-M F — env gate: planning-only PR 가 production main 까지
+            # 흘러가는 사고를 막기 위해 truthy 면 raise → worker 가
+            # ``REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE`` blocker stamp.
+            if _planning_only_pr_forbidden(self._env):
+                logger.warning(
+                    "GreenfieldBootstrapEditor.apply: non-greenfield repo "
+                    "blocked by ENV_PLANNING_ONLY_PR_FORBIDDEN — repo=%s "
+                    "worktree=%s",
+                    request.repo_full_name,
+                    context.worktree_path,
+                )
+                raise NonGreenfieldRealEditUnavailable(
+                    repo_full_name=request.repo_full_name,
+                    worktree_path=context.worktree_path,
+                )
+            # otherwise — record-only delegation 보존 (옛 동작).
             new_metadata = dict(context.metadata or {})
             new_metadata["bootstrap_apply"] = {
                 "mode": None,
@@ -598,6 +650,9 @@ class GreenfieldBootstrapEditor:
                 "worktree_path": context.worktree_path,
                 "repo_full_name": request.repo_full_name,
                 "bootstrap_enabled": self.is_bootstrap_capable,
+                "planning_only_pr_forbidden": _planning_only_pr_forbidden(
+                    self._env
+                ),
             }
             from dataclasses import replace as _replace
 
@@ -1068,11 +1123,34 @@ class GithubAppDraftPRCreator:
         repo = request.repo_full_name
         if not repo:
             raise ValueError("GithubAppDraftPRCreator requires repo_full_name")
-        title = (
-            f"📝 #{request.issue_number} coding-executor draft"
-            if request.issue_number
-            else f"📝 coding-executor draft — {context.branch}"
-        )
+        # P1-M D — 한국어 humanizer 가 slice/세션 정보로 명확한 제목 생성.
+        # slice_spec / session_prompt 는 dispatcher 가 request.metadata 에 stamp.
+        try:
+            from ..coding.human_titles import build_pr_title
+
+            metadata = request.metadata or {}
+            slice_spec = (
+                metadata.get("slice_spec")
+                if isinstance(metadata, Mapping)
+                else None
+            )
+            session_prompt = (
+                metadata.get("session_prompt")
+                if isinstance(metadata, Mapping)
+                else None
+            )
+            title = build_pr_title(
+                session_prompt=str(session_prompt or request.user_request or ""),
+                slice_spec=slice_spec if isinstance(slice_spec, Mapping) else None,
+                branch_hint=context.branch,
+                issue_number=request.issue_number,
+            )
+        except Exception:  # noqa: BLE001 — never block PR on title helper
+            title = (
+                f"📝 #{request.issue_number} coding-executor draft"
+                if request.issue_number
+                else f"📝 coding-executor draft — {context.branch}"
+            )
         body = _draft_pr_body(request, context)
 
         # P0-T: runtime governance policy gate — PR body 가 5 섹션 +
