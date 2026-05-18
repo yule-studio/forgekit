@@ -276,6 +276,125 @@ def _most_recent(jobs: Sequence[Job]) -> Job:
     return max(jobs, key=lambda j: j.created_at)
 
 
+# P1-Q-2 — session-agnostic matcher.  옛 wiring 은 router 가 session_id 를
+# 먼저 추정 (most-recent fallback) 한 뒤 그 세션 안에서만 카드를 찾았다.
+# global 채널 (`#승인-대기`) 의 generic reply 가 무관한 세션 (txn-pending-1
+# 같은 fixture) 로 잘못 라우팅되는 회귀의 직접 원인.  본 함수는 raw
+# replied_message_id 만으로 모든 세션의 SAVED approval_post 를 scan 해서
+# 정확한 카드를 찾는다.  매칭되면 caller 가 그 카드의 session_id 를 그대로
+# 사용 — session-first 추정 자체가 필요 없어짐.
+
+
+def find_approval_by_posted_message_id(
+    *,
+    queue: JobQueue,
+    posted_message_id: int,
+    approval_kind: Optional[str] = None,
+) -> Optional[Job]:
+    """Discord reply 의 ``message.reference.message_id`` 로 모든 세션을
+    scan 해서 일치 카드 반환.  session_id 모를 때 안전.
+    """
+
+    if not posted_message_id:
+        return None
+    import json as _json
+    import sqlite3 as _sqlite3
+    from .state_machine import JobState as _JobState
+
+    db_path = getattr(queue, "_db_path", None)
+    if db_path is None:
+        return None
+    try:
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT * FROM job_queue
+                WHERE job_type = ?
+                  AND state = ?
+                ORDER BY created_at DESC
+                LIMIT 200
+                """,
+                (JOB_TYPE_APPROVAL_POST, _JobState.SAVED.value),
+            ).fetchall()
+    except Exception:  # noqa: BLE001 — never crash matcher on db blip
+        return None
+
+    target = int(posted_message_id)
+    for row in rows or ():
+        try:
+            result_raw = row["result_json"] or "{}"
+            result = _json.loads(result_raw)
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(result, Mapping):
+            continue
+        posted = result.get("posted_message_id")
+        if posted is None or int(posted) != target:
+            continue
+        # approval_kind 필터 — 카드 종류 일치까지 강제 (없으면 통과)
+        if approval_kind is not None:
+            try:
+                payload = _json.loads(row["payload_json"] or "{}")
+            except Exception:  # noqa: BLE001
+                continue
+            if str(payload.get("approval_kind") or "") != approval_kind:
+                continue
+        # 모든 사용자에게 한 줄 row → Job 변환
+        from .store import _row_to_job  # type: ignore[attr-defined]
+
+        return _row_to_job(row)
+    return None
+
+
+def find_open_approval_cards_by_kind(
+    *,
+    queue: JobQueue,
+    approval_kind: str,
+    limit: int = 100,
+) -> Tuple[Job, ...]:
+    """``approval_kind`` 의 SAVED 카드 전부 — ambiguity 감지용.
+
+    router 가 replied_message_id 없이 generic reply 를 받았는데 같은 kind
+    의 open 카드가 2 개 이상이면 ambiguity 응답.
+    """
+
+    import json as _json
+    import sqlite3 as _sqlite3
+    from .state_machine import JobState as _JobState
+
+    db_path = getattr(queue, "_db_path", None)
+    if db_path is None:
+        return ()
+    try:
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT * FROM job_queue
+                WHERE job_type = ?
+                  AND state = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (JOB_TYPE_APPROVAL_POST, _JobState.SAVED.value, int(limit)),
+            ).fetchall()
+    except Exception:  # noqa: BLE001
+        return ()
+    from .store import _row_to_job  # type: ignore[attr-defined]
+
+    matches: list = []
+    for row in rows or ():
+        try:
+            payload = _json.loads(row["payload_json"] or "{}")
+        except Exception:  # noqa: BLE001
+            continue
+        if str(payload.get("approval_kind") or "") != approval_kind:
+            continue
+        matches.append(_row_to_job(row))
+    return tuple(matches)
+
+
 # ---------------------------------------------------------------------------
 # Approval → ObsidianWriteRequest converter
 # ---------------------------------------------------------------------------
@@ -594,6 +713,8 @@ __all__ = (
     "ApprovalIntent",
     "ApprovalReplyOutcome",
     "approval_to_obsidian_write_request",
+    "find_approval_by_posted_message_id",
+    "find_open_approval_cards_by_kind",
     "find_replyable_approval",
     "handle_approval_reply",
     "parse_approval_intent",
