@@ -1631,6 +1631,130 @@ def _tail(text: Optional[str], *, lines: int = 20) -> str:
     return "\n".join(parts[-lines:])
 
 
+# ---------------------------------------------------------------------------
+# P1-V — LiveCodeEditor worktree change collector
+# ---------------------------------------------------------------------------
+
+
+def _runner_stdout(result: Any) -> str:
+    """runner 반환 모양을 흡수.  ``_SubprocessResult`` (attr) / test fake
+    (Mapping) / None 모두 처리.  반환값이 명시 stdout 키/속성 없으면 빈
+    문자열.
+    """
+
+    if result is None:
+        return ""
+    stdout_attr = getattr(result, "stdout", None)
+    if stdout_attr is not None:
+        return str(stdout_attr)
+    if isinstance(result, Mapping):
+        return str(result.get("stdout") or "")
+    return ""
+
+
+def _parse_porcelain_line(line: str) -> Optional[str]:
+    """git status --porcelain v1 한 줄에서 변경된 파일 경로 추출.
+
+    포맷:
+      * ``"XY path"`` — modified / added / untracked / deleted
+      * ``"XY old -> new"`` — rename (destination 만 반환)
+      * X, Y ∈ {' ', 'M', 'A', 'D', 'R', 'C', 'U', '?', '!'}
+
+    제외:
+      * fully-deleted (``" D path"`` / ``"D  path"``) — committer 가
+        stage 못 함
+      * ignored (``"!!"``) — 처음부터 무시
+    """
+
+    if not line or len(line) < 4:
+        return None
+    status = line[:2]
+    rest = line[3:]
+    if status[0] == "!" or status[1] == "!":
+        return None
+    if status == " D" or status == "DD" or status == "D ":
+        return None
+    if " -> " in rest:
+        _, _, dest = rest.partition(" -> ")
+        rest = dest
+    return rest.strip().strip('"') or None
+
+
+def _normalize_scope_entry(entry: str) -> str:
+    """write_scope / forbidden_scope 한 항목을 prefix 매칭용으로 정규화.
+
+    ``services/auth/**`` / ``services/auth/`` / ``services/auth`` 모두
+    ``services/auth`` 로 떨어진다.
+    """
+
+    return (entry or "").strip().rstrip("/").rstrip("*").rstrip("/")
+
+
+def _path_in_scope(rel: str, scope: Sequence[str]) -> bool:
+    """rel_path 가 scope prefix 중 하나에 매칭되는지.  빈 scope → True."""
+
+    if not scope:
+        return True
+    norm = rel[2:] if rel.startswith("./") else rel.lstrip("/")
+    for entry in scope:
+        token = _normalize_scope_entry(entry)
+        if not token:
+            return True
+        if norm == token or norm.startswith(token + "/"):
+            return True
+    return False
+
+
+def _collect_changed_paths(
+    *,
+    runner: Any,
+    worktree_path: str,
+    write_scope: Sequence[str] = (),
+    forbidden_scope: Sequence[str] = (),
+) -> Tuple[Tuple[str, ...], Tuple[str, ...], Tuple[str, ...]]:
+    """worktree 의 git status --porcelain 으로 변경 수집 + scope 필터.
+
+    Returns (detected_in_scope, refused_by_scope, refused_by_forbidden).
+
+    git 가 실패하면 모두 빈 튜플 (LiveCodeEditor 가 no-op 으로 떨어지고
+    worker 의 P1-U C 가 정직한 reason 으로 surface).
+    """
+
+    if not worktree_path:
+        return (), (), ()
+    try:
+        result = runner(
+            ["git", "-C", worktree_path, "status", "--porcelain"],
+            capture_output=True,
+        )
+    except Exception:
+        return (), (), ()
+
+    stdout = _runner_stdout(result)
+    if not stdout:
+        return (), (), ()
+
+    detected: list[str] = []
+    refused_scope: list[str] = []
+    refused_forbidden: list[str] = []
+    seen: set[str] = set()
+    for raw_line in stdout.splitlines():
+        rel = _parse_porcelain_line(raw_line)
+        if not rel or rel in seen:
+            continue
+        seen.add(rel)
+        if _path_in_scope(rel, forbidden_scope) and forbidden_scope:
+            # forbidden 은 명시 매칭 시에만 reject — 빈 forbidden 은 통과
+            refused_forbidden.append(rel)
+            continue
+        if write_scope and not _path_in_scope(rel, write_scope):
+            refused_scope.append(rel)
+            continue
+        detected.append(rel)
+
+    return tuple(detected), tuple(refused_scope), tuple(refused_forbidden)
+
+
 __all__ = (
     "DEFAULT_PLAN_FILE_REL",
     "DEFAULT_TEST_COMMAND",
@@ -1886,12 +2010,39 @@ class LiveCodeEditor:
         # in the prompt cannot reach the network.
         cmd = ("claude", "-p", redacted_prompt, "--model", self.model)
         result = runner(cmd, cwd=context.worktree_path)
-        # The runner is operator-defined; we accept any truthy
-        # return shape. The MVP only verifies the call did not
-        # raise. Patch validation / file diffing lands in a
-        # follow-up PR (TODO).
         _ = result
-        return context
+
+        # P1-V — claude-cli 가 자체 Edit/Write tool 로 worktree 안의 파일을
+        # 직접 수정해도, 옛 wiring 은 context 를 그대로 돌려줘서
+        # ``edited_files=()`` 가 commit 단계까지 흘러갔다.  여기서
+        # ``git status --porcelain`` 으로 변경 수집 + write_scope /
+        # forbidden_scope 필터 → committer 가 진짜 변경된 파일만 stage.
+        detected, refused_by_scope, refused_by_forbidden = _collect_changed_paths(
+            runner=runner,
+            worktree_path=context.worktree_path,
+            write_scope=tuple(request.write_scope or ()),
+            forbidden_scope=tuple(request.forbidden_scope or ()),
+        )
+
+        if not detected and not refused_by_scope and not refused_by_forbidden:
+            # 실제 0건 — worker 의 P1-U C no-op detection 이 이후
+            # REASON_LIVE_EDITOR_NO_EDITS_PRODUCED 로 정직하게 surface.
+            return context
+
+        new_edited = tuple(list(context.edited_files) + list(detected))
+        new_metadata = dict(context.metadata or {})
+        live_audit = dict(new_metadata.get("live_editor_apply") or {})
+        live_audit["provider"] = self.provider
+        live_audit["model"] = self.model
+        live_audit["detected_changed_files"] = list(detected)
+        live_audit["refused_by_scope"] = list(refused_by_scope)
+        live_audit["refused_by_forbidden"] = list(refused_by_forbidden)
+        new_metadata["live_editor_apply"] = live_audit
+        return replace(
+            context,
+            edited_files=new_edited,
+            metadata=new_metadata,
+        )
 
 
 def build_live_editor_from_env(
