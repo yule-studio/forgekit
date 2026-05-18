@@ -1395,21 +1395,32 @@ def detect_live_executor_availability(
     pr = "github_app" if live_client is not None else "blocked"
     pusher_blocker = "" if live_client else "LiveGithubAppClient 미주입 (.env.local 의 YULE_GITHUB_APP_* 필요)"
     pr_blocker = pusher_blocker
+
+    # P1-T — live editor 가 build_live_executor 에서 우선 선택되므로 본
+    # 진단 결과도 같은 우선순위를 반영.
+    live_editor_on = (
+        (os.environ.get(ENV_LIVE_EDITOR_ENABLED) or "").strip().lower() == "true"
+        and bool((os.environ.get(ENV_LIVE_EDITOR_PROVIDER) or "").strip())
+    )
     bootstrap_on = _greenfield_bootstrap_enabled()
-    editor_label = (
-        "greenfield_bootstrap+record_only_delegate"
-        if bootstrap_on
-        else "greenfield_bootstrap (disabled — env off)"
-    )
-    editor_blocker = (
-        ""
-        if bootstrap_on
-        else (
-            "greenfield bootstrap disabled — set "
-            f"{ENV_GREENFIELD_BOOTSTRAP_ENABLED}=1 to enable scaffold "
-            "of empty target repos"
+    if live_editor_on:
+        provider = (os.environ.get(ENV_LIVE_EDITOR_PROVIDER) or "").strip()
+        editor_label = f"live_llm({provider})"
+        editor_blocker = ""
+    elif bootstrap_on:
+        editor_label = "greenfield_bootstrap+record_only_delegate"
+        editor_blocker = (
+            "live editor disabled — set "
+            f"{ENV_LIVE_EDITOR_ENABLED}=true + {ENV_LIVE_EDITOR_PROVIDER}=claude-cli "
+            "for non-greenfield real edit path"
         )
-    )
+    else:
+        editor_label = "greenfield_bootstrap (disabled — env off)"
+        editor_blocker = (
+            "neither live editor nor greenfield bootstrap enabled — set "
+            f"{ENV_LIVE_EDITOR_ENABLED}=true (live LLM) OR "
+            f"{ENV_GREENFIELD_BOOTSTRAP_ENABLED}=1 (scaffold empty repo)"
+        )
     return LiveExecutorAvailability(
         worktree_provisioner=bool(repo_root),
         code_editor=editor_label,
@@ -1423,12 +1434,47 @@ def detect_live_executor_availability(
     )
 
 
+def _default_claude_cli_subprocess_runner(
+    cmd: Sequence[str], *, cwd: Optional[str] = None, **_kwargs
+) -> _SubprocessResult:
+    """기본 subprocess 기반 claude CLI 실행기.
+
+    P1-T B — LiveCodeEditor 가 default 로 사용하는 runner.  운영자가
+    명시적으로 더 정교한 runner (예: timeout / streaming / retry) 가
+    필요하면 ``claude_subprocess_adapter`` 모듈을 wiring.
+
+    cwd 는 worktree 경로 — claude CLI 가 그 디렉터리 안에서 파일 수정.
+    """
+
+    args = [str(c) for c in cmd if c]
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 min — claude 가 큰 작업 다 끝나도록
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise _SubprocessError(
+            exit_code=124,
+            stdout=(exc.stdout or "").decode() if isinstance(exc.stdout, bytes) else (exc.stdout or ""),
+            stderr=f"claude CLI timeout after 600s",
+        ) from exc
+    return _SubprocessResult(
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
+        exit_code=completed.returncode,
+    )
+
+
 def build_live_executor(
     *,
     repo_root: str,
     live_client: Optional[Any] = None,
     worktree_root: Optional[str] = None,
     test_command: Optional[Sequence[str]] = None,
+    env: Optional[Mapping[str, str]] = None,
 ) -> Mapping[str, Any]:
     """Compose the 6 Protocol implementations as a kwargs dict.
 
@@ -1437,19 +1483,58 @@ def build_live_executor(
     pusher / draft-PR slots fall back to the
     :class:`_NotImplementedStep` defaults — the worker will still
     fail loudly with ``REASON_NOT_IMPLEMENTED`` on those steps.
+
+    P1-T A — code_editor 선택 우선순위:
+
+      1. ``YULE_LIVE_EDITOR_ENABLED=true`` + ``YULE_LIVE_EDITOR_PROVIDER=claude-cli``
+         + ``claude`` binary on PATH (또는 명시적 runner injection):
+         → :class:`LiveCodeEditor` (실제 LLM 편집 = product code 수정)
+      2. 위 조건 미충족: :class:`GreenfieldBootstrapEditor` (greenfield
+         시 scaffold / non-greenfield 시 record-only delegate)
+
+      옛 wiring 은 무조건 (2) 만 사용 → ``YULE_LIVE_EDITOR_ENABLED=true``
+      를 set 해도 production 이 LiveCodeEditor 를 절대 선택 안 함.
+      P1-T A 가 (1) 분기를 wiring 해서 non-greenfield repo 도 real edit
+      path 로 진입 가능.
     """
+
+    env_map: Mapping[str, str] = env if env is not None else os.environ
+
+    code_editor: Any = GreenfieldBootstrapEditor()
+    code_editor_audit = "GreenfieldBootstrapEditor"
+
+    # P1-T — LiveCodeEditor 가능 여부 점검.  None 이면 env off / provider
+    # 미설정 → 옛 GreenfieldBootstrapEditor fallback.
+    live_editor = build_live_editor_from_env(
+        env_map,
+        subprocess_runner=_default_claude_cli_subprocess_runner,
+    )
+    if live_editor is not None:
+        code_editor = live_editor
+        code_editor_audit = (
+            f"LiveCodeEditor(provider={getattr(live_editor, 'provider', '?')})"
+        )
+        logger.info(
+            "build_live_executor: live code editor selected — %s "
+            "(env=%s + %s)",
+            code_editor_audit,
+            ENV_LIVE_EDITOR_ENABLED,
+            ENV_LIVE_EDITOR_PROVIDER,
+        )
+    else:
+        logger.info(
+            "build_live_executor: %s selected (live editor disabled — "
+            "set %s=true + %s=claude-cli for real-edit path)",
+            code_editor_audit,
+            ENV_LIVE_EDITOR_ENABLED,
+            ENV_LIVE_EDITOR_PROVIDER,
+        )
 
     bundle: dict[str, Any] = {
         "worktree_provisioner": LocalGitWorktreeProvisioner(
             repo_root=repo_root, worktree_root=worktree_root
         ),
-        # P1-H — pick GreenfieldBootstrapEditor automatically. The new
-        # editor delegates to record-only behavior for non-greenfield
-        # cases, so this is a strict superset. Bootstrap actually
-        # writes files only when YULE_CODING_EXECUTOR_GREENFIELD_BOOTSTRAP_ENABLED=1;
-        # otherwise greenfield surfaces a clear ``live_editor_unavailable``
-        # reason instead of silently writing record-only notes only.
-        "code_editor": GreenfieldBootstrapEditor(),
+        "code_editor": code_editor,
         "test_runner": SubprocessTestRunner(
             default_command=tuple(test_command or DEFAULT_TEST_COMMAND)
         ),
