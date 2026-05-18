@@ -328,6 +328,35 @@ class LocalGitWorktreeProvisioner:
     def provision(
         self, *, request: CodingExecuteRequest, branch: str
     ) -> WorktreeContext:
+        # P1-Q E — Issue-first hard guard.  어떤 agent 가 호출하든 branch
+        # 생성 전에 issue anchor 가 반드시 있어야 한다.  branch name 에
+        # ``issue-<n>`` 또는 request.issue_number > 0.  옛 wiring 은 issue
+        # 없이도 branch / commit / draft PR 까지 그대로 가능했고, 그게 사
+        # 용자가 명시 reject 한 회귀의 직접 원인.  cross-repo 적용 — repo
+        # 와 무관하게 동일.
+        try:
+            from ..governance.repo_write_policy import (
+                IssueAnchorContext,
+                PolicyViolation,
+                enforce_issue_anchor,
+            )
+
+            enforce_issue_anchor(
+                IssueAnchorContext(
+                    branch=branch,
+                    issue_number_hint=request.issue_number,
+                )
+            )
+        except PolicyViolation as exc:
+            raise WorktreeProvisionError(
+                reason=exc.reason,
+                message=(
+                    f"issue-first hard guard: {exc.detail}. "
+                    "Create a GitHub issue first and reference it via "
+                    "`issue-<n>` in branch_hint OR pass request.issue_number."
+                ),
+            ) from exc
+
         repo_root = self.resolve_repo_root_for_request(request)
         slug = _slugify(branch)
         target = Path(self.worktree_root) / slug
