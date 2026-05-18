@@ -1200,11 +1200,15 @@ class GithubAppDraftPRCreator:
         repo = request.repo_full_name
         if not repo:
             raise ValueError("GithubAppDraftPRCreator requires repo_full_name")
-        # P1-M D — 한국어 humanizer 가 slice/세션 정보로 명확한 제목 생성.
-        # slice_spec / session_prompt 는 dispatcher 가 request.metadata 에 stamp.
-        try:
-            from ..coding.human_titles import build_pr_title
+        # P1-M D + P1-S — 한국어 humanizer 가 slice/세션 정보로 명확한
+        # 제목 생성.  옛 wiring 의 ``except`` fallback 은 ``📝 coding-executor
+        # draft`` 같은 기계형 텍스트로 떨어져 validator 가 즉시 reject 했고,
+        # 그게 canonical session 166c416a1ed0 이 무한 reject 된 직접 원인.
+        # 본 round 의 fallback 은 반드시 validator 통과를 보장하는 한국어
+        # default (``_korean_fallback_title``).
+        from ..coding.human_titles import _korean_fallback_title, build_pr_title
 
+        try:
             metadata = request.metadata or {}
             slice_spec = (
                 metadata.get("slice_spec")
@@ -1222,16 +1226,43 @@ class GithubAppDraftPRCreator:
                 branch_hint=context.branch,
                 issue_number=request.issue_number,
             )
-        except Exception:  # noqa: BLE001 — never block PR on title helper
-            title = (
-                f"📝 #{request.issue_number} coding-executor draft"
-                if request.issue_number
-                else f"📝 coding-executor draft — {context.branch}"
+        except Exception:  # noqa: BLE001 — never block PR on builder hiccup
+            logger.warning(
+                "GithubAppDraftPRCreator: build_pr_title raised — "
+                "falling back to deterministic Korean default title",
+                exc_info=True,
             )
+            title = _korean_fallback_title(
+                issue_number=request.issue_number, area=None
+            )
+
+        # P1-S — defensive post-validate.  build_pr_title 이 정상 반환했지만
+        # validator 의 한국어 4 자 / machine pattern 검사 변경 등으로 reject
+        # 되는 future regression 차단.  reject 시 한국어 fallback 으로
+        # 교체.  본 자기 교정 이후에는 enforce_pr_title 이 통과 보장.
+        try:
+            from ..governance.repo_write_policy import (
+                PolicyViolation as _PolicyViolation,
+                validate_pr_title as _validate_pr_title,
+            )
+
+            pretest = _validate_pr_title(title)
+            if not pretest.ok:
+                logger.warning(
+                    "GithubAppDraftPRCreator: build_pr_title produced "
+                    "policy-rejected title (%r) — auto-correcting to "
+                    "Korean fallback",
+                    title,
+                )
+                title = _korean_fallback_title(
+                    issue_number=request.issue_number, area=None
+                )
+        except Exception:  # noqa: BLE001 - validator 자체 import 실패는 무시
+            pass
         body = _draft_pr_body(request, context)
 
         # P1-N — cross-repo PR title + issue anchor hard guard.
-        # 옛 wiring 은 "coding-executor draft #4" 같은 기계 제목 / issue
+        # 옛 wiring 은 machine 형 fallback / issue
         # 없는 PR 가 그대로 GitHub 로 흘러갔다. 본 가드가 PR 생성 직전
         # raise 해서 다음 PR 부터는 위반 자체가 막힌다.
         try:

@@ -103,6 +103,35 @@ def build_issue_title(
     return f"[기능] {summary}"[:_TITLE_MAX_LEN]
 
 
+_KOREAN_RE_BUILDER = re.compile(r"[가-힣]")
+
+
+def _has_min_korean(text: str, *, min_chars: int = 4) -> bool:
+    """P1-S — validator (repo_write_policy.validate_pr_title) 와 동일
+    기준으로 한국어 문자 갯수 사전 검사.  builder 가 validator 와 정합."""
+
+    return sum(1 for ch in text or "" if _KOREAN_RE_BUILDER.match(ch)) >= min_chars
+
+
+def _korean_fallback_title(
+    *, issue_number: Optional[int], area: Optional[str] = None
+) -> str:
+    """P1-S — validator 통과를 보장하는 한국어 default title.
+
+    issue_number 있으면 issue 번호를 포함, area 있으면 area 라벨 포함.
+    어느 경우든 ``[구현]`` 또는 ``[구현][area]`` prefix + 4+ 한국어 chars +
+    branch / 영문 detail 없이 사람이 읽는 줄.
+    """
+
+    if area:
+        base = f"[구현][{area}] 작업 자동 진행"
+    else:
+        base = "[구현] 코딩 작업 자동 진행"
+    if issue_number:
+        return f"{base} (#{int(issue_number)})"
+    return base
+
+
 def build_pr_title(
     *,
     session_prompt: Optional[str],
@@ -114,29 +143,50 @@ def build_pr_title(
     """PR 제목 — ``[구현][영역] <slice title>`` 또는
     ``[구현] <요약>`` (slice 없을 때).
 
-    issue_number 가 있으면 끝에 `(#N)` 추가 — GitHub 가 자동으로 PR 을
-    issue 에 link 하지만 시각 단서로도 노출.
+    P1-S 강화 — builder 가 절대로 machine-like / 영문-only / 4-한국어-chars-미만
+    출력을 emit 하지 않음.  본 분기 결과가 validator 의 한국어 4 자 검사
+    불통이면 ``_korean_fallback_title`` 로 self-correct.
+
+    issue_number 가 있으면 끝에 ``(#N)`` 추가 — GitHub 가 자동으로 PR 을
+    issue 에 link 하지만 시각 단서로도 노출.  ``branch_hint`` 는 더 이상
+    fallback 출력 source 로 사용 안 함 (machine-like 회귀 차단).
     """
+
+    candidate: Optional[str] = None
+    area_label: Optional[str] = None
 
     if slice_spec:
         slice_title = str(slice_spec.get("title") or "").strip()
+        area_label = _resolve_area(slice_spec) or None
         if slice_title:
-            area = _resolve_area(slice_spec)
-            prefix = f"[구현][{area}]" if area else "[구현]"
+            prefix = f"[구현][{area_label}]" if area_label else "[구현]"
             base = f"{prefix} {slice_title}"
             if issue_number:
                 base = f"{base} (#{int(issue_number)})"
-            return base[:_TITLE_MAX_LEN]
+            candidate = base[:_TITLE_MAX_LEN]
 
-    summary = _strip_to_summary(session_prompt or "")
-    if not summary:
-        summary = (fallback_short_purpose or "코딩 작업").strip()
-    if not summary and branch_hint:
-        summary = branch_hint.split("/")[-1]
-    base = f"[구현] {summary}"
-    if issue_number:
-        base = f"{base} (#{int(issue_number)})"
-    return base[:_TITLE_MAX_LEN]
+    if candidate is None:
+        summary = _strip_to_summary(session_prompt or "")
+        if not summary:
+            summary = (fallback_short_purpose or "").strip()
+        # P1-S — branch_hint 기반 fallback 제거.  옛 wiring 은 branch
+        # 이름의 마지막 segment (e.g. ``issue-5-coding-execute``) 를
+        # 사용했지만 그 결과는 한국어 0 자라 validator reject 의 직접
+        # 원인이었다.  branch 정보는 PR body 의 메타 블록에서 노출.
+        if summary:
+            base = f"[구현] {summary}"
+            if issue_number:
+                base = f"{base} (#{int(issue_number)})"
+            candidate = base[:_TITLE_MAX_LEN]
+
+    # P1-S 정합성 강제 — 어떤 분기를 거쳐도 validator 와 동일 한국어 4 자
+    # 기준을 만족 못 하면 deterministic 한국어 fallback 으로 교체.
+    if candidate is None or not _has_min_korean(candidate):
+        candidate = _korean_fallback_title(
+            issue_number=issue_number, area=area_label
+        )
+
+    return candidate[:_TITLE_MAX_LEN]
 
 
 def build_pr_body_intro(
