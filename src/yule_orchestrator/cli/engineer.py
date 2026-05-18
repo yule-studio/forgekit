@@ -54,6 +54,59 @@ def run_engineer_approve_command(repo_root: Path, agent_id: str, session_id: str
     orchestrator = _build_orchestrator(repo_root, agent_id)
     session = orchestrator.approve(session_id)
     print(f"approved session={session.session_id} state={session.state.value}", file=sys.stderr)
+
+    # P1-Z A — approved + issue_required + no anchor → work_order dispatch.
+    # Discord approval reply 와 같은 continuation contract.  옛 wiring 은
+    # CLI 가 state 만 approved 로 flipped 하고 work_order 는 영원히 안
+    # 만들어져 ``tracking_validation=needs_issue`` 의 dead-end 였다.
+    try:
+        from ..agents.job_queue.post_approval_dispatch import (
+            ACTION_DISPATCHED,
+            ACTION_FAILED,
+            dispatch_post_approval_work_order,
+        )
+        from ..agents.job_queue.store import JobQueue
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"post-approval dispatch: import failed ({type(exc).__name__}) — "
+            "skipping work_order continuation",
+            file=sys.stderr,
+        )
+        return 0
+
+    try:
+        queue = JobQueue()
+        outcome = dispatch_post_approval_work_order(
+            session=session,
+            queue=queue,
+            requested_by=agent_id or "engineer-cli",
+            approved_by=agent_id or "engineer-cli",
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"post-approval dispatch: raised ({type(exc).__name__}: {exc}) — "
+            "session approved but no work_order enqueued",
+            file=sys.stderr,
+        )
+        return 0
+
+    action = outcome.get("action")
+    if action == ACTION_DISPATCHED:
+        print(
+            f"post-approval work_order dispatched: job={outcome.get('job_id')} "
+            f"repo={outcome.get('repo')} approval={outcome.get('approval_id')}",
+            file=sys.stderr,
+        )
+    elif action == ACTION_FAILED:
+        print(
+            f"post-approval dispatch failed: reason={outcome.get('reason')}",
+            file=sys.stderr,
+        )
+    else:  # noop
+        print(
+            f"post-approval dispatch noop: reason={outcome.get('reason')}",
+            file=sys.stderr,
+        )
     return 0
 
 
