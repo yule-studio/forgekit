@@ -43,6 +43,13 @@ from ...agents.job_queue.approval_worker import (
     ApprovalRequest,
 )
 from ...agents.job_queue.obsidian_writer_worker import ObsidianWriterWorker
+from ...agents.job_queue.pr_approval import (
+    APPROVAL_KIND_PR_MERGE,
+    PRMergeExecutor,
+    PRMergeReplyIntent,
+    PRMergeReplyResult,
+    handle_pr_merge_approval_reply,
+)
 from ...agents.job_queue.operator_action_reply import (
     OperatorActionReplyOutcome,
     find_pending_operator_action_for_reply,
@@ -115,6 +122,28 @@ RESPONSE_ENGINEERING_REJECTED: str = (
 )
 RESPONSE_ENGINEERING_PROPOSAL_MISSING: str = (
     "⚠️ 카드 payload 에 work_order proposal 이 없어 dispatch 못 했어요. 운영자에게 다시 알려 주세요."
+)
+
+
+# PR merge approval — P1-L-2 wiring. handle_pr_merge_approval_reply 결과
+# 를 사람 친화적으로 ack.
+RESPONSE_PR_MERGE_MERGED: str = (
+    "✅ PR 머지 승인 — gate 통과 후 merge 완료. merge_sha=`{merge_sha}`."
+)
+RESPONSE_PR_MERGE_GATE_FAILED: str = (
+    "🚫 PR 머지 거부됨 — 5-step gate `{failed_step}` 실패. 이유: {reason}"
+)
+RESPONSE_PR_MERGE_DISABLED: str = (
+    "⏸ PR 머지 비활성화 — `YULE_GITHUB_MERGE_ENABLED=true` 또는 merge_executor 가 wiring 되어야 동작합니다."
+)
+RESPONSE_PR_MERGE_REJECTED: str = (
+    "🚫 PR 머지 반려 처리. audit 에 기록했습니다."
+)
+RESPONSE_PR_MERGE_REVISE: str = (
+    "🔁 수정 후 다시 — 새 commit 이 push 되면 새 카드가 게시됩니다."
+)
+RESPONSE_PR_MERGE_NO_CARD: str = (
+    "❓ 답신에 매칭되는 PR merge 카드를 못 찾았어요."
 )
 
 
@@ -200,6 +229,8 @@ async def route_approval_channel_message(
     session_lister: Optional[SessionListerFn] = None,
     send_chunks: SendChunksFn,
     now_iso: Optional[str] = None,
+    pr_merge_executor: Optional[PRMergeExecutor] = None,
+    on_pr_merge_result: Optional[Callable[[PRMergeReplyResult], Any]] = None,
 ) -> ApprovalReplyRouteResult:
     """Inspect *message* for an approval reply in the approval
     channel; if so, route through :func:`handle_approval_reply`
@@ -299,6 +330,26 @@ async def route_approval_channel_message(
             skipped_reason="no_session_for_reply",
         )
 
+    # P1-L-2 — PR merge approval card 가 같은 session 에 있으면 먼저 처리.
+    # 같은 채널에 engineering_write / obsidian_write 와 동시에 떠 있을 수
+    # 있어서 PR merge 가 가장 먼저 매칭되도록 보장 (5-step gate 가 들어가
+    # 있는 가장 무거운 path).
+    pr_merge_outcome = await _try_handle_pr_merge_reply(
+        queue=queue,
+        text=text,
+        session_id=session_id,
+        approved_by=approved_by,
+        approved_at=now_iso,
+        source_message_id=source_message_id,
+        source_thread_id=source_thread_id,
+        send_chunks=send_chunks,
+        message=message,
+        merge_executor=pr_merge_executor,
+        on_result=on_pr_merge_result,
+    )
+    if pr_merge_outcome is not None:
+        return pr_merge_outcome
+
     # P0-T live smoke fix (session c5278a9043f2 후속):
     # engineering_write 카드도 reply 매칭 — obsidian_write 만 보던 회귀 차단.
     # 매칭되면 handle_github_work_approval_reply 호출 → work_order dispatch.
@@ -340,6 +391,99 @@ async def route_approval_channel_message(
         response_sent=response,
         skipped_reason=outcome.skipped_reason,
     )
+
+
+async def _try_handle_pr_merge_reply(
+    *,
+    queue: JobQueue,
+    text: str,
+    session_id: str,
+    approved_by: str,
+    approved_at: Optional[str],
+    source_message_id: Optional[int],
+    source_thread_id: Optional[int],
+    send_chunks: SendChunksFn,
+    message: Any,
+    merge_executor: Optional[PRMergeExecutor],
+    on_result: Optional[Callable[[PRMergeReplyResult], Any]],
+) -> Optional[ApprovalReplyRouteResult]:
+    """P1-L-2 — PR merge approval card 응답 처리.
+
+    카드가 없으면 ``None`` 반환 (caller 가 engineering_write / obsidian
+    fallback 로 계속). 카드가 있으면 :func:`handle_pr_merge_approval_reply`
+    호출 후 결과를 친절한 한국어로 ack.
+    """
+
+    # 빠른 사전 체크 — 같은 session 에 PR merge 카드가 있는지.
+    matching = find_replyable_approval(
+        queue=queue,
+        session_id=session_id,
+        approval_kind=APPROVAL_KIND_PR_MERGE,
+        source_message_id=source_message_id,
+        source_thread_id=source_thread_id,
+    )
+    if matching is None:
+        return None
+
+    result = await handle_pr_merge_approval_reply(
+        queue=queue,
+        text=text,
+        session_id=session_id,
+        approved_by=approved_by,
+        source_message_id=source_message_id,
+        source_thread_id=source_thread_id,
+        approved_at=approved_at or "",
+        merge_executor=merge_executor,
+    )
+
+    response = _render_pr_merge_result(result)
+    if response is not None:
+        await send_chunks(message.channel, response)
+
+    if on_result is not None:
+        try:
+            res = on_result(result)
+            if hasattr(res, "__await__"):
+                await res
+        except Exception:  # noqa: BLE001 - never crash the router
+            logger.warning(
+                "pr_merge on_result callback raised for session %s",
+                session_id,
+                exc_info=True,
+            )
+
+    return ApprovalReplyRouteResult(
+        handled=True,
+        outcome=None,
+        response_sent=response,
+        skipped_reason=result.skipped_reason,
+    )
+
+
+def _render_pr_merge_result(result: PRMergeReplyResult) -> Optional[str]:
+    """:class:`PRMergeReplyResult` → 한국어 ack 메시지."""
+
+    if result.skipped_reason == "no_matching_approval":
+        return RESPONSE_PR_MERGE_NO_CARD
+    if result.intent == PRMergeReplyIntent.REJECT:
+        return RESPONSE_PR_MERGE_REJECTED
+    if result.intent == PRMergeReplyIntent.REVISE_AND_REPEAT:
+        return RESPONSE_PR_MERGE_REVISE
+    if result.intent in (PRMergeReplyIntent.HOLD, PRMergeReplyIntent.UNCLEAR):
+        return RESPONSE_HOLD_OR_UNCLEAR
+    # APPROVE 경로
+    if result.merge_disabled:
+        return RESPONSE_PR_MERGE_DISABLED
+    if result.gate_failed_step:
+        return RESPONSE_PR_MERGE_GATE_FAILED.format(
+            failed_step=result.gate_failed_step,
+            reason=result.gate_reason or "(없음)",
+        )
+    merge_result = result.merge_result or {}
+    merge_sha = str(merge_result.get("merge_sha") or "")
+    if merge_sha:
+        return RESPONSE_PR_MERGE_MERGED.format(merge_sha=merge_sha[:12])
+    return RESPONSE_PR_MERGE_NO_CARD
 
 
 async def _try_handle_engineering_write_reply(
@@ -593,6 +737,12 @@ __all__ = (
     "RESPONSE_OPERATOR_MISSING_KEYS",
     "RESPONSE_OPERATOR_SECRET_OK",
     "RESPONSE_OPERATOR_SECRET_VALUE_REJECTED",
+    "RESPONSE_PR_MERGE_DISABLED",
+    "RESPONSE_PR_MERGE_GATE_FAILED",
+    "RESPONSE_PR_MERGE_MERGED",
+    "RESPONSE_PR_MERGE_NO_CARD",
+    "RESPONSE_PR_MERGE_REJECTED",
+    "RESPONSE_PR_MERGE_REVISE",
     "RESPONSE_REJECTED",
     "RESPONSE_REJECTION_AUDIT_FAILED",
     "RESPONSE_UNSUPPORTED_KIND",
