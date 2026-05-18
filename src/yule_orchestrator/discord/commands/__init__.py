@@ -296,6 +296,52 @@ def _register_engineering_commands_impl(
                 discord_module=discord,
             )
 
+    # P1-R-2 — governance contract 명시 옵션 choices.
+    # 옛 wiring 은 운영자가 prompt 첫 줄에 ``autonomous_merge, git_flow,
+    # tagged_release, issue_required`` 문자열로 적어야 했다.  명시 필드로
+    # 받으면 (1) 누락 / 오타 0, (2) UI 에서 governance 확정, (3) prompt
+    # 본문은 업무 내용에만 집중.  prompt token 은 fallback 으로 유지.
+    #
+    # 옛 test stub 의 app_commands 모듈에는 Choice / choices 데코레이터가
+    # 없을 수 있어서 graceful fallback — Choice 미지원 환경에서는 옵션
+    # 없이 command 만 등록 (CI 환경에서도 호환).
+    _Choice_cls = getattr(app_commands, "Choice", None)
+    _choices_decorator = getattr(app_commands, "choices", None)
+
+    def _build_choices(*pairs: tuple) -> Optional[list]:
+        if _Choice_cls is None:
+            return None
+        return [_Choice_cls(name=n, value=v) for (n, v) in pairs]
+
+    _WORK_MODE_CHOICES = _build_choices(
+        ("approval_required (사람 승인 필수)", "approval_required"),
+        ("autonomous_merge (자율 머지)", "autonomous_merge"),
+    )
+    _BRANCH_STRATEGY_CHOICES = _build_choices(
+        ("git_flow (feature/release/hotfix prefix)", "git_flow"),
+    )
+    _RELEASE_STRATEGY_CHOICES = _build_choices(
+        ("tagged_release (semver vX.Y.Z tag)", "tagged_release"),
+    )
+    _ISSUE_POLICY_CHOICES = _build_choices(
+        ("issue_required (issue-N anchor 필수)", "issue_required"),
+    )
+    _TOPOLOGY_CHOICES = _build_choices(
+        ("single_repo (단일 repo)", "single_repo"),
+        ("multi_repo (여러 repo)", "multi_repo"),
+    )
+    _SCOPE_CHOICES = _build_choices(
+        ("single_scope (단일 범위)", "single_scope"),
+        ("full_stack_single_repo (단일 repo 풀스택)", "full_stack_single_repo"),
+        ("layer_scoped (레이어 한정)", "layer_scoped"),
+        ("cross_repo_program (여러 repo 프로그램)", "cross_repo_program"),
+    )
+
+    def _maybe_choices_decorator(**kwargs):
+        if _choices_decorator is None or any(v is None for v in kwargs.values()):
+            return lambda fn: fn
+        return _choices_decorator(**kwargs)
+
     @bot.tree.command(
         name="engineer_intake",
         description="engineering-agent에게 작업을 위임합니다 (접수 메시지를 채널에 게시).",
@@ -305,13 +351,41 @@ def _register_engineering_commands_impl(
         prompt="자연어 작업 요청.",
         task_type="명시 task type (생략 시 키워드 분류).",
         write_requested="이 작업이 코드/문서 쓰기를 요구하는지 여부.",
+        work_mode="자율 머지 / 사람 승인 모드 (생략 시 prompt 파싱 → default).",
+        branch_strategy="브랜치 전략 (생략 시 git_flow 기본).",
+        release_strategy="릴리즈 전략 (생략 시 tagged_release 기본).",
+        issue_policy="이슈 정책 (생략 시 issue_required 기본).",
+        topology="작업 대상 repo 갯수 (생략 시 single_repo).",
+        scope="작업 깊이 (생략 시 single_scope).",
+    )
+    @_maybe_choices_decorator(
+        work_mode=_WORK_MODE_CHOICES,
+        branch_strategy=_BRANCH_STRATEGY_CHOICES,
+        release_strategy=_RELEASE_STRATEGY_CHOICES,
+        issue_policy=_ISSUE_POLICY_CHOICES,
+        topology=_TOPOLOGY_CHOICES,
+        scope=_SCOPE_CHOICES,
     )
     async def engineer_intake(
         interaction: "discord.Interaction",
         prompt: str,
         task_type: Optional[str] = None,
         write_requested: bool = False,
+        work_mode: Optional["app_commands.Choice[str]"] = None,
+        branch_strategy: Optional["app_commands.Choice[str]"] = None,
+        release_strategy: Optional["app_commands.Choice[str]"] = None,
+        issue_policy: Optional["app_commands.Choice[str]"] = None,
+        topology: Optional["app_commands.Choice[str]"] = None,
+        scope: Optional["app_commands.Choice[str]"] = None,
     ) -> None:
+        # Choice → 원시 문자열 (또는 None) 추출
+        def _v(opt: Any) -> Optional[str]:
+            if opt is None:
+                return None
+            return getattr(opt, "value", None) or (
+                opt if isinstance(opt, str) else None
+            )
+
         try:
             if not await _safe_defer(interaction, discord_module=discord):
                 return
@@ -323,6 +397,12 @@ def _register_engineering_commands_impl(
                     write_requested=write_requested,
                     channel_id=interaction.channel_id,
                     user_id=interaction.user.id,
+                    explicit_work_mode=_v(work_mode),
+                    explicit_branch_strategy=_v(branch_strategy),
+                    explicit_release_strategy=_v(release_strategy),
+                    explicit_issue_policy=_v(issue_policy),
+                    explicit_topology=_v(topology),
+                    explicit_scope=_v(scope),
                 )
             except (WorkflowError, ValueError) as exc:
                 await _send_message_chunks(
@@ -707,6 +787,12 @@ def _run_engineer_intake(
     write_requested: bool,
     channel_id: Optional[int],
     user_id: Optional[int],
+    explicit_work_mode: Optional[str] = None,
+    explicit_branch_strategy: Optional[str] = None,
+    explicit_release_strategy: Optional[str] = None,
+    explicit_issue_policy: Optional[str] = None,
+    explicit_topology: Optional[str] = None,
+    explicit_scope: Optional[str] = None,
 ):
     parsed: Optional[TaskType] = None
     if task_type:
@@ -725,15 +811,22 @@ def _run_engineer_intake(
         user_id=user_id,
     )
 
-    # P1-M A — slash command path 도 session.extra 에 work_mode /
-    # topology / scope / mode_decided_* 를 영속해야 한다. 옛 wiring 은
-    # 채널 router path 만 ``prepare_coding_session_context`` 를 거쳤기
-    # 때문에 `/engineer_intake` 슬래시 세션은 work_mode=None 으로 떨어졌고,
-    # background pr_merge_continuation_loop 가 approval_required 로 fallback
-    # 됐다 (회귀: session fe5eedc65196).
+    # P1-M A + P1-R-2 — slash command path 가 session.extra 에 거버넌스
+    # contract (work_mode / topology / scope / branch_strategy /
+    # release_strategy / issue_policy + mode_decided_*) 영속.  옛 wiring
+    # 은 prompt 토큰만 파싱했지만 P1-R-2 부터 명시 옵션이 prompt 보다
+    # 강한 우선순위.
+    governance_summary: Optional[Mapping[str, Any]] = None
     try:
-        _persist_intake_mode_and_backlog(
-            session=result.session, prompt_text=prompt
+        governance_summary = _persist_intake_mode_and_backlog(
+            session=result.session,
+            prompt_text=prompt,
+            explicit_work_mode=explicit_work_mode,
+            explicit_branch_strategy=explicit_branch_strategy,
+            explicit_release_strategy=explicit_release_strategy,
+            explicit_issue_policy=explicit_issue_policy,
+            explicit_topology=explicit_topology,
+            explicit_scope=explicit_scope,
         )
     except Exception:  # noqa: BLE001 - never block intake response
         import logging
@@ -742,6 +835,16 @@ def _run_engineer_intake(
             "engineer_intake: mode/backlog 영속화 실패 — 본문 응답은 그대로 진행",
             exc_info=True,
         )
+
+    # P1-R-2 C — operator 가 접수 직후 governance contract 를 한눈에 본다.
+    # result.message 끝에 한국어 1 줄 + 6 키 + source 토큰 append.
+    if governance_summary is not None:
+        try:
+            result = _append_governance_block_to_result(
+                result, governance_summary
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
     # P0-T smoke fix (session c5278a9043f2 repro):
     # /engineer_intake 슬래시 명령이 issue-less full-stack coding 요청을
@@ -768,39 +871,151 @@ def _run_engineer_intake(
 
 
 def _persist_intake_mode_and_backlog(
-    *, session: Any, prompt_text: str
-) -> None:
-    """P1-M — slash command intake 직후 mode/backlog 영속화.
+    *,
+    session: Any,
+    prompt_text: str,
+    explicit_work_mode: Optional[str] = None,
+    explicit_branch_strategy: Optional[str] = None,
+    explicit_release_strategy: Optional[str] = None,
+    explicit_issue_policy: Optional[str] = None,
+    explicit_topology: Optional[str] = None,
+    explicit_scope: Optional[str] = None,
+) -> Optional[Mapping[str, Any]]:
+    """P1-M + P1-R-2 — slash command intake 직후 governance + backlog 영속.
 
-    1. ``prepare_coding_session_context`` 로 work_mode/topology/scope
-       /mode_decided_* 계산 후 session.extra 머지.
-    2. full_stack_single_repo 의도면 ``seed_coding_backlog`` 호출해
-       backlog 8 개 slice 를 stamp (이미 있으면 보존).
+    우선순위: **slash option > prompt token > default**.
+
+    1. ``prepare_coding_session_context`` 가 prompt 파싱 결과를 영속.
+    2. explicit slash option 이 있으면 그 값으로 덮어쓰기 + ``mode_decided_by``
+       를 ``slash_option_explicit`` 으로 갱신.
+    3. ``seed_coding_backlog`` — full-stack 의도면 backlog 8-slice stamp.
+
+    Returns:
+        영속된 governance contract dict (operator surface 용).  세션 없거나
+        실패하면 None.
     """
 
     if session is None:
-        return
+        return None
     try:
         from ..engineering_channel_router.session_persistence import (
             _persist_coding_session_context,
         )
     except Exception:  # noqa: BLE001 - partial install
-        return
+        return None
 
     refs = list(getattr(session, "references_user", None) or ())
     user_links = tuple(str(r) for r in refs)
-    _persist_coding_session_context(
+    persisted_session = _persist_coding_session_context(
         session,
         message_text=prompt_text or "",
         user_links=user_links,
     )
+    target_session = persisted_session or session
+
+    # P1-R-2 B — explicit slash option 이 prompt parse 결과보다 우선.
+    # session.extra 를 직접 갱신.
+    explicit_overrides: dict = {}
+    if explicit_work_mode:
+        explicit_overrides["work_mode"] = explicit_work_mode
+    if explicit_branch_strategy:
+        explicit_overrides["branch_strategy"] = explicit_branch_strategy
+    if explicit_release_strategy:
+        explicit_overrides["release_strategy"] = explicit_release_strategy
+    if explicit_issue_policy:
+        explicit_overrides["issue_policy"] = explicit_issue_policy
+    if explicit_topology:
+        explicit_overrides["topology"] = explicit_topology
+    if explicit_scope:
+        explicit_overrides["scope"] = explicit_scope
+
+    if explicit_overrides:
+        try:
+            from dataclasses import replace as _replace
+            from datetime import datetime, timezone as _tz
+            from ...agents.workflow_state import (
+                load_session as _load,
+                update_session as _update,
+            )
+
+            sid = getattr(target_session, "session_id", None)
+            fresh = _load(sid) if sid else None
+            if fresh is not None:
+                new_extra = dict(getattr(fresh, "extra", None) or {})
+                for k, v in explicit_overrides.items():
+                    new_extra[k] = v
+                # source 토큰 — slash option 이 적어도 하나 있으면 explicit.
+                new_extra["mode_decided_by"] = "slash_option_explicit"
+                new_extra["mode_decided_at"] = (
+                    datetime.now(tz=_tz.utc)
+                    .replace(microsecond=0)
+                    .isoformat()
+                )
+                _update(
+                    _replace(fresh, extra=new_extra),
+                    now=datetime.now(tz=_tz.utc),
+                )
+                target_session = _replace(fresh, extra=new_extra)
+        except Exception:  # noqa: BLE001 - never block intake
+            pass
 
     try:
         from ...agents.coding.coding_backlog_seed import seed_coding_backlog
 
-        seed_coding_backlog(session_id=getattr(session, "session_id", None))
+        seed_coding_backlog(session_id=getattr(target_session, "session_id", None))
     except Exception:  # noqa: BLE001
-        return
+        pass
+
+    # operator surface 용 governance summary 반환
+    extra = getattr(target_session, "extra", None) or {}
+    if not isinstance(extra, Mapping):
+        return None
+    return {
+        "work_mode": extra.get("work_mode"),
+        "topology": extra.get("topology"),
+        "scope": extra.get("scope"),
+        "branch_strategy": extra.get("branch_strategy"),
+        "release_strategy": extra.get("release_strategy"),
+        "issue_policy": extra.get("issue_policy"),
+        "mode_decided_by": extra.get("mode_decided_by"),
+        "mode_decided_at": extra.get("mode_decided_at"),
+    }
+
+
+def _append_governance_block_to_result(result: Any, summary: Mapping[str, Any]) -> Any:
+    """P1-R-2 C — intake result.message 끝에 한국어 governance block append.
+
+    result 는 ``IntakeResult`` 류 — ``message`` 속성을 가진 dataclass.  immutable
+    이면 ``dataclasses.replace`` 로 새 instance 반환.  속성이 없으면 원본 그대로.
+    """
+
+    lines = [
+        "",
+        "🛡 거버넌스 contract (intake 시점에 확정):",
+        f"- 작업 모드: `{summary.get('work_mode') or '(미정)'}`",
+        f"- 토폴로지: `{summary.get('topology') or '(미정)'}`",
+        f"- 범위: `{summary.get('scope') or '(미정)'}`",
+        f"- 브랜치 전략: `{summary.get('branch_strategy') or '(미정)'}`",
+        f"- 릴리즈 전략: `{summary.get('release_strategy') or '(미정)'}`",
+        f"- 이슈 정책: `{summary.get('issue_policy') or '(미정)'}`",
+        f"- 결정 출처: `{summary.get('mode_decided_by') or '(미정)'}`",
+    ]
+    block = "\n".join(lines)
+    existing = getattr(result, "message", None)
+    if not isinstance(existing, str):
+        return result
+    new_message = existing.rstrip() + "\n" + block
+    try:
+        from dataclasses import replace as _replace
+
+        return _replace(result, message=new_message)
+    except TypeError:
+        # not a dataclass — try direct attribute set
+        try:
+            object.__setattr__(result, "message", new_message)
+        except Exception:  # noqa: BLE001
+            pass
+        return result
 
 
 def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
