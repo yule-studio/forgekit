@@ -73,6 +73,8 @@ class BootstrapApplyResult:
     files_created: Tuple[str, ...] = ()
     files_skipped_exists: Tuple[str, ...] = ()
     files_refused_by_scope: Tuple[str, ...] = ()
+    files_refused_by_forbidden: Tuple[str, ...] = ()
+    files_allowed_by_bootstrap_exception: Tuple[str, ...] = ()
     write_errors: Tuple[Tuple[str, str], ...] = ()  # (path, reason)
 
     @property
@@ -81,12 +83,31 @@ class BootstrapApplyResult:
             self.files_created or self.files_skipped_exists
         )
 
+    @property
+    def all_files_refused_by_scope(self) -> bool:
+        """True iff plan produced nothing AND ≥1 file was refused
+        (either by ordinary scope OR forbidden scope). caller surfaces
+        ``bootstrap_required:scope_refused_bootstrap_files`` instead of
+        misleading ``no_stack_detected`` — silent stack-signal-never-appears
+        loop 차단.
+        """
+
+        if self.files_created or self.files_skipped_exists:
+            return False
+        return bool(
+            self.files_refused_by_scope or self.files_refused_by_forbidden
+        )
+
     def to_audit(self) -> dict:
         return {
             "mode": self.mode,
             "files_created": list(self.files_created),
             "files_skipped_exists": list(self.files_skipped_exists),
             "files_refused_by_scope": list(self.files_refused_by_scope),
+            "files_refused_by_forbidden": list(self.files_refused_by_forbidden),
+            "files_allowed_by_bootstrap_exception": list(
+                self.files_allowed_by_bootstrap_exception
+            ),
             "write_errors": [
                 {"path": p, "reason": r} for p, r in self.write_errors
             ],
@@ -494,11 +515,94 @@ def _is_in_write_scope(
 
     if not scope:
         return True
-    norm = rel_path.lstrip("./")
+    # Strip leading "./" if present; do NOT strip a leading "." from
+    # filenames like ".env.example" / ".gitignore".
+    norm = rel_path[2:] if rel_path.startswith("./") else rel_path.lstrip("/")
     for entry in scope:
         token = entry.strip().rstrip("/").rstrip("*").rstrip("/")
         if not token:
             return True  # "**" or "/**" → no restriction
+        if norm == token or norm.startswith(token + "/"):
+            return True
+    return False
+
+
+# P1-J — bootstrap-essential allowlist per mode. caller (role write_scope)
+# 가 명시적으로 좁게 잡혀있을 때도, scaffold 가 stack signal 생성을 못
+# 하면 영원히 ``bootstrap_required:no_stack_detected`` 로 떨어지므로
+# **mode 별로 명시 허용 prefix 집합**. 이 allowlist 안의 파일은 ordinary
+# write_scope 와 무관하게 bootstrap exception 으로 허용된다 (단,
+# ``BOOTSTRAP_HARD_FORBIDDEN_NAMES`` 는 그대로 금지).
+BOOTSTRAP_ESSENTIAL_PREFIXES: Mapping[str, Tuple[str, ...]] = {
+    MODE_GREENFIELD_FULL_STACK: (
+        "package.json",
+        "pnpm-workspace.yaml",
+        "docker-compose.yml",
+        ".env.example",
+        ".gitignore",
+        "GREENFIELD_BOOTSTRAP.md",
+        "apps/",
+    ),
+    MODE_GREENFIELD_PYTHON: (
+        "pyproject.toml",
+        "src/app/",
+        "tests/",
+        ".gitignore",
+        "GREENFIELD_BOOTSTRAP.md",
+    ),
+}
+
+
+# P1-J — hard rail: bootstrap exception 이 절대 허용해선 안 되는 파일명.
+# ``.env.example`` 는 placeholder template 이라 허용, ``.env`` 는 실제
+# secret 파일이라 금지. operator 가 forbidden_scope 로 추가 제약 가능.
+BOOTSTRAP_HARD_FORBIDDEN_NAMES: frozenset[str] = frozenset(
+    {
+        ".env",
+        ".env.local",
+        ".env.production",
+        "secrets.json",
+        "credentials.json",
+        "id_rsa",
+        "id_ed25519",
+    }
+)
+
+
+def _is_bootstrap_essential(rel_path: str, mode: str) -> bool:
+    """Return True iff *rel_path* matches the mode's bootstrap-essential
+    allowlist. caller bypasses ordinary write_scope on True.
+    """
+
+    prefixes = BOOTSTRAP_ESSENTIAL_PREFIXES.get(mode, ())
+    # Strip leading "./" if present; do NOT strip a leading "." from
+    # filenames like ".env.example" / ".gitignore".
+    norm = rel_path[2:] if rel_path.startswith("./") else rel_path.lstrip("/")
+    for prefix in prefixes:
+        token = prefix.rstrip("/")
+        if not token:
+            continue
+        if norm == token or norm.startswith(token + "/") or norm == prefix:
+            return True
+        # prefix 끝이 ``/`` 면 정확한 디렉터리 매칭
+        if prefix.endswith("/") and norm.startswith(prefix):
+            return True
+    return False
+
+
+def _is_hard_forbidden(rel_path: str, forbidden_scope: Sequence[str]) -> bool:
+    """Hard rail — bootstrap exception 도 우회 못 함."""
+
+    name = Path(rel_path).name
+    if name in BOOTSTRAP_HARD_FORBIDDEN_NAMES:
+        return True
+    # Strip leading "./" if present; do NOT strip a leading "." from
+    # filenames like ".env.example" / ".gitignore".
+    norm = rel_path[2:] if rel_path.startswith("./") else rel_path.lstrip("/")
+    for entry in forbidden_scope or ():
+        token = str(entry or "").strip().rstrip("/").rstrip("*").rstrip("/")
+        if not token:
+            continue
         if norm == token or norm.startswith(token + "/"):
             return True
     return False
@@ -509,9 +613,19 @@ def apply_bootstrap_plan(
     worktree_path: str,
     plan: BootstrapPlan,
     write_scope: Sequence[str] = (),
+    forbidden_scope: Sequence[str] = (),
+    allow_bootstrap_essentials: bool = True,
 ) -> BootstrapApplyResult:
     """Write every file in *plan* under *worktree_path*, honoring scope
-    and the idempotency rule (never overwrite existing).
+    + forbidden_scope + idempotency.
+
+    P1-J — *allow_bootstrap_essentials* (default True) opens an explicit
+    + audited override: if a plan file matches the mode's
+    ``BOOTSTRAP_ESSENTIAL_PREFIXES`` allowlist AND is NOT in
+    ``forbidden_scope`` / ``BOOTSTRAP_HARD_FORBIDDEN_NAMES``, write it
+    even if ordinary ``write_scope`` would reject. The path is tracked
+    in ``files_allowed_by_bootstrap_exception`` so operator surface
+    sees the explicit exception.
     """
 
     root = Path(worktree_path)
@@ -524,13 +638,28 @@ def apply_bootstrap_plan(
     created: list[str] = []
     skipped: list[str] = []
     refused: list[str] = []
+    refused_forbidden: list[str] = []
+    allowed_by_exception: list[str] = []
     errors: list[Tuple[str, str]] = []
 
     for entry in plan.files:
         rel = entry.relative_path.lstrip("/")
-        if not _is_in_write_scope(rel, scope):
+        # Hard rail FIRST — bootstrap exception cannot bypass forbidden.
+        if _is_hard_forbidden(rel, forbidden_scope):
+            refused_forbidden.append(rel)
+            continue
+        in_scope = _is_in_write_scope(rel, scope)
+        bootstrap_essential = (
+            allow_bootstrap_essentials
+            and _is_bootstrap_essential(rel, plan.mode)
+        )
+        if not in_scope and not bootstrap_essential:
             refused.append(rel)
             continue
+        if bootstrap_essential and not in_scope:
+            # 명시 audit — operator 가 본 파일이 ordinary scope 가 아니라
+            # bootstrap exception 으로 허용됐다는 것을 알게.
+            allowed_by_exception.append(rel)
         target = root / rel
         if target.exists() and not entry.overwrite_existing:
             skipped.append(rel)
@@ -547,11 +676,15 @@ def apply_bootstrap_plan(
         files_created=tuple(created),
         files_skipped_exists=tuple(skipped),
         files_refused_by_scope=tuple(refused),
+        files_refused_by_forbidden=tuple(refused_forbidden),
+        files_allowed_by_bootstrap_exception=tuple(allowed_by_exception),
         write_errors=tuple(errors),
     )
 
 
 __all__ = (
+    "BOOTSTRAP_ESSENTIAL_PREFIXES",
+    "BOOTSTRAP_HARD_FORBIDDEN_NAMES",
     "BootstrapApplyResult",
     "BootstrapFile",
     "BootstrapPlan",
