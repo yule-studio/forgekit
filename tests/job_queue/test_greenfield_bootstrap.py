@@ -292,6 +292,9 @@ class LiveBootstrapEditorTests(unittest.TestCase):
 
 class WriteScopeGovernanceTests(unittest.TestCase):
     def test_write_scope_refuses_files_outside_scope(self) -> None:
+        """P1-J: bootstrap-essential exception 을 끄면 (``allow_bootstrap_essentials=False``)
+        옛 동작 — ordinary write_scope 만 적용. top-level scaffold 거부."""
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _greenfield_worktree(root)
@@ -299,11 +302,13 @@ class WriteScopeGovernanceTests(unittest.TestCase):
                 mode=MODE_GREENFIELD_FULL_STACK, request=_request()
             )
             # Restrict to ``apps/**`` only — top-level files (package.json,
-            # docker-compose.yml, .env.example) should be refused.
+            # docker-compose.yml, .env.example) should be refused. Exception
+            # off so we test pure write_scope semantics.
             result = apply_bootstrap_plan(
                 worktree_path=str(root),
                 plan=plan,
                 write_scope=("apps",),
+                allow_bootstrap_essentials=False,
             )
         refused = set(result.files_refused_by_scope)
         self.assertIn("package.json", refused)
