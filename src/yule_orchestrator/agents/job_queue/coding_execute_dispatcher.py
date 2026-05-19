@@ -752,6 +752,24 @@ def _persist_dispatch_marker(
         }
         extra[SESSION_EXTRA_PROGRESS_KEY] = bucket
 
+    # P1-Z4 C — dispatch marker stamp 직후 tracking_validation 재평가.
+    # anchor + coding_job=ready + dispatch marker 가 다 있으면
+    # needs_issue 가 stale 로 남으면 안 됨.
+    try:
+        from ..coding.tracking_refresh import (
+            SESSION_EXTRA_TRACKING_KEY,
+            refresh_tracking_validation,
+        )
+
+        refresh_result = refresh_tracking_validation(
+            session=_replace(session, extra=extra),
+            triggered_by="dispatch_marker",
+        )
+        if refresh_result.new_validation:
+            extra[SESSION_EXTRA_TRACKING_KEY] = dict(refresh_result.new_validation)
+    except Exception:  # noqa: BLE001
+        pass
+
     try:
         updated = _replace(session, extra=extra)
     except TypeError:

@@ -290,6 +290,28 @@ def promote_session_to_coding_ready(
         },
     )
 
+    # P1-Z4 C — anchor stamp + coding_job=ready 직후 tracking_validation
+    # 재평가.  옛 wiring 은 intake 시점 needs_issue 가 그대로 남아 operator
+    # surface 가 "아직 issue 없어 멈춤" 처럼 보이던 회귀 차단.
+    try:
+        from ..coding.tracking_refresh import (
+            SESSION_EXTRA_TRACKING_KEY,
+            refresh_tracking_validation,
+        )
+
+        class _ProxySession:
+            extra = None
+
+        proxy = _ProxySession()
+        proxy.extra = extra
+        refresh_result = refresh_tracking_validation(
+            session=proxy, triggered_by="coding_job_ready"
+        )
+        if refresh_result.new_validation:
+            extra[SESSION_EXTRA_TRACKING_KEY] = dict(refresh_result.new_validation)
+    except Exception:  # noqa: BLE001
+        pass
+
     return ContinuationOutcome(
         promoted=True,
         coding_job=job_payload,
