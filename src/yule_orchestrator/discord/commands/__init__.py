@@ -1137,7 +1137,9 @@ def _maybe_post_intake_approval_card(
     )
     from ..integrations.github_workos_adapter import (
         enqueue_github_work_approval,
-        should_route_to_github_workos,
+    )
+    from ..integrations.intake_approval_eligibility import (
+        decide_intake_approval_card_eligibility,
     )
 
     # intake 직후 session.extra 는 비어있을 수 있으므로 adapter 가 인식할
@@ -1163,10 +1165,14 @@ def _maybe_post_intake_approval_card(
             except Exception:  # noqa: BLE001
                 pass
 
-    eligible, reason, _ = should_route_to_github_workos(
-        session=session, request_text=prompt_text
+    # P1-Z4 A — should_route_to_github_workos 의 prompt phrase 게이트 대신
+    # 구조 신호 (write_requested + lifecycle + github_target + handoff_packet)
+    # 만으로 판단.  canonical session ``000f13fb121b`` 가 자연어 prompt
+    # 때문에 카드 누락된 회귀 직접 차단.
+    decision = decide_intake_approval_card_eligibility(
+        session=session, prompt_text=prompt_text
     )
-    if not eligible:
+    if not decision.eligible:
         return
 
     # P0-W — slash intake 가 coding intent 로 인정된 시점에 즉시
@@ -1198,6 +1204,10 @@ def _maybe_post_intake_approval_card(
             approval_worker=worker,
             requested_by=requested_by,
             repo=resolved_repo,
+            # P1-Z4 A — intake-time gate 가 이미 구조 신호로 통과시킴.
+            # builder 의 prompt phrase 게이트 우회 → 자연어 prompt 도
+            # 카드 게시 가능.
+            trust_session_signals=True,
         )
 
     try:

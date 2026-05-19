@@ -574,6 +574,7 @@ async def enqueue_github_work_approval(
     repo_contract: Optional[RepoContract] = None,
     issue_template_loader: Optional[Callable[[str], Optional[str]]] = None,
     existing_issue_number: Optional[int] = None,
+    trust_session_signals: bool = False,
 ) -> GitHubWorkApprovalOutcome:
     """Build a proposal + enqueue (and optionally post) the approval card.
 
@@ -604,11 +605,16 @@ async def enqueue_github_work_approval(
         repo_contract=repo_contract,
         issue_template_loader=issue_template_loader,
         existing_issue_number=existing_issue_number,
+        # P1-Z4 A — intake-time approval card 또는 trusted continuation
+        # 경로면 builder 의 prompt phrase 게이트를 우회.  caller (slash
+        # intake helper) 가 이미 구조 신호로 eligibility 통과시켰음.
+        approved_continuation=trust_session_signals,
     )
     if proposal is None:
         eligible, skipped_reason, _ = should_route_to_github_workos(
             session=session,
             request_text=request_text,
+            approved_continuation=trust_session_signals,
         )
         return GitHubWorkApprovalOutcome(
             proposal=None,
