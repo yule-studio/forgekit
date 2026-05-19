@@ -200,6 +200,43 @@ def detect_repo_layout_signals(
 # ---------------------------------------------------------------------------
 
 
+def scan_toplevel_paths_from_workspace(
+    workspace_root: Optional[str],
+    *,
+    max_entries: int = 30,
+) -> Tuple[str, ...]:
+    """P1-Z6 C — local target repo checkout 의 toplevel 디렉터리 수집.
+
+    intake 시점에는 worktree provisioning 전이라 toplevel 신호가 없음.
+    하지만 target repo 의 local checkout (예:
+    ``/Users/masterway/local-dev/naver-search-clone``) 이 있으면 그
+    경로에서 즉시 toplevel 을 읽을 수 있다.
+
+    storage I/O 만 — pure helper.  exception 은 swallow (빈 튜플 반환) →
+    strategy 가 graceful 하게 unresolved/greenfield 로 떨어짐.
+    """
+
+    if not workspace_root:
+        return ()
+    try:
+        from pathlib import Path
+
+        root = Path(str(workspace_root))
+        if not root.is_dir():
+            return ()
+        entries: list[str] = []
+        for child in sorted(root.iterdir()):
+            name = child.name
+            if name.startswith(".") and name not in {".github", ".gitignore"}:
+                continue
+            entries.append(name)
+            if len(entries) >= max_entries:
+                break
+        return tuple(entries)
+    except Exception:  # noqa: BLE001
+        return ()
+
+
 def synthesize_implementation_strategy(
     *,
     user_request: str,
@@ -208,6 +245,7 @@ def synthesize_implementation_strategy(
     task_type: Optional[str] = None,
     topology: str = "single_repo",
     explicit_first_slice_owner: Optional[str] = None,
+    workspace_root: Optional[str] = None,
 ) -> ImplementationStrategy:
     """tech-lead 가 구현 전략을 결정.
 
@@ -231,7 +269,16 @@ def synthesize_implementation_strategy(
         )
 
     request_signals = detect_request_signals(user_request)
-    repo_signals = detect_repo_layout_signals(toplevel_paths)
+    # P1-Z6 C — toplevel_paths 가 비어있어도 workspace_root 가 있으면
+    # local target repo checkout 에서 직접 scan.  canonical session
+    # ``6911f9d65e5d`` 가 toplevel=[] 로 greenfield_empty 잘못 분류된
+    # 회귀 차단.
+    effective_paths = list(toplevel_paths or ())
+    if not effective_paths and workspace_root:
+        scanned = scan_toplevel_paths_from_workspace(workspace_root)
+        if scanned:
+            effective_paths = list(scanned)
+    repo_signals = detect_repo_layout_signals(effective_paths)
 
     # 1) layout 결정
     strategy_id: str

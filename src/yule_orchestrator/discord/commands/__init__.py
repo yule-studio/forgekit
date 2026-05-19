@@ -1061,12 +1061,20 @@ def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
         if isinstance(extra_for_strategy, Mapping)
         else "implementation"
     )
+    # P1-Z6 C — toplevel_paths 가 비어있을 때 local target repo checkout
+    # 을 직접 scan.  ``_default_repo_root_resolver`` 가 env / sibling 디렉터리
+    # / orchestrator self-repo 까지 검사 → canonical case
+    # (``naver-search-clone``) 에서 apps/api + apps/web 인지 가능.
+    workspace_root: Optional[str] = None
+    if not toplevel_paths:
+        workspace_root = _resolve_local_target_repo_root(session, prompt_text)
     try:
         strategy = synthesize_implementation_strategy(
             user_request=prompt_text or "",
             toplevel_paths=toplevel_paths,
             lifecycle_mode=lifecycle_mode,
             topology="single_repo",
+            workspace_root=workspace_root,
         )
     except Exception:  # noqa: BLE001
         strategy = None
@@ -1085,6 +1093,45 @@ def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
         _persist_coding_proposal(session, proposal)
     except Exception:  # noqa: BLE001
         return
+
+
+def _resolve_local_target_repo_root(
+    session: Any, prompt_text: str
+) -> Optional[str]:
+    """P1-Z6 C — repo_full_name → local checkout 디렉터리 resolution.
+
+    intake 시점에는 worktree provisioning 전.  하지만 operator 가 이미
+    local 에 target repo 를 clone 해뒀으면 그 경로의 toplevel 디렉터리만
+    있어도 strategy 가 정확한 결정 가능.
+
+    ``_default_repo_root_resolver`` 가 env (``YULE_CODING_EXECUTOR_REPO_ROOTS_JSON``
+    / ``..._SEARCH_ROOTS``) + sibling 디렉터리까지 검색.  resolver 가
+    None 반환하면 (없으면) caller 는 None workspace_root 로 strategy
+    호출 → greenfield fallback.
+    """
+
+    try:
+        from ...agents.job_queue.coding_executor_live import (
+            _default_repo_root_resolver,
+        )
+    except Exception:  # noqa: BLE001
+        return None
+
+    repo_full_name = _extract_repo_from_session(session, prompt_text)
+    if not repo_full_name:
+        return None
+
+    try:
+        from pathlib import Path
+
+        orchestrator_root = str(Path.cwd())
+        resolved, _searched = _default_repo_root_resolver(
+            repo_full_name,
+            orchestrator_repo_root=orchestrator_root,
+        )
+        return resolved
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _gather_repo_toplevel_paths_from_session(session: Any) -> tuple:
