@@ -199,6 +199,24 @@ class IntakeApprovalCardEnqueueTests(_SmokeFixture):
                 extra={
                     "lifecycle_mode": "implementation",
                     "active_research_roles": ["tech-lead", "backend-engineer"],
+                    # P1-Z4 A — intake eligibility 가 structured signal 기반
+                    # (github_target + coding_handoff_packet) 으로 바뀐 이후
+                    # 필수.
+                    "github_target": {
+                        "kind": "repo",
+                        "owner": "yule-studio",
+                        "repo": "naver-search-clone",
+                    },
+                    "coding_handoff_packet": {
+                        "canonical_request": _C5278A9043F2_PROMPT[:60],
+                        "github_target": {
+                            "kind": "repo",
+                            "owner": "yule-studio",
+                            "repo": "naver-search-clone",
+                        },
+                        "next_action": "open_issue",
+                        "notes": {},
+                    },
                 },
                 write_requested=True,
             )
