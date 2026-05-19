@@ -112,6 +112,14 @@ REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE: str = (
 # 0 — prompt 보강 / provider / write_scope 점검 필요" 라는 명확한 신호.
 REASON_LIVE_EDITOR_NO_EDITS_PRODUCED: str = "live_editor_no_edits_produced"
 
+# P1-Z4 D — write_scope 가 target repo 의 실제 layout 과 0건 매칭일 때.
+# placeholder (``src/<service>/...``) 같이 caller 가 정합성 없는 scope 를
+# 넘긴 경우 / repo 가 다른 구조 (``apps/`` monorepo) 인 경우 모두.
+# LLM 호출 자체를 건너뛰지는 않지만 (claude-cli 가 새 파일을 만들 수도
+# 있음) detected=0 이면 본 reason 으로 분류 → operator 가 "write_scope
+# 가 repo layout 과 안 맞아 매칭 가능한 candidate 0개" 라는 명확한 진단.
+REASON_WRITE_SCOPE_RESOLVED_EMPTY: str = "write_scope_resolved_empty"
+
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
     {"main", "master", "develop", "dev", "prod", "release"}
@@ -727,20 +735,60 @@ class CodingExecutorWorker:
             if is_live_editor and not (ctx.edited_files or ()):
                 provider = getattr(self._editor, "provider", "unknown")
                 model = getattr(self._editor, "model", "unknown")
+                # P1-Z4 D — write_scope 가 target repo layout 과 매칭되는지
+                # 점검.  placeholder (``<service>``) / 다른 layout 등으로
+                # 0 매칭이면 더 구체적인 reason 으로 분류.
+                scope_resolution = None
+                scope_audit: Mapping[str, Any] = {}
+                try:
+                    from .coding_write_scope_resolution import (
+                        resolve_write_scope_against_worktree,
+                    )
+
+                    scope_resolution = resolve_write_scope_against_worktree(
+                        worktree_path=ctx.worktree_path,
+                        write_scope=tuple(request.write_scope or ()),
+                    )
+                    scope_audit = scope_resolution.to_audit()
+                except Exception:  # noqa: BLE001
+                    scope_audit = {"resolution_error": True}
+
+                scope_empty = bool(
+                    scope_resolution is not None
+                    and scope_resolution.can_decide_mismatch
+                    and not scope_resolution.has_any_match
+                )
+                no_edit_reason = (
+                    REASON_WRITE_SCOPE_RESOLVED_EMPTY
+                    if scope_empty
+                    else REASON_LIVE_EDITOR_NO_EDITS_PRODUCED
+                )
+                no_edit_detail = (
+                    "write_scope 가 target repo layout 과 0건 매칭 — "
+                    f"unmatched_prefixes={list((scope_resolution.unmatched_prefixes if scope_resolution else ()))[:3]} "
+                    "(placeholder scope 인 경우 caller 가 repo-aware 로 resolve 필요)"
+                    if scope_empty
+                    else (
+                        "live editor call completed but produced 0 modified "
+                        "files — operator may need to refine prompt, check "
+                        "write_scope, or verify provider response"
+                    )
+                )
                 detail_audit = {
                     "job_id": in_progress.job_id,
-                    "reason": REASON_LIVE_EDITOR_NO_EDITS_PRODUCED,
+                    "reason": no_edit_reason,
                     "branch": branch,
                     "code_editor": editor_class_name,
                     "provider": provider,
                     "model": model,
                     "worktree_path": ctx.worktree_path,
                     "changed_files_count": 0,
-                    "detail": (
-                        "live editor call completed but produced 0 modified "
-                        "files — operator may need to refine prompt, check "
-                        "write_scope, or verify provider response"
+                    "write_scope_resolution": dict(scope_audit),
+                    "resolved_write_scope_count": len(
+                        scope_resolution.matched_prefixes if scope_resolution else ()
                     ),
+                    "prompt_summary": (request.generated_prompt or "")[:200],
+                    "detail": no_edit_detail,
                 }
                 self._stamp_progress(
                     session_id=request.session_id,
@@ -750,7 +798,7 @@ class CodingExecutorWorker:
                 return self._fail(
                     in_progress,
                     terminal=False,
-                    reason=REASON_LIVE_EDITOR_NO_EDITS_PRODUCED,
+                    reason=no_edit_reason,
                     branch=branch,
                 )
 
