@@ -387,6 +387,33 @@ async def run_coding_executor(
             exc_info=True,
         )
 
+    # P1-Z6 B startup recovery — pre-PR transient failure (edit_timeout /
+    # edit_subprocess_failed / 옛 edit_failed) 자동 retry.  옛 wiring 은
+    # max_attempts=1 이라 ``failed_retryable`` reason 으로 떨어져도
+    # 곧장 terminal 로 종료됐다.  이제 max_attempts=3 + 본 sweep 이
+    # ``requeue_retryable`` 로 한 번 더 시도시키는 자동 self-healing 루프.
+    # structural failure (write_scope_resolved_empty / strategy_unresolved /
+    # forbidden) 는 recoverable set 에 안 들어가 절대 자동 retry 안 됨.
+    try:
+        from ..agents.job_queue.coding_execute_recovery import (
+            recover_transient_pre_pr_failures,
+        )
+
+        retried_transient = recover_transient_pre_pr_failures(
+            queue=queue, log_fn=lambda msg, _exc: logger.info(msg)
+        )
+        if retried_transient:
+            logger.info(
+                "coding_execute transient retry: requeued %d row(s) — "
+                "edit_timeout / edit_subprocess_failed 가 자동 재시도",
+                len(retried_transient),
+            )
+    except Exception:  # noqa: BLE001 - never crash startup
+        logger.warning(
+            "coding_execute transient retry: startup sweep raised",
+            exc_info=True,
+        )
+
     async def _process(job):
         # Spawn a per-job keepalive task. picked_by 는 pick(...) 시점에
         # service_id 로 설정되므로 worker_id 도 동일.

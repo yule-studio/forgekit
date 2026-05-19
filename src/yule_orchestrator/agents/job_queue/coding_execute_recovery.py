@@ -627,13 +627,114 @@ def _stamp_bootstrap_progress(
         pass
 
 
+# P1-Z6 B — pre-PR transient failure recovery.  edit_timeout_live_editor
+# / edit_subprocess_failed / commit_failed 같이 "한 번 더 시도하면 풀릴
+# 가능성" 이 있는 reason 들.  structural failure (strategy_unresolved /
+# write_scope_resolved_empty / forbidden_scope / bootstrap_required:
+# scaffold_apply_failed 등) 는 본 recoverable set 에 포함 안 됨.
+TRANSIENT_PRE_PR_RETRYABLE_REASONS: tuple = (
+    "edit_timeout_live_editor",
+    "edit_subprocess_failed",
+    "edit_failed",  # 옛 generic reason — backward compat
+)
+
+
+def recover_transient_pre_pr_failures(
+    queue: JobQueue,
+    *,
+    max_per_run: int = 50,
+    log_fn: Optional[Callable[[str, Optional[Any]], None]] = None,
+) -> Tuple[str, ...]:
+    """P1-Z6 B — pre-PR transient ``failed_retryable`` 행을 requeue.
+
+    ``edit_timeout_live_editor`` / ``edit_subprocess_failed`` 같이 transient
+    성격의 reason 으로 떨어진 행은 ``requeue_retryable`` 로 재시도 시도.
+    attempt 카운터는 자동 +1.  ``max_attempts`` 를 넘으면 queue 가
+    terminal 로 떨어뜨림 — 본 함수가 attempt 폭주 만들지 않음.
+
+    structural failure (``write_scope_resolved_empty`` /
+    ``tech_lead_strategy_unresolved`` 등) 는 본 recoverable set 에 안
+    들어가 절대 자동 retry 되지 않는다.
+
+    반환: requeue 된 job_id 튜플.
+    """
+
+    db_path = getattr(queue, "_db_path", None)
+    if db_path is None:
+        return ()
+
+    import json as _json
+    import sqlite3 as _sqlite3
+
+    try:
+        with _sqlite3.connect(str(db_path)) as conn:
+            conn.row_factory = _sqlite3.Row
+            rows = conn.execute(
+                """
+                SELECT job_id, result_json, attempt
+                FROM job_queue
+                WHERE job_type = 'coding_execute'
+                  AND state = 'failed_retryable'
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (int(max_per_run),),
+            ).fetchall()
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "coding_execute transient retry sweep: sqlite query failed",
+            exc_info=True,
+        )
+        return ()
+
+    requeued: list[str] = []
+    for row in rows or ():
+        try:
+            payload = _json.loads(row["result_json"] or "{}")
+        except Exception:  # noqa: BLE001
+            continue
+        reason_raw = str(payload.get("reason") or payload.get("error") or "").strip().lower()
+        # reason 토큰만 비교 (suffix detail 무시).  e.g. ``edit_timeout_live_editor:_SubprocessError``
+        reason_token = reason_raw.split(":", 1)[0]
+        if reason_token not in TRANSIENT_PRE_PR_RETRYABLE_REASONS:
+            continue
+        try:
+            queue.requeue_retryable(row["job_id"])
+            requeued.append(row["job_id"])
+            logger.warning(
+                "coding_execute transient retry: requeued %s (reason=%s, attempt=%s)",
+                row["job_id"],
+                reason_token,
+                row["attempt"],
+            )
+            if log_fn is not None:
+                try:
+                    log_fn(
+                        f"coding_execute transient retry: requeued {row['job_id']} "
+                        f"(reason={reason_token})",
+                        None,
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "coding_execute transient retry: requeue failed for %s",
+                row["job_id"],
+                exc_info=True,
+            )
+            continue
+    return tuple(requeued)
+
+
 __all__ = (
     "BOOTSTRAP_RECOVERABLE_SUB_TOKENS",
     "BOOTSTRAP_REQUIRED_REASON_PREFIX",
     "TARGET_REPO_MISSING_REASON_PREFIX",
+    "TRANSIENT_PRE_PR_RETRYABLE_REASONS",
     "_classify_bootstrap_reason",
     "_is_bootstrap_capability_enabled",
     "_revive_failed_terminal_row",
     "recover_bootstrap_required_rows",
     "recover_target_repo_missing_rows",
+    "recover_transient_pre_pr_failures",
 )
