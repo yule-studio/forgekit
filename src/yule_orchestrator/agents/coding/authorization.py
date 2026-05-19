@@ -323,6 +323,7 @@ def recommend_authorization(
     role_profile_loader: Optional[
         Mapping[str, Mapping[str, object]]
     ] = None,
+    implementation_strategy: Optional[Any] = None,
 ) -> CodingAuthorizationProposal:
     """Pick executor + review + participant roles for *user_request*.
 
@@ -399,10 +400,19 @@ def recommend_authorization(
             scored=scored,
         )
 
-    if top_score <= 0:
-        # No keyword matched — likely an under-specified request. Still
-        # return a tech-lead-led fallback so the gateway asks the user
-        # to specify the area instead of silently picking backend.
+    # P1-Z5 — strategy 가 resolved 면 keyword score 0 이라도 strategy 우선.
+    # tech-lead 가 repo layout + user request 로 이미 first_slice_owner 결정 →
+    # keyword scorer 가 모르더라도 strategy 가 source of truth.
+    strategy_resolved = bool(
+        implementation_strategy is not None
+        and getattr(implementation_strategy, "resolved", False)
+        and getattr(implementation_strategy, "first_slice_owner", None)
+        and getattr(implementation_strategy, "first_slice_scope", ())
+    )
+
+    if top_score <= 0 and not strategy_resolved:
+        # No keyword matched + 도 strategy 없음 — likely under-specified.
+        # tech-lead-led fallback 으로 gateway 가 사용자에게 영역 명시 요청.
         return _fallback_proposal(
             user_request=request_text,
             session_id=session_id,
@@ -413,8 +423,99 @@ def recommend_authorization(
         )
 
     executor_profile = profiles[top_role]
-    write_scope = tuple(_string_list(executor_profile.get("write_scope_candidates", ())))
-    forbidden_scope = tuple(_string_list(executor_profile.get("forbidden_scope", ())))
+    manifest_write_scope = tuple(_string_list(executor_profile.get("write_scope_candidates", ())))
+    manifest_forbidden_scope = tuple(_string_list(executor_profile.get("forbidden_scope", ())))
+
+    # P1-Z5 B — strategy 가 resolved 면 source of truth.  manifest scope 는
+    # fallback 으로만 사용.  옛 wiring 은 manifest 의 ``write_scope_candidates``
+    # (예: ``src/<service>/api/**``) 를 그대로 proposal 에 복사 → worktree
+    # 와 0 매칭일 때 ``write_scope_resolved_empty`` 로 종료되던 회귀.
+    strategy_audit: Mapping[str, Any] = {}
+    scope_source: str = "manifest_default"
+    if implementation_strategy is not None:
+        try:
+            strategy_audit = dict(implementation_strategy.to_audit())
+        except Exception:  # noqa: BLE001
+            strategy_audit = {}
+        if getattr(implementation_strategy, "resolved", False):
+            # strategy 가 first_slice_owner / first_slice_scope 를 결정
+            strategy_owner = getattr(implementation_strategy, "first_slice_owner", None)
+            strategy_scope = tuple(getattr(implementation_strategy, "first_slice_scope", ()) or ())
+            strategy_forbidden = tuple(
+                getattr(implementation_strategy, "first_slice_forbidden", ()) or ()
+            )
+            strategy_participants = tuple(
+                getattr(implementation_strategy, "participant_roles", ()) or ()
+            )
+            strategy_reviewers = tuple(
+                getattr(implementation_strategy, "review_roles", ()) or ()
+            )
+            if strategy_owner and strategy_scope:
+                top_role = strategy_owner
+                executor_profile = profiles.get(top_role) or executor_profile
+                # forbidden 은 strategy + manifest 합집합 (security 보강)
+                merged_forbidden = list(dict.fromkeys(
+                    list(strategy_forbidden) + list(manifest_forbidden_scope)
+                ))
+                write_scope = strategy_scope
+                forbidden_scope = tuple(merged_forbidden)
+                scope_source = "strategy"
+                # review/participant 는 strategy 가 명시했으면 사용
+                if strategy_reviewers:
+                    review_roles = strategy_reviewers
+                else:
+                    review_roles = _resolve_review_roles(
+                        executor_role=top_role,
+                        profiles=profiles,
+                        normalised=normalised,
+                    )
+                if strategy_participants:
+                    participant_roles = strategy_participants
+                else:
+                    participant_roles = _resolve_participant_roles(
+                        executor_role=top_role,
+                        review_roles=review_roles,
+                        profiles=profiles,
+                        normalised=normalised,
+                        scored=scored,
+                    )
+                domain_focus = str(executor_profile.get("domain_focus", "")).strip()
+                strategy_reason = (
+                    f"implementation_strategy={strategy_audit.get('strategy_id')} → "
+                    f"first_slice_owner={top_role} · "
+                    f"scope={list(write_scope)} · "
+                    f"rationale={strategy_audit.get('rationale', '')}"
+                )
+                return CodingAuthorizationProposal(
+                    session_id=session_id,
+                    user_request=request_text,
+                    executor_role=top_role,
+                    review_roles=review_roles,
+                    participant_roles=participant_roles,
+                    write_scope=write_scope,
+                    forbidden_scope=forbidden_scope,
+                    reason=strategy_reason,
+                    safety_rules=_DEFAULT_SAFETY_RULES,
+                    approval_required=True,
+                    metadata={
+                        "executor_score": top_score,
+                        "scored_roles": tuple(
+                            {"role": role, "score": score} for score, _, role in scored
+                        ),
+                        "implementation_strategy": strategy_audit,
+                        "scope_source": scope_source,
+                    },
+                )
+        else:
+            # strategy 는 있지만 unresolved — manifest fallback 으로 진입,
+            # 단 audit 에 unresolved 명시.
+            scope_source = "tech_lead_strategy_unresolved"
+
+    # Manifest fallback path (옛 동작) — strategy 미주입 또는 unresolved.
+    write_scope = manifest_write_scope
+    forbidden_scope = manifest_forbidden_scope
+    if scope_source == "manifest_default" and not implementation_strategy:
+        scope_source = "manifest_default"
 
     review_roles = _resolve_review_roles(
         executor_role=top_role,
@@ -454,6 +555,8 @@ def recommend_authorization(
             "scored_roles": tuple(
                 {"role": role, "score": score} for score, _, role in scored
             ),
+            "implementation_strategy": strategy_audit,
+            "scope_source": scope_source,
         },
     )
 

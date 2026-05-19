@@ -1040,16 +1040,42 @@ def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
 
     try:
         from ...agents.coding.authorization import recommend_authorization
+        from ...agents.coding.implementation_strategy import (
+            synthesize_implementation_strategy,
+        )
         from ..engineering_channel_router.session_persistence import (
             _persist_coding_proposal,
         )
     except Exception:  # noqa: BLE001 - partial install fallback
         return
 
+    # P1-Z5 — tech-lead/orchestrator 가 먼저 implementation strategy 를
+    # synthesise.  full-stack-app + single_repo intake 에서 repo layout +
+    # user request 신호로 first_slice_owner / write_scope 결정.  옛 wiring
+    # 은 manifest 의 placeholder ``src/<service>/...`` 가 그대로 내려와
+    # ``write_scope_resolved_empty`` 회귀 발생.
+    toplevel_paths = _gather_repo_toplevel_paths_from_session(session)
+    extra_for_strategy = getattr(session, "extra", None) or {}
+    lifecycle_mode = (
+        str(extra_for_strategy.get("lifecycle_mode") or "implementation")
+        if isinstance(extra_for_strategy, Mapping)
+        else "implementation"
+    )
+    try:
+        strategy = synthesize_implementation_strategy(
+            user_request=prompt_text or "",
+            toplevel_paths=toplevel_paths,
+            lifecycle_mode=lifecycle_mode,
+            topology="single_repo",
+        )
+    except Exception:  # noqa: BLE001
+        strategy = None
+
     try:
         proposal = recommend_authorization(
             user_request=prompt_text or "",
             session_id=getattr(session, "session_id", None),
+            implementation_strategy=strategy,
         )
     except Exception:  # noqa: BLE001 - never block intake on proposal failure
         return
@@ -1059,6 +1085,37 @@ def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
         _persist_coding_proposal(session, proposal)
     except Exception:  # noqa: BLE001
         return
+
+
+def _gather_repo_toplevel_paths_from_session(session: Any) -> tuple:
+    """session.extra 안에서 repo top-level 디렉터리 신호 수집.
+
+    P1-Z5 — order: repo_contract.toplevel_paths (있으면) > coding_handoff_packet
+    .repo_contract.toplevel_paths > 빈 튜플 (greenfield 로 처리됨).  worktree
+    scan 까지는 intake 단계에서 안 함 (provisioning 전).  caller 가 명시
+    hint 를 ``extra["repo_toplevel_paths"]`` 로 줄 수 있다.
+    """
+
+    extra = getattr(session, "extra", None) or {}
+    if not isinstance(extra, Mapping):
+        return ()
+    candidates: list[str] = []
+    explicit = extra.get("repo_toplevel_paths")
+    if isinstance(explicit, (list, tuple)):
+        candidates.extend(str(p) for p in explicit if str(p).strip())
+    contract = extra.get("repo_contract")
+    if isinstance(contract, Mapping):
+        tops = contract.get("toplevel_paths")
+        if isinstance(tops, (list, tuple)):
+            candidates.extend(str(p) for p in tops if str(p).strip())
+    handoff = extra.get("coding_handoff_packet")
+    if isinstance(handoff, Mapping):
+        packet_contract = handoff.get("repo_contract")
+        if isinstance(packet_contract, Mapping):
+            tops = packet_contract.get("toplevel_paths")
+            if isinstance(tops, (list, tuple)):
+                candidates.extend(str(p) for p in tops if str(p).strip())
+    return tuple(dict.fromkeys(candidates))
 
 
 def _extract_repo_from_session(session: Any, prompt_text: str) -> Optional[str]:
