@@ -65,6 +65,11 @@ NOOP_REASON_NO_GITHUB_TARGET: str = "no_github_target"
 NOOP_REASON_UNSUPPORTED_TARGET_KIND: str = "unsupported_target_kind"
 NOOP_REASON_NO_REPO: str = "no_repo_full_name"
 NOOP_REASON_TERMINAL_SESSION: str = "terminal_session"
+# P1-Z2 — coding_proposal absent + handoff packet path 가 lifecycle_mode 가
+# research_only / 누락이면 work_order 안 만든다.  intake 가 explicit
+# implementation 신호 또는 coding_proposal 둘 중 하나로 의도를 표명해야 함.
+NOOP_REASON_NO_CODING_INTENT_SIGNAL: str = "no_coding_intent_signal"
+NOOP_REASON_RESEARCH_ONLY_LIFECYCLE: str = "research_only_lifecycle"
 
 FAIL_REASON_PROPOSAL_NOT_ELIGIBLE: str = "proposal_not_eligible"
 FAIL_REASON_BUILD_RAISED: str = "proposal_build_raised"
@@ -108,25 +113,38 @@ def _normalized_state(session: Any) -> str:
 
 
 def _resolve_repo(session: Any, extra: Mapping[str, Any]) -> Optional[str]:
-    """coding_proposal / github_target / extra hint 에서 repo full name 추출."""
+    """coding_proposal / handoff_packet / github_target / extra hint 에서 repo 추출.
 
-    # coding_proposal 의 명시 repo
+    P1-Z2 — coding_proposal absent + handoff packet only 경로도 지원.
+    handoff packet 의 ``github_target`` 은 동일 owner/repo 모양이라 그대로 흡수.
+    """
+
+    # 1. coding_proposal 의 명시 repo (옛 경로)
     proposal = extra.get("coding_proposal")
     if isinstance(proposal, Mapping):
         repo = str(proposal.get("repo_full_name") or "").strip()
         if repo and "/" in repo:
             return repo
-    # extra.repo_full_name
+    # 2. session.extra.repo_full_name
     repo = str(extra.get("repo_full_name") or "").strip()
     if repo and "/" in repo:
         return repo
-    # github_target.owner + repo
+    # 3. session.extra.github_target.owner + repo
     target = extra.get("github_target")
     if isinstance(target, Mapping):
         owner = str(target.get("owner") or "").strip()
         name = str(target.get("repo") or "").strip()
         if owner and name:
             return f"{owner}/{name}"
+    # 4. P1-Z2 — coding_handoff_packet.github_target.owner + repo
+    packet = extra.get("coding_handoff_packet")
+    if isinstance(packet, Mapping):
+        packet_target = packet.get("github_target")
+        if isinstance(packet_target, Mapping):
+            owner = str(packet_target.get("owner") or "").strip()
+            name = str(packet_target.get("repo") or "").strip()
+            if owner and name:
+                return f"{owner}/{name}"
     return None
 
 
@@ -152,12 +170,6 @@ def decide_post_approval_action(session: Any) -> PostApprovalDecision:
             action=ACTION_NOOP, reason=NOOP_REASON_NOT_APPROVED
         )
 
-    coding_proposal = extra.get("coding_proposal")
-    if not isinstance(coding_proposal, Mapping) or not coding_proposal:
-        return PostApprovalDecision(
-            action=ACTION_NOOP, reason=NOOP_REASON_NO_CODING_PROPOSAL
-        )
-
     # Already has anchor — work_order already produced an issue earlier
     anchor = extra.get("github_work_order_issue")
     if isinstance(anchor, Mapping) and _coerce_int(anchor.get("issue_number")):
@@ -165,7 +177,41 @@ def decide_post_approval_action(session: Any) -> PostApprovalDecision:
             action=ACTION_NOOP, reason=NOOP_REASON_ANCHOR_ALREADY_STAMPED
         )
 
+    # P1-Z2 — coding intent eligibility:
+    #   * coding_proposal 존재 (옛 경로) OR
+    #   * coding_handoff_packet + lifecycle_mode != research_only (실제 intake)
+    # research_only 신호가 명시되면 어떤 경우든 work_order 안 만든다.
+    coding_proposal = extra.get("coding_proposal")
+    has_coding_proposal = isinstance(coding_proposal, Mapping) and bool(coding_proposal)
+    handoff_packet = extra.get("coding_handoff_packet")
+    has_handoff_packet = isinstance(handoff_packet, Mapping) and bool(handoff_packet)
+    lifecycle_mode = str(extra.get("lifecycle_mode") or "").strip().lower()
+
+    if lifecycle_mode == "research_only":
+        return PostApprovalDecision(
+            action=ACTION_NOOP, reason=NOOP_REASON_RESEARCH_ONLY_LIFECYCLE
+        )
+
+    if not has_coding_proposal:
+        # handoff packet 만 있는 실제 intake 경로 — implementation 신호 필요.
+        # lifecycle_mode 명시 missing 이라도 packet 만으로는 의도 확신 못함 →
+        # 안전한 default 는 "implementation 명시 또는 coding_proposal" 둘 중 하나.
+        if not has_handoff_packet:
+            return PostApprovalDecision(
+                action=ACTION_NOOP, reason=NOOP_REASON_NO_CODING_PROPOSAL
+            )
+        if lifecycle_mode != "implementation":
+            return PostApprovalDecision(
+                action=ACTION_NOOP, reason=NOOP_REASON_NO_CODING_INTENT_SIGNAL
+            )
+
     target = extra.get("github_target")
+    if not isinstance(target, Mapping) or not target:
+        # P1-Z2 — handoff packet 안의 github_target 도 본다 (캐싱된 사본).
+        if has_handoff_packet:
+            packet_target = handoff_packet.get("github_target")
+            if isinstance(packet_target, Mapping) and packet_target:
+                target = packet_target
     if not isinstance(target, Mapping) or not target:
         return PostApprovalDecision(
             action=ACTION_NOOP, reason=NOOP_REASON_NO_GITHUB_TARGET
@@ -186,16 +232,18 @@ def decide_post_approval_action(session: Any) -> PostApprovalDecision:
     if existing_issue is None and kind == "issue":
         existing_issue = _coerce_int(target.get("number"))
 
+    # source ids — coding_proposal 의 message id 우선, 없으면 intake 캐시 / None.
+    proposal_message_id = None
+    if has_coding_proposal:
+        proposal_message_id = _coerce_int(coding_proposal.get("source_message_id"))
     return PostApprovalDecision(
         action=ACTION_NEEDS_WORK_ORDER,
         repo=repo,
         existing_issue_number=existing_issue,
         source_channel_id=getattr(session, "channel_id", None),
         source_thread_id=getattr(session, "thread_id", None),
-        source_message_id=_coerce_int(
-            extra.get("intake_message_id")
-            or (coding_proposal.get("source_message_id") if isinstance(coding_proposal, Mapping) else None)
-        ),
+        source_message_id=_coerce_int(extra.get("intake_message_id"))
+        or proposal_message_id,
     )
 
 
