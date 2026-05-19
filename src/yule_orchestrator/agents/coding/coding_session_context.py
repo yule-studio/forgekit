@@ -41,26 +41,68 @@ _ISSUE_ANCHOR_PATTERNS: tuple = (
     re.compile(r"(?<![\w/])#(\d+)\b"),
 )
 
+# P1-Z4 B — PR / pull request / pull_request / cross-repo reference 는
+# target repo 의 existing issue anchor 가 아니다.  prompt 안에 다음
+# disqualifier 가 ``#N`` 근처에 있으면 그 숫자를 무시한다.
+#
+# canonical session ``000f13fb121b`` 에서 prompt 안의 `PR #183 브랜치`
+# 가 target repo (naver-search-clone) 의 existing issue #183 anchor 로
+# 오인된 회귀를 영구 차단.
+_PR_DISQUALIFIER_PATTERNS: tuple = (
+    re.compile(r"\bPR\s*#?\s*(\d+)\b", re.IGNORECASE),
+    re.compile(r"\bpull\s*request\s*#?\s*(\d+)\b", re.IGNORECASE),
+    re.compile(r"\bpull[_\-]?request\s*#?\s*(\d+)\b", re.IGNORECASE),
+    # cross-repo reference: ``org/repo#N``
+    re.compile(r"\b[\w\-\.]+/[\w\-\.]+#(\d+)\b"),
+)
+
+
+def _disqualified_numbers_in_text(text: str) -> set:
+    """prompt 안의 PR / cross-repo / branch context 숫자 집합 반환.
+
+    P1-Z4 B — issue anchor 추출 시 본 집합에 들어간 숫자는 무시한다.
+    canonical session ``000f13fb121b`` 의 ``PR #183 브랜치`` 같은
+    문구가 issue #183 로 오인된 회귀 차단.
+    """
+
+    disqualified: set = set()
+    if not text:
+        return disqualified
+    for pattern in _PR_DISQUALIFIER_PATTERNS:
+        for match in pattern.finditer(text):
+            try:
+                value = int(match.group(1))
+            except (TypeError, ValueError, IndexError):
+                continue
+            if value > 0:
+                disqualified.add(value)
+    return disqualified
+
 
 def _extract_explicit_issue_number(text: str) -> Optional[int]:
     """prompt 안의 explicit issue anchor 숫자 추출.
 
     여러 패턴 중 첫 매칭만 사용.  URL 안에 이미 있으면 caller 가 그것
-    우선.  추출된 숫자가 > 0 일 때만 반환 (0 / "#000" 같은 의미 없는
-    값 무시).
+    우선.  추출된 숫자가 > 0 일 때만 반환.
+
+    P1-Z4 B — disqualified set (PR / cross-repo / pull_request 등) 에
+    포함되면 issue anchor 가 아니다.  ambiguous 면 None 반환 →
+    work_order builder 가 auto-create 경로로 떨어짐 (잘못된 reuse 보다
+    honest auto-create 가 낫다).
     """
 
     if not text:
         return None
+    disqualified = _disqualified_numbers_in_text(text)
     for pattern in _ISSUE_ANCHOR_PATTERNS:
-        match = pattern.search(text)
-        if match:
+        for match in pattern.finditer(text):
             try:
                 value = int(match.group(1))
             except (TypeError, ValueError):
                 continue
-            if value > 0:
-                return value
+            if value <= 0 or value in disqualified:
+                continue
+            return value
     return None
 from ..lifecycle.session_mode import (
     SessionMode,
