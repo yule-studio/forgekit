@@ -120,6 +120,16 @@ REASON_LIVE_EDITOR_NO_EDITS_PRODUCED: str = "live_editor_no_edits_produced"
 # 가 repo layout 과 안 맞아 매칭 가능한 candidate 0개" 라는 명확한 진단.
 REASON_WRITE_SCOPE_RESOLVED_EMPTY: str = "write_scope_resolved_empty"
 
+# P1-Z6 A — editor.apply 단계의 subprocess timeout (exit_code=124).  옛
+# wiring 은 generic ``edit_failed: _SubprocessError: subprocess failed:
+# exit=124`` 로 surface 해서 operator 가 "어디서 timeout 났는지" 진단
+# 불가.  본 reason 은 failing_stage / subprocess_kind / timeout_seconds
+# / stderr_tail / command_summary 까지 audit 에 채워 즉시 진단 가능.
+REASON_EDIT_TIMEOUT_LIVE_EDITOR: str = "edit_timeout_live_editor"
+# P1-Z6 A — editor.apply 의 non-timeout subprocess failure (exit_code !=
+# 124).  옛 generic edit_failed 보다 구체적인 surface.
+REASON_EDIT_SUBPROCESS_FAILED: str = "edit_subprocess_failed"
+
 
 _PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
     {"main", "master", "develop", "dev", "prod", "release"}
@@ -443,10 +453,18 @@ class CodingExecutorWorker:
         request: CodingExecuteRequest,
         *,
         priority: int = 0,
-        max_attempts: int = 1,
+        max_attempts: int = 3,
         now: Optional[float] = None,
     ) -> Tuple[Job, bool]:
-        """Idempotent insert — returns ``(job, created)``."""
+        """Idempotent insert — returns ``(job, created)``.
+
+        P1-Z6 B — default ``max_attempts`` 를 1 → 3 으로.  옛 default 는
+        ``failed_retryable`` reason 으로 종료해도 ``attempt+1 >= 1`` 이라
+        ``requeue_retryable`` 이 곧장 terminal 로 끝냈다.  pre-PR transient
+        failure (예: live editor subprocess timeout) 는 실제로 한 번 더
+        시도할 가치가 있음.  structural failure 는 worker 가 ``terminal=True``
+        로 명시 종료 — max_attempts 가 자동 retry 보호망 역할만 한다.
+        """
 
         if not request.session_id or not request.executor_role:
             raise ValueError("session_id + executor_role required")
@@ -691,6 +709,71 @@ class CodingExecutorWorker:
                         in_progress,
                         terminal=True,
                         reason=REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE,
+                        branch=branch,
+                    )
+                # P1-Z6 A — _SubprocessError 의 exit_code=124 는 claude-cli
+                # 같은 live editor subprocess 의 timeout.  옛 wiring 은
+                # generic ``edit_failed: exit=124`` 로 surface 해서 operator
+                # 가 어디서 timeout 났는지 모름.  본 분기는 failing_stage /
+                # subprocess_kind / timeout_seconds / stderr_tail /
+                # command_summary 까지 audit 에 채워 즉시 진단 가능.
+                if exc_name == "_SubprocessError":
+                    exit_code = getattr(exc, "exit_code", None)
+                    stderr_tail = (getattr(exc, "stderr", "") or "")[-400:]
+                    is_timeout = int(exit_code or 0) == 124
+                    reason_token = (
+                        REASON_EDIT_TIMEOUT_LIVE_EDITOR
+                        if is_timeout
+                        else REASON_EDIT_SUBPROCESS_FAILED
+                    )
+                    code_editor = type(self._editor).__name__
+                    provider = getattr(self._editor, "provider", "unknown")
+                    model = getattr(self._editor, "model", "unknown")
+                    # strategy / write_scope audit — operator 가 prompt /
+                    # scope / repo layout 어디가 문제인지 즉시 파악.
+                    metadata = request.metadata or {}
+                    strategy_audit = None
+                    if isinstance(metadata, Mapping):
+                        strategy_audit = metadata.get("implementation_strategy")
+                    detail_audit = {
+                        "job_id": in_progress.job_id,
+                        "reason": reason_token,
+                        "failing_stage": "live_editor_apply",
+                        "subprocess_kind": (
+                            "claude_cli" if code_editor == "LiveCodeEditor" else code_editor
+                        ),
+                        "exit_code": exit_code,
+                        "timeout_seconds": 600 if is_timeout else None,
+                        "stderr_tail": stderr_tail,
+                        "branch": branch,
+                        "code_editor": code_editor,
+                        "provider": provider,
+                        "model": model,
+                        "worktree_path": getattr(ctx, "worktree_path", "") if ctx else "",
+                        "repo_full_name": request.repo_full_name,
+                        "write_scope": list(request.write_scope or ()),
+                        "forbidden_scope": list(request.forbidden_scope or ()),
+                        "implementation_strategy_id": (
+                            strategy_audit.get("strategy_id")
+                            if isinstance(strategy_audit, Mapping)
+                            else None
+                        ),
+                        "prompt_summary": (request.generated_prompt or "")[:200],
+                        "detail": _short(exc),
+                    }
+                    self._stamp_progress(
+                        session_id=request.session_id,
+                        marker=PROGRESS_CODING_BLOCKED,
+                        detail=detail_audit,
+                    )
+                    # P1-Z6 B — transient timeout 은 retryable, 다른 exit_code
+                    # 도 일단 retryable (max_attempts 가 bound 함).  structural
+                    # failure (strategy unresolved / scope mismatch) 는 별도
+                    # 분기에서 이미 terminal 로 처리.
+                    return self._fail(
+                        in_progress,
+                        terminal=False,
+                        reason=reason_token,
                         branch=branch,
                     )
                 if exc_name == "BootstrapApplyFailed":
