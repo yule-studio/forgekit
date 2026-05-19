@@ -310,6 +310,10 @@ def dispatch_post_approval_work_order(
 
     request_text = getattr(session, "prompt", "") or ""
     try:
+        # P1-Z3 — approved_continuation=True 로 builder 의 prompt-phrase 기반
+        # coding-intent 게이트 우회.  decide_post_approval_action 이 이미
+        # lifecycle / target / packet / proposal / anchor / repo / terminal
+        # 모든 가드 통과 검증한 상태 → structured signals 가 source of truth.
         proposal = builder(
             session=session,
             request_text=request_text,
@@ -319,6 +323,7 @@ def dispatch_post_approval_work_order(
             requested_by=requested_by,
             repo=decision.repo,
             existing_issue_number=decision.existing_issue_number,
+            approved_continuation=True,
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning(

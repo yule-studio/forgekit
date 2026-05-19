@@ -165,6 +165,7 @@ def should_route_to_github_workos(
     *,
     session: Any,
     request_text: str,
+    approved_continuation: bool = False,
 ) -> Tuple[bool, str, Optional[str]]:
     """Return ``(eligible, skipped_reason, kind_hint)``.
 
@@ -172,6 +173,16 @@ def should_route_to_github_workos(
     proposal. ``skipped_reason`` is one of the ``SKIPPED_*`` constants
     or ``""`` when eligible. ``kind_hint`` is the lifecycle_mode for
     debugging.
+
+    P1-Z3 — *approved_continuation* True 면 fresh intake 가 아니라
+    이미 approved 된 세션의 work_order continuation 경로.  intake 단계
+    에서 ``lifecycle_mode`` / ``github_target`` / ``coding_handoff_packet``
+    이 이미 stamp 됐고, decide_post_approval_action 이 false-positive
+    가드까지 통과시킨 상태.  따라서 prompt phrase 기반 coding-intent
+    재판정은 **건너뛴다** — structured signals 가 더 강한 source of truth.
+
+    그러나 ``lifecycle_mode == "research_only"`` 와 obsidian intent 는
+    어떤 경우든 reject — operator 명시 의도 / domain mismatch 보호.
     """
 
     if detect_obsidian_intent(request_text):
@@ -184,6 +195,12 @@ def should_route_to_github_workos(
     lifecycle = str(extra.get("lifecycle_mode") or "").strip().lower()
     if lifecycle == "research_only":
         return False, SKIPPED_RESEARCH_ONLY, lifecycle
+
+    if approved_continuation:
+        # P1-Z3 — structured signals 신뢰.  prompt phrase 가 약해도
+        # decide_post_approval_action 이 이미 lifecycle + target + packet
+        # / proposal / anchor / terminal / repo 모든 가드 통과 검증함.
+        return True, "", lifecycle or None
 
     intent = detect_coding_intent(request_text)
     if intent.research_only:
@@ -222,6 +239,7 @@ def build_github_work_order_proposal(
     repo_contract: Optional[RepoContract] = None,
     issue_template_loader: Optional[Callable[[str], Optional[str]]] = None,
     existing_issue_number: Optional[int] = None,
+    approved_continuation: bool = False,
 ) -> Optional[GitHubWorkOrderProposal]:
     """Compose a :class:`GitHubWorkOrderProposal` for *session* / *request_text*,
     or ``None`` when the request should not flow through the GitHub
@@ -245,11 +263,25 @@ def build_github_work_order_proposal(
     eligible, skipped_reason, _hint = should_route_to_github_workos(
         session=session,
         request_text=request_text,
+        approved_continuation=approved_continuation,
     )
     if not eligible:
         return None
 
     intent = detect_coding_intent(request_text)
+    # P1-Z3 — approved continuation 경로에서 prompt 가 약해 intent.coding_required
+    # 가 False 라도 (decide_post_approval_action 이 이미 lifecycle/target/packet
+    # 가드 통과시킨 상태) proposal 의 ``intent_actions`` 가 빈 튜플로 떨어져
+    # operator surface 가 "어떤 작업인지 모름" 으로 보일 수 있다.  최소 한 줄의
+    # generic action label 을 부여해 audit 줄이 비어있지 않도록 한다.
+    if approved_continuation and not intent.actions:
+        from yule_orchestrator.agents.job_queue.github_work_order import CodingIntent
+
+        intent = CodingIntent(
+            coding_required=True,
+            matched=intent.matched or ("approved_continuation",),
+            actions=("코드 변경 (approved continuation)",),
+        )
     extras_payload: dict[str, Any] = dict(extra or {})
 
     selected, excluded = _resolve_roles_from_session(session)
