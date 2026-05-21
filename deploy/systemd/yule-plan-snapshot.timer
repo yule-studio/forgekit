@@ -1,0 +1,15 @@
+[Unit]
+Description=Trigger daily plan snapshot push to hompage
+PartOf=yule.target
+
+[Timer]
+# 매 정시 + 30분 마다 = 30분 간격으로 push.
+# 신선도 (~30분 이내) 가 충분하다는 가정. 더 짧게 하려면 OnCalendar 변경.
+OnCalendar=*:00,30
+# 부팅 후에도 1분 안 첫 실행 (놓친 만큼 catch-up).
+Persistent=true
+AccuracySec=30s
+Unit=yule-plan-snapshot.service
+
+[Install]
+WantedBy=timers.target

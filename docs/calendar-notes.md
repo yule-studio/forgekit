@@ -35,3 +35,85 @@ CalDAV 연동 거동과 캐시 운영 노하우를 정리한다.
 ```
 
 이 구조에서는 Discord 봇이 브리핑 시점에 캘린더나 GitHub API 응답을 기다리지 않는다.
+
+## Snapshot push to hompage
+
+`yule-studio/hompage` 의 Calendar 페이지가 오늘 플랜을 표시하려면 agent 가
+`DailyPlan.to_dict()` 결과를 `hompage/public/plan-snapshot.json` 로 push 해야
+한다. hompage 는 그 정적 JSON 만 읽는다 (agent 24/7 배포 불필요).
+
+### 흐름
+
+```
+yule planning daily --json    →   plan-snapshot.json (envelope)
+                                  ↓ git commit / push
+                          hompage repo main
+                                  ↓ GitHub Pages deploy
+                          https://yule-studio.github.io/hompage/plan-snapshot.json
+                                  ↓ usePlanSnapshot()
+                          Calendar 페이지의 "오늘 플랜" 섹션
+```
+
+### 일회성 수동 푸시
+
+```bash
+HOMPAGE_DIR=$HOME/local-dev/hompage \
+  scripts/push_plan_snapshot.sh
+```
+
+스크립트는 (1) hompage repo rebase pull → (2) `yule planning daily --json`
+→ (3) `public/plan-snapshot.json` 에 write → (4) diff 있으면 commit + push.
+변경 없으면 zero-op.
+
+### 주기 푸시 — systemd timer
+
+```bash
+sudo cp deploy/systemd/yule-plan-snapshot.service /etc/systemd/system/
+sudo cp deploy/systemd/yule-plan-snapshot.timer   /etc/systemd/system/
+
+# 환경변수 — HOMPAGE_DIR 등
+sudo tee /etc/yule/yule-plan-snapshot.conf <<'EOF'
+HOMPAGE_DIR=/opt/hompage
+HOMPAGE_REMOTE=origin
+HOMPAGE_BRANCH=main
+YULE_BIN=/opt/yule-studio-agent/.venv/bin/yule
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now yule-plan-snapshot.timer
+```
+
+기본 cadence: 30분 간격 (`OnCalendar=*:00,30`). 더 빠르게 / 느리게 하려면
+`yule-plan-snapshot.timer` 의 `OnCalendar` 수정 후 `systemctl daemon-reload
+&& systemctl restart yule-plan-snapshot.timer`.
+
+### 상태 확인
+
+```bash
+systemctl list-timers yule-plan-snapshot.timer    # 다음 트리거 시각
+journalctl -u yule-plan-snapshot.service -n 50     # 최근 실행 로그
+```
+
+### git 인증
+
+스크립트가 `git push` 까지 하려면 user `yule` 의 git 자격이 필요:
+
+- **HTTPS + PAT**: `git config --global credential.helper store` + 한 번
+  `git push` 로 PAT 입력하면 `~/.git-credentials` 저장.
+- **SSH key**: `/etc/yule/yule-plan-snapshot.conf` 에
+  `GIT_SSH_COMMAND="ssh -i /home/yule/.ssh/hompage_deploy_key"` 같이 주입.
+
+### 실패 모드
+
+| 증상 | 원인 / 해결 |
+| --- | --- |
+| exit 2 (pull rebase 실패) | hompage 에 충돌 — 사람이 main 정리 |
+| exit 3 (`yule planning daily` 실패) | CalDAV / GitHub 일시 장애 — timer 재시도 시 자동 회복 |
+| snapshot 이 stale (어제 날짜) | `yule planning daily` 의 plan_date 가 오늘이 아님 — 시간대 확인 |
+| hompage 측에서 안 보임 | hompage Pages deploy 가 끝났는지 + browser hard refresh |
+
+### hompage 측 (참고)
+
+hompage 의 `src/pages/Calendar/Calendar.tsx` 가 `usePlanSnapshot()` 으로
+fetch. `plan_date` 가 오늘 (Asia/Seoul) 아니면 자동 숨김 → stale 데이터 노출
+X. receiver 구조는 hompage 의 `src/data/planSnapshot.ts` 참고.

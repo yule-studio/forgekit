@@ -16,6 +16,11 @@ the same command — only the surrounding supervision differs.
 - `yule-run-service@.service` — template unit. `%i` is the service id.
 - `yule.target` — umbrella target so `systemctl start yule.target`
   brings up every enabled instance.
+- `yule-plan-snapshot.service` / `.timer` — periodically pushes
+  `DailyPlan` snapshot to the `hompage` repo so the homepage can render
+  today's plan without contacting the agent directly. Drives
+  `scripts/push_plan_snapshot.sh`. See `docs/calendar-notes.md` §Snapshot
+  push to hompage.
 
 ## Install
 

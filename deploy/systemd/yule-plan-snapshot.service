@@ -1,0 +1,35 @@
+[Unit]
+Description=Push daily plan snapshot to hompage repo
+After=network-online.target
+Wants=network-online.target
+PartOf=yule.target
+
+[Service]
+Type=oneshot
+User=yule
+WorkingDirectory=/opt/yule-studio-agent
+EnvironmentFile=/etc/yule/yule-env.conf
+EnvironmentFile=-/etc/yule/yule-plan-snapshot.conf
+
+# scripts/push_plan_snapshot.sh 환경변수:
+#   HOMPAGE_DIR      hompage 로컬 클론 (예: /opt/hompage)
+#   HOMPAGE_REMOTE   default origin
+#   HOMPAGE_BRANCH   default main
+#   YULE_BIN         default "uv run yule" — venv 직접 호출이면
+#                    "/opt/yule-studio-agent/.venv/bin/yule"
+#   SKIP_PUSH        "1" 면 commit 만 (테스트 용)
+
+ExecStart=/bin/bash /opt/yule-studio-agent/scripts/push_plan_snapshot.sh
+
+# 일시적 네트워크 / git 에러는 자동 재시도, 영구 설정 오류는 멈춤.
+Restart=on-failure
+RestartSec=120s
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+StandardOutput=journal
+StandardError=journal
+
+# git 자격이 SSH key 면 ssh-agent / GIT_SSH_COMMAND 환경변수 설정 필요.
+# HTTPS + token 이면 /etc/yule/yule-plan-snapshot.conf 에
+# GIT_ASKPASS / GH_TOKEN 등 명시.
