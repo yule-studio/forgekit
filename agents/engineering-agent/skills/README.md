@@ -94,6 +94,14 @@ references:
 | skill | owner | autonomy | 상태 |
 | --- | --- | --- | --- |
 | [`research-collect`](research-collect.md) | tech-lead | L1 | 정의 (reference manifest) |
+| [`compact-to-vault`](compact-to-vault.md) | tech-lead | L2 (vault commit L3) | 정의 + 결정형 코어 + tests (#185) |
+| [`vault-curate`](vault-curate.md) | tech-lead | L3 | 정의 (#185) |
+| [`skill-author`](skill-author.md) | tech-lead | L2 | 정의 (#185, 메타 — 스킬/플러그인 저작) |
+
+> #185 부터 위 skill 들은 `agents/grants/slash-command-grants.json` 의 grant 와
+> `scripts/sync_harness_skills.py` 로 `.claude/skills` · `.agents/skills`(Codex) ·
+> harness 플러그인에 **생성 투영**된다. harness 디렉터리는 손 편집 금지. 상세:
+> [`docs/agent-slash-commands.md`](../../../docs/agent-slash-commands.md).
 
 새 skill 을 추가할 때:
 
