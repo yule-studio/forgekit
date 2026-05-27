@@ -1,0 +1,179 @@
+{
+  "schema_version": "v0",
+  "issue": 185,
+  "description": "에이전트(부서)별 슬래시 명령어 + custom 스킬 grant 의 단일 source of truth. built-in 슬래시(Claude Code/Codex 내장)와 custom 스킬(레지스트리 markdown spec)을 어느 부서가 어떤 autonomy 로 쓸 수 있는지 선언한다.",
+  "ssot_note": "본 파일과 agents/<agent>/{skills,commands,hooks}/*.md 가 SSoT. .claude/ 와 .agents/(Codex) 의 harness 아티팩트는 scripts/sync_harness_skills.py 가 생성하는 투영물이며 손으로 고치지 않는다.",
+  "naming_note": "여기서 'harness 플러그인'(.claude-plugin / .codex-plugin)은 Claude Code/Codex 의 번들을 뜻하며, 레포 루트 plugins/ 의 'Yule 런타임 플러그인'(hook-provider 모듈)과 다른 개념이다.",
+  "autonomy_levels": ["L0", "L1", "L2", "L3", "L4"],
+  "approval_kinds": ["false", "role-approver", "human"],
+
+  "builtin_commands": {
+    "/compact": {"purpose": "대화 압축으로 컨텍스트 정리", "harness": ["claude", "codex"], "interactive_only": false, "grantable": true},
+    "/context": {"purpose": "현재 컨텍스트 사용량 표시", "harness": ["claude"], "interactive_only": false, "grantable": true},
+    "/clear": {"purpose": "대화 기록 초기화", "harness": ["claude", "codex"], "interactive_only": false, "grantable": true},
+    "/memory": {"purpose": "CLAUDE.md / 메모리 편집", "harness": ["claude"], "interactive_only": false, "grantable": true},
+    "/export": {"purpose": "대화 내용 텍스트 내보내기", "harness": ["claude"], "interactive_only": false, "grantable": true},
+    "/init": {"purpose": "CLAUDE.md/AGENTS.md 가이드 초기화", "harness": ["claude", "codex"], "interactive_only": false, "grantable": true},
+    "/security-review": {"purpose": "보안 취약점 분석", "harness": ["claude"], "interactive_only": false, "grantable": true},
+    "/diff": {"purpose": "변경 사항 확인", "harness": ["claude", "codex"], "interactive_only": false, "grantable": true},
+    "/cost": {"purpose": "세션 토큰 사용량 통계", "harness": ["claude"], "interactive_only": false, "grantable": true},
+    "/model": {"purpose": "사용 모델 변경", "harness": ["claude", "codex"], "interactive_only": true, "grantable": false},
+    "/config": {"purpose": "설정 인터페이스", "harness": ["claude"], "interactive_only": true, "grantable": false},
+    "/permissions": {"purpose": "도구 권한 허용/거부 규칙", "harness": ["claude"], "interactive_only": true, "grantable": false},
+    "/agents": {"purpose": "서브에이전트 관리 (대화형 UI)", "harness": ["claude"], "interactive_only": true, "grantable": false},
+    "/plugin": {"purpose": "Claude Code 플러그인 관리 (대화형 UI)", "harness": ["claude"], "interactive_only": true, "grantable": false},
+    "/mcp": {"purpose": "MCP 서버 연결/인증 (대화형 UI)", "harness": ["claude", "codex"], "interactive_only": true, "grantable": false}
+  },
+
+  "custom_skills": {
+    "compact-to-vault": {
+      "spec": "agents/engineering-agent/skills/compact-to-vault.md",
+      "purpose": "대화/세션을 압축 요약해 vault 의 curated task-log 노트로 기록",
+      "default_autonomy": "L2",
+      "vault_commit_autonomy": "L3",
+      "harness": ["claude", "codex"]
+    },
+    "vault-curate": {
+      "spec": "agents/engineering-agent/skills/vault-curate.md",
+      "purpose": "00-inbox raw 자료를 필수 frontmatter + 5섹션 curated 노트로 승격",
+      "default_autonomy": "L3",
+      "harness": ["claude", "codex"]
+    },
+    "skill-author": {
+      "spec": "agents/engineering-agent/skills/skill-author.md",
+      "purpose": "레지스트리에 새 skill/command/hook spec 를 저작하고 harness 플러그인으로 투영 (에이전트의 플러그인 직접 저작 경로)",
+      "default_autonomy": "L2",
+      "harness": ["claude", "codex"]
+    },
+    "research-collect": {
+      "spec": "agents/engineering-agent/skills/research-collect.md",
+      "purpose": "역할별 자료 수집 (기존 레지스트리 스킬)",
+      "default_autonomy": "L1",
+      "harness": ["claude", "codex"]
+    }
+  },
+
+  "grants": {
+    "engineering-agent": {
+      "c_level": "CTO",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/clear", "autonomy": "L0"},
+        {"command": "/memory", "autonomy": "L2"},
+        {"command": "/export", "autonomy": "L0"},
+        {"command": "/init", "autonomy": "L2"},
+        {"command": "/security-review", "autonomy": "L1"},
+        {"command": "/diff", "autonomy": "L0"},
+        {"command": "/cost", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"},
+        {"skill": "vault-curate", "autonomy": "L3"},
+        {"skill": "skill-author", "autonomy": "L2"},
+        {"skill": "research-collect", "autonomy": "L1"}
+      ],
+      "notes": "부서 게이트웨이(tech-lead)가 write actor. /memory /init 등 변경성 명령은 기록 필수."
+    },
+    "product-agent": {
+      "c_level": "CPO",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/export", "autonomy": "L0"},
+        {"command": "/diff", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"},
+        {"skill": "vault-curate", "autonomy": "L3"}
+      ],
+      "notes": "PRD/발견 산출물의 vault 기록 중심."
+    },
+    "marketing-agent": {
+      "c_level": "CMO",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/export", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"}
+      ],
+      "notes": "콘텐츠/캠페인 세션 압축 기록."
+    },
+    "hr-agent": {
+      "c_level": "CHRO",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/export", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"},
+        {"skill": "vault-curate", "autonomy": "L3"}
+      ],
+      "notes": "채용/온보딩/1:1 기록의 vault 승격."
+    },
+    "finance-agent": {
+      "c_level": "CFO",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/cost", "autonomy": "L0"},
+        {"command": "/export", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"}
+      ],
+      "notes": "/cost 로 토큰 비용 추적, 예산 세션 압축 기록."
+    },
+    "sales-cs-agent": {
+      "c_level": "CRO",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/export", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"}
+      ],
+      "notes": "영업 파이프라인/고객 성공 세션 기록."
+    },
+    "legal-agent": {
+      "c_level": "GC",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/security-review", "autonomy": "L1"},
+        {"command": "/export", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"},
+        {"skill": "vault-curate", "autonomy": "L3"}
+      ],
+      "notes": "계약/프라이버시 검토 기록, /security-review 로 컴플라이언스 점검 보조."
+    },
+    "planning-agent": {
+      "c_level": "Planning Ops",
+      "builtin": [
+        {"command": "/compact", "autonomy": "L0"},
+        {"command": "/context", "autonomy": "L0"},
+        {"command": "/export", "autonomy": "L0"}
+      ],
+      "skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"}
+      ],
+      "notes": "cross-dept 운영. 레포 직접 write 없음(planning boundary)."
+    }
+  },
+
+  "role_overrides": {
+    "engineering-agent/tech-lead": {
+      "add_builtin": [],
+      "add_skills": [
+        {"skill": "skill-author", "autonomy": "L2"}
+      ],
+      "notes": "tech-lead 가 부서의 skill/command/hook 저작 owner. skill-author 는 tech-lead 강조."
+    }
+  }
+}
