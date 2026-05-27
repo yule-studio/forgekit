@@ -1,0 +1,17 @@
+{
+  "author": {
+    "name": "yule-studio-engineering-agent"
+  },
+  "description": "Yule 부서 에이전트의 슬래시 명령어 + 스킬 번들 (생성물). SSoT 는 agents/grants/slash-command-grants.json + 레지스트리 markdown.",
+  "harness": "codex",
+  "name": "yule-agent-commands",
+  "skills": [
+    "compact-to-vault",
+    "research-collect",
+    "skill-author",
+    "vault-curate"
+  ],
+  "skills_path": ".agents/skills",
+  "ssot": "agents/grants/slash-command-grants.json",
+  "version": "0.1.0"
+}
