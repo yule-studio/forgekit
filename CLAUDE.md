@@ -47,6 +47,7 @@
 | 코드 구조 작업 | + `agents/<agent>/CLAUDE.md` + `agents/<agent>/CODE_LAYOUT.md` |
 | 브랜치/커밋/PR | + `policies/reference/*` |
 | 승인/운영 | + `docs/autonomy-policy.md` / `docs/approval-matrix.md` / `docs/operations.md` |
+| 슬래시 명령어/스킬/플러그인/compact→vault | + `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json`) |
 
 전체 매핑은 `AGENTS.md` §2.
 

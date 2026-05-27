@@ -34,6 +34,15 @@ prompts/skills/
 3. 관련 role `prompt.md` 의 "참고 skills" 섹션에 항목 추가.
 4. governance test 가 자동 검증.
 
+## 다른 "skill" 개념과의 구분
+
+이 디렉터리(`prompts/skills/`)는 런타임에 inline 으로 붙이는 **portable prompt recipe**(도메인 워크플로우)다.
+이것과 별개로, ECC 레지스트리(`agents/<agent>/skills/*.md`) + grant(`agents/grants/slash-command-grants.json`)는
+Claude Code/Codex 의 **harness 스킬/슬래시 명령어**로 생성 투영된다(이슈 #185). 둘은 보완 관계 —
+전자는 프롬프트 재료, 후자는 harness 가 실제로 호출하는 슬래시 단위다. harness 쪽 상세는
+[`docs/agent-slash-commands.md`](../../docs/agent-slash-commands.md).
+
 ## 참고
 - `github.com/phuryn/pm-skills` — PM lifecycle 65 skills 의 reference 카탈로그.
 - `policies/runtime/agents/corporate-org-chart.md` — 부서 / 역할 매트릭스.
+- `docs/agent-slash-commands.md` — harness 슬래시 명령어 / 스킬 / 플러그인 (#185).

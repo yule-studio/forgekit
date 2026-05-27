@@ -232,6 +232,7 @@ notes/vault-mirror/10-projects/yule-studio-agent/
 | 일자 | 변경 |
 | --- | --- |
 | 2026-05-08 | 초안 작성 (foundation 정책 + 4 layer 정의 + research-first 게이트 + tech-lead orchestration 보강) |
+| 2026-05-27 | #185: A.3 "multi-harness 비도입" 부분 개정 — 레지스트리 SSoT 를 `.claude/` · `.agents/` · harness 플러그인으로 단방향 생성 투영하는 bridge 도입. 손 편집 대상이 아니라 생성물. grant SSoT(`agents/grants/slash-command-grants.json`) + `compact-to-vault` 결정형 코어 추가. 상세 [`docs/agent-slash-commands.md`](../../../../docs/agent-slash-commands.md) |
 
 ---
 
@@ -261,7 +262,7 @@ GateGuard 패턴은 Yule 의 autonomy_policy (advisory) 보다 **강성** 이다
 
 | ECC 패턴 | 흡수 여부 | 이유 |
 | --- | --- | --- |
-| Multi-harness 모노레포 (.claude / .codex / .cursor / ...) | ❌ 비도입 | Yule 은 Discord + CLI + GitHub App 의 통합 런타임이며 harness 분기가 의미 없음. |
+| Multi-harness 모노레포 (.claude / .codex / .cursor / ...) | ⚠️ **#185 에서 부분 개정** | 당시 근거(통합 런타임)는 유효하나, 실제로 에이전트는 `ClaudeCodeRunner`(`claude -p`) / `CodexRunner`(`codex`) 로 harness CLI 를 호출한다 — 이 점이 과소평가됨. 따라서 harness 디렉터리를 *직접 운영*하지는 않되, 레지스트리 SSoT 를 `.claude/` · `.agents/`(Codex) · `*-plugin/` 으로 **단방향 생성 투영**한다(`scripts/sync_harness_skills.py`). SSoT 는 여전히 레지스트리 markdown + grant JSON. 상세: [`docs/agent-slash-commands.md`](../../../../docs/agent-slash-commands.md). |
 | `SOUL.md` + `WORKING-CONTEXT.md` + `RULES.md` triad | ❌ 비도입 | Yule 이미 `policies/runtime/...` + `agents/.../CLAUDE.md` + `obsidian-memory.md` 로 동등 분리. 추가 파일은 인플레이션. |
 | Continuous-learning hook (모든 tool call 캡처) | ❌ 비도입 (현 단계) | Yule 의 agent_ops_audit / activity_log 가 동등 역할. 후속 PR 에서 hook 등록기 합치면 자연 통합. |
 | Config-protection hook (lint/formatter config 편집 거부) | ⏳ 후속 PR 검토 | 흥미로운 정책이나 본 PR 범위 밖. autonomy_policy 의 새 action_id 로 추가 가능. |
