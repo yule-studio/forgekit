@@ -18,4 +18,9 @@ dependencies = [
 yule = "yule_orchestrator.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src", "packages/runtime/src"]
+# Monorepo packages live under packages/<name>/src and are discovered here so
+# the root editable install (``pip install -e .``) puts them on the path. Each
+# package also ships its own pyproject for standalone builds. New ``packages/*``
+# entries are added to this list as they are extracted (merge-order foundation:
+# agent-contracts first).
+where = ["src", "packages/agent-contracts/src", "packages/memory/src", "packages/llm-gateway/src", "packages/runtime/src"]
