@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-core"
+version = "0.1.0"
+description = "Pure-leaf platform utilities for Yule Studio agents: env loading, timezone, TLS/CA fallback, agent context loading (stdlib only)."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
