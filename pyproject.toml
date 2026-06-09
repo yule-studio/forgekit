@@ -22,5 +22,13 @@ yule = "yule_orchestrator.cli:main"
 # the root editable install (``pip install -e .``) puts them on the path. Each
 # package also ships its own pyproject for standalone builds. New ``packages/*``
 # entries are added to this list as they are extracted (merge-order foundation:
-# agent-contracts first).
-where = ["src", "packages/agent-contracts/src", "packages/memory/src", "packages/llm-gateway/src", "packages/runtime/src"]
+# agent-contracts first). ``apps/*/src`` entries are added as runnable units are
+# extracted from the monolith (planning-agent first).
+where = [
+    "src",
+    "packages/agent-contracts/src",
+    "packages/memory/src",
+    "packages/llm-gateway/src",
+    "packages/runtime/src",
+    "apps/planning-agent/src",
+]
