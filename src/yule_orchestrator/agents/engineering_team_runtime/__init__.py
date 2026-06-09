@@ -1,21 +1,27 @@
-"""Compat shim — ``engineering_team_runtime`` relocated to ``agents/``.
+"""Engineering team runtime — package facade (P0-Q decomposition).
 
-The engineering-agent team-runtime orchestration logic moved from
-``discord/engineering_team_runtime`` to
-``yule_orchestrator.agents.engineering_team_runtime`` to break an
-artificial ``agents ↔ discord`` import cycle (the module contained zero
-discord transport — only agents deliberation/research orchestration).
+Historical monolith (``engineering_team_runtime.py``, 2153 lines) is
+being decomposed in this PR. As an initial structural cut the file is
+moved into a package (``engineering_team_runtime/_legacy.py`` + this
+facade) so all 50+ external import sites (bot.py, member_bot.py, tests)
+keep working without source changes.
 
-This shim re-exports the relocated public API so the remaining non-agents
-import sites (discord's own files, cli, tests) keep working unchanged.
-``discord → agents`` is the forward/legal direction; the cycle is broken
-because no ``agents/`` file imports this discord path anymore.
+Subsequent commits in this PR further split ``_legacy.py`` into
+responsibility-aligned modules per
+``docs/p0q-discord-large-files-decomposition.md``:
+
+  * team_turn — TeamTurn / TeamTurnOutcome + turn sequencing
+  * dispatch — dispatch directive parsing / formatting
+  * research_turn — research-specific handler
+  * role_execution — role runner dispatch / queue exec
+  * recording — observability + session.extra recording
+  * deliberation — deliberation loop + synthesis
 """
 
 from __future__ import annotations
 
-from yule_orchestrator.agents.engineering_team_runtime import *  # noqa: F401,F403
-from yule_orchestrator.agents.engineering_team_runtime import (  # noqa: F401
+from ._legacy import *  # noqa: F401,F403 — facade re-export
+from ._legacy import (  # noqa: F401 — explicit symbols for IDE / static analysis
     _HANDLED_TURNS,
     _HANDLED_TURNS_SET,
     _retrieve_memory_for_role,
