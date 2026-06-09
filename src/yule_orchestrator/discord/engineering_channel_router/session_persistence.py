@@ -378,24 +378,11 @@ def _persist_thread_id(
     result = persist_thread_link(session, thread_id)
     return result.session
 
-def _proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, object]:
-    return {
-        "session_id": proposal.session_id,
-        "user_request": proposal.user_request,
-        "executor_role": proposal.executor_role,
-        "review_roles": list(proposal.review_roles),
-        "participant_roles": list(proposal.participant_roles),
-        "write_scope": list(proposal.write_scope),
-        "forbidden_scope": list(proposal.forbidden_scope),
-        "reason": proposal.reason,
-        "safety_rules": list(proposal.safety_rules),
-        "approval_required": bool(proposal.approval_required),
-        "metadata": dict(proposal.metadata),
-        "lifecycle_mode": proposal.lifecycle_mode,
-        "research_leads": list(proposal.research_leads),
-    }
-
-from ...agents.coding.authorization import proposal_from_dict as _proposal_from_dict  # noqa: E402,F401 — canonical factory now lives in agents layer
+# Canonical (de)serialisers now live in the agents layer — keep the old
+# ``_proposal_to_dict`` / ``_proposal_from_dict`` names as aliases so existing
+# importers/tests still resolve them from this module.
+from ...agents.coding.authorization import proposal_from_dict as _proposal_from_dict  # noqa: E402,F401
+from ...agents.coding.authorization import proposal_to_dict as _proposal_to_dict  # noqa: E402,F401
 
 def _load_session_by_id(
     list_sessions_fn: Callable[..., Sequence[Any]],

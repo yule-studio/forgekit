@@ -459,7 +459,7 @@ def _format_general_help() -> str:
     # Import locally so this module stays importable without the
     # discord package fully initialised (tests assert response formatters
     # in isolation, and the help_surface helper is pure-Python).
-    from yule_orchestrator.discord.engineering.help_surface import render_engineer_help_message
+    from .help_surface import render_engineer_help_message
 
     return render_engineer_help_message()
 

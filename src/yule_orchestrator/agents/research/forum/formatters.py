@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional, Sequence, Tuple
 
-from ...agents.research.pack import ResearchAttachment, ResearchPack, ResearchSource
+from ..pack import ResearchAttachment, ResearchPack, ResearchSource
 
 from .prefixes import (
     ALL_PREFIXES,
@@ -41,6 +41,55 @@ FORUM_STARTER_OVERFLOW_NOTICE = (
 FORUM_STARTER_CONTINUATION_NOTICE = (
     "_본문이 길어 상세 자료는 아래 댓글로 이어집니다. 원본은 Obsidian export에 보존됩니다._"
 )
+
+
+def split_discord_message(
+    message: str, limit: int = DISCORD_MESSAGE_REPLY_LIMIT
+) -> list[str]:
+    """Break *message* into pieces that each fit Discord's content limit.
+
+    Pure string → list[str] chunker (no Discord API). Copied into this
+    package from ``discord/ui/formatter.py`` so the research-forum
+    relocation into the agents layer does NOT re-introduce an
+    ``agents → discord`` import edge. Behaviour is identical: long single
+    lines get hard-sliced so no emitted chunk ever exceeds ``limit``.
+    """
+
+    if limit <= 0:
+        return [message]
+    if len(message) <= limit:
+        return [message]
+
+    chunks: list[str] = []
+    current_lines: list[str] = []
+    current_length = 0
+
+    def _flush() -> None:
+        nonlocal current_lines, current_length
+        if current_lines:
+            chunks.append("\n".join(current_lines))
+            current_lines = []
+            current_length = 0
+
+    for line in message.splitlines():
+        if len(line) > limit:
+            _flush()
+            for offset in range(0, len(line), limit):
+                chunks.append(line[offset : offset + limit])
+            continue
+
+        added_length = len(line) + (1 if current_lines else 0)
+        if current_lines and current_length + added_length > limit:
+            _flush()
+            current_lines = [line]
+            current_length = len(line)
+            continue
+
+        current_lines.append(line)
+        current_length += added_length
+
+    _flush()
+    return chunks
 
 
 def derive_research_topic(pack: "ResearchPack") -> str:
@@ -91,7 +140,7 @@ def derive_research_topic(pack: "ResearchPack") -> str:
     # never surface as a thread title. Fall through to the literal
     # default instead.
     try:
-        from ...agents.routing import is_non_actionable_prompt
+        from yule_orchestrator.agents.routing import is_non_actionable_prompt
     except Exception:  # noqa: BLE001 - partial install safe-side
         is_non_actionable_prompt = None  # type: ignore[assignment]
 
@@ -472,7 +521,7 @@ def _render_collection_block(
     if outcome is None:
         return ""
     try:
-        from ...agents.research.collector import format_collection_summary
+        from ..collector import format_collection_summary
     except Exception:  # noqa: BLE001
         return ""
 

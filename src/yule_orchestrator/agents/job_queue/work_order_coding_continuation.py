@@ -533,8 +533,8 @@ def repair_session_for_coding_dispatch(
                 detail={"reason": str(exc)},
             )
         try:
-            from ...discord.engineering_channel_router.session_persistence import (
-                _proposal_to_dict,
+            from ...agents.coding.authorization import (
+                proposal_to_dict as _proposal_to_dict,
             )
         except Exception:  # noqa: BLE001
             _proposal_to_dict = None  # type: ignore[assignment]

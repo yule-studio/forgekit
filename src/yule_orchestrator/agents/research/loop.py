@@ -40,7 +40,7 @@ from ..engineering_conversation import (
     format_insufficient_research_prompt,
     suggest_role_research_assignments,
 )
-from ...discord.research_forum import (
+from .forum import (
     PREFIX_DECISION,
     PREFIX_REFERENCE,
     PREFIX_RESEARCH,

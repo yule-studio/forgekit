@@ -739,6 +739,32 @@ def proposal_from_dict(payload: Mapping[str, object]) -> CodingAuthorizationProp
     )
 
 
+def proposal_to_dict(proposal: CodingAuthorizationProposal) -> Mapping[str, object]:
+    """Serialise a :class:`CodingAuthorizationProposal` for ``session.extra``.
+
+    Inverse of :func:`proposal_from_dict`. Both halves live in the agents
+    layer so the discord persistence surface and the agents-internal coding
+    continuation share one canonical (de)serialiser rather than duplicating
+    the field mapping per caller.
+    """
+
+    return {
+        "session_id": proposal.session_id,
+        "user_request": proposal.user_request,
+        "executor_role": proposal.executor_role,
+        "review_roles": list(proposal.review_roles),
+        "participant_roles": list(proposal.participant_roles),
+        "write_scope": list(proposal.write_scope),
+        "forbidden_scope": list(proposal.forbidden_scope),
+        "reason": proposal.reason,
+        "safety_rules": list(proposal.safety_rules),
+        "approval_required": bool(proposal.approval_required),
+        "metadata": dict(proposal.metadata),
+        "lifecycle_mode": proposal.lifecycle_mode,
+        "research_leads": list(proposal.research_leads),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 기술 자율 vs 외부 사실 — operator action 가드 (P0-S)
 # ---------------------------------------------------------------------------
@@ -806,6 +832,7 @@ __all__ = (
     "format_authorization_message",
     "load_role_profile",
     "proposal_from_dict",
+    "proposal_to_dict",
     "recommend_authorization",
     "reset_role_profile_cache",
 )
