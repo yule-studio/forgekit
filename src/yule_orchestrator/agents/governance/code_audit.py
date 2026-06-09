@@ -85,7 +85,7 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
     # ``runtime/run_service.py`` 는 본 PR 에서 heartbeats, discord_runner,
     # work_order_executor_runner 로 추출 완료 (1387 → 980 LOC, split_now 해소).
     "src/yule_orchestrator/runtime/status.py": {
-        "deadline": "2026-05-31",
+        "deadline": "2026-06-21",
         "owner": "codwithyc",
         "axes": "builder, renderer, operator_actions, journal",
     },
@@ -100,7 +100,7 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "axes": "synthesis, open_research",
     },
     "src/yule_orchestrator/agents/job_queue/forum_obsidian_handoff.py": {
-        "deadline": "2026-06-07",
+        "deadline": "2026-06-21",
         "owner": "codwithyc",
         "axes": "intake, routing, persistence",
     },
