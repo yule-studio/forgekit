@@ -1,8 +1,9 @@
 # discord-gateway
 
 > Discord 메시지를 받고 보내는 **transport 게이트웨이**. agent runtime 의
-> input/output 채널을 연결한다. 본 디렉터리는 현재 **책임 문서(scaffold)**
-> 만 두며, 코드는 아직 `src/yule_orchestrator/discord/**` 에 있다.
+> input/output 채널을 연결한다. 코드는 `apps/discord-gateway/src/yule_discord/**`
+> 에 있으며, 옛 경로 `src/yule_orchestrator/discord/**` 에는 동일 객체로
+> 해소되는 **compat shim** 만 남아 있다.
 
 ## 책임 범위
 
@@ -11,28 +12,49 @@
   변환해 agent 로 넘기고, agent 가 낸 event/status 를 Discord 로 내보낸다.
 
 > **agent 내부 로직 직접 수행 금지.** gateway 는 deliberation / 코드 작업 /
-> 계획 같은 의사결정을 절대 수행하지 않는다. 오직 **command/event 로만**
-> agent 와 연결한다. 의사결정은 engineering-agent / planning-agent 의 몫.
+> 계획 같은 의사결정을 절대 수행하지 않는다. 의사결정은
+> engineering-agent / planning-agent 의 몫.
 
-## 의존 패키지 (필요한 `packages/*` 만)
+## 패키지 위치
 
-- `packages/agent-contracts` — Discord 메시지 ↔ command/event/status 변환의
-  유일한 계약면. **agent 모듈 직접 import 금지.**
-
-> 규칙: `apps/* → packages/*` 만 허용, 역방향 금지. gateway 는
-> command/event 로만 agent 와 연결.
-
-## 현재 위치 → 이전 대상
-
-| 현재 위치 | 이전 대상 |
+| 구분 | 경로 |
 | --- | --- |
-| `src/yule_orchestrator/discord/**` | `apps/discord-gateway/**` (transport) |
-| `discord/engineering_channel_router/**` 의 의사결정 부분 | `apps/engineering-agent` (gateway 가 아님) |
+| 정규 코드 | `apps/discord-gateway/src/yule_discord/**` (`yule_discord` import) |
+| 옛 경로 shim | `src/yule_orchestrator/discord/**` (54 모듈, `sys.modules` alias) |
+
+옛 경로 shim 은 importlib `sys.modules[__name__] = yule_discord.<P>` 형태로,
+`yule_orchestrator.discord.X.Y is yule_discord.X.Y` 객체 동일성을 보존한다.
+신규 코드는 `yule_discord` 를 직접 import 한다.
+
+## 의존 관계
+
+- **직접 third-party** — `discord.py>=2.4.0` (Intents / ext.commands /
+  LoginFailure / Object 사용).
+- **clean deps (`packages/*`)** — `core` / `storage` / `integrations` /
+  `memory` 의 shared infra 를 `yule_orchestrator.<top>` 절대 import 로 사용
+  (현재는 monorepo path 로 해결, pip dependency 미선언).
+
+### 과도기 edge (acyclic, 후속 PR 에서 contract 로 대체 예정)
+
+- `yule_discord → yule_orchestrator.agents` / `yule_orchestrator.runtime`
+  — **apps → monolith**. gateway 가 agent runtime 의 deliberation / job_queue /
+  routing / lifecycle 함수를 직접 호출하는 과도기 edge. acyclic
+  (agents 는 discord 를 import 하지 않음 — 순환 이미 제거됨).
+- `yule_discord → yule_orchestrator.planning`
+  — **app → app**. planning 도메인은 이미 `apps/planning-agent` 로 이전됐고,
+  `yule_orchestrator.planning` 은 그 shim 이다. 즉 discord-gateway →
+  planning-agent (app → app) 과도기 edge 로, 후속에 `packages/agent-contracts`
+  command/event/status 계약으로 대체된다.
+
+> 목표 방향: gateway↔agent 연결을 `packages/agent-contracts` command/event/
+> status 로 일원화하고 직접 함수 호출을 제거한다. 그 전까지 위 edge 는 모두
+> acyclic 과도기로 유지된다.
 
 ## migration TODO
 
-- [ ] `discord/{bot,commands,conversation,forum,member,...}` 의 transport 부분을 본 앱으로 이전.
-- [ ] agent 의사결정 로직이 섞인 router 부분을 분리해 해당 agent 앱으로 보냄.
-- [ ] gateway↔agent 연결을 `packages/agent-contracts` command/event/status 로 일원화 (직접 함수 호출 제거).
-
-(실제 코드 이동은 본 브랜치 범위 아님 — 후속 PR.)
+- [ ] `engineering_channel_router` 등 router 안의 agent 의사결정 로직을 분리해
+  해당 agent 앱으로 보냄 (현재는 `yule_orchestrator.agents.*` 직접 호출).
+- [ ] gateway↔agent 연결을 `packages/agent-contracts` command/event/status 로
+  일원화 (직접 함수 호출 제거).
+- [ ] 옛 경로 shim (`src/yule_orchestrator/discord/**`) 제거 — 모든 importer 가
+  `yule_discord` 직접 import 로 전환된 후.
