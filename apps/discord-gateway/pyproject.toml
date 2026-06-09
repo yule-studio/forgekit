@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-discord-gateway"
+version = "0.1.0"
+description = "Discord transport gateway — 채널/포럼/멤버 메시지 I/O 와 agent runtime 연결 (yule_discord)."
+requires-python = ">=3.9"
+# discord.py 는 직접 의존 (Intents / ext.commands / LoginFailure / Object 사용).
+# 그 외 shared infra (yule_orchestrator.agents / runtime / core / storage /
+# integrations / planning) 는 monorepo path 로 해결되는 과도기 edge 이며 pip
+# dependency 로 선언하지 않는다 (apps → monolith / app → app, acyclic).
+dependencies = [
+    "discord.py>=2.4.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
