@@ -1,7 +1,13 @@
 # planning-agent
 
-> 일정/계획/브리핑을 담당하는 앱. 본 디렉터리는 현재 **책임 문서(scaffold)**
-> 만 두며, 코드는 아직 `src/yule_orchestrator/planning/**` 에 있다.
+> 일정/계획/브리핑을 담당하는 앱. 코드는 `apps/planning-agent/src/yule_planning/`
+> 로 **실제 이동 완료**. 옛 경로 `src/yule_orchestrator/planning/**` 는 `yule_planning`
+> 을 가리키는 compat shim(`sys.modules` alias / public re-export) 으로만 남아 기존
+> import 가 그대로 동작한다. 신규 코드는 `yule_planning` 직접 import.
+>
+> 과도기 부채: `yule_planning` 은 아직 `yule_orchestrator.{core,integrations,storage}`
+> 공유 인프라를 import 한다(apps → monolith). 이 인프라가 `packages/*` 로 추출되면
+> 해당 edge 는 사라진다.
 
 ## 책임 범위
 
