@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-runtime"
+version = "0.1.0"
+description = "Cleanly-movable runtime primitives (circuit breaker, service manifest, subprocess supervisor) for the Yule Studio agent platform."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

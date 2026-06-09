@@ -1,27 +1,27 @@
-"""Local-first memory layer for engineering-agent.
+"""Compatibility shim — memory layer now lives in ``yule_memory``.
 
-Sources of truth this module indexes:
+The local-first memory index (SQLite/FTS5 indexer + search + models) was
+extracted into the standalone ``yule-memory`` package so it carries no
+runtime/agent/discord dependencies. This module re-exports the same
+public names so every existing
+``from yule_orchestrator.memory import ...`` keeps resolving to the
+identical objects.
 
-- Obsidian vault Markdown (research/decision/reference notes).
-- Repo policy docs (``policies/**/*.md`` + agent ``CLAUDE.md``).
-- Workflow session artifacts (the ``research_pack`` / ``research_synthesis``
-  payload persisted in SQLite by ``research_persistence``).
-
-The index lives in its own SQLite file (FTS5-backed) so retrieval is
-fully local, deterministic, and testable without a vector store. The
-schema and helpers are shaped so a future embeddings layer can be added
-on top without rewriting callers.
+``retrieval`` stays in this package (not in ``yule_memory``) because it
+depends on ``..agents.deliberation`` — moving it would break the
+dependency rule that ``yule_memory`` must not import agent internals.
 """
 
-from .models import MemoryDocument, MemorySearchResult
-from .indexer import (
+from yule_memory import (
     MEMORY_DB_ENV,
+    MemoryDocument,
     MemoryIndex,
+    MemorySearchResult,
     open_memory_index,
     reindex_paths,
     reindex_workflow_sessions,
+    search,
 )
-from .search import search
 
 
 __all__ = [
