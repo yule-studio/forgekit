@@ -32,4 +32,6 @@ where = [
     "packages/runtime/src",
     "apps/planning-agent/src",
     "packages/core/src",
+    "packages/storage/src",
+    "packages/integrations/src",
 ]
