@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-llm-gateway"
+version = "0.1.0"
+description = "Minimal central interface for LLM provider calls (Claude/Gemini/Ollama/Codex) plus token-budget and prompt-cache metadata."
+requires-python = ">=3.9"
+# Standard-library only by design — the gateway interface must not pull in app
+# deps or agent internals (see README "Dependency rule").
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
