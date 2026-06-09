@@ -216,6 +216,33 @@ post_to_thread("engineering-agent/tech-lead", result.synthesis_text)
 - ResearchPack 이 있더라도 *어느 역할의 profile 최우선 source_type 이 비어 있으면* `<role> 우선 자료 유형(<type>)이 비어 있음 — 보강 권장` 을 `open_research` 에 추가. 이 규칙 덕분에 디자이너 자료(이미지) 만 모인 세션이라도 백엔드 관점의 공식 문서 결손이 자동 노출된다.
 - `WorkflowSession.write_requested` 가 True 이고 아직 승인 전이면 `approval_required=True`. 이유는 `write_blocked_reason` 을 그대로 사용한다 (없으면 기본 문구).
 
+## 7-bis. Role council (3-seat 확장)
+
+§7 의 `RoleTake` 는 **owner seat** 의 산출물로 일반화된다. 한 role council
+의 외부 인터페이스는 1 role 이지만, 내부적으로 다음 3-seat 토의를 거친다.
+
+| seat | 책임 | 산출물 |
+|---|---|---|
+| `owner` | role 의 1차 draft | `RoleDraft` (기존 `RoleTake` 와 같은 4-section + 역할 고유 필드) |
+| `challenger` | 같은 role 안 반대 / 회의론 / 위험 | `RoleDraft` (challenger=True) |
+| `reviewer` | owner / challenger 종합 후 합의 결정 | `PeerReviewNote` |
+
+규칙:
+
+- **provider × seat 직교.** Claude / Codex / Gemini / Ollama 가 늘어도
+  seat 는 그대로 3 개. 한 seat 에 여러 provider 의 의견이 합쳐질 수 있다.
+- **same-role peer review 통과 전 cross-role synthesis 진입 금지.**
+  `RoleCouncilResult.consensus_status ∈ {agreed, agreed_with_conditions}`
+  여야 `synthesize_thread` 에 입력으로 들어갈 수 있다.
+- **2 라운드 cap.** 2 라운드를 돌고도 합의가 없으면
+  `consensus_status = escalated` + `disagreement_summary` 와 함께
+  **tech-lead** 로 escalate. gateway 가 아님.
+- **Discord 표면에는 `public_summary` 만.** 내부 토의 raw 는 vault /
+  `session.extra["role_councils"]` 에만 — Discord dump 금지.
+
+전체 모델 / lifecycle substage / approval flow 는 [`docs/engineering-role-council-runtime.md`](../../../../docs/engineering-role-council-runtime.md)
+가 SSoT. 본 절은 §7 의 RoleTake 위에 council 을 얹는 cross-link 이다.
+
 ## 8. 다음 마일스톤
 
 1. **자유 회신** — 각 role 이 다른 role 의 발화에 멘션 응답. 본 MVP 완료 후 도입.

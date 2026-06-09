@@ -57,6 +57,14 @@ AgentMessage
 - `investigate` — 디버깅/조사
 - `handoff` — 다른 부서·역할에 인계
 - `acknowledge` — 단순 수신 확인 (close_thread가 사용)
+- `peer_review` — same-role council 안 reviewer seat 요청. owner / challenger
+  draft 를 받아 `PeerReviewNote` 작성. council 의 외부 결정만 노출되도록
+  내부 fan-out 표현 (자세한 council 모델은 [council-runtime](../../../../docs/engineering-role-council-runtime.md) §3 참조).
+- `council_synthesis` — cross-role synthesis 요청. **모든 RoleCouncilResult
+  의 `consensus_status` 가 `agreed` 또는 `agreed_with_conditions` 일 때만**
+  발행 가능. 그 외에는 builder 가 거부.
+- `tech_lead_signoff` — tech-lead 가 `ApprovalPacket` 의 technical signoff
+  를 부여 / 조건부 / 거절 / escalate 한다. operator approval 과는 분리된다.
 
 회신용 (멤버 → tech-lead):
 - `in_progress` — 진행 중 상태 보고

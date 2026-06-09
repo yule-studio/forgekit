@@ -721,6 +721,34 @@ Round 4-bis 가 deterministic / record-only / live-ready 3-tier 의 *형식* 을
   external actionable 이면 그 verdict, 아니면 record 가 캡처 후
   deterministic.
 
+## 16-sexies. Hybrid deployment plane split (C4 직후)
+
+배포 전략 — control plane (퍼블릭 클라우드, OCI Always Free 우선) /
+execution plane (로컬·온프레미스) / memory plane (혼합) — 의 결정은
+[`notes/vault-mirror/10-projects/yule-studio-agent/decisions/decision-hybrid-deployment-plane-split.md`](../notes/vault-mirror/10-projects/yule-studio-agent/decisions/decision-hybrid-deployment-plane-split.md)
+가 SSoT. 본 master plan §4-§5 의 5 레이어를 *호스트 단위로* 재구성한
+결정이며, 최소비용형 / 표준형 / 확장형 3 profile 은 *컴포넌트별로 섞어*
+쓰는 deployment mode 다. 근거 자료는
+[`research-hybrid-deployment-control-execution-memory-plane.md`](../notes/vault-mirror/10-projects/yule-studio-agent/research/research-hybrid-deployment-control-execution-memory-plane.md).
+
+## 16-quinquies. Role council runtime (C-시리즈 도입 예정)
+
+[`docs/engineering-role-council-runtime.md`](./engineering-role-council-runtime.md)
+가 같은 부서 안 **role × seat (owner / challenger / reviewer) × peer
+review × technical signoff** 를 명문화한다. 본 master plan §4 의 gateway
+/ tech-lead 경계를 다음과 같이 정밀화한다.
+
+- **gateway** = 외부 인입 + status / approval **surface** owner (operator
+  inbox 5 종). **technical signoff 를 결정하지 않는다.**
+- **tech-lead** = **technical approval owner**. council 결과 → `ApprovalPacket`
+  → operator approval (필요 시) → execution.
+- **role council** = 한 role 안 3-seat 토의. provider 가 늘어도 role 수
+  불변.
+
+C 시리즈 rollout 은 6 단계 (C1 ~ C6) 로 쪼개진다 — 자세한 phase 표는
+council runtime §7 참조. C1 의 hard 약속: **자율 정책 수정 루프 만들지
+않음**. self-improvement candidate 만, promote 는 운영자.
+
 ## 17. 최종 판단
 
 지금의 1순위는 `tech-lead` 완성이다.

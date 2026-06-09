@@ -56,6 +56,7 @@ docs/
 | 성능 개선 / 고도화 opening criteria | `docs/engineering-company-runtime-master-plan.md` §"Post-test hardening" |
 | Troubleshooting / 실수 기록 / preflight | `docs/troubleshooting-mandatory.md` (mandatory capture · 8 섹션 스키마 · mistake ledger 자동 승격) |
 | 슬래시 명령어 / 스킬 / harness 플러그인 / compact→vault | `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json` SSoT) |
+| engineering-agent role council / tech-lead signoff / execution review | `docs/engineering-role-council-runtime.md` (+ council contract SSoT `src/yule_orchestrator/agents/council.py`) |
 
 규칙:
 - 위 표에 없는 토픽이면 그 작업과 가장 가까운 디렉터리의 `CLAUDE.md`,

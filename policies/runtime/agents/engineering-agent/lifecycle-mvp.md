@@ -47,7 +47,25 @@ intake
    (optional)
 → coding_authorization_pending
 → coding_job_ready
+   (optional, council 도입 후)
+→ execution_review    ← role council 결과 재확인 / review-loop 반환 / retrospective candidate
 ```
+
+### 3.1 Council substage (확장)
+
+[`docs/engineering-role-council-runtime.md`](../../../../docs/engineering-role-council-runtime.md)
+§4 가 SSoT. 본 lifecycle 의 top-level stage 13 개는 그대로 두고, `session
+.extra["lifecycle_substage"]` 가 council 진행 상태를 세분한다.
+
+- `deliberation` 안 substage: `role_brief_distributed` → `role_drafts_in_progress`
+  → `peer_review_pending` → `council_round_complete` → (`council_escalated`
+  또는 `council_ready_for_synthesis`)
+- `synthesis` 안 substage: `tech_lead_synthesis` → `approval_packet_drafted`
+  → `approval_surface_posted`
+- 새 stage `execution_review` 안 substage: `ci_signal_received` →
+  `role_council_reconvened` → `review_feedback_routed` → `retrospective_candidate`
+
+substage 도 모든 값은 `to_json_safe` 를 거친다.
 
 ## 4. session.extra persistence policy
 
@@ -80,6 +98,14 @@ intake
 | `latest_continuation_prompt` | 같음 | 가장 최근 continuation 본문 |
 | `resumed_thread_id` | 같음 | continuation 으로 이어붙인 thread id |
 | `persistence_error` | `lifecycle_persistence.merge_session_extra` (실패 시) | { step, reason, keys } |
+| `lifecycle_substage` | council / synthesis 모듈 | 현재 substage id (§3.1) |
+| `task_brief` | tech-lead triage | `TaskBrief` payload (목적 / 범위 / 제외 / role 별 work order seed) |
+| `role_work_orders` | tech-lead triage | role → `RoleWorkOrder` |
+| `role_councils` | council runner | role → `RoleCouncilResult` (round 별 list, 모두 보존) |
+| `approval_packet` | tech-lead synthesis | `ApprovalPacket` payload (council pass + tech-lead signoff) |
+| `tech_lead_signoff` | tech-lead | `{signed_off_by, signed_off_at, conditions, status}` |
+| `execution_reviews` | review_loop / execution_review stage | `ExecutionReview` list |
+| `retrospective_candidates` | post-execution | `RetrospectiveCandidate` list (자동 작성 금지, 후보만) |
 
 ### 정책
 
