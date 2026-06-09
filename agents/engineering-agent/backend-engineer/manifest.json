@@ -12,6 +12,14 @@
     "migration_authoring",
     "security_review"
   ],
+  "council_role": {
+    "default_seats": ["owner", "challenger", "reviewer"],
+    "owner_focus": "domain_model / api_contract / data_contract / transaction / security 의 1차 draft",
+    "challenger_focus": "happy-path 가정 / migration rollback 누락 / 권한 우회 / idempotency 회피 / 외부 의존 timeout",
+    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "tech_lead_brief"],
+    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "design_doc": "../../../docs/engineering-role-council-runtime.md"
+  },
   "plugins_required": [
     "paste-guard",
     "hookify",

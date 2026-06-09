@@ -10,8 +10,17 @@
     "dependency_ordering",
     "cross_role_alignment",
     "external_reply_authoring",
-    "plan_publication"
+    "plan_publication",
+    "technical_signoff",
+    "council_escalation_arbitration"
   ],
+  "council_role": {
+    "is_technical_approval_owner": true,
+    "owns_approval_packet": true,
+    "receives_council_escalation": true,
+    "default_seat_in_other_role_councils": null,
+    "design_doc": "../../../docs/engineering-role-council-runtime.md"
+  },
   "plugins_required": [
     "paste-guard",
     "hookify",

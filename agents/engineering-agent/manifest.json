@@ -15,6 +15,44 @@
   "execution_mode": "autonomous_member_team_with_approval_gates",
   "default_executor": "claude",
   "instruction_entry": "agents/engineering-agent/CLAUDE.md",
+  "council_runtime": {
+    "design_doc": "docs/engineering-role-council-runtime.md",
+    "phase": "C1-scaffolding",
+    "seat_model": {
+      "default_seats": ["owner", "challenger", "reviewer"],
+      "provider_seat_orthogonal": true,
+      "council_round_cap": 2,
+      "escalation_target": "tech-lead",
+      "external_surface": "public_summary_only"
+    },
+    "approval_owners": {
+      "technical_signoff": "tech-lead",
+      "operator_approval_surface": "gateway"
+    },
+    "approval_statuses": [
+      "draft",
+      "ready",
+      "conditional",
+      "escalated",
+      "archived"
+    ],
+    "deliverable_schemas": [
+      "TaskBrief",
+      "RoleWorkOrder",
+      "RoleDraft",
+      "PeerReviewNote",
+      "RoleCouncilResult",
+      "ApprovalPacket",
+      "ExecutionReview",
+      "RetrospectiveCandidate"
+    ],
+    "hard_rails": [
+      "single_executor_per_run",
+      "no_auto_policy_self_modification",
+      "no_internal_deliberation_dump_to_discord",
+      "secret_deploy_merge_remain_operator_approval"
+    ]
+  },
   "policies": [
     "policies/runtime/common/safety.md",
     "policies/runtime/common/context-loading.md",
