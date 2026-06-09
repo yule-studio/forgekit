@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Iterable, Mapping, Optional, Sequence, Tuple
 
-from ...agents.research.pack import ResearchAttachment, ResearchPack, ResearchSource
+from ..pack import ResearchAttachment, ResearchPack, ResearchSource
 
 from .formatters import (
     DISCORD_MESSAGE_REPLY_LIMIT,
@@ -17,6 +17,7 @@ from .formatters import (
     format_research_post_body,
     format_thread_markdown_fallback,
     normalize_thread_title,
+    split_discord_message,
     split_forum_starter_and_replies,
     truncate_for_starter_message,
 )
@@ -193,7 +194,6 @@ def chunk_for_discord_message(
 
     if not text:
         return ()
-    from ..ui.formatter import split_discord_message
 
     return tuple(split_discord_message(text, limit=limit))
 
