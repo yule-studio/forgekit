@@ -31,4 +31,5 @@ where = [
     "packages/llm-gateway/src",
     "packages/runtime/src",
     "apps/planning-agent/src",
+    "packages/core/src",
 ]
