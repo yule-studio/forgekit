@@ -23,4 +23,4 @@ yule = "yule_orchestrator.cli:main"
 # package also ships its own pyproject for standalone builds. New ``packages/*``
 # entries are added to this list as they are extracted (merge-order foundation:
 # agent-contracts first).
-where = ["src", "packages/agent-contracts/src"]
+where = ["src", "packages/agent-contracts/src", "packages/memory/src"]
