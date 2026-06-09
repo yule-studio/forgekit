@@ -47,6 +47,7 @@
 | 코드 구조 작업 | + `agents/<agent>/CLAUDE.md` + `agents/<agent>/CODE_LAYOUT.md` |
 | 브랜치/커밋/PR | + `policies/reference/*` |
 | 승인/운영 | + `docs/autonomy-policy.md` / `docs/approval-matrix.md` / `docs/operations.md` |
+| 모노레포 구조 / packages·apps 추가 / compat shim | + `docs/monorepo-structure.md` (현황·의존 규칙·shim 카탈로그·로드맵 SSoT) |
 
 전체 매핑은 `AGENTS.md` §2.
 
