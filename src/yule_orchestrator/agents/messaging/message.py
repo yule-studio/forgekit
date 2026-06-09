@@ -32,6 +32,9 @@ class RequestedAction(str, Enum):
 
     Outgoing intent (tech-lead → role): ANALYZE / ADVISE / IMPLEMENT /
     REVIEW / TEST / DESIGN / INVESTIGATE / HANDOFF.
+    Council-internal (engineering role council runtime, docs/engineering-
+    role-council-runtime.md): PEER_REVIEW / COUNCIL_SYNTHESIS /
+    TECH_LEAD_SIGNOFF.
     Replies (role → tech-lead): COMPLETED / IN_PROGRESS / NEEDS_CLARIFICATION
     / BLOCKED / REJECTED.
     The schema does not enforce direction; helpers in this module produce
@@ -47,6 +50,12 @@ class RequestedAction(str, Enum):
     INVESTIGATE = "investigate"
     HANDOFF = "handoff"
     ACKNOWLEDGE = "acknowledge"
+    # Council-internal verbs — same-role peer review fan-in / cross-role
+    # synthesis fan-out / technical signoff. operator approval (#승인-대기)
+    # 와 분리된다.
+    PEER_REVIEW = "peer_review"
+    COUNCIL_SYNTHESIS = "council_synthesis"
+    TECH_LEAD_SIGNOFF = "tech_lead_signoff"
 
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -66,6 +75,9 @@ REQUEST_ACTIONS = frozenset(
         RequestedAction.INVESTIGATE,
         RequestedAction.HANDOFF,
         RequestedAction.ACKNOWLEDGE,
+        RequestedAction.PEER_REVIEW,
+        RequestedAction.COUNCIL_SYNTHESIS,
+        RequestedAction.TECH_LEAD_SIGNOFF,
     }
 )
 

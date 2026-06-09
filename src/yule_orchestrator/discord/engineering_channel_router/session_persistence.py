@@ -110,6 +110,26 @@ def _persist_role_selection(
     }
     if not selection_updates:
         return session
+    # C4 cleanup — store ``active_research_roles`` in the canonical
+    # ``engineering-agent/<short>`` form so council bootstrap, status
+    # diagnostic, and downstream readers see a single shape. Backward-
+    # compatible: legacy short-form data still survives reads (council
+    # vocabulary normalises both on input).
+    try:
+        from ...agents.council import normalize_roles
+
+        active = selection_updates.get("active_research_roles")
+        if isinstance(active, list):
+            selection_updates["active_research_roles"] = list(
+                normalize_roles(active)
+            )
+        excluded = selection_updates.get("excluded_research_roles")
+        if isinstance(excluded, list):
+            selection_updates["excluded_research_roles"] = list(
+                normalize_roles(excluded)
+            )
+    except Exception:  # noqa: BLE001 — never block intake on canonicalisation
+        pass
     return _persist_extra_keys(session, selection_updates)
 
 def _persist_coding_session_context(

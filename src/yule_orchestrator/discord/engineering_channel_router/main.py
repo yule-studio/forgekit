@@ -120,6 +120,10 @@ from .research_loop import (  # noqa: E402,F401 — local bindings
     _maybe_persist_research_pack,
     persist_research_forum_status,
 )
+# C2 council wiring — bootstrap is best-effort + lazy; intake / kickoff /
+# research_loop never blocked by council failures. Glue lives in
+# .council_flow so main.py stays orchestration-only.
+from .council_flow import maybe_bootstrap_council  # noqa: E402,F401
 from .reporting import (  # noqa: E402,F401 — local bindings
     _coerce_outcome,
     _coerce_research_loop_report,
@@ -693,6 +697,13 @@ async def route_engineering_message(
             # the session row stayed thread-less in SQLite even after
             # a successful kickoff.
             session = _persist_thread_id(session, thread_id)
+            # C2 council bootstrap — stash task_brief / role_work_orders
+            # / role_councils / lifecycle_substage so downstream synthesis
+            # gates can read them. Best-effort: any failure leaves the
+            # session untouched, the rest of the loop proceeds.
+            session = maybe_bootstrap_council(
+                session, canonical_prompt=intake_prompt
+            )
 
     research_loop_report: Optional[EngineeringResearchLoopReport] = None
     if research_loop_fn is not None and session is not None:
@@ -836,6 +847,10 @@ async def _drive_clarification_create_new_work(
         # session.thread_id so subsequent status / Obsidian lookups
         # resolve via the thread anchor.
         session = _persist_thread_id(session, thread_id)
+        # C2 council bootstrap parity with the primary intake path.
+        session = maybe_bootstrap_council(
+            session, canonical_prompt=canonical_prompt
+        )
         if kickoff_message:
             await send_chunks(message.channel, kickoff_message)
 

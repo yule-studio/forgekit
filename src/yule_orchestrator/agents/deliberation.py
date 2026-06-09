@@ -1747,3 +1747,149 @@ def _previous_field(
             if isinstance(value, str) and value.strip():
                 return value.strip()
     return None
+
+
+# ---------------------------------------------------------------------------
+# RoleTake -> RoleDraft adapter (C2 wiring)
+# ---------------------------------------------------------------------------
+#
+# 새 council vocabulary (`agents.council.RoleDraft`) 는 owner / challenger /
+# reviewer seat 의 1차 draft 를 받는다. 기존 `RoleTake` 들은 owner seat 의
+# 산출물로 그대로 재사용된다. 본 adapter 는 *추가 helper* — 기존 호출자는
+# 그대로 둔다.
+#
+# 큰 리팩터링은 C3-C5 의 별 PR 에서. 본 adapter 는 기존 deliberation 자산을
+# council 초안 stage 에 끼워 넣는 1줄 진입점만 제공한다.
+
+
+_ROLE_STRUCTURED_FIELDS: Mapping[type, Tuple[str, ...]] = {
+    TechLeadOpening: ("task_breakdown", "dependencies", "decisions_needed", "notes"),
+    ProductDesignerTake: ("reference_summary", "ux_direction", "visual_direction"),
+    BackendEngineerTake: ("data_impact", "api_impact", "storage_impact"),
+    FrontendEngineerTake: ("ui_components", "state_strategy", "user_flow"),
+    QaEngineerTake: ("acceptance_criteria", "regression_targets"),
+    AiEngineerTake: (
+        "model_strategy",
+        "memory_strategy",
+        "retrieval_strategy",
+        "evaluation_strategy",
+    ),
+    DevOpsEngineerTake: (
+        "cicd_strategy",
+        "deployment_plan",
+        "rollback_plan",
+        "observability",
+        "secrets_and_permissions",
+        "release_checklist",
+    ),
+}
+
+
+def _structured_fields_from_take(take: RoleTake) -> dict:
+    """Pull role-specific fields off a take into a JSON-friendly dict.
+
+    Generic types fall back to an empty dict so unknown future role
+    dataclasses still round-trip cleanly.
+    """
+
+    keys = _ROLE_STRUCTURED_FIELDS.get(type(take), ())
+    out: dict = {}
+    for key in keys:
+        value = getattr(take, key, None)
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            value = list(value)
+        out[key] = value
+    return out
+
+
+def role_take_to_role_draft(
+    take: RoleTake,
+    *,
+    seat: Any = None,  # SeatRole — typed lazily to avoid cyclic import
+    round_index: int = 1,
+    provider: Optional[str] = None,
+) -> Any:  # RoleDraft — typed lazily for same reason
+    """Adapter — convert an existing :class:`RoleTake` into a council
+    :class:`RoleDraft`.
+
+    The four shared sections (``perspective`` / ``evidence`` / ``risks``
+    / ``next_actions``) map 1:1. Role-specific fields land on
+    ``structured_fields`` so reviewers and the synthesis stage can still
+    read them by key.
+
+    The adapter is intentionally lightweight — it does **not** mutate the
+    take or change deliberation semantics. New runtime code can opt into
+    council by calling this helper; legacy callers that just want a
+    take.render() keep working unchanged.
+    """
+
+    # Lazy import — council depends on lifecycle.council_substage, which
+    # this module does not. Keeping the import inside the function lets
+    # ``deliberation`` itself stay free of the council edge.
+    from .council import RoleDraft, SeatRole
+
+    if seat is None:
+        seat = SeatRole.OWNER
+    if not isinstance(seat, SeatRole):
+        seat = SeatRole(str(seat))
+
+    role = getattr(take, "role", "") or ""
+
+    def _seq(value: Any) -> Tuple[str, ...]:
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            return (value,) if value.strip() else ()
+        if isinstance(value, (list, tuple)):
+            return tuple(str(item) for item in value if str(item).strip())
+        return ()
+
+    perspective_value = getattr(take, "perspective", None)
+    perspective = (
+        perspective_value.strip()
+        if isinstance(perspective_value, str) and perspective_value.strip()
+        else None
+    )
+
+    return RoleDraft(
+        role=role,
+        seat=seat,
+        round_index=int(round_index),
+        provider=provider,
+        perspective=perspective,
+        evidence=_seq(getattr(take, "evidence", ())),
+        risks=_seq(getattr(take, "risks", ())),
+        next_actions=_seq(getattr(take, "next_actions", ())),
+        structured_fields=_structured_fields_from_take(take),
+    )
+
+
+def role_takes_to_role_drafts(
+    takes: Sequence[RoleTake],
+    *,
+    seat: Any = None,
+    round_index: int = 1,
+    provider_for_role: Optional[Mapping[str, str]] = None,
+) -> Tuple[Any, ...]:
+    """Batch helper — convert a list of takes into the matching drafts.
+
+    ``provider_for_role`` (optional) lets the caller stamp provenance
+    when a known provider produced the take. Keys are role addresses
+    (``engineering-agent/backend-engineer``).
+    """
+
+    provider_for_role = dict(provider_for_role or {})
+    out = []
+    for take in takes:
+        role = getattr(take, "role", "")
+        out.append(
+            role_take_to_role_draft(
+                take,
+                seat=seat,
+                round_index=round_index,
+                provider=provider_for_role.get(role),
+            )
+        )
+    return tuple(out)

@@ -135,9 +135,13 @@ class GatewayWorkReportLifecycleTests(unittest.TestCase):
         )
         self.assertIn("active_research_roles", session.extra)
         active = session.extra["active_research_roles"]
-        self.assertIn("tech-lead", active)
-        self.assertIn("backend-engineer", active)
-        self.assertIn("qa-engineer", active)
+        # C4 cleanup: storage is canonical (`engineering-agent/<short>`),
+        # but legacy short-form data still reads through. Normalise here
+        # so the assertion accepts either form.
+        active_short = {role.rsplit("/", 1)[-1] for role in active}
+        self.assertIn("tech-lead", active_short)
+        self.assertIn("backend-engineer", active_short)
+        self.assertIn("qa-engineer", active_short)
         # Source captured for status diagnostic readability.
         self.assertEqual(
             session.extra.get("role_selection_source"), "user_explicit"
