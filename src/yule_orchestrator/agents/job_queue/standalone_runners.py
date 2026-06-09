@@ -305,7 +305,7 @@ def build_role_take_runner(
 
 
 def _default_build_open_call_outcome(*, role: str, session_id: str, session: Any, pack_loader):
-    from ...discord.engineering_team_runtime import _build_open_call_outcome
+    from ..engineering_team_runtime import _build_open_call_outcome
 
     return _build_open_call_outcome(
         role=role,
@@ -332,7 +332,7 @@ def _default_build_turn_outcome(
     ``role`` so direct producers (CLI replays / tests) still work.
     """
 
-    from ...discord.engineering_team_runtime import (
+    from ..engineering_team_runtime import (
         RESEARCH_SYNTHESIS_ROLE,
         ResearchTurnOutcome,
         _maybe_load_pack,
@@ -431,7 +431,7 @@ def _default_build_synthesis_outcome(
     observability bug never prevents a synthesis from going out.
     """
 
-    from ...discord.engineering_team_runtime import (
+    from ..engineering_team_runtime import (
         ResearchTurnOutcome,
         _load_synthesis_text_from_session_extra,
         _maybe_load_pack,

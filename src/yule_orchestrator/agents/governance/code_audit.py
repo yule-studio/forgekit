@@ -60,8 +60,9 @@ FILE_SIZE_ALLOWLIST: Mapping[str, str] = {
     "src/yule_orchestrator/discord/bot/_legacy.py": (
         "P0-Q 분해 진행 중 — 의미 그룹 추출 후 점진 제거 (`bot/scheduling.py`, `bot/channels.py` 등)"
     ),
-    "src/yule_orchestrator/discord/engineering_team_runtime/_legacy.py": (
+    "src/yule_orchestrator/agents/engineering_team_runtime/_legacy.py": (
         "P0-Q 분해 진행 중 — engineering_team_runtime 패키지화 후 점진 제거"
+        " (decouple: discord → agents 이동, 순환 제거)"
     ),
     # Registry / data table — 분기 로직 없음, 선언만.
     "src/yule_orchestrator/agents/engineering_intelligence/source_registry.py": (
@@ -124,7 +125,7 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "command group split",
     },
-    "src/yule_orchestrator/discord/engineering_conversation/research_bootstrap.py": {
+    "src/yule_orchestrator/agents/engineering_conversation/research_bootstrap.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
         "axes": "bootstrap, runtime, formatting",

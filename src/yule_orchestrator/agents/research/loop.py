@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Tuple
 
-from ...discord.engineering_conversation import (
+from ..engineering_conversation import (
     ResearchCandidate,
     ResearchCollectionResult,
     build_research_pack_from_candidates,
@@ -395,7 +395,7 @@ async def _post_research_kickoff_comment(
     post_message_fn: PostMessageFn,
 ) -> ForumCommentOutcome:
     try:
-        from ...discord.engineering_team_runtime import research_open_call_directive
+        from ..engineering_team_runtime import research_open_call_directive
     except Exception as exc:  # noqa: BLE001
         return ForumCommentOutcome(
             posted=False,
