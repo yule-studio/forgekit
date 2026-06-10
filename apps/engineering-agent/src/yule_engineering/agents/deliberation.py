@@ -37,7 +37,7 @@ the production path resilient when a backend is unavailable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Optional, Sequence, Tuple, Union
 
 from .research.pack import ResearchAttachment, ResearchPack, ResearchSource
@@ -266,79 +266,6 @@ RoleTake = Union[
 
 
 @dataclass(frozen=True)
-class TechLeadSynthesis:
-    """thread 마지막 tech-lead 종합."""
-
-    consensus: str
-    todos: Sequence[str] = field(default_factory=tuple)
-    open_research: Sequence[str] = field(default_factory=tuple)
-    user_decisions_needed: Sequence[str] = field(default_factory=tuple)
-    approval_required: bool = False
-    approval_reason: Optional[str] = None
-
-
-SYNTHESIS_PERSIST_VERSION = 1
-
-
-def synthesis_to_dict(synthesis: TechLeadSynthesis) -> dict:
-    """Serialize a :class:`TechLeadSynthesis` for ``session.extra``.
-
-    The ``v`` key lets future readers branch on schema changes; current
-    consumers read ``v=1``.
-    """
-
-    return {
-        "v": SYNTHESIS_PERSIST_VERSION,
-        "consensus": synthesis.consensus,
-        "todos": list(synthesis.todos),
-        "open_research": list(synthesis.open_research),
-        "user_decisions_needed": list(synthesis.user_decisions_needed),
-        "approval_required": bool(synthesis.approval_required),
-        "approval_reason": synthesis.approval_reason,
-    }
-
-
-def synthesis_from_dict(data: Mapping[str, Any]) -> TechLeadSynthesis:
-    """Reverse :func:`synthesis_to_dict` — best-effort reconstruction.
-
-    Missing/malformed lists fall back to empty tuples. ``consensus`` is
-    coerced to ``str`` so a malformed payload still produces a usable
-    synthesis (the export will simply have an empty consensus block).
-    """
-
-    consensus = data.get("consensus")
-    consensus_text = str(consensus) if consensus is not None else ""
-    return TechLeadSynthesis(
-        consensus=consensus_text,
-        todos=tuple(_synthesis_str_list(data.get("todos"))),
-        open_research=tuple(_synthesis_str_list(data.get("open_research"))),
-        user_decisions_needed=tuple(
-            _synthesis_str_list(data.get("user_decisions_needed"))
-        ),
-        approval_required=bool(data.get("approval_required")),
-        approval_reason=_synthesis_optional_str(data.get("approval_reason")),
-    )
-
-
-def _synthesis_str_list(value: Any) -> list[str]:
-    if not value:
-        return []
-    if isinstance(value, str):
-        return [value]
-    try:
-        return [str(item) for item in value if item is not None]
-    except TypeError:
-        return []
-
-
-def _synthesis_optional_str(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
-@dataclass(frozen=True)
 class DeliberationContext:
     """Bundled inputs for one role's deliberation turn.
 
@@ -514,194 +441,22 @@ def filter_pack_for_role(
 
 
 # ---------------------------------------------------------------------------
-# RetrievedMemory helpers (Phase 3 follow-up)
+# RetrievedMemory helpers (moved to deliberation_memory)
 # ---------------------------------------------------------------------------
-
-
-def assign_citation_ids(
-    memory_context: Sequence["RetrievedMemory"],
-) -> Tuple["RetrievedMemory", ...]:
-    """Return a copy of *memory_context* with ``citation_id`` populated.
-
-    Hits that already carry a non-empty ``citation_id`` keep it; empty
-    slots receive sequential ``m1``, ``m2``, ... labels in input order.
-    The output preserves the original order so callers can rely on the
-    label matching the hit position. Empty input returns an empty tuple.
-    """
-
-    if not memory_context:
-        return ()
-    used: set[str] = set()
-    for hit in memory_context:
-        existing = (getattr(hit, "citation_id", "") or "").strip()
-        if existing:
-            used.add(existing)
-
-    labelled: list[RetrievedMemory] = []
-    for index, hit in enumerate(memory_context, start=1):
-        existing = (getattr(hit, "citation_id", "") or "").strip()
-        if existing:
-            labelled.append(hit)
-            continue
-        candidate = f"m{index}"
-        # If a custom id earlier in the input collides with the
-        # position-derived candidate, fall through to the next free
-        # slot. In practice this only kicks in when callers pre-set
-        # ``m<N>`` themselves; otherwise the position is the id.
-        bump = 0
-        while candidate in used:
-            bump += 1
-            candidate = f"m{index + bump}"
-        used.add(candidate)
-        labelled.append(replace(hit, citation_id=candidate))
-    return tuple(labelled)
-
-
-def memory_evidence_lines(
-    memory_context: Sequence["RetrievedMemory"],
-    *,
-    limit: int = 2,
-) -> Tuple[str, ...]:
-    """Render up to *limit* memory hits as evidence-style one-liners.
-
-    Format: ``[<cid> · <source>·<note_kind>] <title> — <path> · <snippet>``.
-    Citation IDs are auto-assigned when missing so each rendered line is
-    unambiguously back-pointable to a structured hit. FTS5 highlight
-    markers (``«»``) are stripped. Empty input or hits with neither title
-    nor snippet are skipped — never raises.
-    """
-
-    if not memory_context:
-        return ()
-    labelled = assign_citation_ids(memory_context)
-    out: list[str] = []
-    for hit in labelled:
-        title = (getattr(hit, "title", "") or "").strip()
-        snippet = _strip_fts_markers(
-            (getattr(hit, "snippet", "") or "").strip()
-        )
-        if not title and not snippet:
-            continue
-        source_kind = (getattr(hit, "source_kind", "") or "memory").strip() or "memory"
-        note_kind = getattr(hit, "note_kind", None)
-        tag = f"{source_kind}·{note_kind}" if note_kind else source_kind
-        path = (getattr(hit, "path", None) or "").strip()
-        cid = (getattr(hit, "citation_id", "") or "").strip() or "m?"
-        line = f"[{cid} · {tag}] {title or '(제목 없음)'}"
-        if path:
-            line += f" — {path}"
-        if snippet:
-            line += f" · {snippet[:160]}"
-        out.append(line)
-        if len(out) >= max(0, limit):
-            break
-    return tuple(out)
-
-
-def memory_hits_by(
-    memory_context: Sequence["RetrievedMemory"],
-    *,
-    kind: Optional[str] = None,
-    source: Optional[str] = None,
-    limit: int = 3,
-) -> Tuple["RetrievedMemory", ...]:
-    """Return up to *limit* hits matching ``kind`` and/or ``source``.
-
-    The returned tuple shares citation IDs assigned by
-    :func:`assign_citation_ids`, so callers can quote a stable ``[m1]``
-    label alongside structured fields (path/score/source). Empty result
-    when nothing matches — callers branch on this to preserve
-    deterministic output.
-    """
-
-    if not memory_context:
-        return ()
-    labelled = assign_citation_ids(memory_context)
-    matches: list[RetrievedMemory] = []
-    for hit in labelled:
-        if kind is not None and getattr(hit, "note_kind", None) != kind:
-            continue
-        if source is not None and getattr(hit, "source_kind", None) != source:
-            continue
-        matches.append(hit)
-        if len(matches) >= max(1, limit):
-            break
-    return tuple(matches)
-
-
-def memory_hint_for_role(
-    memory_context: Sequence["RetrievedMemory"],
-    *,
-    kind: Optional[str] = None,
-    source: Optional[str] = None,
-    limit: int = 1,
-) -> Optional[str]:
-    """Return the first matching hit's ``[cid] title`` string or ``None``.
-
-    Now backed by :func:`memory_hits_by` so the citation id is part of
-    the phrase by default — callers that quote this in risks/next_actions
-    automatically carry the back-pointer to the structured block. When
-    ``limit > 1`` only the first match is returned (legacy semantic).
-    """
-
-    matches = memory_hits_by(
-        memory_context, kind=kind, source=source, limit=max(1, limit)
-    )
-    if not matches:
-        return None
-    first = matches[0]
-    title = (getattr(first, "title", "") or "").strip() or "(제목 없음)"
-    cid = (getattr(first, "citation_id", "") or "").strip()
-    return f"[{cid}] {title}" if cid else title
-
-
-def format_memory_block(
-    memory_context: Sequence["RetrievedMemory"],
-) -> str:
-    """Return a multi-line, runner/prompt-friendly memory block.
-
-    Designed to be spliced directly into an LLM prompt (or written to a
-    debug log) — preserves citation_id, source/note kind, title, path,
-    score, and a short snippet. The deterministic fallback uses
-    :func:`memory_evidence_lines` for in-message rendering; this function
-    is for the structured context the runner sees alongside the role
-    take.
-
-    Empty input returns ``""`` so the caller can simply ``if block:
-    prompt += block``.
-    """
-
-    if not memory_context:
-        return ""
-    labelled = assign_citation_ids(memory_context)
-    lines: list[str] = []
-    for hit in labelled:
-        cid = (getattr(hit, "citation_id", "") or "").strip() or "m?"
-        source_kind = getattr(hit, "source_kind", "") or "memory"
-        note_kind = getattr(hit, "note_kind", None)
-        kind_part = f"{source_kind}/{note_kind}" if note_kind else source_kind
-        title = (getattr(hit, "title", "") or "").strip() or "(제목 없음)"
-        path = (getattr(hit, "path", None) or "").strip()
-        score = float(getattr(hit, "score", 0.0) or 0.0)
-        header = f"[{cid}] ({kind_part}) {title}"
-        if path:
-            header += f" — {path}"
-        header += f" (score={score:.3f})"
-        lines.append(header)
-        snippet = _strip_fts_markers(
-            (getattr(hit, "snippet", "") or "").strip()
-        )
-        if snippet:
-            lines.append(f"snippet: {snippet[:240]}")
-    return "\n".join(lines)
-
-
-def _strip_fts_markers(text: str) -> str:
-    """Remove FTS5 highlight markers (``«»``) and trim whitespace."""
-
-    if not text:
-        return ""
-    return text.replace("«", "").replace("»", "").strip()
+#
+# The citation / rendering helpers operate purely on the duck-typed
+# RetrievedMemory shape (getattr + dataclasses.replace), so they live in
+# the dependency-free :mod:`deliberation_memory` and are re-exported here
+# for the existing ``from .deliberation import assign_citation_ids`` style
+# importers and the fallback/synthesis modules.
+from .deliberation_memory import (  # noqa: E402,F401
+    assign_citation_ids,
+    format_memory_block,
+    memory_evidence_lines,
+    memory_hint_for_role,
+    memory_hits_by,
+    _strip_fts_markers,
+)
 
 
 def evidence_lines_for_role(
@@ -774,6 +529,9 @@ def run_role_deliberation(
     research pack, previous_turns, and session metadata.
     """
 
+    # ``_deterministic_role_take`` is re-exported at module scope from
+    # :mod:`deliberation_fallbacks` (bottom of this file), keeping the
+    # orchestrator → extracted edge one-way without an import cycle.
     if runner_fn is not None:
         try:
             outcome = runner_fn(context)
@@ -787,111 +545,6 @@ def run_role_deliberation(
     return _deterministic_role_take(context)
 
 
-def synthesize(
-    session: WorkflowSession,
-    role_takes: Sequence[RoleTake],
-    *,
-    research_pack: Optional[ResearchPack] = None,
-    memory_context: Sequence["RetrievedMemory"] = (),
-) -> TechLeadSynthesis:
-    """Produce the final tech-lead synthesis from collected role takes.
-
-    Pure-deterministic for MVP. A future iteration may delegate to an LLM
-    runner; the dataclass shape is the contract either way.
-
-    When ``memory_context`` is provided, prior decision/policy memories
-    are folded into the consensus prefix and open_research follow-ups so
-    the synthesis visibly references past notes — the seam the gateway
-    forum hook and synthesize_thread now feed.
-    """
-
-    todos: list[str] = []
-    open_research: list[str] = []
-    user_decisions: list[str] = []
-
-    for take in role_takes:
-        todos.extend(_todos_from_take(take))
-        if isinstance(take, TechLeadOpening):
-            user_decisions.extend(take.decisions_needed)
-
-    # Reference gaps → open research.
-    if research_pack is None or not research_pack.urls:
-        open_research.append("자료 reference 보강 필요 — 현재 thread에 첨부된 링크 없음")
-    if research_pack is not None and 0 < len(research_pack.urls) < 3:
-        open_research.append(
-            "권장 reference 3건 이상이 아직 모이지 않았습니다 — 추가 자료 수집 권장"
-        )
-
-    # Per-role research profile gaps: if a role spoke but its profile's
-    # top type was missing, surface a follow-up.
-    if research_pack is not None and research_pack.sources:
-        for take in role_takes:
-            short = _short_role(getattr(take, "role", ""))
-            profile = ROLE_RESEARCH_PROFILES.get(short)
-            if not profile:
-                continue
-            available = {source_type(s) for s in research_pack.sources}
-            top_type = profile[0]
-            if top_type not in available:
-                open_research.append(
-                    f"{short} 우선 자료 유형({top_type})이 비어 있음 — 보강 권장"
-                )
-
-    # Memory-driven follow-ups: surface up to 3 prior decision hits so
-    # multiple past decisions don't collapse into one quote, plus a
-    # relevant policy hit for open_research. Distinct decision titles
-    # also escalate to user_decisions_needed so the operator can break
-    # the tie.
-    decision_hits = memory_hits_by(memory_context, kind="decision", limit=3)
-    for hit in decision_hits:
-        cid = (getattr(hit, "citation_id", "") or "").strip()
-        title = (getattr(hit, "title", "") or "").strip() or "(제목 없음)"
-        label = f"[{cid}] {title}" if cid else title
-        todos.append(f"이전 결정({label}) 재확인")
-    if len(decision_hits) >= 2:
-        distinct_titles = {h.title for h in decision_hits if h.title}
-        if len(distinct_titles) >= 2:
-            joined = " / ".join(
-                f"[{(h.citation_id or '').strip() or 'm?'}] {h.title}"
-                for h in decision_hits
-            )
-            user_decisions.append(
-                f"기억된 결정 다중 검토 필요: {joined}"
-            )
-    policy_memory_hit = memory_hint_for_role(memory_context, source="policy")
-    if policy_memory_hit:
-        open_research.append(
-            f"관련 정책({policy_memory_hit}) 검토 후 합의안 확정"
-        )
-
-    approval_required = bool(session.write_requested) and not _session_approved(session)
-    approval_reason = (
-        session.write_blocked_reason
-        if approval_required and session.write_blocked_reason
-        else (
-            "쓰기 작업 승인이 필요합니다."
-            if approval_required
-            else None
-        )
-    )
-
-    consensus = _consensus_summary(session, role_takes)
-    if decision_hits:
-        first = decision_hits[0]
-        cid = (getattr(first, "citation_id", "") or "").strip()
-        title = (getattr(first, "title", "") or "").strip() or "(제목 없음)"
-        prefix_label = f"[{cid}] {title}" if cid else title
-        consensus = f"기억된 결정({prefix_label}) 맥락에서: {consensus}"
-    return TechLeadSynthesis(
-        consensus=consensus,
-        todos=tuple(_dedup_keep_order(todos)),
-        open_research=tuple(_dedup_keep_order(open_research)),
-        user_decisions_needed=tuple(_dedup_keep_order(user_decisions)),
-        approval_required=approval_required,
-        approval_reason=approval_reason,
-    )
-
-
 def render_role_take(take: RoleTake) -> str:
     """Render a role take as a Discord-friendly multi-line string.
 
@@ -899,6 +552,19 @@ def render_role_take(take: RoleTake) -> str:
     plus the role's specific structured fields. Empty sections render as
     "없음" so readers can tell missing vs. not-applicable apart.
     """
+
+    # Lazy import — deliberation_render imports the role-take dataclasses
+    # and shared helpers from this module; wiring the dispatch here keeps
+    # the edge one-way without an import-time cycle.
+    from .deliberation_render import (
+        _render_ai_engineer,
+        _render_backend_engineer,
+        _render_devops_engineer,
+        _render_frontend_engineer,
+        _render_product_designer,
+        _render_qa_engineer,
+        _render_tech_lead_opening,
+    )
 
     if isinstance(take, TechLeadOpening):
         return _render_tech_lead_opening(take)
@@ -917,588 +583,9 @@ def render_role_take(take: RoleTake) -> str:
     raise TypeError(f"unsupported role take type: {type(take)!r}")
 
 
-def render_synthesis(synth: TechLeadSynthesis) -> str:
-    lines: list[str] = ["**[tech-lead 종합]**"]
-    lines.append(f"합의안: {synth.consensus}")
-    lines.append(_bullet_block("해야 할 일", synth.todos))
-    lines.append(_bullet_block("더 조사할 것", synth.open_research))
-    lines.append(_bullet_block("사용자 결정 필요", synth.user_decisions_needed))
-    if synth.approval_required:
-        reason = synth.approval_reason or "쓰기 승인 필요"
-        lines.append(f"승인 필요: yes — {reason}")
-    else:
-        lines.append("승인 필요: no")
-    return "\n".join(line for line in lines if line)
-
-
 # ---------------------------------------------------------------------------
-# Deterministic fallback templates
+# Deterministic fallback templates (moved to deliberation_fallbacks)
 # ---------------------------------------------------------------------------
-
-
-def _deterministic_role_take(context: DeliberationContext) -> RoleTake:
-    # Normalize citation IDs once at the top so every fallback (and the
-    # rendered evidence/risks/next_actions) sees the same labels.
-    if context.memory_context:
-        context = replace(
-            context,
-            memory_context=assign_citation_ids(context.memory_context),
-        )
-    role_short = _short_role(context.role)
-    if role_short == "tech-lead":
-        return _fallback_tech_lead_opening(context)
-    if role_short == "product-designer":
-        return _fallback_product_designer(context)
-    if role_short == "backend-engineer":
-        return _fallback_backend_engineer(context)
-    if role_short == "frontend-engineer":
-        return _fallback_frontend_engineer(context)
-    if role_short == "qa-engineer":
-        return _fallback_qa_engineer(context)
-    if role_short == "ai-engineer":
-        return _fallback_ai_engineer(context)
-    if role_short == "devops-engineer":
-        return _fallback_devops_engineer(context)
-    # Unknown role — coerce to a generic tech-lead-shaped take so callers
-    # always get something renderable.
-    return TechLeadOpening(
-        role=context.role,
-        task_breakdown=(f"{context.role} 영역 검토",),
-        notes="해당 역할의 결정 양식이 아직 정의되지 않았습니다.",
-        perspective=f"{context.role} 관점에서 합류",
-        evidence=evidence_lines_for_role(context.research_pack, context.role),
-        next_actions=(f"{context.role} 영역 결정 양식 정리 필요",),
-    )
-
-
-def _fallback_tech_lead_opening(ctx: DeliberationContext) -> TechLeadOpening:
-    session = ctx.session
-    pack = ctx.research_pack
-    breakdown = [
-        f"분류 `{session.task_type}` · 실행 후보 `{session.executor_role or 'tech-lead'}`",
-        f"요청 본문: {_excerpt(session.prompt, 80)}",
-    ]
-    if session.role_sequence:
-        breakdown.append("참여 후보: " + ", ".join(session.role_sequence))
-
-    dependencies: list[str] = []
-    if session.references_user:
-        dependencies.append(
-            "사용자 제공 reference 우선 검토 — " + ", ".join(session.references_user[:2])
-        )
-    if pack is not None and pack.urls:
-        dependencies.append(
-            "ResearchPack 자료 " + str(len(pack.urls)) + "건 thread에 동기화"
-        )
-    if not dependencies:
-        dependencies.append("외부 의존 없음 — 각자 도메인 기준으로 시작")
-
-    decisions_needed: list[str] = []
-    if session.write_requested and not _session_approved(session):
-        decisions_needed.append("쓰기 진행 승인 (operator 확인)")
-    if pack is not None and len(pack.urls) < 3:
-        decisions_needed.append("reference 추가 수집 여부")
-
-    perspective = (
-        f"`{session.task_type}` 작업 — 실행 후보 `{session.executor_role or 'tech-lead'}` "
-        "를 기준으로 각 멤버가 자기 정책에 맞게 검토 의견 제출."
-    )
-    evidence = list(evidence_lines_for_role(pack, ctx.role))
-    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=2))
-    risks: list[str] = [
-        "멤버별 의견 수렴 지연 — thread 응답이 늦어지면 실행 후보 작업이 막힘",
-    ]
-    policy_hit = memory_hint_for_role(ctx.memory_context, source="policy")
-    if policy_hit:
-        risks.append(f"기존 정책과의 충돌 점검: {policy_hit}")
-    if session.write_requested and not _session_approved(session):
-        risks.append("승인 전 쓰기 진행 시 정책 위반 — write 게이트 차단 유지")
-    if pack is None or not pack.urls:
-        risks.append("reference 부족 — 결정 근거가 약해 결과 품질 불안정")
-
-    next_actions: list[str] = []
-    next_actions.append("각 역할에게 thread에서 본인 관점 take 제출 요청")
-    if pack is None or not pack.urls:
-        next_actions.append("운영-리서치 forum에 reference 후속 수집 요청")
-    if session.write_requested and not _session_approved(session):
-        next_actions.append("operator에게 ✅ 승인 요청")
-
-    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
-    notes: Optional[str] = None
-    if decision_hit:
-        notes = f"이전 결정 참고: {decision_hit}"
-
-    return TechLeadOpening(
-        task_breakdown=tuple(breakdown),
-        dependencies=tuple(dependencies),
-        decisions_needed=tuple(decisions_needed),
-        notes=notes,
-        perspective=perspective,
-        evidence=tuple(evidence),
-        risks=tuple(risks),
-        next_actions=tuple(next_actions),
-    )
-
-
-def _fallback_product_designer(ctx: DeliberationContext) -> ProductDesignerTake:
-    pack = ctx.research_pack
-    role = ctx.role
-
-    refs: Tuple[str, ...] = ()
-    visual_lines = evidence_lines_for_role(pack, role)
-    image_attachments = role_specific_attachments(pack, role)
-    if visual_lines:
-        refs = visual_lines
-    elif ctx.session.references_user:
-        refs = tuple(f"[url] {r} — (사용자 제공)" for r in ctx.session.references_user[:3])
-    elif ctx.session.references_suggested:
-        refs = tuple(
-            f"[design_reference] {r} — (task_type 추천)"
-            for r in ctx.session.references_suggested[:3]
-        )
-
-    # Memory-driven references take priority — surfacing past visual /
-    # research notes ahead of pack-derived URLs gives the designer the
-    # "we already looked at this before" anchor.
-    memory_lines = memory_evidence_lines(ctx.memory_context, limit=2)
-    if memory_lines:
-        refs = memory_lines + refs
-
-    summary = refs or (
-        "reference 미공급 — 사용자 제공 자료 또는 suggested 카테고리 우선",
-    )
-
-    risks: list[str] = [
-        "기존 디자인 시스템과의 일관성 영향 — 토큰/스타일 변경 범위 한정 필요",
-    ]
-    if not refs:
-        risks.append("reference 부재 — 단순 복제 위험 회피 위해 추가 자료 권장")
-    if pack is not None and not _has_visual_signal(pack, role):
-        risks.append(
-            "이미지/디자인 reference 비어 있음 — 톤·시각 결정의 근거가 없음"
-        )
-
-    perspective = (
-        "사용자 입장에서 시각·정보 흐름을 어떻게 받아들일지 — "
-        "톤과 레이아웃, 그리고 reference에서 차용할 패턴을 결정한다."
-    )
-
-    next_actions: list[str] = []
-    if image_attachments:
-        next_actions.append(
-            f"이미지/디자인 첨부 {len(image_attachments)}건 thread에 정리해서 공유"
-        )
-    next_actions.append("UX 흐름 단계별 wireframe 1차 메모 thread에 첨부")
-    if not refs:
-        next_actions.append("디자인 reference 1건 이상 추가 수집")
-
-    tech_lead_breakdown = _previous_tech_lead_decisions(ctx.previous_turns)
-    if tech_lead_breakdown:
-        next_actions.append(
-            f"tech-lead 결정 사항({tech_lead_breakdown[0]}) 반영해 시각 가이드 1차 정리"
-        )
-
-    return ProductDesignerTake(
-        reference_summary=summary,
-        ux_direction="현재 흐름 기준으로 step 단위 분해 후 영역별 친절도 점검",
-        visual_direction="기존 톤 유지하되 reference에서 색·여백 패턴만 차용",
-        risks=tuple(risks),
-        perspective=perspective,
-        evidence=summary,
-        next_actions=tuple(next_actions),
-    )
-
-
-def _fallback_backend_engineer(ctx: DeliberationContext) -> BackendEngineerTake:
-    pack = ctx.research_pack
-    role = ctx.role
-    evidence = list(evidence_lines_for_role(pack, role))
-    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=1))
-
-    risks: list[str] = [
-        "schema 변경 동시 작업 충돌 가능",
-        "기존 cache key 포맷 영향 점검",
-    ]
-    if pack is not None and not _has_doc_or_code_signal(pack, role):
-        risks.append("공식 문서/code_context 부족 — 가정 기반 결정 위험")
-
-    policy_hit = memory_hint_for_role(ctx.memory_context, source="policy")
-    if policy_hit:
-        risks.append(f"정책 점검: {policy_hit}")
-
-    perspective = (
-        "데이터 모델, 외부 API 계약, 인증/권한, 저장소 영향을 점검해 "
-        "실행 후보가 안전하게 변경을 적용할 수 있는지 판단한다."
-    )
-
-    next_actions: list[str] = [
-        "관련 schema/migration 영향 thread에 정리",
-        "외부 API 변경 시 backward-compat 메모 PR description에 포함",
-    ]
-    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
-    if decision_hit:
-        next_actions.append(
-            f"이전 결정({decision_hit}) 데이터 영향 재확인"
-        )
-    if pack is not None:
-        # If product-designer already decided UX direction, surface it as
-        # a backend-side validation step.
-        designer_ux = _previous_field(ctx.previous_turns, ProductDesignerTake, "ux_direction")
-        if designer_ux:
-            next_actions.append(
-                f"디자이너 UX 방향({designer_ux}) 데이터 흐름과 충돌 여부 확인"
-            )
-
-    return BackendEngineerTake(
-        data_impact=_first_line(
-            ctx.session.prompt,
-            "도메인 모델 영향 점검 — schema 변경 여부 확인 필요",
-        ),
-        api_impact="외부 계약 변경 가능성 검토 — 변경 시 backward compatibility 메모",
-        storage_impact="저장소 마이그레이션 필요 시 off-peak 적용 권장",
-        risks=tuple(risks),
-        perspective=perspective,
-        evidence=tuple(evidence),
-        next_actions=tuple(next_actions),
-    )
-
-
-def _fallback_frontend_engineer(ctx: DeliberationContext) -> FrontendEngineerTake:
-    pack = ctx.research_pack
-    role = ctx.role
-    evidence = list(evidence_lines_for_role(pack, role))
-    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=1))
-
-    risks: list[str] = [
-        "모바일 가로폭에서 CTA 절단 가능",
-        "에러 메시지 i18n 누락 위험",
-    ]
-    if pack is not None and not _has_ui_signal(pack, role):
-        risks.append("UI 구현 reference/접근성 자료 부족 — 컴포넌트 결정 근거 약함")
-
-    perspective = (
-        "디자인 결정과 백엔드 계약을 받아 어떤 컴포넌트로 구현할지, "
-        "상태/접근성/반응형을 어떻게 풀지 결정한다."
-    )
-
-    next_actions: list[str] = [
-        "필수 컴포넌트 분해 + 재사용 가능한 패턴 thread에 정리",
-        "접근성(ARIA) 점검 항목 PR checklist에 포함",
-    ]
-    reference_hit = memory_hint_for_role(
-        ctx.memory_context, kind="reference"
-    ) or memory_hint_for_role(ctx.memory_context, kind="decision")
-    if reference_hit:
-        next_actions.append(
-            f"이전 reference({reference_hit}) 컴포넌트 패턴 재사용 검토"
-        )
-    designer_visual = _previous_field(ctx.previous_turns, ProductDesignerTake, "visual_direction")
-    if designer_visual:
-        next_actions.append(
-            f"디자이너 시각 방향({designer_visual}) 토큰/스타일 정의에 반영"
-        )
-    backend_api = _previous_field(ctx.previous_turns, BackendEngineerTake, "api_impact")
-    if backend_api:
-        next_actions.append(
-            f"백엔드 API 변경({backend_api}) 클라이언트 SDK/페치 레이어에 반영"
-        )
-
-    return FrontendEngineerTake(
-        ui_components=("hero / CTA", "필수 폼", "상태 indicator"),
-        state_strategy="form 상태는 로컬, 검증 결과만 글로벌 — 기존 패턴 유지",
-        user_flow="첫 화면 → 정보 입력 → 검증 → 결과 노출 4단계 유지",
-        risks=tuple(risks),
-        perspective=perspective,
-        evidence=tuple(evidence),
-        next_actions=tuple(next_actions),
-    )
-
-
-def _fallback_qa_engineer(ctx: DeliberationContext) -> QaEngineerTake:
-    pack = ctx.research_pack
-    role = ctx.role
-    evidence = list(evidence_lines_for_role(pack, role))
-    evidence.extend(memory_evidence_lines(ctx.memory_context, limit=1))
-
-    risks: list[str] = [
-        "기존 회귀 케이스 영향",
-        "비동기 race condition",
-    ]
-    if pack is not None and not _has_qa_signal(pack, role):
-        risks.append(
-            "장애/회귀 사례 reference 부족 — risk-based test 우선 순위 약함"
-        )
-    workflow_hit = memory_hint_for_role(ctx.memory_context, source="workflow")
-    if workflow_hit:
-        risks.append(f"과거 세션({workflow_hit}) 회귀 위험 재점검")
-
-    perspective = (
-        "수용 기준과 회귀 영향을 정의해 실행 후보가 만든 변경이 "
-        "기존 사용자/플로우를 깨뜨리지 않는지 검증한다."
-    )
-
-    next_actions: list[str] = [
-        "수용 기준 thread에 commit-by-commit 매핑",
-        "회귀 묶음 영향 확인 — 실행 후보 PR에 라벨 부착",
-    ]
-    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
-    if decision_hit:
-        next_actions.append(
-            f"이전 결정({decision_hit}) 영향 회귀 시나리오 보강"
-        )
-    backend_data = _previous_field(ctx.previous_turns, BackendEngineerTake, "data_impact")
-    if backend_data:
-        next_actions.append(
-            f"백엔드 데이터 영향({backend_data}) 회귀 시나리오 1건 추가"
-        )
-    frontend_flow = _previous_field(ctx.previous_turns, FrontendEngineerTake, "user_flow")
-    if frontend_flow:
-        next_actions.append(
-            f"프론트 사용자 흐름({frontend_flow}) e2e 시나리오 1건 추가"
-        )
-
-    regression_targets: list[str] = [
-        "회원가입 onboarding 회귀 묶음",
-        "공통 layout 컴포넌트",
-    ]
-    if decision_hit:
-        regression_targets.append(f"이전 결정 영역({decision_hit}) 회귀 추적")
-
-    return QaEngineerTake(
-        acceptance_criteria=(
-            "주요 흐름 e2e 1건 추가",
-            "에러/빈 상태 스냅샷 확인",
-        ),
-        risks=tuple(risks),
-        regression_targets=tuple(regression_targets),
-        perspective=perspective,
-        evidence=tuple(evidence),
-        next_actions=tuple(next_actions),
-    )
-
-
-def _fallback_ai_engineer(ctx: DeliberationContext) -> AiEngineerTake:
-    """ai-engineer 관점의 모델·메모리·검색·평가 영향 정리."""
-
-    pack = ctx.research_pack
-    role = ctx.role
-    pack_evidence = evidence_lines_for_role(pack, role)
-    memory_lines = memory_evidence_lines(ctx.memory_context, limit=2)
-    evidence = tuple(list(pack_evidence) + list(memory_lines))
-
-    risks: list[str] = [
-        "context window 초과로 응답 품질 저하 가능",
-        "벡터 인덱스가 비어 있으면 first-pass quality 낮음",
-    ]
-    if pack is None or not pack_evidence:
-        risks.append("RAG/메모리 reference 부족 — 모델 결정 근거 약함")
-    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
-    if decision_hit:
-        risks.append(
-            f"기존 결정({decision_hit})과 retrieval 결과 일관성 점검"
-        )
-
-    perspective = (
-        "사용자 자료를 모델 컨텍스트로 어떻게 들여보내고, 메모리/RAG 구조와 "
-        "평가 신호를 어떻게 분리할지 정리한다."
-    )
-
-    next_actions: list[str] = [
-        "session 단위 메모리 구조와 외부 vault 동기화 경계 정의",
-        "RAG retrieval/recall 평가 metric 1개 명시",
-    ]
-    backend_data = _previous_field(ctx.previous_turns, BackendEngineerTake, "data_impact")
-    if backend_data:
-        next_actions.append(
-            f"백엔드 데이터 영향({backend_data})에 맞춰 embedding pipeline 동기화"
-        )
-
-    return AiEngineerTake(
-        model_strategy="작은 컨텍스트 모델로 정리 → 필요 시 long-context 모델로 확장",
-        memory_strategy="thread/session 메모리는 in-process로 유지, 외부 vault export는 별도 contract",
-        retrieval_strategy="ResearchPack의 source_type 우선순위 그대로 사용 — 임의 scraping 금지",
-        evaluation_strategy="역할별 evidence 인용률과 사용자 confirm 비율을 1차 metric으로",
-        risks=tuple(risks),
-        perspective=perspective,
-        evidence=evidence,
-        next_actions=tuple(next_actions),
-    )
-
-
-def _fallback_devops_engineer(ctx: DeliberationContext) -> DevOpsEngineerTake:
-    """devops-engineer 관점의 CI/CD·배포·관측·롤백·릴리즈 체크 정리."""
-
-    pack = ctx.research_pack
-    role = ctx.role
-    pack_evidence = evidence_lines_for_role(pack, role)
-    memory_lines = memory_evidence_lines(ctx.memory_context, limit=2)
-    evidence = tuple(list(pack_evidence) + list(memory_lines))
-
-    risks: list[str] = [
-        "배포 직후 롤백 경로 미정의 — 장애 시 복구 시간 지연",
-        "secrets/권한 변경 누락 — 운영 환경에서만 노출되는 회귀 가능",
-    ]
-    if pack is None or not pack_evidence:
-        risks.append("배포/관측 reference 부족 — 결정 근거가 약해 운영 사고 위험")
-    policy_hit = memory_hint_for_role(ctx.memory_context, source="policy")
-    if policy_hit:
-        risks.append(f"기존 운영 정책({policy_hit}) 충돌 점검 필요")
-
-    perspective = (
-        "CI/CD 파이프라인, 배포 전략, 관측·롤백, secrets/권한, 릴리즈 체크리스트를 "
-        "정리해 실행 후보가 운영 사고 없이 변경을 적용할 수 있는지 판단한다."
-    )
-
-    next_actions: list[str] = [
-        "GitHub Actions 변경 영향 분석 — workflow yaml diff 정리",
-        "deployment 단계별 rollback 시나리오 thread에 명시",
-        "release checklist에 observability/alarm 항목 포함",
-    ]
-    decision_hit = memory_hint_for_role(ctx.memory_context, kind="decision")
-    if decision_hit:
-        next_actions.append(f"이전 결정({decision_hit}) 배포 영향 재확인")
-    backend_data = _previous_field(ctx.previous_turns, BackendEngineerTake, "data_impact")
-    if backend_data:
-        next_actions.append(
-            f"백엔드 데이터 영향({backend_data}) migration window·downtime 산정"
-        )
-
-    return DevOpsEngineerTake(
-        cicd_strategy="GitHub Actions 기준 — main 머지 시 staging 배포, 수동 승인 후 prod",
-        deployment_plan="기존 blue/green 또는 canary 패턴 유지 — 새 환경 변수만 검증 후 적용",
-        rollback_plan="배포 직전 태그 보관 + revert PR 자동 생성 + alarm 30분 모니터",
-        observability="기존 metrics/logs 스키마 유지 — 신규 지표만 추가, dashboard PR 동반",
-        secrets_and_permissions="신규 secret/scope 변경은 .env.example 및 권한 정책 문서에 동기화",
-        release_checklist=(
-            "테스트 green + 회귀 묶음 통과 확인",
-            "secrets/permissions 변경 점검",
-            "rollback 시나리오 thread에 명시",
-            "운영 알람/대시보드 갱신",
-        ),
-        risks=tuple(risks),
-        perspective=perspective,
-        evidence=evidence,
-        next_actions=tuple(next_actions),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Renderers
-# ---------------------------------------------------------------------------
-
-
-def _render_tech_lead_opening(t: TechLeadOpening) -> str:
-    short = _short_role(t.role)
-    lines = [f"**[{short}]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    lines.append(_bullet_block("작업 분해", t.task_breakdown))
-    lines.append(_bullet_block("의존성", t.dependencies))
-    lines.append(_bullet_block("결정 필요 사항", t.decisions_needed))
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    if t.notes:
-        lines.append(f"메모: {t.notes}")
-    return "\n".join(line for line in lines if line)
-
-
-def _render_product_designer(t: ProductDesignerTake) -> str:
-    lines = ["**[product-designer]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    lines.append(_bullet_block("레퍼런스", t.reference_summary))
-    if t.ux_direction:
-        lines.append(f"UX 방향: {t.ux_direction}")
-    if t.visual_direction:
-        lines.append(f"시각 방향: {t.visual_direction}")
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    return "\n".join(line for line in lines if line)
-
-
-def _render_backend_engineer(t: BackendEngineerTake) -> str:
-    lines = ["**[backend-engineer]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    if t.data_impact:
-        lines.append(f"데이터 영향: {t.data_impact}")
-    if t.api_impact:
-        lines.append(f"API 영향: {t.api_impact}")
-    if t.storage_impact:
-        lines.append(f"저장소 영향: {t.storage_impact}")
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    return "\n".join(line for line in lines if line)
-
-
-def _render_frontend_engineer(t: FrontendEngineerTake) -> str:
-    lines = ["**[frontend-engineer]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    lines.append(_bullet_block("UI 컴포넌트", t.ui_components))
-    if t.state_strategy:
-        lines.append(f"상태 전략: {t.state_strategy}")
-    if t.user_flow:
-        lines.append(f"사용자 흐름: {t.user_flow}")
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    return "\n".join(line for line in lines if line)
-
-
-def _render_qa_engineer(t: QaEngineerTake) -> str:
-    lines = ["**[qa-engineer]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    lines.append(_bullet_block("수용 기준", t.acceptance_criteria))
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("회귀 대상", t.regression_targets))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    return "\n".join(line for line in lines if line)
-
-
-def _render_ai_engineer(t: AiEngineerTake) -> str:
-    lines = ["**[ai-engineer]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    if t.model_strategy:
-        lines.append(f"모델 전략: {t.model_strategy}")
-    if t.memory_strategy:
-        lines.append(f"메모리 전략: {t.memory_strategy}")
-    if t.retrieval_strategy:
-        lines.append(f"검색 전략: {t.retrieval_strategy}")
-    if t.evaluation_strategy:
-        lines.append(f"평가 전략: {t.evaluation_strategy}")
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    return "\n".join(line for line in lines if line)
-
-
-def _render_devops_engineer(t: DevOpsEngineerTake) -> str:
-    short = _short_role(t.role)
-    lines = [f"**[{short}]**"]
-    if t.perspective:
-        lines.append(f"관점: {t.perspective}")
-    if t.cicd_strategy:
-        lines.append(f"CI/CD: {t.cicd_strategy}")
-    if t.deployment_plan:
-        lines.append(f"배포 계획: {t.deployment_plan}")
-    if t.rollback_plan:
-        lines.append(f"롤백 계획: {t.rollback_plan}")
-    if t.observability:
-        lines.append(f"관측성: {t.observability}")
-    if t.secrets_and_permissions:
-        lines.append(f"secrets/권한: {t.secrets_and_permissions}")
-    lines.append(_bullet_block("릴리즈 체크리스트", t.release_checklist))
-    lines.append(_bullet_block("근거", t.evidence))
-    lines.append(_bullet_block("리스크", t.risks))
-    lines.append(_bullet_block("다음 행동", t.next_actions))
-    return "\n".join(line for line in lines if line)
 
 
 # ---------------------------------------------------------------------------
@@ -1557,63 +644,10 @@ def _coerce_structured_outcome(outcome: Any, role: str) -> Optional[RoleTake]:
     return None
 
 
-def _todos_from_take(take: RoleTake) -> list[str]:
-    short = _short_role(getattr(take, "role", "") or "")
-    items: list[str] = []
-
-    # next_actions is the new uniform source for todos.
-    next_actions = getattr(take, "next_actions", None) or ()
-    items.extend(f"[{short}] {a}" for a in next_actions if a)
-
-    if items:
-        return items
-
-    # Backward-compatible fallback for runners that return a take built
-    # from older field set without next_actions.
-    if isinstance(take, TechLeadOpening):
-        return [f"[tech-lead] {b}" for b in take.task_breakdown]
-    if isinstance(take, ProductDesignerTake):
-        if take.ux_direction:
-            return [f"[product-designer] {take.ux_direction}"]
-        return []
-    if isinstance(take, BackendEngineerTake):
-        items_legacy: list[str] = []
-        if take.data_impact:
-            items_legacy.append(f"[backend-engineer] data — {take.data_impact}")
-        if take.api_impact:
-            items_legacy.append(f"[backend-engineer] api — {take.api_impact}")
-        return items_legacy
-    if isinstance(take, FrontendEngineerTake):
-        if take.user_flow:
-            return [f"[frontend-engineer] flow — {take.user_flow}"]
-        return []
-    if isinstance(take, QaEngineerTake):
-        return [f"[qa-engineer] {ac}" for ac in take.acceptance_criteria]
-    return []
-
-
-def _consensus_summary(session: WorkflowSession, takes: Sequence[RoleTake]) -> str:
-    role_names = [_short_role(getattr(take, "role", "")) for take in takes]
-    role_text = ", ".join(r for r in role_names if r) or "tech-lead"
-    return (
-        f"{session.task_type} 작업에 {role_text}가 참여해 검토했습니다 — "
-        f"실행 후보 `{session.executor_role or 'tech-lead'}`가 결정 사항을 반영해 진행."
-    )
-
-
 def _session_approved(session: WorkflowSession) -> bool:
     state = getattr(session, "state", None)
     state_value = getattr(state, "value", state)
     return state_value not in (None, "intake")
-
-
-def _dedup_keep_order(items: Sequence[str]) -> Tuple[str, ...]:
-    seen: dict[str, None] = {}
-    for item in items:
-        text = (item or "").strip()
-        if text and text not in seen:
-            seen[text] = None
-    return tuple(seen.keys())
 
 
 def _stripped_string(value: Any) -> Optional[str]:
@@ -1893,3 +927,40 @@ def role_takes_to_role_drafts(
             )
         )
     return tuple(out)
+
+
+# ---------------------------------------------------------------------------
+# Synthesis re-exports
+# ---------------------------------------------------------------------------
+#
+# The synthesis axis (``TechLeadSynthesis`` + serde + ``synthesize`` +
+# ``render_synthesis``) lives in :mod:`deliberation_synthesis`. That module
+# imports the shared dataclasses / helpers defined *above* in this file,
+# so importing it here — at the bottom, after every definition it needs —
+# keeps the edge one-way and free of an import-time cycle. The names are
+# re-exported so existing ``from .deliberation import synthesize`` style
+# importers keep resolving unchanged.
+from .deliberation_synthesis import (  # noqa: E402
+    SYNTHESIS_PERSIST_VERSION,
+    TechLeadSynthesis,
+    render_synthesis,
+    synthesis_from_dict,
+    synthesis_to_dict,
+    synthesize,
+)
+
+# The deterministic fallback templates live in :mod:`deliberation_fallbacks`
+# (imported lazily by ``run_role_deliberation``). ``_deterministic_role_take``
+# is re-exported here — bottom of file, after every helper/dataclass it
+# imports back — so existing direct importers keep resolving without a
+# top-level import cycle.
+from .deliberation_fallbacks import _deterministic_role_take  # noqa: E402,F401
+
+__all__ = [
+    "SYNTHESIS_PERSIST_VERSION",
+    "TechLeadSynthesis",
+    "render_synthesis",
+    "synthesis_from_dict",
+    "synthesis_to_dict",
+    "synthesize",
+]
