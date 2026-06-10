@@ -8,7 +8,7 @@ silent 하게 사라지거나 schema drift 가 발생하지 않도록 lock down.
   * `agents/<dept>/<role>/manifest.json` — F11 AgentManifest schema 준수
   * `agents/<dept>/<role>/prompt.md` — manifest 의 prompt_template_ref 와 매칭
   * `plugins_required` — `plugins/<id>/manifest.json` 에 실제 등록된 plugin
-  * `prompts/skills/pm/` — PM skills 10+ (issue #126 acceptance criteria #3)
+  * `skills/pm/` — PM skills 10+ (issue #126 acceptance criteria #3)
 
 본 test 가 통과한다는 것은 회사 조직 governance 가 살아 있다는 뜻이다.
 새 부서 / 역할 추가 시 org-chart + manifest + (옵션) prompt 셋이 1:1 매칭.
@@ -31,7 +31,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ORG_CHART = _REPO_ROOT / "policies" / "runtime" / "agents" / "corporate-org-chart.md"
 _AGENTS_DIR = _REPO_ROOT / "agents"
 _PLUGINS_DIR = _REPO_ROOT / "plugins"
-_SKILLS_PM_DIR = _REPO_ROOT / "prompts" / "skills" / "pm"
+_SKILLS_PM_DIR = _REPO_ROOT / "skills" / "pm"
 
 
 # Departments that the F15 PR contracts must contain — single source of truth.
@@ -372,7 +372,7 @@ class PmSkillsCatalogTests(unittest.TestCase):
 
 class SkillsReadmeTests(unittest.TestCase):
     def test_readme_exists_and_mentions_portability(self) -> None:
-        readme = _REPO_ROOT / "prompts" / "skills" / "README.md"
+        readme = _REPO_ROOT / "skills" / "README.md"
         self.assertTrue(readme.is_file(), f"missing {readme.relative_to(_REPO_ROOT)}")
         text = _read(readme)
         self.assertIn("Portable", text)

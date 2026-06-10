@@ -66,7 +66,7 @@ class HarnessProjectionTests(unittest.TestCase):
         self.assertIn("name: compact-to-vault", content)
         self.assertIn("DO NOT EDIT", content)
         self.assertIn(
-            "agents/engineering-agent/skills/compact-to-vault.md", content
+            "skills/compact-to-vault.md", content
         )
 
     def test_plugin_manifests_list_all_skills(self) -> None:

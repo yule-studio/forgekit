@@ -19,7 +19,7 @@
 - 모든 DPIA / 사고 대응 — decision record + 보고서 형태로 vault 기록
 - 데이터 breach 신호 — sales-cs + product + engineering 즉시 escalate
 
-## 참고 skills (`prompts/skills/legal/`)
+## 참고 skills (`skills/legal/`)
 - `legal-privacy-policy-checklist.md` — 정책 작성 체크리스트
 - `legal-dpia-template.md` — DPIA template
 - `legal-incident-response.md` — 사고 대응 playbook

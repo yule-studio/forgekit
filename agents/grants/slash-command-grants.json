@@ -27,26 +27,26 @@
 
   "custom_skills": {
     "compact-to-vault": {
-      "spec": "agents/engineering-agent/skills/compact-to-vault.md",
+      "spec": "skills/compact-to-vault.md",
       "purpose": "대화/세션을 압축 요약해 vault 의 curated task-log 노트로 기록",
       "default_autonomy": "L2",
       "vault_commit_autonomy": "L3",
       "harness": ["claude", "codex"]
     },
     "vault-curate": {
-      "spec": "agents/engineering-agent/skills/vault-curate.md",
+      "spec": "skills/vault-curate.md",
       "purpose": "00-inbox raw 자료를 필수 frontmatter + 5섹션 curated 노트로 승격",
       "default_autonomy": "L3",
       "harness": ["claude", "codex"]
     },
     "skill-author": {
-      "spec": "agents/engineering-agent/skills/skill-author.md",
+      "spec": "skills/skill-author.md",
       "purpose": "레지스트리에 새 skill/command/hook spec 를 저작하고 harness 플러그인으로 투영 (에이전트의 플러그인 직접 저작 경로)",
       "default_autonomy": "L2",
       "harness": ["claude", "codex"]
     },
     "research-collect": {
-      "spec": "agents/engineering-agent/skills/research-collect.md",
+      "spec": "skills/research-collect.md",
       "purpose": "역할별 자료 수집 (기존 레지스트리 스킬)",
       "default_autonomy": "L1",
       "harness": ["claude", "codex"]

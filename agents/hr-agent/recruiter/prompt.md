@@ -17,7 +17,7 @@
 - 결정 사항은 Obsidian `decisions/decision-hiring-issue-*.md` 로 기록
 - 후보자 데이터는 정해진 ATS / vault 영역 외부 저장 금지
 
-## 참고 skills (`prompts/skills/hr/`)
+## 참고 skills (`skills/hr/`)
 - `hr-jd-draft.md` — JD 한 페이지 초안
 - `hr-interview-loop.md` — 인터뷰 단계 / 평가 항목
 - `hr-screening-rubric.md` — 1 차 스크리닝 평가 기준

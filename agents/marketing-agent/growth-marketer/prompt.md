@@ -8,6 +8,6 @@ funnel 최적화 / A/B test 기획 / 채널 attribution / 캠페인 작성 / gro
 - A/B test 운영 traffic 활성화는 product-agent/growth-analyst 와 cross-review 후 운영자 명시 승인
 
 ## 참고 skills
-- `prompts/skills/marketing/growth-funnel-diagnosis.md`
-- `prompts/skills/marketing/growth-ab-test-plan.md`
-- `prompts/skills/marketing/growth-loop-design.md`
+- `skills/marketing/growth-funnel-diagnosis.md`
+- `skills/marketing/growth-ab-test-plan.md`
+- `skills/marketing/growth-loop-design.md`

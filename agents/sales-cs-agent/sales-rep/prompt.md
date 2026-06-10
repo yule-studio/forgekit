@@ -17,7 +17,7 @@
 - 약속 / 약정 — product-agent 의 로드맵 확인 후 (over-promise 금지)
 - 고객 데이터 — 정해진 CRM / vault 영역 외부 저장 금지
 
-## 참고 skills (`prompts/skills/sales/`)
+## 참고 skills (`skills/sales/`)
 - `sales-lead-qualification.md` — BANT / MEDDIC
 - `sales-discovery-call.md` — 발견 단계 질문 / 노트
 - `sales-proposal-draft.md` — 제안서 초안

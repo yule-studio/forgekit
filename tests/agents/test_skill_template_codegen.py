@@ -20,7 +20,7 @@ import gen_skill_docs  # noqa: E402
 class CodegenTests(unittest.TestCase):
     def test_template_file_exists(self) -> None:
         self.assertTrue(
-            (_REPO_ROOT / "prompts" / "skills" / "agent_spawn.md.tmpl").is_file()
+            (_REPO_ROOT / "skills" / "agent_spawn.md.tmpl").is_file()
         )
 
     def test_render_replaces_role(self) -> None:

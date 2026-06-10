@@ -8,6 +8,6 @@
 - 외부 SEO 툴 API 키는 PasteGuard 마스킹 후 outbound
 
 ## 참고 skills
-- `prompts/skills/marketing/seo-keyword-research.md`
-- `prompts/skills/marketing/seo-onpage-audit.md`
-- `prompts/skills/marketing/seo-technical-checklist.md`
+- `skills/marketing/seo-keyword-research.md`
+- `skills/marketing/seo-onpage-audit.md`
+- `skills/marketing/seo-technical-checklist.md`

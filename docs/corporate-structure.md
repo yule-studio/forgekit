@@ -7,7 +7,7 @@
 - **`policies/runtime/agents/corporate-org-chart.md`** — C-level / 부서 / 역할 매트릭스. 새 부서 / 역할 추가 시 항상 이 doc 부터 갱신.
 - **`agents/<dept>/<role>/manifest.json`** — F11 AgentManifest schema 의 role 단위 정의.
 - **`agents/<dept>/<role>/prompt.md`** — 역할의 책임 경계 + Hard rails + skills referencing.
-- **`prompts/skills/<domain>/*.md`** — portable skill 카탈로그 (Claude / Gemini / Cursor 호환).
+- **`skills/<domain>/*.md`** — portable skill 카탈로그 (Claude / Gemini / Cursor 호환).
 
 ## 2. 부서 매트릭스 (F15 시점)
 
@@ -25,7 +25,7 @@
 
 ## 3. PM skills 카탈로그
 
-`prompts/skills/pm/` — 14 skill. github.com/phuryn/pm-skills 패턴.
+`skills/pm/` — 14 skill. github.com/phuryn/pm-skills 패턴.
 
 | Stage | Skills |
 | --- | --- |
@@ -35,7 +35,7 @@
 | GTM | launch-checklist / positioning-message / beta-rollout |
 | Cross | retrospective |
 
-후속 도메인 (`prompts/skills/hr/`, `legal/`, `finance/`, `sales/`) 은 빈 디렉터리 — 후속 PR 에서 차례로 채운다.
+후속 도메인 (`skills/hr/`, `legal/`, `finance/`, `sales/`) 은 빈 디렉터리 — 후속 PR 에서 차례로 채운다.
 
 ## 4. Governance
 

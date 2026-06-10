@@ -28,7 +28,7 @@ Yule 은 이미 `agents/engineering-agent/<role>/manifest.json` + role contract-
 
 **Skill = 한 역할이 수행 가능한 단일 capability 명세.**
 
-위치: `agents/engineering-agent/skills/<skill-id>.md`
+위치: `skills/<skill-id>.md`
 
 Frontmatter 스키마 (v0):
 
@@ -164,7 +164,7 @@ ECC 의 패턴을 흡수하면서 tech-lead 의 역할을 재정의:
 | 책임 | 현재 위치 | 강화 방향 |
 | --- | --- | --- |
 | 작업 분해 | `tech_lead_aggregator.aggregate_role_outputs` | 변경 없음 |
-| 역할 분배 | `role_selection.recommend_active_roles` | skill 매트릭스 (`agents/engineering-agent/skills/`) 를 입력에 추가 가능 (후속 PR) |
+| 역할 분배 | `role_selection.recommend_active_roles` | skill 매트릭스 (`skills/`) 를 입력에 추가 가능 (후속 PR) |
 | 합의 조율 | `tech_lead_aggregator.build_tech_lead_summary_context` | hook (`hooks/synthesis-postcheck.md`) 으로 외부 정책 추가 가능 (후속 PR) |
 | 외부 회신 | gateway router | command markdown 의 `surface` 매핑이 외부 회신 채널을 명시 (본 PR) |
 | **GitHub WorkOS write 주체** | `senior_triage` + `LiveGithubAppClient` | **모든 write 의 actor 는 `engineering-agent / tech-lead`. 본 정책에서 강제** |

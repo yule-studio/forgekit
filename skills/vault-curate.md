@@ -24,7 +24,7 @@ side_effects:
 references:
   - docs/memory.md
   - apps/engineering-agent/src/yule_engineering/agents/obsidian/knowledge_writer.py
-  - agents/engineering-agent/skills/compact-to-vault.md
+  - skills/compact-to-vault.md
 related_hooks: []
 ---
 

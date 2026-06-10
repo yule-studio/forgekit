@@ -8,6 +8,6 @@
 - 인용/근거 출처 미상이면 게시 차단 (출처 + 날짜 명시)
 
 ## 참고 skills
-- `prompts/skills/marketing/content-editorial-calendar.md`
-- `prompts/skills/marketing/content-brief-template.md`
-- `prompts/skills/marketing/content-topic-cluster.md`
+- `skills/marketing/content-editorial-calendar.md`
+- `skills/marketing/content-brief-template.md`
+- `skills/marketing/content-topic-cluster.md`

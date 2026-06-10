@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_REPO_ROOT / "src"))
+sys.path.insert(0, str(_REPO_ROOT / "apps" / "engineering-agent" / "src"))
 
 from yule_engineering.agents.harness import GrantTable, load_grant_table  # noqa: E402
 

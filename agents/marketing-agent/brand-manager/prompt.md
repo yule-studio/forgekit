@@ -8,6 +8,6 @@
 - PR 위기 응대 초안은 legal-agent 와 cross-review 후 운영자 승인 시 게시
 
 ## 참고 skills
-- `prompts/skills/marketing/brand-voice-guideline.md`
-- `prompts/skills/marketing/brand-messaging-framework.md`
-- `prompts/skills/marketing/brand-pr-response.md`
+- `skills/marketing/brand-voice-guideline.md`
+- `skills/marketing/brand-messaging-framework.md`
+- `skills/marketing/brand-pr-response.md`

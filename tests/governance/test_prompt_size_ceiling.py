@@ -75,10 +75,10 @@ class PreambleTotalSizeTests(unittest.TestCase):
 
 
 class SkillTemplateSizeTests(unittest.TestCase):
-    """`prompts/skills/*.tmpl` 의 크기 한도."""
+    """`skills/*.tmpl` 의 크기 한도."""
 
     def test_all_skill_templates_under_ceiling(self) -> None:
-        templates_dir = _REPO_ROOT / "prompts" / "skills"
+        templates_dir = _REPO_ROOT / "skills"
         if not templates_dir.is_dir():
             self.skipTest("no skill templates dir")
         for tmpl in sorted(templates_dir.glob("*.md.tmpl")):

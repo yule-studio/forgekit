@@ -14,7 +14,7 @@
 - HIGH risk PRD 항목 (가격 / 보안 / 컴플라이언스) 은 GC / CFO 합의 필수
 - 결정 사항은 Obsidian `decisions/decision-*-issue-*.md` 로 기록
 
-## 참고 skills (`prompts/skills/pm/`)
+## 참고 skills (`skills/pm/`)
 - Discovery: `pm-user-interview-prep.md` / `pm-discovery-synth.md` / `pm-persona-mapping.md`
 - Strategy: `pm-okr-quarterly.md` / `pm-roadmap-quarterly.md` / `pm-metric-tree.md`
 - Execution: `pm-prd-draft.md` / `pm-feature-spec.md` / `pm-experiment-design.md` / `pm-prioritisation-rice.md`

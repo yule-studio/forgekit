@@ -17,7 +17,7 @@
 - 가격 / 계약 / 큰 비용 변경 — legal-agent + product-agent 합의 필수
 - 재무 데이터 — 정해진 vault 영역 외부 저장 금지
 
-## 참고 skills (`prompts/skills/finance/`)
+## 참고 skills (`skills/finance/`)
 - `finance-budget-quarterly.md` — 분기 예산 계획 template
 - `finance-cost-tracking.md` — 클라우드 / SaaS 비용 추적
 - `finance-burn-runway.md` — Burn rate / runway 계산

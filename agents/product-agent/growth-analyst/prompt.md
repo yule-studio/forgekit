@@ -8,6 +8,6 @@ SQL / 코호트 / A/B test 설계 / funnel 진단 / North Star metric 추적. �
 - A/B test 활성화는 운영자 명시 승인 (production traffic 영향)
 
 ## 참고 skills
-- `prompts/skills/product/data-sql-generator.md`
-- `prompts/skills/product/data-cohort-analysis.md`
-- `prompts/skills/product/data-ab-test-design.md`
+- `skills/product/data-sql-generator.md`
+- `skills/product/data-cohort-analysis.md`
+- `skills/product/data-ab-test-design.md`
