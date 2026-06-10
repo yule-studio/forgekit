@@ -38,7 +38,7 @@ from yule_engineering.agents.decision.context_pack import (
     ContextPack,
     build_context_pack,
 )
-from yule_engineering.agents.learning.mistake_ledger import (
+from yule_learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
@@ -57,7 +57,7 @@ from yule_engineering.agents.memory import (
     ShardKind,
     build_memory_pack,
 )
-from yule_engineering.agents.security.paste_guard import (
+from yule_security.paste_guard import (
     OutboundChannel,
     guard_outbound,
 )

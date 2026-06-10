@@ -169,7 +169,7 @@ class LspResult:
 class PreflightLspLevel(str, enum.Enum):
     """Aggregated verdict level.
 
-    Mirrors :class:`~yule_engineering.agents.learning.mistake_ledger.BlockerLevel`
+    Mirrors :class:`~yule_learning.mistake_ledger.BlockerLevel`
     naming so downstream consumers (retry loop / mistake ledger
     surface) can switch on a single string without translation.
     """

@@ -19,7 +19,7 @@ Rails pinned (D-73-10 cost-budget gate + #88 PasteGuard fail-closed):
      lands in a separate PR with cost-budget review.
 
   3. ``LiveCodeEditor`` consults
-     :func:`yule_engineering.agents.security.paste_guard.guard_outbound`
+     :func:`yule_security.paste_guard.guard_outbound`
      on every call. A blocked verdict raises BlockedLiveEditorError.
 
   4. ``coding_executor_worker.is_protected_branch`` continues to flag
@@ -113,7 +113,7 @@ class LiveEditorGovernanceTests(unittest.TestCase):
 
     # 3 — PasteGuard preflight is mandatory.
     def test_paste_guard_blocked_verdict_refuses_call(self) -> None:
-        from yule_engineering.agents.security import paste_guard as pg_mod
+        from yule_security import paste_guard as pg_mod
 
         original = pg_mod.guard_outbound
 

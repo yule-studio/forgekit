@@ -1,6 +1,6 @@
 """PasteGuard integration shim for research live providers (F5 / #92).
 
-본 모듈은 :mod:`yule_engineering.agents.security.paste_guard` 의
+본 모듈은 :mod:`yule_security.paste_guard` 의
 :func:`guard_outbound` 를 live provider 내부에서 부르기 쉽게 감싼다.
 
 * :func:`guard_text` — text 한 줄 (title / summary / tag) 에 대한 PasteGuard
@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from ..security.paste_guard import OutboundChannel, guard_outbound
+from yule_security.paste_guard import OutboundChannel, guard_outbound
 
 
 def guard_text(value: str) -> str:

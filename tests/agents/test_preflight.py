@@ -25,11 +25,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.learning.mistake_ledger import (
+from yule_learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
-from yule_engineering.agents.learning.preflight import (
+from yule_learning.preflight import (
     DEFAULT_PREFLIGHT_SIMILARITY,
     PreflightHookResult,
     PreflightVerdict,

@@ -35,7 +35,7 @@ _VALID_PLUGIN_DICT = {
     "autonomy_level": "supervised",
     "paste_guard_required": False,
     "risk_class": "HIGH",
-    "module_path": "yule_engineering.agents.security.paste_guard",
+    "module_path": "yule_security.paste_guard",
 }
 
 _VALID_AGENT_DICT = {

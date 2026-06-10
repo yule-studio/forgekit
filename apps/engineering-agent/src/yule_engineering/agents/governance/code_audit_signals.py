@@ -209,7 +209,7 @@ def record_governance_mistakes(
     곳에서 결정한다.
     """
 
-    from ..learning.mistake_ledger import BlockerLevel  # local import
+    from yule_learning.mistake_ledger import BlockerLevel  # local import
 
     records: List[Any] = []
     if file_size_audit is not None:

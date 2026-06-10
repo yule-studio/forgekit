@@ -198,7 +198,7 @@ def _has_github_repo(
             return True
     # Fall back to scanning user_links — defer parser import.
     try:
-        from ..git.github_url import parse_github_targets
+        from yule_vcs.github_url import parse_github_targets
     except Exception:  # noqa: BLE001
         return False
     targets = parse_github_targets(user_links or ())

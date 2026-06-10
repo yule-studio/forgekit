@@ -26,7 +26,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_vcs.repo_contract import RepoContract
 from yule_engineering.agents.github_workos.issue_auto_create import (
     AUDIT_EXISTING_ISSUE_REUSED,
     AUDIT_TEMPLATE_AMBIGUOUS,

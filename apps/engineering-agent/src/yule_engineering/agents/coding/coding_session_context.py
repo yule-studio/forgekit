@@ -3,7 +3,7 @@
 Single entry point that ties together the 5 stage-2 building blocks:
 
   1. :func:`agents.git.github_url.parse_github_targets` — URL parse.
-  2. :func:`agents.git.repo_contract.discover_repo_contract` — RepoContract.
+  2. :func:`yule_vcs.repo_contract.discover_repo_contract` — RepoContract.
   3. :func:`agents.lifecycle.session_mode.ensure_session_mode` — ask-once mode.
   4. :func:`agents.coding.handoff_packet.build_coding_handoff_packet` — tech-lead envelope.
 
@@ -27,8 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
-from ..git.github_url import GithubTarget, parse_github_targets
-from ..git.repo_contract import RepoContract, discover_repo_contract
+from yule_vcs.github_url import GithubTarget, parse_github_targets
+from yule_vcs.repo_contract import RepoContract, discover_repo_contract
 from ..lifecycle.session_mode import (
     SessionMode,
     SessionModeDecision,

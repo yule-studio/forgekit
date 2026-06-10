@@ -31,7 +31,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.learning.mistake_ledger import (
+from yule_learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
@@ -48,7 +48,7 @@ from yule_engineering.agents.safety.tool_call_gate import (
     ToolGateVerdict,
     gate_tool_call,
 )
-from yule_engineering.agents.security.paste_guard import (
+from yule_security.paste_guard import (
     OutboundChannel,
     guard_outbound,
 )

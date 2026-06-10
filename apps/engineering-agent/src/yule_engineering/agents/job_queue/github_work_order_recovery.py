@@ -108,7 +108,7 @@ def _minimal_repo_contract(repo: str):
     if not owner or not name:
         return None
     try:
-        from ..git.repo_contract import RepoContract
+        from yule_vcs.repo_contract import RepoContract
     except Exception:  # noqa: BLE001 - partial install
         return None
     return RepoContract(

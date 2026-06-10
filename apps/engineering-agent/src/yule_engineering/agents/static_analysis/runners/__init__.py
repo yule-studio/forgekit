@@ -103,7 +103,7 @@ def mask_stderr(stderr: str) -> str:
 
 def _redact_via_paste_guard(stderr: str) -> str:
     try:
-        from yule_engineering.agents.security.paste_guard import (
+        from yule_security.paste_guard import (
             OutboundChannel,
             guard_outbound,
         )

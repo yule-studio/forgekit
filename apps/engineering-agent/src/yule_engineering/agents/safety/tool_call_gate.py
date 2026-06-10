@@ -280,7 +280,7 @@ def _register_block_signature(
     The ledger object must expose ``record_mistake(role=,
     pattern=, signature=, blocker_level=)`` — that's the
     public surface of
-    :class:`yule_engineering.agents.learning.mistake_ledger.MistakeLedger`.
+    :class:`yule_learning.mistake_ledger.MistakeLedger`.
     Any other shape (or any exception) is swallowed so a failing
     ledger never silently leaks into the gate verdict.
     """
@@ -293,7 +293,7 @@ def _register_block_signature(
         # Late import keeps the safety package independent of
         # learning at import time — the gate only needs the
         # ``record_mistake`` duck-typed call site.
-        from ..learning.mistake_ledger import BlockerLevel  # noqa: WPS433
+        from yule_learning.mistake_ledger import BlockerLevel  # noqa: WPS433
 
         role = (ctx.role or "engineering-agent").strip() or "engineering-agent"
         pattern = f"tool_call_gate.{risk.value.lower()}"

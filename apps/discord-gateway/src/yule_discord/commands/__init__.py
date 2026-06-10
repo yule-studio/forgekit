@@ -863,7 +863,7 @@ def _extract_repo_from_session(session: Any, prompt_text: str) -> Optional[str]:
     """
 
     try:
-        from yule_engineering.agents.git.github_url import parse_github_target
+        from yule_vcs.github_url import parse_github_target
     except Exception:  # noqa: BLE001 - partial install
         return None
 

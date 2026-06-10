@@ -2,7 +2,7 @@
 
 This package houses the *tool-call* axis of the safety stack. It is
 intentionally a different layer from
-:mod:`yule_engineering.agents.security.paste_guard`:
+:mod:`yule_security.paste_guard`:
 
   * :mod:`paste_guard` runs on *outbound payloads* (LLM prompts,
     Discord posts, GitHub comments, Vault writes). It scrubs the

@@ -33,7 +33,7 @@ except ModuleNotFoundError:
 
 from yule_engineering.agents.coding.job import STATUS_READY
 from yule_engineering.agents.github_workos.audit import OUTCOME_OK
-from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_vcs.repo_contract import RepoContract
 from yule_engineering.agents.job_queue.approval_worker import (
     ApprovalRequest,
     ApprovalWorker,

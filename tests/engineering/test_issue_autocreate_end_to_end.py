@@ -30,7 +30,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.git.repo_contract import discover_repo_contract
+from yule_vcs.repo_contract import discover_repo_contract
 from yule_engineering.agents.github_workos.audit import (
     ACTION_GITHUB_ISSUE_CREATE,
     OUTCOME_OK,

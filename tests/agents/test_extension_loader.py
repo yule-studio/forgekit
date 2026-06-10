@@ -34,7 +34,7 @@ _PLUGIN_VALID = {
     "autonomy_level": "supervised",
     "paste_guard_required": False,
     "risk_class": "HIGH",
-    "module_path": "yule_engineering.agents.security.paste_guard",
+    "module_path": "yule_security.paste_guard",
 }
 
 _AGENT_VALID = {
@@ -88,7 +88,7 @@ class DiscoverManifestsTests(unittest.TestCase):
                 "hooks_provided": ["PREFLIGHT", "COMPLETION"],
                 "paste_guard_required": True,
                 "autonomy_level": "advisory",
-                "module_path": "yule_engineering.agents.learning.mistake_ledger",
+                "module_path": "yule_learning.mistake_ledger",
             }
         )
         _write_manifest(self.plugins_dir, "hookify", hookify)
