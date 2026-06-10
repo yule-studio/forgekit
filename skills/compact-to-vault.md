@@ -44,7 +44,7 @@ related_hooks: []
 
 ## Trigger
 
-- 세션의 누적 토큰이 모델 context window 비율 threshold 도달 ([context-compression.md](../../../policies/runtime/agents/engineering-agent/context-compression.md) 3.1).
+- 세션의 누적 토큰이 모델 context window 비율 threshold 도달 ([context-compression.md](../policies/runtime/agents/engineering-agent/context-compression.md) 3.1).
 - 사용자가 `/compact` 또는 "정리해줘 / 압축해줘 / 여기까지 요약해서 남겨" 발화.
 - 긴 deliberation/research 세션을 닫기 직전(work_report FINAL) — 요약을 task-log 로 적립.
 - 다른 부서(product/hr/legal …)가 자기 작업 세션을 vault 에 남기려 할 때(grant table 부여 범위).

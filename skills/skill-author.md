@@ -27,7 +27,7 @@ side_effects:
   - agent_ops_audit entry (action=skill_author)
 references:
   - policies/runtime/agents/engineering-agent/ecc-foundation.md
-  - agents/engineering-agent/skills/README.md
+  - skills/README.md
   - scripts/sync_harness_skills.py
   - docs/agent-slash-commands.md
 related_hooks: []
