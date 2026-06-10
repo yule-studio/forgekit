@@ -42,7 +42,8 @@ from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ..deliberation import TechLeadSynthesis, synthesis_from_dict
 from .knowledge_writer import render_knowledge_note
-from .export import ObsidianNote, render_research_note
+from .export import ObsidianNote
+from .export_render import render_research_note
 from .writer import (
     ENV_VAULT_PATH,
     ObsidianWriteError,

@@ -13,8 +13,8 @@ except ModuleNotFoundError:
 from yule_engineering.agents.obsidian.export import (
     PROJECT_WORK_REPORTS_SUBDIR,
     recommend_path,
-    render_work_report_note,
 )
+from yule_engineering.agents.obsidian.export_render import render_work_report_note
 from yule_engineering.agents.reports.work_report import WorkReport
 
 

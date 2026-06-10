@@ -27,8 +27,8 @@ from yule_engineering.agents.obsidian.knowledge_writer import (
 from yule_engineering.agents.obsidian.export import (
     DEFAULT_PROJECT,
     PROJECTS_BASE,
-    render_research_note,
 )
+from yule_engineering.agents.obsidian.export_render import render_research_note
 from yule_engineering.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,

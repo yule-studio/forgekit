@@ -757,7 +757,7 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
     # Lazy import to keep this module light when only the queue
     # primitives are needed (the obsidian export chain pulls a fair
     # amount of code in).
-    from ..obsidian.export import render_research_note
+    from ..obsidian.export_render import render_research_note
     from ..research.pack_render import pack_from_dict
     from ..workflow_state import load_session
 

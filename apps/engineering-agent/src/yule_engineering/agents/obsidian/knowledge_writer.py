@@ -837,7 +837,7 @@ def render_knowledge_markdown(note: KnowledgeNote) -> str:
     by mutating the input dataclass before calling, not here.
     """
 
-    from .export import _format_frontmatter
+    from .export_render import _format_frontmatter
 
     head = _format_frontmatter(dict(note.frontmatter))
     body = [f"# {note.title}"]

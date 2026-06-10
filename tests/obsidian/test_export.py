@@ -24,8 +24,8 @@ from yule_engineering.agents.obsidian.export import (
     PROJECTS_BASE,
     ExportPath,
     recommend_path,
-    render_research_note,
 )
+from yule_engineering.agents.obsidian.export_render import render_research_note
 
 
 def _default_project_folder(subdir: str, project: str = DEFAULT_PROJECT) -> str:
@@ -470,7 +470,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         )
 
     def test_long_korean_prompt_collapses_to_short_title(self) -> None:
-        from yule_engineering.agents.obsidian.export import derive_short_title
+        from yule_engineering.agents.obsidian.export_render import derive_short_title
 
         pack = ResearchPack(title=self.LONG_PROMPT, summary="")
         title = derive_short_title(pack, session=self._session())
@@ -480,7 +480,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         self.assertNotIn("\n", title)
 
     def test_session_extra_short_title_wins(self) -> None:
-        from yule_engineering.agents.obsidian.export import derive_short_title
+        from yule_engineering.agents.obsidian.export_render import derive_short_title
 
         pack = ResearchPack(title=self.LONG_PROMPT, summary="")
         session = self._session(extra={"short_title": "에이전트 병렬 회의 구조"})
@@ -532,7 +532,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         self.assertIn("original_prompt:", note.content)
 
     def test_clean_title_strips_research_prefix_bold_and_newlines(self) -> None:
-        from yule_engineering.agents.obsidian.export import _clean_title
+        from yule_engineering.agents.obsidian.export_render import _clean_title
 
         out = _clean_title("[Research] **에이전트 회의**\n구조 정리")
         self.assertEqual(out, "에이전트 회의 구조 정리")
