@@ -45,7 +45,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
-from ..git.repo_contract import RepoContract
+from yule_vcs.repo_contract import RepoContract
 
 
 # ---------------------------------------------------------------------------

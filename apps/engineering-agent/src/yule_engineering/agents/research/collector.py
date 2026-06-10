@@ -318,7 +318,7 @@ def parse_github_url(url: Optional[str]) -> Optional[Mapping[str, Any]]:
     surrounding source-classification fall-through is unchanged.
     """
 
-    from ..git.github_url import parse_github_url as _delegate
+    from yule_vcs.github_url import parse_github_url as _delegate
 
     return _delegate(url)
 

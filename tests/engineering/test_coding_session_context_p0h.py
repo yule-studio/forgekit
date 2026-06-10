@@ -224,7 +224,7 @@ class RepoContractIntegrationTests(unittest.TestCase):
         from yule_engineering.agents.coding import (
             coding_session_context as csc,
         )
-        from yule_engineering.agents.git.repo_contract import RepoContract
+        from yule_vcs.repo_contract import RepoContract
 
         def fake_discover(*, owner, repo, **kwargs):
             return RepoContract(

@@ -23,7 +23,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_vcs.repo_contract import RepoContract
 from yule_engineering.agents.job_queue.approval_worker import (
     ApprovalRequest,
     ApprovalWorker,

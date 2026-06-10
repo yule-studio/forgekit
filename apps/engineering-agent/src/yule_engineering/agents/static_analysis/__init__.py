@@ -13,7 +13,7 @@ Hard rails (governance-tested):
   * ``YULE_LSP_PREFLIGHT_ENABLED`` defaults to ``false``; with the
     env OFF the verdict is always advisory and no subprocess runs.
   * Every subprocess ``stderr`` tail is passed through
-    :func:`yule_engineering.agents.security.paste_guard.guard_outbound`
+    :func:`yule_security.paste_guard.guard_outbound`
     (``channel=VAULT``) so masked output is the only artefact that
     leaves the runner.
 """

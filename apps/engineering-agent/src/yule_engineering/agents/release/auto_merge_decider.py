@@ -48,7 +48,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Sequence, Tuple
 
-from ..learning.mistake_ledger import BlockerLevel, MistakeLedger
+from yule_learning.mistake_ledger import BlockerLevel, MistakeLedger
 
 
 # ---------------------------------------------------------------------------

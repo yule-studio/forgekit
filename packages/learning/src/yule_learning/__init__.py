@@ -15,7 +15,7 @@ worker).
 The two modules **do not import each other** by design — a recurring
 mistake recorded on the session-extra ledger is promoted to this
 durable ledger by the postmortem producer (see
-:func:`yule_engineering.agents.learning.mistake_ledger.mistake_candidate_from_postmortem`)
+:func:`yule_learning.mistake_ledger.mistake_candidate_from_postmortem`)
 so the seam remains explicit.
 
 Hard rails (the kind every later integration must respect):

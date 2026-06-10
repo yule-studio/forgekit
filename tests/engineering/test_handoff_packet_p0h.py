@@ -27,8 +27,8 @@ from yule_engineering.agents.coding.handoff_packet import (
     TRACKING_STANDALONE,
     build_coding_handoff_packet,
 )
-from yule_engineering.agents.git.github_url import parse_github_target
-from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_vcs.github_url import parse_github_target
+from yule_vcs.repo_contract import RepoContract
 
 
 class TrackingModeDerivationTests(unittest.TestCase):

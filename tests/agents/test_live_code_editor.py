@@ -260,7 +260,7 @@ class PasteGuardPreflightTests(unittest.TestCase):
         #
         # Simpler: poke guard_outbound by monkey-patching to return
         # ``blocked=True`` so we exercise the editor branch directly.
-        from yule_engineering.agents.security import paste_guard as pg_mod
+        from yule_security import paste_guard as pg_mod
 
         original = pg_mod.guard_outbound
 

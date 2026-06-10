@@ -44,7 +44,7 @@ from yule_engineering.agents.job_queue.coding_executor_live import (
 from yule_engineering.agents.job_queue.coding_executor_worker import (
     is_protected_branch,
 )
-from yule_engineering.agents.security.paste_guard import (
+from yule_security.paste_guard import (
     GuardVerdict,
     OutboundChannel,
     RISK_ADVISORY,

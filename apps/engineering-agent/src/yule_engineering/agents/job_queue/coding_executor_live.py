@@ -1689,7 +1689,7 @@ class LiveCodeEditor:
         # Imported lazily so the module stays importable in
         # environments that strip the security subpackage (e.g.
         # the planning-agent worker that never touches LLM I/O).
-        from yule_engineering.agents.security.paste_guard import (
+        from yule_security.paste_guard import (
             OutboundChannel,
             guard_outbound,
         )

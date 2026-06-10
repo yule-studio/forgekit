@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from ..security.paste_guard import OutboundChannel, guard_outbound
+from yule_security.paste_guard import OutboundChannel, guard_outbound
 
 
 ENV_AUTOPUSH_ENABLED = "YULE_VAULT_AUTOPUSH_ENABLED"

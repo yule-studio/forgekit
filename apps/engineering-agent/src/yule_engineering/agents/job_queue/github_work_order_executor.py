@@ -551,7 +551,7 @@ class GitHubWorkOrderWorker:
         """
 
         try:
-            from ..git.github_url import parse_github_target
+            from yule_vcs.github_url import parse_github_target
         except Exception:  # noqa: BLE001 - partial install
             return None
 

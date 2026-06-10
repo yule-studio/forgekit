@@ -31,7 +31,7 @@ from yule_engineering.agents.governance.code_audit_signals import (
     audit_to_signals,
     record_governance_mistakes,
 )
-from yule_engineering.agents.learning.mistake_ledger import (
+from yule_learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )

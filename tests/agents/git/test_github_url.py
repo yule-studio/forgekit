@@ -13,7 +13,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.git.github_url import (
+from yule_vcs.github_url import (
     GithubTarget,
     parse_github_target,
     parse_github_targets,
