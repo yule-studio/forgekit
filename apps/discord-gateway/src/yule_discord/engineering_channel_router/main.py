@@ -66,7 +66,7 @@ from yule_engineering.agents.routing import (
     is_non_actionable_prompt,
     list_open_sessions,
 )
-from yule_engineering.agents.runtime import (
+from yule_agent_runtime import (
     ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,

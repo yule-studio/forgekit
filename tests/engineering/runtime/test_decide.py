@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.runtime import (
+from yule_agent_runtime import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION,
     ACTION_CREATE_SESSION,
@@ -36,7 +36,7 @@ from yule_engineering.agents.runtime import (
     RuntimeResearchPlan,
     SessionCandidate,
 )
-from yule_engineering.agents.runtime.decide import decide_default
+from yule_agent_runtime.decide import decide_default
 
 
 def _obs(text: str = "msg") -> RuntimeObservation:

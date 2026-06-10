@@ -16,7 +16,7 @@ import os
 from dataclasses import replace
 from typing import Any, Optional
 
-from yule_engineering.agents.runtime import (
+from yule_agent_runtime import (
     RecallCoverage,
     RuntimeRecallResult,
     compute_recall_coverage,

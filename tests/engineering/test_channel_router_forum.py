@@ -1056,7 +1056,7 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
         )
 
         with patch(
-            "yule_engineering.agents.runtime.run_runtime_loop",
+            "yule_agent_runtime.run_runtime_loop",
             side_effect=_capture,
         ):
             outcome = handle_research_turn_message(
@@ -1087,7 +1087,7 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
         )
 
         with patch(
-            "yule_engineering.agents.runtime.run_runtime_loop",
+            "yule_agent_runtime.run_runtime_loop",
             side_effect=RuntimeError("runtime down"),
         ):
             outcome = handle_research_turn_message(

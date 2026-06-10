@@ -14,8 +14,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.runtime.decide import decide_gateway
-from yule_engineering.agents.runtime.models import (
+from yule_agent_runtime.decide import decide_gateway
+from yule_agent_runtime.models import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION,

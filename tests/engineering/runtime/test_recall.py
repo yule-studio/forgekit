@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.runtime import (
+from yule_agent_runtime import (
     INTENT_APPEND_CONTEXT,
     INTENT_CONTINUE_EXISTING_WORK,
     INTENT_EXECUTE_EXISTING_STEP,
@@ -31,7 +31,7 @@ from yule_engineering.agents.runtime import (
     RuntimeIntent,
     RuntimeObservation,
 )
-from yule_engineering.agents.runtime.recall import (
+from yule_agent_runtime.recall import (
     AMBIGUITY_MARGIN,
     SCORE_HIGH,
     make_recall_fn,

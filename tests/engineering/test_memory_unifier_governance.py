@@ -42,7 +42,7 @@ from yule_learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
-from yule_engineering.agents.memory import (
+from yule_agent_memory import (
     ENV_LONG_TERM_MEMORY_ENABLED,
     AuditSource,
     DecisionSource,
@@ -222,7 +222,7 @@ class MemoryUnifierGovernanceTests(unittest.TestCase):
 
     # 8
     def test_public_surface_explicit(self) -> None:
-        import yule_engineering.agents.memory as memory_pkg
+        import yule_agent_memory as memory_pkg
 
         expected = {
             "AuditSource",

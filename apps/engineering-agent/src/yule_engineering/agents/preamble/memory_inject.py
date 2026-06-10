@@ -35,7 +35,7 @@ def inject_memory_summary(
         return rendered
 
     try:
-        from ..memory.long_term_memory import build_memory_pack
+        from yule_agent_memory.long_term_memory import build_memory_pack
     except ImportError:
         return rendered
 

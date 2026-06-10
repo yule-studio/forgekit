@@ -41,7 +41,7 @@ class _FakeMemory:
         self.sources = (_FakeSource(shards),)
 
 
-from yule_engineering.agents.memory.long_term_memory import RequestContext as _RealRequestContext
+from yule_agent_memory.long_term_memory import RequestContext as _RealRequestContext
 
 
 def _make_request():
@@ -65,7 +65,7 @@ class InjectMemorySummaryTests(unittest.TestCase):
         req = _make_request()
         # build_memory_pack 의 env 체크 우회
         with patch(
-            "yule_engineering.agents.memory.long_term_memory.long_term_memory_enabled",
+            "yule_agent_memory.long_term_memory.long_term_memory_enabled",
             return_value=True,
         ):
             out = inject_memory_summary(p, request_context=req, long_term_memory=mem)
@@ -77,7 +77,7 @@ class InjectMemorySummaryTests(unittest.TestCase):
         mem = _FakeMemory([])
         req = _make_request()
         with patch(
-            "yule_engineering.agents.memory.long_term_memory.long_term_memory_enabled",
+            "yule_agent_memory.long_term_memory.long_term_memory_enabled",
             return_value=True,
         ):
             out = inject_memory_summary(p, request_context=req, long_term_memory=mem)
@@ -88,7 +88,7 @@ class InjectMemorySummaryTests(unittest.TestCase):
         mem = _FakeMemory([_FakeMemoryShard()])
         req = _make_request()
         with patch(
-            "yule_engineering.agents.memory.long_term_memory.long_term_memory_enabled",
+            "yule_agent_memory.long_term_memory.long_term_memory_enabled",
             return_value=False,
         ):
             out = inject_memory_summary(p, request_context=req, long_term_memory=mem)
