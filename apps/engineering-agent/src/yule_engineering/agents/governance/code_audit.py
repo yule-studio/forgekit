@@ -111,11 +111,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "router, formatting",
     },
-    "apps/engineering-agent/src/yule_engineering/agents/job_queue/obsidian_writer_worker.py": {
-        "deadline": "2026-06-14",
-        "owner": "codwithyc",
-        "axes": "worker loop, persistence, formatting",
-    },
     "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_worker.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
