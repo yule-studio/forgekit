@@ -116,7 +116,7 @@ def _persist_role_selection(
     # compatible: legacy short-form data still survives reads (council
     # vocabulary normalises both on input).
     try:
-        from ...agents.council import normalize_roles
+        from yule_orchestrator.agents.council import normalize_roles
 
         active = selection_updates.get("active_research_roles")
         if isinstance(active, list):

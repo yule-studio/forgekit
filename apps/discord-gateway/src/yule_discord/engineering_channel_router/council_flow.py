@@ -88,7 +88,7 @@ def _stamp_bootstrap_error(session: Any, reason: str) -> Any:
     """
 
     try:
-        from ...agents.lifecycle.council_substage import (
+        from yule_orchestrator.agents.lifecycle.council_substage import (
             COUNCIL_BOOTSTRAP_ERROR_EXTRA_KEY,
         )
     except Exception:  # noqa: BLE001
@@ -126,7 +126,7 @@ def maybe_bootstrap_council(
     # for any session that never reaches this code path (e.g. routing
     # short-circuits before intake).
     try:
-        from ...agents.council_bootstrap import (
+        from yule_orchestrator.agents.council_bootstrap import (
             already_bootstrapped,
             bootstrap_council,
             persist_bootstrap_to_session,
@@ -192,7 +192,7 @@ def apply_signoff_to_session(
     if session is None:
         return session
     try:
-        from ...agents.council_approval import apply_tech_lead_signoff
+        from yule_orchestrator.agents.council_approval import apply_tech_lead_signoff
     except Exception as exc:  # noqa: BLE001
         return _stamp_bootstrap_error(
             session, f"signoff import failed: {exc}"
@@ -235,7 +235,7 @@ def draft_approval_packet_for_session(
     if session is None:
         return session
     try:
-        from ...agents.council_approval import draft_packet_from_session_extra
+        from yule_orchestrator.agents.council_approval import draft_packet_from_session_extra
     except Exception as exc:  # noqa: BLE001
         return _stamp_bootstrap_error(
             session, f"packet import failed: {exc}"
@@ -280,7 +280,7 @@ def post_approval_surface_for_session(session: Any) -> Any:
     if session is None:
         return session
     try:
-        from ...agents.council_approval import (
+        from yule_orchestrator.agents.council_approval import (
             post_gateway_surface,
             read_approval_packet,
         )
@@ -329,7 +329,7 @@ def advance_council_for_role(
     if session is None:
         return session
     try:
-        from ...agents.council_bootstrap import (
+        from yule_orchestrator.agents.council_bootstrap import (
             advance_council_round,
         )
     except Exception as exc:  # noqa: BLE001
