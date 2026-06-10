@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-agent-contracts"
+version = "0.1.0"
+description = "Shared agent contracts (commands, events, status, messages) for the Yule Studio agent platform."
+requires-python = ">=3.9"
+# Standard-library only by design — contracts must not pull in app deps.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -3,8 +3,8 @@ dead wiring / recovery gap detection. P0-T enforcement.
 
 본 모듈은 advisory 가 아니라 **hard enforcement** 의 SSoT.
 
-- `audit_orchestrator_file_sizes` — `src/yule_orchestrator/` 전수 LOC 검사
-  + 분류 (split_now / split_soon / exception / safe)
+- `audit_orchestrator_file_sizes` — `src/yule_orchestrator/` + 추출된
+  `apps/*/src` 전수 LOC 검사 + 분류 (split_now / split_soon / exception / safe)
 - `detect_mixed_responsibilities` — 한 파일에 책임 signal 3종 이상이면
   분리 후보로 분류
 - `detect_missing_worker_wiring` — JOB_TYPE_* 상수가 inventory 의
@@ -30,7 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple, Union
 
 
 # ---------------------------------------------------------------------------
@@ -56,12 +56,14 @@ VERDICT_SPLIT_PENDING: str = "split_pending_deadline"
 
 
 FILE_SIZE_ALLOWLIST: Mapping[str, str] = {
-    # In-flight P0-Q discord 분해 진행 중 — 모놀리스 점진 제거 중.
-    "src/yule_orchestrator/discord/bot/_legacy.py": (
+    # In-flight P0-Q discord 분해 진행 중 — discord 는 apps/discord-gateway 로
+    # 이전됨 (yule_discord). 옛 경로는 compat shim 만 남음.
+    "apps/discord-gateway/src/yule_discord/bot/_legacy.py": (
         "P0-Q 분해 진행 중 — 의미 그룹 추출 후 점진 제거 (`bot/scheduling.py`, `bot/channels.py` 등)"
     ),
-    "src/yule_orchestrator/discord/engineering_team_runtime/_legacy.py": (
+    "src/yule_orchestrator/agents/engineering_team_runtime/_legacy.py": (
         "P0-Q 분해 진행 중 — engineering_team_runtime 패키지화 후 점진 제거"
+        " (decouple: discord → agents 이동, 순환 제거)"
     ),
     # Registry / data table — 분기 로직 없음, 선언만.
     "src/yule_orchestrator/agents/engineering_intelligence/source_registry.py": (
@@ -119,12 +121,12 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "writer, renderer",
     },
-    "src/yule_orchestrator/discord/commands/__init__.py": {
+    "apps/discord-gateway/src/yule_discord/commands/__init__.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
         "axes": "command group split",
     },
-    "src/yule_orchestrator/discord/engineering_conversation/research_bootstrap.py": {
+    "src/yule_orchestrator/agents/engineering_conversation/research_bootstrap.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
         "axes": "bootstrap, runtime, formatting",
@@ -139,7 +141,7 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "live runner, formatting",
     },
-    "src/yule_orchestrator/discord/engineering_channel_router/main.py": {
+    "apps/discord-gateway/src/yule_discord/engineering_channel_router/main.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
         "axes": "router, formatting",
@@ -360,14 +362,28 @@ def detect_mixed_responsibilities(*, text: str) -> Tuple[str, ...]:
     return tuple(sorted(set(hits)))
 
 
+DEFAULT_PACKAGE_ROOTS: Tuple[str, ...] = (
+    "src/yule_orchestrator",
+    # 모놀리스에서 추출된 app 패키지 — 큰 파일이 ``apps/*/src`` 로 이동해도
+    # LOC / responsibility audit 와 allowlist 검증이 계속 적용되도록 스캔 대상에
+    # 포함한다 (planning-agent / discord-gateway 등).
+    "apps/planning-agent/src",
+    "apps/discord-gateway/src",
+)
+
+
 def audit_orchestrator_file_sizes(
     *,
     repo_root: Path,
-    package_root: str = "src/yule_orchestrator",
+    package_root: Union[str, Sequence[str]] = DEFAULT_PACKAGE_ROOTS,
     skip_dirs: Sequence[str] = (".venv", "__pycache__"),
     today: Optional[date] = None,
 ) -> FileSizeAudit:
     """`<repo>/<package_root>` 전수 LOC + responsibility audit.
+
+    ``package_root`` 는 단일 경로(str) 또는 경로 목록(Sequence[str]). 모놀리스
+    ``src/yule_orchestrator`` 와 추출된 ``apps/*/src`` 를 함께 스캔해 파일이
+    이동해도 audit 가 끊기지 않도록 한다.
 
     Args:
         today: deadline 비교 기준 날짜. None 이면 ``date.today()``.
@@ -379,36 +395,50 @@ def audit_orchestrator_file_sizes(
     """
 
     today = today or date.today()
-    base = Path(repo_root) / package_root
+    roots = (package_root,) if isinstance(package_root, str) else tuple(package_root)
     rows: List[FileSizeRow] = []
-    if not base.is_dir():
-        return FileSizeAudit(rows=())
-    for path in sorted(base.rglob("*.py")):
-        rel = path.relative_to(repo_root).as_posix()
-        if any(part in skip_dirs for part in path.parts):
+    seen_rel: set = set()
+    scanned_any = False
+    for root in roots:
+        base = Path(repo_root) / root
+        if not base.is_dir():
             continue
-        try:
-            with path.open("r", encoding="utf-8") as fh:
-                text = fh.read()
-        except Exception:  # noqa: BLE001
-            continue
-        loc = text.count("\n") + (0 if text.endswith("\n") else 1)
-        responsibilities = detect_mixed_responsibilities(text=text)
-        verdict, reason = _classify_row(
-            rel_path=rel,
-            loc=loc,
-            responsibilities=responsibilities,
-            today=today,
-        )
-        rows.append(
-            FileSizeRow(
-                path=rel,
+        scanned_any = True
+        for path in sorted(base.rglob("*.py")):
+            rel = path.relative_to(repo_root).as_posix()
+            if rel in seen_rel:
+                continue
+            seen_rel.add(rel)
+            if any(part in skip_dirs for part in path.parts):
+                continue
+            try:
+                with path.open("r", encoding="utf-8") as fh:
+                    text = fh.read()
+            except Exception:  # noqa: BLE001
+                continue
+            loc = text.count("\n") + (0 if text.endswith("\n") else 1)
+            responsibilities = detect_mixed_responsibilities(text=text)
+            verdict, reason = _classify_row(
+                rel_path=rel,
                 loc=loc,
-                verdict=verdict,
-                reason=reason,
                 responsibilities=responsibilities,
+                today=today,
             )
-        )
+            rows.append(
+                FileSizeRow(
+                    path=rel,
+                    loc=loc,
+                    verdict=verdict,
+                    reason=reason,
+                    responsibilities=responsibilities,
+                )
+            )
+
+    # 스캔된 root 가 하나도 없으면 (예: 존재하지 않는 repo_root) allowlist
+    # 검증을 적용하지 않고 빈 audit 을 돌려준다 — 전수 스캔이 일어나지 않은
+    # 것을 "모든 allowlist 가 stale" 로 오해하지 않도록.
+    if not scanned_any:
+        return FileSizeAudit(rows=())
 
     violations = tuple(r for r in rows if r.verdict == VERDICT_SPLIT_NOW)
     warnings = tuple(

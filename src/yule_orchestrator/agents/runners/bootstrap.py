@@ -552,7 +552,7 @@ def install_engineering_role_runner_dispatch(
     """
 
     try:
-        from ...discord.engineering_team_runtime import (
+        from ..engineering_team_runtime import (
             set_role_runner_dispatch,
         )
     except Exception as exc:  # noqa: BLE001

@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-planning-agent"
+version = "0.1.0"
+description = "Planning agent — 일정/계획/브리핑, calendar 기반 작업 정리 (yule_planning)."
+requires-python = ">=3.9"
+# Transitional: yule_planning still imports yule_orchestrator shared infra
+# (core / integrations / storage) until those are extracted to packages/*.
+# Those are resolved via the monorepo path, not declared as a pip dependency.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

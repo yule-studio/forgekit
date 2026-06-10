@@ -57,6 +57,7 @@ docs/
 | Troubleshooting / 실수 기록 / preflight | `docs/troubleshooting-mandatory.md` (mandatory capture · 8 섹션 스키마 · mistake ledger 자동 승격) |
 | 슬래시 명령어 / 스킬 / harness 플러그인 / compact→vault | `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json` SSoT) |
 | engineering-agent role council / tech-lead signoff / execution review | `docs/engineering-role-council-runtime.md` (+ council contract SSoT `src/yule_orchestrator/agents/council.py`) |
+| 모노레포 구조 / packages·apps / compat shim / 코드 이전 | `docs/monorepo-structure.md` (달성 구조 · 의존 hard rail · shim 카탈로그 · 남은 로드맵 SSoT) |
 
 규칙:
 - 위 표에 없는 토픽이면 그 작업과 가장 가까운 디렉터리의 `CLAUDE.md`,

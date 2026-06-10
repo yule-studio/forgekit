@@ -216,7 +216,7 @@ class BotHelperParityTests(unittest.TestCase):
         from pathlib import Path
 
         src = Path(
-            "src/yule_orchestrator/discord/bot/_legacy.py"
+            "apps/discord-gateway/src/yule_discord/bot/_legacy.py"
         ).read_text(encoding="utf-8")
         self.assertIn("_maybe_build_live_pr_merge_executor", src)
 

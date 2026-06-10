@@ -262,7 +262,9 @@ class DecisionAndKickoffCapTests(unittest.TestCase):
         captured: list[dict] = []
 
         # Patch the lazy import target inside _post_research_kickoff_comment.
-        from yule_orchestrator.discord import engineering_team_runtime
+        # (engineering_team_runtime relocated discord → agents to break the
+        # import cycle; loop.py now imports it via the agents path.)
+        from yule_orchestrator.agents import engineering_team_runtime
 
         original_directive = engineering_team_runtime.research_open_call_directive
 

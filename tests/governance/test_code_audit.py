@@ -379,7 +379,9 @@ class LiveRepoAuditTests(unittest.TestCase):
         audit = audit_orchestrator_file_sizes(repo_root=repo_root)
         by_path = {row.path: row for row in audit.rows}
 
-        legacy_bot = by_path.get("src/yule_orchestrator/discord/bot/_legacy.py")
+        legacy_bot = by_path.get(
+            "apps/discord-gateway/src/yule_discord/bot/_legacy.py"
+        )
         self.assertIsNotNone(
             legacy_bot, "discord/bot/_legacy.py 가 audit 결과에 없음"
         )
