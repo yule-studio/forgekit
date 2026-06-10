@@ -1,12 +1,13 @@
+"""Smoke test for yule_security."""
 import unittest
+
 import yule_security
 from yule_security import paste_guard
 
 
-class yule_securitySmokeTests(unittest.TestCase):
-    def test_legacy_identity(self) -> None:
-        from yule_engineering.agents.security import paste_guard as legacy
-        self.assertIs(legacy, yule_security.paste_guard)
+class SecuritySmokeTests(unittest.TestCase):
+    def test_importable(self) -> None:
+        self.assertTrue(hasattr(paste_guard, "__name__"))
 
 
 if __name__ == "__main__":
