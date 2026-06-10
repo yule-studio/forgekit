@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.subprocess_supervisor import (
+from yule_engineering.runtime.subprocess_supervisor import (
     _forward_with_prefix,
 )
 

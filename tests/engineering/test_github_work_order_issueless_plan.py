@@ -30,17 +30,17 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.git.repo_contract import RepoContract
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     ApprovalRequest,
 )
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     GitHubWorkOrderProposal,
     dispatch_github_work_order,
 )
-from yule_orchestrator.discord.integrations.github_workos_adapter import (
+from yule_engineering.discord.integrations.github_workos_adapter import (
     _minimal_repo_contract_from_repo,
     build_github_work_order_proposal,
     handle_github_work_approval_reply,
@@ -265,7 +265,7 @@ class ExecutorMissingPlanContractTests(unittest.TestCase):
     """executor 의 guard 가 정확히 *둘 다 없는* 경우에만 fail 하는지."""
 
     def test_only_plan_present_does_not_fail(self) -> None:
-        from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+        from yule_engineering.agents.job_queue.github_work_order_executor import (
             SKIPPED_MISSING_PLAN,
         )
 
@@ -327,7 +327,7 @@ class RuntimeDrainAndContinuationTests(unittest.TestCase):
     """work_order_coding_continuation 이 anchor → coding_job=ready 로 promote."""
 
     def test_anchor_stamp_promotes_coding_job(self) -> None:
-        from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+        from yule_engineering.agents.job_queue.work_order_coding_continuation import (
             PROGRESS_CODING_DISPATCH_QUEUED,
             PROGRESS_CODING_JOB_READY,
             PROGRESS_ISSUE_CREATED,
@@ -408,7 +408,7 @@ class RuntimeStartupHooksTests(unittest.TestCase):
 
     def test_runner_imports_both_recovery_hooks(self) -> None:
         # import 단계에서 ImportError 가 발생하지 않아야 한다
-        from yule_orchestrator.runtime import work_order_executor_runner
+        from yule_engineering.runtime import work_order_executor_runner
 
         # runner module 본문에 두 helper 이름이 모두 등장해야 함
         source = work_order_executor_runner.__file__
@@ -418,7 +418,7 @@ class RuntimeStartupHooksTests(unittest.TestCase):
         self.assertIn("requeue_missing_plan_failures", text)
 
     def test_executor_module_exports_recovery_hooks(self) -> None:
-        from yule_orchestrator.agents.job_queue import (
+        from yule_engineering.agents.job_queue import (
             github_work_order_executor as module,
         )
 

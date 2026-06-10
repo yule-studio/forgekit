@@ -42,8 +42,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     JOB_TYPE_OBSIDIAN_WRITE,
     NOTE_KIND_KNOWLEDGE,
     NOTE_KIND_RESEARCH_LOG,
@@ -54,30 +54,30 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
     SKIPPED_APPROVAL_REQUIRED,
     default_render_fn,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import Job, JobQueue
-from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import Job, JobQueue
+from yule_engineering.agents.lifecycle.agent_ops_log import (
     SESSION_EXTRA_KEY as AGENT_OPS_KEY,
     read_agent_ops_audit,
 )
-from yule_orchestrator.agents.lifecycle.research_topic import (
+from yule_engineering.agents.lifecycle.research_topic import (
     STATUS_RESEARCHING,
     read_topic_ledger,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement import (
+from yule_engineering.agents.lifecycle.self_improvement import (
     SIGNAL_FAILED_RETRYABLE_PILEUP,
 )
-from yule_orchestrator.agents.lifecycle.senior_agent import (
+from yule_engineering.agents.lifecycle.senior_agent import (
     SeniorAgentRunOutcome,
     emit_self_improvement_proposal,
     handle_research_order,
     replay_audit_entries,
 )
-from yule_orchestrator.agents.lifecycle.thread_snapshot import (
+from yule_engineering.agents.lifecycle.thread_snapshot import (
     ThreadMessage,
     ThreadSnapshot,
 )
-from yule_orchestrator.agents.runners.role_runner import (
+from yule_engineering.agents.runners.role_runner import (
     DEFAULT_PROVIDER_PRIORITY,
     DeterministicRoleRunner,
     PROVIDER_CLAUDE,
@@ -438,11 +438,11 @@ class L3ApprovalGateTests(_WorkerFixture):
     def test_save_request_creates_l3_card_and_dedups_duplicate(self) -> None:
         # Definition of Done #4: 중복 approval 이 생기지 않는다.
         # Definition of Done #7: 위험한 작업은 승인 대기로 간다.
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             APPROVAL_KIND_OBSIDIAN_WRITE,
             ApprovalWorker,
         )
-        from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+        from yule_engineering.agents.job_queue.forum_obsidian_handoff import (
             SKIPPED_DUPLICATE_APPROVAL,
             SKIPPED_TOPIC_PENDING_APPROVAL,
             route_forum_obsidian_save_request,
@@ -551,7 +551,7 @@ class EmptyKnowledgeGuardTests(_WorkerFixture):
     """
 
     def test_knowledge_render_refuses_empty_hydration(self) -> None:
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             save_session,
@@ -695,24 +695,24 @@ class ReplayAuditTests(_WorkerFixture):
 class RegressionImportSanityTests(unittest.TestCase):
     def test_m8_to_m12_surfaces_import(self) -> None:
         # M8 — runtime status / gateway env (readiness path).
-        from yule_orchestrator.runtime import status as _m8_status  # noqa: F401
-        from yule_orchestrator.runtime import gateway_env as _m8_env  # noqa: F401
+        from yule_engineering.runtime import status as _m8_status  # noqa: F401
+        from yule_engineering.runtime import gateway_env as _m8_env  # noqa: F401
         # M9 — research_topic ledger.
-        from yule_orchestrator.agents.lifecycle import research_topic as _m9  # noqa: F401
+        from yule_engineering.agents.lifecycle import research_topic as _m9  # noqa: F401
         # M10a — autonomy + agent_ops_log.
-        from yule_orchestrator.agents.lifecycle import autonomy_policy as _m10a_policy  # noqa: F401
-        from yule_orchestrator.agents.lifecycle import agent_ops_log as _m10a_audit  # noqa: F401
+        from yule_engineering.agents.lifecycle import autonomy_policy as _m10a_policy  # noqa: F401
+        from yule_engineering.agents.lifecycle import agent_ops_log as _m10a_audit  # noqa: F401
         # M10b — Obsidian hydration.
-        from yule_orchestrator.agents.job_queue import (  # noqa: F401
+        from yule_engineering.agents.job_queue import (  # noqa: F401
             forum_obsidian_handoff as _m10b_handoff,
             obsidian_writer_worker as _m10b_writer,
         )
         # M10c — research-log auto save / autonomous producers.
-        from yule_orchestrator.agents.lifecycle import autonomous_producers as _m10c  # noqa: F401
+        from yule_engineering.agents.lifecycle import autonomous_producers as _m10c  # noqa: F401
         # M11 — role-runner dispatcher.
-        from yule_orchestrator.agents.runners import role_runner as _m11  # noqa: F401
+        from yule_engineering.agents.runners import role_runner as _m11  # noqa: F401
         # M12 — self-improvement signals.
-        from yule_orchestrator.agents.lifecycle import self_improvement as _m12  # noqa: F401
+        from yule_engineering.agents.lifecycle import self_improvement as _m12  # noqa: F401
         # If we got here, the dependency graph holds.
         self.assertTrue(True)
 

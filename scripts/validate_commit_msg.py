@@ -68,7 +68,7 @@ def main(argv) -> int:
         sys.path.insert(0, str(src_dir))
 
     try:
-        from yule_orchestrator.agents.governance.repo_write_policy import (  # type: ignore
+        from yule_engineering.agents.governance.repo_write_policy import (  # type: ignore
             is_initial_commit_context,
             validate_commit_message,
             validate_initial_commit_decision,

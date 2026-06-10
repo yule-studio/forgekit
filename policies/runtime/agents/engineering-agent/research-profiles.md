@@ -4,7 +4,7 @@
 
 ## 모듈 위치
 
-- 코드: `src/yule_orchestrator/agents/research_profiles.py`
+- 코드: `apps/engineering-agent/src/yule_engineering/agents/research_profiles.py`
 - 테스트: `tests/test_research_profiles.py`
 - 입력 task_type: `dispatcher.TaskType` 값 문자열 (예: `backend-feature`, `landing-page`).
 

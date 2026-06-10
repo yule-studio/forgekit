@@ -20,7 +20,7 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_PRODUCT_DESIGNER_",
   "autonomy_level": "advisory",
   "risk_class": "LOW",
-  "module_path": "yule_orchestrator.agents.engineering.product_designer.runner",
+  "module_path": "yule_engineering.agents.engineering.product_designer.runner",
   "discord_token_env": "ENGINEERING_AGENT_BOT_PRODUCT_DESIGNER_TOKEN",
   "instruction_entry": "agents/engineering-agent/product-designer/CLAUDE.md",
   "description": "사용자 의도, 운영 플로우, 정보 구조, 승인 UX, 화면 구조와 컴포넌트 분해, 시각 표현 가이드를 책임지는 부서 멤버. 코드 직접 작성보다 frontend가 옮길 수 있는 결정 노트를 만든다. 기본은 reviewer지만 UX copy / 화면 구조 문서 작업은 본인이 executor가 될 수 있다.",

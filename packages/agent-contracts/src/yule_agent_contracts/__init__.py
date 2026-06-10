@@ -12,7 +12,7 @@ This package holds the *wire/interop contracts* that ``apps/*`` and other
 - :class:`AgentStatus` — coarse lifecycle state.
 
 Dependency rule: this package depends only on the standard library. It MUST
-NOT import ``yule_orchestrator`` (the app) or any ``apps/*`` code — the arrow
+NOT import ``yule_engineering`` (the app) or any ``apps/*`` code — the arrow
 points the other way (app → contracts).
 """
 

@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     DispatchRequest,
     TaskType,
@@ -98,7 +98,7 @@ class FullStackClassificationTests(unittest.TestCase):
         # PLATFORM_INFRA 엔트리에서 제거됐는지. stack_detector 가
         # is_infra_only 분류한 경우 외에는 docker 만으로 platform-infra
         # 분류되면 안 됨.
-        from yule_orchestrator.agents.messaging.dispatcher import _KEYWORD_RULES
+        from yule_engineering.agents.messaging.dispatcher import _KEYWORD_RULES
 
         for task_type, keywords in _KEYWORD_RULES:
             if task_type == TaskType.PLATFORM_INFRA:

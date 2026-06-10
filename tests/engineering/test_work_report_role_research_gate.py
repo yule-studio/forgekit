@@ -23,7 +23,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.status import (
+from yule_engineering.agents.lifecycle.status import (
     REPORT_STATUS_INTERIM,
     REPORT_STATUS_READY,
     can_generate_final_work_report,
@@ -31,7 +31,7 @@ from yule_orchestrator.agents.lifecycle.status import (
     has_role_research_evidence,
     missing_role_research_roles,
 )
-from yule_orchestrator.agents.reports.work_report import (
+from yule_engineering.agents.reports.work_report import (
     WORK_REPORT_STATUS_INTERIM,
     WORK_REPORT_STATUS_READY,
     build_work_report,

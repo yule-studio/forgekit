@@ -1,6 +1,6 @@
 # Engineering Agent Inter-member Message Protocol (v0)
 
-이 문서는 engineering-agent 부서 안의 멤버들 — 그리고 향후 cto-agent / design-agent / marketing-agent 부서 — 가 주고받는 **표준 메시지 계약**을 정의한다. 코드 진실 소스는 `src/yule_orchestrator/agents/message.py`.
+이 문서는 engineering-agent 부서 안의 멤버들 — 그리고 향후 cto-agent / design-agent / marketing-agent 부서 — 가 주고받는 **표준 메시지 계약**을 정의한다. 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/agents/message.py`.
 
 ## 1. 목적과 범위
 - 부서 내부 왕복 흐름(tech-lead → 멤버 → tech-lead → gateway)을 한 데이터 모델로 통일한다.
@@ -85,7 +85,7 @@ AgentMessage
 ## 6. 왕복 빌더
 
 ```python
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     new_request, reply_to, close_thread,
     RequestedAction, Priority, ContextRef, role_address,
 )

@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeGateResult,
     PRMergeProposal,

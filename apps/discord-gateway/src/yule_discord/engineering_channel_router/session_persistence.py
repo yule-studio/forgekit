@@ -23,7 +23,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional, Sequence
 
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     CodingAuthorizationProposal,
 )
 
@@ -74,7 +74,7 @@ def _persist_role_selection(
     if session is None:
         return session
     try:
-        from yule_orchestrator.agents.lifecycle.role_selection import (
+        from yule_engineering.agents.lifecycle.role_selection import (
             apply_role_selection_to_extra,
             recommend_active_roles,
         )
@@ -116,7 +116,7 @@ def _persist_role_selection(
     # compatible: legacy short-form data still survives reads (council
     # vocabulary normalises both on input).
     try:
-        from yule_orchestrator.agents.council import normalize_roles
+        from yule_engineering.agents.council import normalize_roles
 
         active = selection_updates.get("active_research_roles")
         if isinstance(active, list):
@@ -156,7 +156,7 @@ def _persist_coding_session_context(
     if session is None:
         return session
     try:
-        from yule_orchestrator.agents.coding.coding_session_context import (
+        from yule_engineering.agents.coding.coding_session_context import (
             prepare_coding_session_context,
         )
     except Exception:  # noqa: BLE001 - partial install fallback
@@ -185,7 +185,7 @@ def _persist_coding_session_context(
     # the *post-update* extras so the validator sees github_target /
     # work_mode / handoff packet that this very call just persisted.
     try:
-        from yule_orchestrator.agents.coding.tracking_enforcement import (
+        from yule_engineering.agents.coding.tracking_enforcement import (
             validate_tracking_chain,
         )
 
@@ -224,7 +224,7 @@ def _persist_lifecycle_mode(session: Any, canonical_prompt: str) -> Any:
     if session is None:
         return session
     try:
-        from yule_orchestrator.agents.coding.authorization import (
+        from yule_engineering.agents.coding.authorization import (
             LIFECYCLE_MODE_IMPLEMENTATION,
             LIFECYCLE_MODE_RESEARCH_ONLY,
             recommend_authorization,
@@ -313,7 +313,7 @@ def _persist_extra_keys(session: Any, updates: Mapping[str, object]) -> Any:
         from dataclasses import replace as _dc_replace
         from datetime import datetime as _dt
 
-        from yule_orchestrator.agents.workflow_state import update_session
+        from yule_engineering.agents.workflow_state import update_session
     except Exception as exc:  # noqa: BLE001
         _record_persistence_failure(
             session,
@@ -393,7 +393,7 @@ def _persist_thread_id(
     sequence is consolidated upstream.
     """
 
-    from yule_orchestrator.agents.lifecycle.persistence import persist_thread_link
+    from yule_engineering.agents.lifecycle.persistence import persist_thread_link
 
     result = persist_thread_link(session, thread_id)
     return result.session
@@ -401,8 +401,8 @@ def _persist_thread_id(
 # Canonical (de)serialisers now live in the agents layer — keep the old
 # ``_proposal_to_dict`` / ``_proposal_from_dict`` names as aliases so existing
 # importers/tests still resolve them from this module.
-from yule_orchestrator.agents.coding.authorization import proposal_from_dict as _proposal_from_dict  # noqa: E402,F401
-from yule_orchestrator.agents.coding.authorization import proposal_to_dict as _proposal_to_dict  # noqa: E402,F401
+from yule_engineering.agents.coding.authorization import proposal_from_dict as _proposal_from_dict  # noqa: E402,F401
+from yule_engineering.agents.coding.authorization import proposal_to_dict as _proposal_to_dict  # noqa: E402,F401
 
 def _load_session_by_id(
     list_sessions_fn: Callable[..., Sequence[Any]],

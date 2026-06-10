@@ -21,7 +21,7 @@ from typing import Any, Mapping
 
 import unittest
 
-from yule_orchestrator.agents.council import (
+from yule_engineering.agents.council import (
     ApprovalPacketStatus,
     CouncilConsensusStatus,
     EscalationAggregate,
@@ -34,7 +34,7 @@ from yule_orchestrator.agents.council import (
     canonical_role,
     normalize_roles,
 )
-from yule_orchestrator.agents.council_approval import (
+from yule_engineering.agents.council_approval import (
     APPROVAL_PACKET_EXTRA_KEY,
     apply_tech_lead_signoff,
     build_approval_packet,
@@ -46,7 +46,7 @@ from yule_orchestrator.agents.council_approval import (
     read_tech_lead_signoff,
     refresh_escalation_aggregate,
 )
-from yule_orchestrator.agents.council_bootstrap import (
+from yule_engineering.agents.council_bootstrap import (
     PROVIDER_AVAILABILITY_EXTRA_KEY,
     PROVIDER_SEAT_MATRIX_EXTRA_KEY,
     ROLE_WORK_ORDERS_EXTRA_KEY,
@@ -61,7 +61,7 @@ from yule_orchestrator.agents.council_bootstrap import (
     role_work_order_to_payload,
     task_brief_to_payload,
 )
-from yule_orchestrator.agents.lifecycle.council_status_signals import (
+from yule_engineering.agents.lifecycle.council_status_signals import (
     APPROVAL_PACKET_DRAFTED,
     APPROVAL_SURFACE_POSTED,
     COUNCIL_ESCALATED_CODE,
@@ -69,7 +69,7 @@ from yule_orchestrator.agents.lifecycle.council_status_signals import (
     TECH_LEAD_SIGNOFF_BLOCKED,
     collect_council_signals,
 )
-from yule_orchestrator.agents.lifecycle.council_substage import (
+from yule_engineering.agents.lifecycle.council_substage import (
     COUNCIL_ESCALATION_AGGREGATE_EXTRA_KEY,
     GATEWAY_SURFACE_PAYLOAD_EXTRA_KEY,
     LIFECYCLE_SUBSTAGE_EXTRA_KEY,
@@ -113,7 +113,7 @@ def _make_escalated_session_extra(role: str = "backend-engineer") -> dict:
         consensus_status=CouncilConsensusStatus.ESCALATED,
         disagreement_summary=f"{role} 합의 실패",
     )
-    from yule_orchestrator.agents.council import role_councils_to_extra
+    from yule_engineering.agents.council import role_councils_to_extra
 
     return {
         TASK_BRIEF_EXTRA_KEY: dict(task_brief_to_payload(brief)),
@@ -360,7 +360,7 @@ class CouncilApprovalTests(unittest.TestCase):
         # appears on session.extra (router-level reader uses this).
         brief = build_task_brief(session_id="x", title="T", purpose="P")
         orders = build_role_work_orders(brief, ["backend-engineer", "frontend-engineer"])
-        from yule_orchestrator.agents.council import role_councils_to_extra
+        from yule_engineering.agents.council import role_councils_to_extra
 
         r1_a = build_deterministic_role_council(
             work_order=orders[0],
@@ -455,7 +455,7 @@ class CouncilApprovalTests(unittest.TestCase):
         # _persist_role_selection lives in the router's session_persistence
         # module. We invoke it directly with a stub session to verify the
         # canonicalisation hook lands.
-        from yule_orchestrator.discord.engineering_channel_router.session_persistence import (
+        from yule_engineering.discord.engineering_channel_router.session_persistence import (
             _persist_role_selection,
         )
 
@@ -584,7 +584,7 @@ class CouncilApprovalTests(unittest.TestCase):
 
 
     def test_router_glue_full_pipeline_stamps_packet_and_surface(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+        from yule_engineering.discord.engineering_channel_router.council_flow import (
             apply_signoff_to_session,
             draft_approval_packet_for_session,
             maybe_bootstrap_council,
@@ -617,11 +617,11 @@ class CouncilApprovalTests(unittest.TestCase):
 
 
     def test_router_draft_packet_stamps_bootstrap_error_when_signoff_missing(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+        from yule_engineering.discord.engineering_channel_router.council_flow import (
             draft_approval_packet_for_session,
             maybe_bootstrap_council,
         )
-        from yule_orchestrator.agents.lifecycle.council_substage import (
+        from yule_engineering.agents.lifecycle.council_substage import (
             COUNCIL_BOOTSTRAP_ERROR_EXTRA_KEY,
         )
 

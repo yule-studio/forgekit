@@ -18,14 +18,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.runtime import (
+from yule_engineering.agents.runtime import (
     INTENT_NEW_WORK_REQUEST,
     INTENT_SUMMARIZE_PREVIOUS_WORK,
     RuntimeInput,
     RuntimeIntent,
     RuntimeObservation,
 )
-from yule_orchestrator.agents.runtime.recall import make_recall_fn
+from yule_engineering.agents.runtime.recall import make_recall_fn
 
 
 @dataclass

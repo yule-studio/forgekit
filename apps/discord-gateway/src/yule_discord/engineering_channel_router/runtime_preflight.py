@@ -35,17 +35,17 @@ from ..engineering.clarification import (
 from ..engineering.phrase_detect import (
     continuation_requests_research as _continuation_requests_research,
 )
-from yule_orchestrator.agents.lifecycle.resolver import (
+from yule_engineering.agents.lifecycle.resolver import (
     extract_explicit_session_id as _explicit_session_request,
 )
-from yule_orchestrator.agents.routing import (
+from yule_engineering.agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
     ACTION_CREATE,
     ACTION_JOIN,
     EngineeringRoutingDecision,
 )
-from yule_orchestrator.agents.runtime import (
+from yule_engineering.agents.runtime import (
     ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,
@@ -90,7 +90,7 @@ logger = logging.getLogger(__name__)
 def is_obsidian_save_request(text: str) -> bool:
     """Lazy thunk to avoid hard import of obsidian.approval at module load."""
 
-    from yule_orchestrator.agents.obsidian.approval import is_obsidian_save_request as _impl
+    from yule_engineering.agents.obsidian.approval import is_obsidian_save_request as _impl
 
     return _impl(text)
 
@@ -385,7 +385,7 @@ def _observation_for_runtime(input_: RuntimeInput):
     runtime loop's default observe (keeps the router's import surface
     small)."""
 
-    from yule_orchestrator.agents.runtime.models import RuntimeObservation
+    from yule_engineering.agents.runtime.models import RuntimeObservation
 
     text = input_.message_text or ""
     return RuntimeObservation(

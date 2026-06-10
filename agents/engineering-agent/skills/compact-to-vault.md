@@ -31,8 +31,8 @@ side_effects:
 references:
   - policies/runtime/agents/engineering-agent/context-compression.md
   - docs/agent-slash-commands.md
-  - src/yule_orchestrator/agents/harness/context_compaction.py
-  - src/yule_orchestrator/agents/obsidian/knowledge_writer.py
+  - apps/engineering-agent/src/yule_engineering/agents/harness/context_compaction.py
+  - apps/engineering-agent/src/yule_engineering/agents/obsidian/knowledge_writer.py
 related_hooks: []
 ---
 
@@ -96,7 +96,7 @@ session_id (+ focus)
 ### Quick Mode (현재 단계 — 결정형)
 
 ```python
-from yule_orchestrator.agents.harness.context_compaction import (
+from yule_engineering.agents.harness.context_compaction import (
     from_workflow_session,
     build_compaction_summary,
     write_compaction_note,

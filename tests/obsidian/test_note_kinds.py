@@ -39,8 +39,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     NOTE_KIND_AGENT_OPS,
     NOTE_KIND_BLOG_DRAFT,
     NOTE_KIND_DECISION,
@@ -55,10 +55,10 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
     ObsidianWriterWorker,
     default_render_fn,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.obsidian.export import recommend_path
-from yule_orchestrator.agents.obsidian.note_kinds import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.obsidian.export import recommend_path
+from yule_engineering.agents.obsidian.note_kinds import (
     FOLDER_AGENT_OPS,
     FOLDER_BLOG_DRAFTS,
     FOLDER_DECISIONS,
@@ -80,7 +80,7 @@ from yule_orchestrator.agents.obsidian.note_kinds import (
     render_source_thread_block,
     requires_approval,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     save_session,

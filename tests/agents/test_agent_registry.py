@@ -9,8 +9,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.extension.agent_registry import AgentRegistry
-from yule_orchestrator.agents.extension.manifest import AgentManifest
+from yule_engineering.agents.extension.agent_registry import AgentRegistry
+from yule_engineering.agents.extension.manifest import AgentManifest
 
 
 def _make(agent_id: str, role: str | None = None) -> AgentManifest:

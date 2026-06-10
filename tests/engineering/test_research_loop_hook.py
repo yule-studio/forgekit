@@ -22,11 +22,11 @@ from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 try:  # pragma: no cover - environment guard
-    from yule_orchestrator.discord import bot as bot_module
+    from yule_engineering.discord import bot as bot_module
 except Exception as exc:  # noqa: BLE001
     raise unittest.SkipTest(f"discord bot module unavailable: {exc}")
 
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringResearchLoopReport,
 )
 
@@ -248,7 +248,7 @@ class PersistForumCommentModeTestCase(unittest.TestCase):
             from _helpers import isolate_cache_for_test  # type: ignore
         isolate_cache_for_test(self)
 
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             save_session,
@@ -271,7 +271,7 @@ class PersistForumCommentModeTestCase(unittest.TestCase):
         save_session(self.session)
 
     def _reload(self):
-        from yule_orchestrator.agents.workflow_state import load_session
+        from yule_engineering.agents.workflow_state import load_session
 
         return load_session(self.session.session_id)
 

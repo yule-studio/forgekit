@@ -19,22 +19,22 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     NOTE_KIND_AGENT_OPS,
     NOTE_KIND_FAILURE_POSTMORTEM,
     NOTE_KIND_RESEARCH_LOG,
     default_render_fn,
 )
-from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+from yule_engineering.agents.lifecycle.agent_ops_log import (
     AgentOpsEntry,
     SESSION_EXTRA_KEY,
 )
-from yule_orchestrator.agents.lifecycle.autonomous_producers import (
+from yule_engineering.agents.lifecycle.autonomous_producers import (
     build_agent_ops_request,
     build_research_log_request,
     build_simple_body_request,
 )
-from yule_orchestrator.agents.lifecycle.thread_snapshot import (
+from yule_engineering.agents.lifecycle.thread_snapshot import (
     ThreadMessage,
     ThreadSnapshot,
 )

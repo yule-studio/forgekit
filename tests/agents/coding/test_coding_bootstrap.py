@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.coding_bootstrap import (
+from yule_engineering.agents.coding.coding_bootstrap import (
     CodingBootstrap,
     STATUS_BYPASS,
     STATUS_NOT_CODING_REQUEST,

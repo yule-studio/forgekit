@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+from yule_engineering.agents.lifecycle.agent_ops_log import (
     AgentOpsEntry,
     SESSION_EXTRA_KEY,
     append_agent_ops_audit,
@@ -31,7 +31,7 @@ from yule_orchestrator.agents.lifecycle.agent_ops_log import (
     render_agent_ops_entry_markdown,
     render_agent_ops_log_markdown,
 )
-from yule_orchestrator.agents.lifecycle.autonomy_policy import (
+from yule_engineering.agents.lifecycle.autonomy_policy import (
     ACTION_FORUM_HANDOFF_DECISION,
     ACTION_RESEARCH_LOG_SAVE,
     AutonomyContext,

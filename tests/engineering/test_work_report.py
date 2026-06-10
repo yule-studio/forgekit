@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.reports.work_report import (
+from yule_engineering.agents.reports.work_report import (
     WorkReport,
     build_work_report,
     format_work_report_markdown,

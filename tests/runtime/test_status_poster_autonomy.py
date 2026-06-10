@@ -30,7 +30,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.status import (
+from yule_engineering.runtime.status import (
     AUTONOMY_OUTCOME_DISPATCHED,
     AUTONOMY_OUTCOME_ERROR,
     AUTONOMY_OUTCOME_LOCKED,
@@ -41,7 +41,7 @@ from yule_orchestrator.runtime.status import (
     RuntimeStatusReport,
     ServiceStatus,
 )
-from yule_orchestrator.runtime.status_poster import (
+from yule_engineering.runtime.status_poster import (
     StatusPosterStateStore,
     collect_recent_completion_funnel,
     compute_status_dedup_key,

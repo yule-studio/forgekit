@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.ci_status import (
+from yule_engineering.agents.job_queue.ci_status import (
     CI_CANCELLED,
     CI_FAILURE,
     CI_PENDING,
@@ -39,7 +39,7 @@ from yule_orchestrator.agents.job_queue.ci_status import (
     read_retry_log,
     record_retry_attempt,
 )
-from yule_orchestrator.agents.job_queue.next_task_selector import (
+from yule_engineering.agents.job_queue.next_task_selector import (
     SOURCE_APPROVED_CODING_JOB,
     SOURCE_CI_FAILED_PR,
     SOURCE_IDLE,

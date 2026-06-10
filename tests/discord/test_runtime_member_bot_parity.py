@@ -35,8 +35,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.member.bot import _dispatch_member_message
-from yule_orchestrator.discord.member.bots import MemberBotProfile
+from yule_engineering.discord.member.bot import _dispatch_member_message
+from yule_engineering.discord.member.bots import MemberBotProfile
 
 
 class _FakeChannel:
@@ -90,10 +90,10 @@ class ResearchTurnDispatchTests(unittest.TestCase):
             post_called.append((ch, outcome))
 
         with patch(
-            "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+            "yule_engineering.discord.member.bot.handle_research_turn_message",
             return_value=sentinel,
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_research_turn",
+            "yule_engineering.discord.member.bot._post_research_turn",
             side_effect=fake_post,
         ):
             _run(lambda: _dispatch_member_message(
@@ -117,13 +117,13 @@ class ResearchTurnDispatchTests(unittest.TestCase):
             post_called.append((ch, outcome))
 
         with patch(
-            "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+            "yule_engineering.discord.member.bot.handle_research_turn_message",
             return_value=None,
         ), patch(
-            "yule_orchestrator.discord.member.bot.handle_team_turn_message",
+            "yule_engineering.discord.member.bot.handle_team_turn_message",
             return_value=None,
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_research_turn",
+            "yule_engineering.discord.member.bot._post_research_turn",
             side_effect=fake_post,
         ):
             _run(lambda: _dispatch_member_message(
@@ -143,10 +143,10 @@ class ResearchTurnDispatchTests(unittest.TestCase):
         sys.stderr = io.StringIO()
         try:
             with patch(
-                "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+                "yule_engineering.discord.member.bot.handle_research_turn_message",
                 side_effect=RuntimeError("boom"),
             ), patch(
-                "yule_orchestrator.discord.member.bot.handle_team_turn_message",
+                "yule_engineering.discord.member.bot.handle_team_turn_message",
                 return_value=None,
             ):
                 _run(lambda: _dispatch_member_message(
@@ -170,10 +170,10 @@ class ResearchTurnDispatchTests(unittest.TestCase):
             raise RuntimeError("network kapow")
 
         with patch(
-            "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+            "yule_engineering.discord.member.bot.handle_research_turn_message",
             return_value=sentinel,
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_research_turn",
+            "yule_engineering.discord.member.bot._post_research_turn",
             side_effect=failing_post,
         ):
             _run(lambda: _dispatch_member_message(
@@ -197,13 +197,13 @@ class TeamTurnDispatchTests(unittest.TestCase):
             post_called.append((ch, outcome))
 
         with patch(
-            "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+            "yule_engineering.discord.member.bot.handle_research_turn_message",
             return_value=None,
         ), patch(
-            "yule_orchestrator.discord.member.bot.handle_team_turn_message",
+            "yule_engineering.discord.member.bot.handle_team_turn_message",
             return_value=sentinel,
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_team_turn",
+            "yule_engineering.discord.member.bot._post_team_turn",
             side_effect=fake_post,
         ):
             _run(lambda: _dispatch_member_message(
@@ -222,10 +222,10 @@ class TeamTurnDispatchTests(unittest.TestCase):
         sys.stderr = io.StringIO()
         try:
             with patch(
-                "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+                "yule_engineering.discord.member.bot.handle_research_turn_message",
                 return_value=None,
             ), patch(
-                "yule_orchestrator.discord.member.bot.handle_team_turn_message",
+                "yule_engineering.discord.member.bot.handle_team_turn_message",
                 side_effect=RuntimeError("kaboom"),
             ):
                 _run(lambda: _dispatch_member_message(
@@ -247,13 +247,13 @@ class TeamTurnDispatchTests(unittest.TestCase):
             raise RuntimeError("net down")
 
         with patch(
-            "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+            "yule_engineering.discord.member.bot.handle_research_turn_message",
             return_value=None,
         ), patch(
-            "yule_orchestrator.discord.member.bot.handle_team_turn_message",
+            "yule_engineering.discord.member.bot.handle_team_turn_message",
             return_value=sentinel,
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_team_turn",
+            "yule_engineering.discord.member.bot._post_team_turn",
             side_effect=failing_post,
         ):
             _run(lambda: _dispatch_member_message(
@@ -286,16 +286,16 @@ class ResearchPrecedenceTests(unittest.TestCase):
             team_called.append(outcome)
 
         with patch(
-            "yule_orchestrator.discord.member.bot.handle_research_turn_message",
+            "yule_engineering.discord.member.bot.handle_research_turn_message",
             return_value=research_sentinel,
         ), patch(
-            "yule_orchestrator.discord.member.bot.handle_team_turn_message",
+            "yule_engineering.discord.member.bot.handle_team_turn_message",
             return_value=SimpleNamespace(turn_text="t", session_id="s"),
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_research_turn",
+            "yule_engineering.discord.member.bot._post_research_turn",
             side_effect=fake_research_post,
         ), patch(
-            "yule_orchestrator.discord.member.bot._post_team_turn",
+            "yule_engineering.discord.member.bot._post_team_turn",
             side_effect=fake_team_post,
         ):
             _run(lambda: _dispatch_member_message(

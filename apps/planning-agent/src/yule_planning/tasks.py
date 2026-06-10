@@ -4,10 +4,10 @@ from dataclasses import replace
 from datetime import date, datetime
 from typing import Optional, Sequence
 
-from yule_orchestrator.integrations.calendar.models import CalendarTodo
-from yule_orchestrator.integrations.github.issues import GitHubIssue
-from yule_orchestrator.integrations.github.pulls import GitHubPullRequest
-from yule_orchestrator.storage import (
+from yule_engineering.integrations.calendar.models import CalendarTodo
+from yule_engineering.integrations.github.issues import GitHubIssue
+from yule_engineering.integrations.github.pulls import GitHubPullRequest
+from yule_engineering.storage import (
     UserPatternSignals,
     compute_user_pattern_signals,
     compute_user_pattern_signals_batch,

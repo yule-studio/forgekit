@@ -43,7 +43,7 @@
 | **qa-engineer** | 인수 조건/회귀 범위/테스트 우선순위. 변경이 망가지지 않게 |
 | **product-designer** | 사용자 문제·흐름·UX copy·디자인 시스템. UI 비용 인식 + MVP 범위 |
 
-각 역할의 `required_context` / `must_review` / `forbidden_actions` / `output_sections` / `escalation_rules` / `done_criteria` 전체는 `src/yule_orchestrator/agents/role_profiles_data.py` 가 단일 source of truth.
+각 역할의 `required_context` / `must_review` / `forbidden_actions` / `output_sections` / `escalation_rules` / `done_criteria` 전체는 `apps/engineering-agent/src/yule_engineering/agents/role_profiles_data.py` 가 단일 source of truth.
 
 ## Selector 동작
 
@@ -110,8 +110,8 @@ Hint vocabulary 는 `RoleProfile.activation_keywords` 와 의도적으로 겹치
 
 본 문서가 자동으로 vault 에 노출되는 경로는 다음과 같다.
 
-1. **`yule memory reindex`** (`src/yule_orchestrator/cli/memory.py`) 가 `policies/` 트리를 재귀로 스캔해 `SOURCE_POLICY` 로 인덱싱한다. 본 문서는 별도 wiring 없이 자동 픽업.
-2. **memory retrieval** (`src/yule_orchestrator/memory/retrieval.py`) 의 priority chain 에 `SOURCE_POLICY` 가 포함돼 있어 역할별 retrieval 호출이 본 문서를 후보로 잡는다.
+1. **`yule memory reindex`** (`apps/engineering-agent/src/yule_engineering/cli/memory.py`) 가 `policies/` 트리를 재귀로 스캔해 `SOURCE_POLICY` 로 인덱싱한다. 본 문서는 별도 wiring 없이 자동 픽업.
+2. **memory retrieval** (`apps/engineering-agent/src/yule_engineering/memory/retrieval.py`) 의 priority chain 에 `SOURCE_POLICY` 가 포함돼 있어 역할별 retrieval 호출이 본 문서를 후보로 잡는다.
 3. **`agents/engineering-agent/manifest.json`** 의 `policies` 배열에 본 문서 경로를 추가했다 — `context_loader` 가 부서 정책을 불러올 때 본 문서가 함께 적재된다.
 4. **work_report / status / role_runtime preface** 는 `RoleProfile.output_sections` 등을 통해 본 문서와 동일 데이터를 코드 차원에서 소비한다(데이터는 `role_profiles_data.py`, 본 문서는 그 데이터의 운영자 요약).
 

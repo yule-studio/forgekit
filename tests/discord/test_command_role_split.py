@@ -110,9 +110,9 @@ class CommandRoleSplitTests(unittest.TestCase):
         # Re-import the commands module against the freshly-stubbed discord
         # so the ``import discord`` inside register_discord_commands resolves
         # to our fake.
-        if "yule_orchestrator.discord.commands" in sys.modules:
-            del sys.modules["yule_orchestrator.discord.commands"]
-        from yule_orchestrator.discord import commands as commands_module
+        if "yule_engineering.discord.commands" in sys.modules:
+            del sys.modules["yule_engineering.discord.commands"]
+        from yule_engineering.discord import commands as commands_module
 
         self.commands_module = commands_module
 
@@ -122,7 +122,7 @@ class CommandRoleSplitTests(unittest.TestCase):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = previous
-        sys.modules.pop("yule_orchestrator.discord.commands", None)
+        sys.modules.pop("yule_engineering.discord.commands", None)
 
     def test_planning_role_excludes_engineer_intake(self) -> None:
         bot = _FakeBot()
@@ -227,9 +227,9 @@ class BotRoleSetEnvResolutionTests(unittest.TestCase):
             for name in ("discord", "discord.ext", "discord.app_commands")
         }
         _install_fake_discord_modules()
-        if "yule_orchestrator.discord.commands" in sys.modules:
-            del sys.modules["yule_orchestrator.discord.commands"]
-        from yule_orchestrator.discord import commands as commands_module
+        if "yule_engineering.discord.commands" in sys.modules:
+            del sys.modules["yule_engineering.discord.commands"]
+        from yule_engineering.discord import commands as commands_module
 
         self.commands_module = commands_module
 
@@ -239,7 +239,7 @@ class BotRoleSetEnvResolutionTests(unittest.TestCase):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = previous
-        sys.modules.pop("yule_orchestrator.discord.commands", None)
+        sys.modules.pop("yule_engineering.discord.commands", None)
 
     def test_planning_env_maps_to_planning_only(self) -> None:
         result = self.commands_module.resolve_bot_role_set_from_env(
@@ -279,9 +279,9 @@ class UnexpectedErrorFollowupTests(unittest.TestCase):
             for name in ("discord", "discord.ext", "discord.app_commands")
         }
         _install_fake_discord_modules()
-        if "yule_orchestrator.discord.commands" in sys.modules:
-            del sys.modules["yule_orchestrator.discord.commands"]
-        from yule_orchestrator.discord import commands as commands_module
+        if "yule_engineering.discord.commands" in sys.modules:
+            del sys.modules["yule_engineering.discord.commands"]
+        from yule_engineering.discord import commands as commands_module
 
         self.commands_module = commands_module
 
@@ -291,7 +291,7 @@ class UnexpectedErrorFollowupTests(unittest.TestCase):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = previous
-        sys.modules.pop("yule_orchestrator.discord.commands", None)
+        sys.modules.pop("yule_engineering.discord.commands", None)
 
     def test_surface_unexpected_error_calls_followup_send(self) -> None:
         followup = MagicMock()

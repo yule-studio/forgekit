@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.routing import (
+from yule_engineering.agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
     ACTION_CREATE,
@@ -24,7 +24,7 @@ from yule_orchestrator.agents.routing import (
     EngineeringRoutingDecision,
     decide_routing,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
 
 
 def _session(
@@ -198,7 +198,7 @@ class DecideRoutingTests(unittest.TestCase):
         self.assertEqual(decision.matched_session_id, "pack")
 
     def test_completed_sessions_are_filtered_when_listing_open(self) -> None:
-        from yule_orchestrator.agents.routing import list_open_sessions
+        from yule_engineering.agents.routing import list_open_sessions
 
         # Smoke: list_open_sessions yields a tuple even when cache is
         # empty (or an exception is raised internally — exercise both).

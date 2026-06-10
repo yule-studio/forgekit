@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.governance import (
+from yule_engineering.agents.governance import (
     BRANCH_PREFIXES,
     CURATED_REQUIRED_FRONTMATTER,
     CURATED_REQUIRED_SECTIONS,

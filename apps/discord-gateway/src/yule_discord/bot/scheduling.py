@@ -16,11 +16,11 @@ from __future__ import annotations
 import math
 from datetime import date, datetime, time, timedelta
 
-from yule_orchestrator.integrations.calendar.models import build_fallback_item_uid
-from yule_orchestrator.observability import RuntimeStepMetric, save_runtime_metric_run
-from yule_orchestrator.planning.day_profile import DayProfile, DayProfileBriefingSlot
-from yule_orchestrator.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
-from yule_orchestrator.storage import load_json_cache, save_json_cache
+from yule_engineering.integrations.calendar.models import build_fallback_item_uid
+from yule_engineering.observability import RuntimeStepMetric, save_runtime_metric_run
+from yule_engineering.planning.day_profile import DayProfile, DayProfileBriefingSlot
+from yule_engineering.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
+from yule_engineering.storage import load_json_cache, save_json_cache
 from ..config import DiscordBotConfig
 from ..runtime.planning import (
     build_due_briefings,

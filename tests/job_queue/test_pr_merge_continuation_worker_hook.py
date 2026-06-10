@@ -25,13 +25,13 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     WorktreeContext,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.pr_merge_continuation import (
     EXTRA_PR_MERGE_AUDIT,
     EXTRA_PR_MERGE_BASE_BRANCH,
     EXTRA_PR_MERGE_HEAD_SHA,
@@ -42,14 +42,14 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
     PostPRAction,
     STAGE_PR_MERGE_PENDING,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_WORK_MODE,
     WORK_MODE_APPROVAL,
     WORK_MODE_AUTONOMOUS,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,

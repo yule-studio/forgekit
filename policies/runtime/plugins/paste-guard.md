@@ -16,7 +16,7 @@ GitHub App private key) 과 PII (이메일/전화/이름) 를 outbound 직전에
 - `paste_guard_required: false` (자기 자신은 자기를 호출하지 않음)
 
 ## 환경변수
-없음. 마스킹 룰은 코드에 박혀 있고 (`src/yule_orchestrator/agents/security/paste_guard.py`),
+없음. 마스킹 룰은 코드에 박혀 있고 (`apps/engineering-agent/src/yule_engineering/agents/security/paste_guard.py`),
 필요하면 runtime fixture 로 룰을 주입한다.
 
 ## 운영 가이드

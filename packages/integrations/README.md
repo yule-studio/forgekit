@@ -39,9 +39,9 @@ inside `naver_caldav`). GitHub access shells out to the `gh` CLI via
 
 ## Compatibility
 
-`yule_orchestrator.integrations.{calendar,github}.<mod>` are thin
+`yule_engineering.integrations.{calendar,github}.<mod>` are thin
 shims. Leaf submodule shims alias the new modules via `sys.modules`, so
 deep imports and test patches against
-`yule_orchestrator.integrations.<pkg>.<mod>.<attr>` resolve to the
+`yule_engineering.integrations.<pkg>.<mod>.<attr>` resolve to the
 identical module objects. The package `__init__` shims re-export the
 same public names as the originals.

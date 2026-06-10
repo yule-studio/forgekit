@@ -25,22 +25,22 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.mistake_ledger import (
+from yule_engineering.agents.lifecycle.mistake_ledger import (
     record_mistake as real_record_mistake,
 )
-from yule_orchestrator.agents.lifecycle.preflight_judgement import (
+from yule_engineering.agents.lifecycle.preflight_judgement import (
     PREFLIGHT_BLOCK,
     PREFLIGHT_PASS,
     PREFLIGHT_WARNING,
 )
-from yule_orchestrator.agents.lifecycle.troubleshooting_enforcer import (
+from yule_engineering.agents.lifecycle.troubleshooting_enforcer import (
     EnforcementJournal,
     mandatory_capture,
     record_claude_correction,
     record_codex_correction,
     record_silent_correction,
 )
-from yule_orchestrator.agents.lifecycle.troubleshooting_ledger import (
+from yule_engineering.agents.lifecycle.troubleshooting_ledger import (
     SURFACE_MISTAKE_LEDGER,
     SURFACE_OBSIDIAN,
     SURFACE_RECORD_LEDGER,
@@ -50,11 +50,11 @@ from yule_orchestrator.agents.lifecycle.troubleshooting_ledger import (
     derive_problem_signature,
     stamp_troubleshooting_audit,
 )
-from yule_orchestrator.agents.lifecycle.troubleshooting_preflight import (
+from yule_engineering.agents.lifecycle.troubleshooting_preflight import (
     evaluate_combined_preflight,
     lookup_relevant_records,
 )
-from yule_orchestrator.agents.lifecycle.troubleshooting_record import (
+from yule_engineering.agents.lifecycle.troubleshooting_record import (
     CaptureReason,
     DETECTED_BY_CLAUDE_CODE,
     DETECTED_BY_RUNTIME_GATEWAY,
@@ -257,14 +257,14 @@ class PreflightSurfacesPriorRecord(unittest.TestCase):
             symptom="prior occurrence",
             severity=SEVERITY_HIGH,
             related_files=(
-                "src/yule_orchestrator/discord/approval/reply_router.py",
+                "apps/engineering-agent/src/yule_engineering/discord/approval/reply_router.py",
             ),
             now=_NOW,
         )
         # 같은 파일을 건드리는 신규 작업 — preflight 가 prior 를 surface 해야 함
         relevant = lookup_relevant_records(
             ledger,
-            file_paths=("src/yule_orchestrator/discord/approval/reply_router.py",),
+            file_paths=("apps/engineering-agent/src/yule_engineering/discord/approval/reply_router.py",),
         )
         self.assertEqual(len(relevant), 1)
 
@@ -423,7 +423,7 @@ class NormalPathNoNoise(unittest.TestCase):
 
 class SessionExtraStampTests(unittest.TestCase):
     def test_stamp_appends_both_audit_rows(self) -> None:
-        from yule_orchestrator.agents.lifecycle.agent_ops_log import AgentOpsEntry
+        from yule_engineering.agents.lifecycle.agent_ops_log import AgentOpsEntry
 
         record = TroubleshootingRecord(
             record_id="ts-1",

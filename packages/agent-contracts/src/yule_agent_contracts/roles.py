@@ -3,7 +3,7 @@
 A department-agnostic, structured form of the ``"<agent>/<role>"`` address
 strings used throughout the message protocol (see :func:`role_address`). This
 is intentionally thin: the *behavioural* role engine (mission, responsibilities,
-forbidden actions, …) lives in ``yule_orchestrator.agents.role_profiles`` and is
+forbidden actions, …) lives in ``yule_engineering.agents.role_profiles`` and is
 domain logic, not a wire contract. ``AgentRole`` only models *who* an actor is so
 that other agents and the Agent Town front-end can address it unambiguously.
 """

@@ -33,26 +33,26 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.git.repo_contract import RepoContract
-from yule_orchestrator.agents.github_workos.audit import OUTCOME_OK
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_engineering.agents.github_workos.audit import OUTCOME_OK
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     APPROVAL_KIND_GITHUB_WORK_ORDER,
     GitHubWorkOrderProposal,
 )
-from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+from yule_engineering.agents.job_queue.github_work_order_executor import (
     CREATED_VIA_AUTO_CREATE,
     CREATED_VIA_EXISTING_ANCHOR,
     GitHubWorkOrderWorker,
     SESSION_EXTRA_GITHUB_ISSUE_KEY,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.integrations.github_workos_adapter import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.discord.integrations.github_workos_adapter import (
     build_github_work_order_proposal,
     enqueue_github_work_approval,
     handle_github_work_approval_reply,

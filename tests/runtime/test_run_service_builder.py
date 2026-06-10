@@ -22,9 +22,9 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue import HeartbeatStore, JobQueue
-from yule_orchestrator.runtime.run_service import _build_process_job
-from yule_orchestrator.runtime.services import resolve_service
+from yule_engineering.agents.job_queue import HeartbeatStore, JobQueue
+from yule_engineering.runtime.run_service import _build_process_job
+from yule_engineering.runtime.services import resolve_service
 
 
 class _Fixture(unittest.TestCase):
@@ -124,7 +124,7 @@ class ObsidianBuilderTests(_Fixture):
         free = inspect.getclosurevars(process_fn).nonlocals
         worker = free.get("worker")
         self.assertIsNotNone(worker)
-        from yule_orchestrator.agents.job_queue import (
+        from yule_engineering.agents.job_queue import (
             default_render_fn,
             default_vault_root_resolver,
             default_write_fn,

@@ -10,19 +10,19 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     Importance,
     SourceAxis,
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.retrieval import (
+from yule_engineering.agents.engineering_intelligence.retrieval import (
     KnowledgeRecord,
     KnowledgeRetriever,
     label_for_signal,
     score_knowledge_record,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     KnowledgeShareScope,
 )
 

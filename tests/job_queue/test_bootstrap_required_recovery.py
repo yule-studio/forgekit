@@ -28,7 +28,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.coding_execute_recovery import (
+from yule_engineering.agents.job_queue.coding_execute_recovery import (
     BOOTSTRAP_RECOVERABLE_SUB_TOKENS,
     BOOTSTRAP_REQUIRED_REASON_PREFIX,
     _classify_bootstrap_reason,
@@ -36,15 +36,15 @@ from yule_orchestrator.agents.job_queue.coding_execute_recovery import (
     recover_bootstrap_required_rows,
     recover_target_repo_missing_rows,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     ENV_GREENFIELD_BOOTSTRAP_ENABLED,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     REASON_BOOTSTRAP_REQUIRED,
     REASON_TARGET_REPO_MISSING,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"

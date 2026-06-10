@@ -4,7 +4,7 @@ PR 리뷰 코멘트, GitHub Copilot 코멘트, 외부 에이전트 의견을 다
 
 ## 입력 포맷 (`ReviewFeedback`)
 
-`src/yule_orchestrator/agents/review_loop.py`의 `ReviewFeedback` 데이터클래스를 단일 입력 형식으로 사용한다. 어떤 출처든 이 형식으로 정규화해서 들어온다.
+`apps/engineering-agent/src/yule_engineering/agents/review_loop.py`의 `ReviewFeedback` 데이터클래스를 단일 입력 형식으로 사용한다. 어떤 출처든 이 형식으로 정규화해서 들어온다.
 
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |

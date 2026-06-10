@@ -71,7 +71,7 @@
 긴 세션은 LLM 입력 비용을 키우고 맥락을 흐린다. `/compact` 만으로는 압축 결과가 휘발한다.
 `compact-to-vault` 는 압축 요약을 **버리지 않고 vault 의 curated task-log 노트로 적립**한다.
 
-- 결정형 코어: [`src/yule_orchestrator/agents/harness/context_compaction.py`](../src/yule_orchestrator/agents/harness/context_compaction.py)
+- 결정형 코어: [`apps/engineering-agent/src/yule_engineering/agents/harness/context_compaction.py`](../apps/engineering-agent/src/yule_engineering/agents/harness/context_compaction.py)
   - `build_compaction_summary()` — 보호 영역(첫 3 / 최근 5 / decision / synthesis / focus)을 보존하며
     중간 turn 을 한 줄 placeholder(`audit_id` 역참조)로 접는다.
   - `write_compaction_note()` — `10-projects/<project>/task-logs/task-log-compact-<session>.md`

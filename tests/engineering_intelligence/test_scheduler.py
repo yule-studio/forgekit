@@ -10,17 +10,17 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.collector import (
+from yule_engineering.agents.engineering_intelligence.collector import (
     FakeSourceCollectorAdapter,
     collect_for_role_with_schedule,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     Importance,
     SourceAxis,
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.scheduler import (
+from yule_engineering.agents.engineering_intelligence.scheduler import (
     SourceRefreshState,
     compute_refresh_plan,
     overdue_axes_for_role,
@@ -212,7 +212,7 @@ class OverdueAxesTests(unittest.TestCase):
     def test_axis_with_recent_success_is_healthy(self) -> None:
         # Mark every backend axis source as successfully refreshed
         # within its interval — overdue list should be empty.
-        from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+        from yule_engineering.agents.engineering_intelligence.source_registry import (
             role_sources,
         )
 

@@ -9,21 +9,21 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.issue_context import (
+from yule_engineering.agents.github_workos.issue_context import (
     build_request_from_discord_intake,
     build_request_from_github_issue,
 )
-from yule_orchestrator.agents.github_workos.models import (
+from yule_engineering.agents.github_workos.models import (
     PermissionLevel,
     RoleWorkOrder,
 )
-from yule_orchestrator.agents.github_workos.policy import (
+from yule_engineering.agents.github_workos.policy import (
     ACTION_BRANCH_PLAN,
     ACTION_PUSH_COMMIT,
     ACTION_REAL_CODE_WRITE_REQUEST,
     ACTION_READY_PR,
 )
-from yule_orchestrator.agents.github_workos.triage import senior_triage
+from yule_engineering.agents.github_workos.triage import senior_triage
 
 
 def _issue(title: str, body: str = "") -> dict:

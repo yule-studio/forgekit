@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     CodingCommitError,
     DEFAULT_PLAN_FILE_REL,
     GithubAppDraftPRCreator,
@@ -27,7 +27,7 @@ from yule_orchestrator.agents.job_queue.coding_executor_live import (
     build_live_executor,
     detect_live_executor_availability,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
 )

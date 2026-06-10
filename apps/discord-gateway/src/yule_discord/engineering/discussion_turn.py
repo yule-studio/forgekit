@@ -48,11 +48,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
 )
-from yule_orchestrator.agents.discussion import (
+from yule_engineering.agents.discussion import (
     ContextPack,
     ContextPackBuilder,
     DiscussionHandoff,

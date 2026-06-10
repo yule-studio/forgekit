@@ -7,9 +7,9 @@
 | 계층 | 위치 | 역할 |
 | --- | --- | --- |
 | Manifest | `plugins/<id>/manifest.json`, `agents/<id>/manifest.json` | static 식별 / 훅 / 위험도 선언 |
-| Registry | `src/yule_orchestrator/agents/extension/plugin_registry.py`, `agent_registry.py` | in-memory lookup (id / hook / role) |
-| Loader | `src/yule_orchestrator/agents/extension/loader.py` | fs discovery + lazy `importlib` |
-| HookChain | `src/yule_orchestrator/agents/extension/hook_chain.py` | deterministic chain dispatch |
+| Registry | `apps/engineering-agent/src/yule_engineering/agents/extension/plugin_registry.py`, `agent_registry.py` | in-memory lookup (id / hook / role) |
+| Loader | `apps/engineering-agent/src/yule_engineering/agents/extension/loader.py` | fs discovery + lazy `importlib` |
+| HookChain | `apps/engineering-agent/src/yule_engineering/agents/extension/hook_chain.py` | deterministic chain dispatch |
 
 ## 2. 새 plugin 추가 절차
 
@@ -66,8 +66,8 @@ invoke_hook(event, payload, *, plugin_registry, module_loader=None, allow_high_r
 
 ## 7. 관련 코드 / 테스트
 
-- `src/yule_orchestrator/agents/extension/hook_chain.py`
-- `src/yule_orchestrator/agents/extension/loader.py`
+- `apps/engineering-agent/src/yule_engineering/agents/extension/hook_chain.py`
+- `apps/engineering-agent/src/yule_engineering/agents/extension/loader.py`
 - `tests/agents/test_hook_chain.py`
 - `tests/agents/test_extension_loader.py`
 - 선행: PR #105 (F11 MVP — manifest + registry), issue #102 / #107.

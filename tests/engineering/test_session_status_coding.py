@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.session_status import (
+from yule_engineering.agents.lifecycle.session_status import (
     CODING_JOB_READY,
     CODING_PROPOSAL_PENDING,
     diagnose_session,
@@ -101,7 +101,7 @@ class CodingProposalSignalsTests(unittest.TestCase):
 
 class DiagnosticRendererTests(unittest.TestCase):
     def test_render_summary_lists_coding_job_when_ready(self) -> None:
-        from yule_orchestrator.agents.lifecycle.session_status import render_diagnostic_summary
+        from yule_engineering.agents.lifecycle.session_status import render_diagnostic_summary
 
         session = _StatusFakeSession(
             session_id="s4",
@@ -120,7 +120,7 @@ class DiagnosticRendererTests(unittest.TestCase):
         self.assertIn("write_scope", text)
 
     def test_render_summary_marks_pending_proposal(self) -> None:
-        from yule_orchestrator.agents.lifecycle.session_status import render_diagnostic_summary
+        from yule_engineering.agents.lifecycle.session_status import render_diagnostic_summary
 
         session = _StatusFakeSession(
             session_id="s5",
@@ -128,7 +128,7 @@ class DiagnosticRendererTests(unittest.TestCase):
             extra={
                 "coding_proposal": {
                     "executor_role": "ai-engineer",
-                    "write_scope": ["src/yule_orchestrator/agents/runtime/**"],
+                    "write_scope": ["apps/engineering-agent/src/yule_engineering/agents/runtime/**"],
                 }
             },
         )
@@ -139,7 +139,7 @@ class DiagnosticRendererTests(unittest.TestCase):
 
 class SupervisorRendererTests(unittest.TestCase):
     def test_render_session_block_includes_coding_job_line(self) -> None:
-        from yule_orchestrator.cli.supervisor import render_session_block
+        from yule_engineering.cli.supervisor import render_session_block
 
         session = _StatusFakeSession(
             session_id="s6",
@@ -160,7 +160,7 @@ class SupervisorRendererTests(unittest.TestCase):
 
 class FormatStatusDiagnosticResponseTests(unittest.TestCase):
     def test_format_status_includes_coding_proposal_line(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             format_status_diagnostic_response,
         )
 
@@ -179,7 +179,7 @@ class FormatStatusDiagnosticResponseTests(unittest.TestCase):
         self.assertIn("qa-engineer", text)
 
     def test_format_status_includes_ready_coding_job_line(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             format_status_diagnostic_response,
         )
 

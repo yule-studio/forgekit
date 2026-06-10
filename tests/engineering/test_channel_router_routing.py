@@ -30,7 +30,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
@@ -591,9 +591,9 @@ class DecideRoutingWiringTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
+            "yule_engineering.discord.engineering_channel_router.main.decide_routing",
             wraps=__import__(
-                "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
+                "yule_engineering.agents.routing", fromlist=["decide_routing"]
             ).decide_routing,
         ) as decide_spy:
             self._route(message=message, research_loop_fn=loop_fn)
@@ -639,9 +639,9 @@ class DecideRoutingWiringTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
+            "yule_engineering.discord.engineering_channel_router.main.decide_routing",
             wraps=__import__(
-                "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
+                "yule_engineering.agents.routing", fromlist=["decide_routing"]
             ).decide_routing,
         ) as decide_spy:
             self._route(
@@ -681,9 +681,9 @@ class DecideRoutingWiringTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
+            "yule_engineering.discord.engineering_channel_router.main.decide_routing",
             wraps=__import__(
-                "yule_orchestrator.agents.routing", fromlist=["decide_routing"]
+                "yule_engineering.agents.routing", fromlist=["decide_routing"]
             ).decide_routing,
         ) as decide_spy:
             self._route(
@@ -710,7 +710,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
         self.assertEqual(result.routing_decision.action, "create_new_work")
 
     def test_route_joins_existing_when_decision_is_join(self) -> None:
-        from yule_orchestrator.agents.routing import EngineeringRoutingDecision
+        from yule_engineering.agents.routing import EngineeringRoutingDecision
 
         message = FakeMessage(
             content="기존 작업 이어가자",
@@ -734,7 +734,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
         kickoff_fn = AsyncMock(side_effect=AssertionError("kickoff should not run"))
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
+            "yule_engineering.discord.engineering_channel_router.main.decide_routing",
             return_value=EngineeringRoutingDecision(
                 action="join_existing_work",
                 matched_session_id="open-1",
@@ -765,7 +765,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
         kickoff_fn.assert_not_awaited()
 
     def test_route_asks_for_clarification_when_decision_is_ask(self) -> None:
-        from yule_orchestrator.agents.routing import (
+        from yule_engineering.agents.routing import (
             CandidateSummary,
             EngineeringRoutingDecision,
         )
@@ -781,7 +781,7 @@ class DecideRoutingWiringTests(unittest.TestCase):
         loop_fn = AsyncMock(side_effect=AssertionError("loop should not run"))
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router.main.decide_routing",
+            "yule_engineering.discord.engineering_channel_router.main.decide_routing",
             return_value=EngineeringRoutingDecision(
                 action="ask_for_clarification",
                 reason="후보 두 건이 비슷합니다",
@@ -881,7 +881,7 @@ class CoerceOutcomeForwardsResearchFieldsTestCase(unittest.TestCase):
     response object."""
 
     def test_coerce_pulls_research_fields_from_response(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             _coerce_outcome,
         )
 
@@ -901,7 +901,7 @@ class CoerceOutcomeForwardsResearchFieldsTestCase(unittest.TestCase):
         self.assertEqual(outcome.role_for_research, "engineering-agent/qa-engineer")
 
     def test_coerce_handles_missing_research_fields(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             _coerce_outcome,
         )
 

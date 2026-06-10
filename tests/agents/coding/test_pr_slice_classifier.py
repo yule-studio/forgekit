@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.pr_slice_classifier import (
+from yule_engineering.agents.coding.pr_slice_classifier import (
     PRSliceClassification,
     PR_SIZE_WARNING_THRESHOLD,
     SLICE_CREATE,

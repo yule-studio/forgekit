@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.static_analysis import (
+from yule_engineering.agents.static_analysis import (
     DEFAULT_TIMEOUT_SECONDS,
     LSP_ROLE_RUNNER_CHAINS,
     LspFinding,
@@ -35,7 +35,7 @@ from yule_orchestrator.agents.static_analysis import (
     judge_lsp_preflight,
     resolve_runner_chain,
 )
-from yule_orchestrator.agents.static_analysis.lsp_preflight import (
+from yule_engineering.agents.static_analysis.lsp_preflight import (
     ENV_PREFLIGHT_ENABLED,
     ENV_RUNNERS,
     ENV_TIMEOUT_SECONDS,
@@ -43,19 +43,19 @@ from yule_orchestrator.agents.static_analysis.lsp_preflight import (
     SEVERITY_INFO,
     SEVERITY_WARNING,
 )
-from yule_orchestrator.agents.static_analysis.runners import build_runner_registry
-from yule_orchestrator.agents.static_analysis.runners.go import GoRunner
-from yule_orchestrator.agents.static_analysis.runners.python_mypy import (
+from yule_engineering.agents.static_analysis.runners import build_runner_registry
+from yule_engineering.agents.static_analysis.runners.go import GoRunner
+from yule_engineering.agents.static_analysis.runners.python_mypy import (
     PythonMypyRunner,
 )
-from yule_orchestrator.agents.static_analysis.runners.python_pyright import (
+from yule_engineering.agents.static_analysis.runners.python_pyright import (
     PythonPyrightRunner,
 )
-from yule_orchestrator.agents.static_analysis.runners.python_ruff import (
+from yule_engineering.agents.static_analysis.runners.python_ruff import (
     PythonRuffRunner,
 )
-from yule_orchestrator.agents.static_analysis.runners.rust import RustRunner
-from yule_orchestrator.agents.static_analysis.runners.typescript import (
+from yule_engineering.agents.static_analysis.runners.rust import RustRunner
+from yule_engineering.agents.static_analysis.runners.typescript import (
     TypescriptRunner,
 )
 
@@ -184,7 +184,7 @@ class PythonRuffRunnerTests(unittest.TestCase):
     def test_missing_binary_advisory(self) -> None:
         runner = PythonRuffRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_ruff.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_ruff.which_binary",
             return_value=None,
         ):
             result = runner.run(["foo.py"], subprocess_runner=_fake_runner())
@@ -211,7 +211,7 @@ class PythonRuffRunnerTests(unittest.TestCase):
         )
         runner = PythonRuffRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_ruff.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_ruff.which_binary",
             return_value="/usr/bin/ruff",
         ):
             result = runner.run(
@@ -228,7 +228,7 @@ class PythonPyrightRunnerTests(unittest.TestCase):
     def test_missing_binary_advisory(self) -> None:
         runner = PythonPyrightRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_pyright.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_pyright.which_binary",
             return_value=None,
         ):
             result = runner.run(["foo.py"], subprocess_runner=_fake_runner())
@@ -256,7 +256,7 @@ class PythonPyrightRunnerTests(unittest.TestCase):
         )
         runner = PythonPyrightRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_pyright.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_pyright.which_binary",
             return_value="/usr/bin/pyright",
         ):
             result = runner.run(
@@ -273,7 +273,7 @@ class PythonMypyRunnerTests(unittest.TestCase):
     def test_missing_binary_advisory(self) -> None:
         runner = PythonMypyRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_mypy.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_mypy.which_binary",
             return_value=None,
         ):
             result = runner.run(["foo.py"], subprocess_runner=_fake_runner())
@@ -287,7 +287,7 @@ class PythonMypyRunnerTests(unittest.TestCase):
         )
         runner = PythonMypyRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_mypy.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_mypy.which_binary",
             return_value="/usr/bin/mypy",
         ):
             result = runner.run(
@@ -304,7 +304,7 @@ class TypescriptRunnerTests(unittest.TestCase):
     def test_missing_binary_advisory(self) -> None:
         runner = TypescriptRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.typescript.which_binary",
+            "yule_engineering.agents.static_analysis.runners.typescript.which_binary",
             return_value=None,
         ):
             result = runner.run(["src/foo.ts"], subprocess_runner=_fake_runner())
@@ -317,7 +317,7 @@ class TypescriptRunnerTests(unittest.TestCase):
         )
         runner = TypescriptRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.typescript.which_binary",
+            "yule_engineering.agents.static_analysis.runners.typescript.which_binary",
             return_value="/usr/bin/tsc",
         ):
             result = runner.run(
@@ -334,7 +334,7 @@ class GoRunnerTests(unittest.TestCase):
     def test_missing_binary_advisory(self) -> None:
         runner = GoRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.go.which_binary",
+            "yule_engineering.agents.static_analysis.runners.go.which_binary",
             return_value=None,
         ):
             result = runner.run(["./..."], subprocess_runner=_fake_runner())
@@ -344,7 +344,7 @@ class GoRunnerTests(unittest.TestCase):
         stderr = "main.go:14:9: shadow: declaration of \"err\" shadows declaration\n"
         runner = GoRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.go.which_binary",
+            "yule_engineering.agents.static_analysis.runners.go.which_binary",
             return_value="/usr/bin/go",
         ):
             result = runner.run(
@@ -360,7 +360,7 @@ class RustRunnerTests(unittest.TestCase):
     def test_missing_binary_advisory(self) -> None:
         runner = RustRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.rust.which_binary",
+            "yule_engineering.agents.static_analysis.runners.rust.which_binary",
             return_value=None,
         ):
             result = runner.run([], subprocess_runner=_fake_runner())
@@ -392,7 +392,7 @@ class RustRunnerTests(unittest.TestCase):
         )
         runner = RustRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.rust.which_binary",
+            "yule_engineering.agents.static_analysis.runners.rust.which_binary",
             return_value="/usr/bin/cargo",
         ):
             result = runner.run(
@@ -545,7 +545,7 @@ class TimeoutClampTests(unittest.TestCase):
 
         ruff = PythonRuffRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_ruff.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_ruff.which_binary",
             return_value="/usr/bin/ruff",
         ):
             ruff.run(["foo.py"], timeout=600, subprocess_runner=runner)

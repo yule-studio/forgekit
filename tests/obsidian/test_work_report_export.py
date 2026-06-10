@@ -10,12 +10,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.obsidian.export import (
+from yule_engineering.agents.obsidian.export import (
     PROJECT_WORK_REPORTS_SUBDIR,
     recommend_path,
     render_work_report_note,
 )
-from yule_orchestrator.agents.reports.work_report import WorkReport
+from yule_engineering.agents.reports.work_report import WorkReport
 
 
 class WorkReportPathRoutingTests(unittest.TestCase):

@@ -38,11 +38,11 @@ gateway 가 너무 많은 요청을 새 research / intake 처럼 처리:
 | 위치 | C/U | 책임 |
 | --- | --- | --- |
 | `docs/p0j-coding-bootstrap-and-readonly-intents.md` | C | 본 doc. |
-| `src/yule_orchestrator/agents/coding/stack_detector.py` | C | STACK_LEXICON + detect_stacks + classify_full_stack. |
-| `src/yule_orchestrator/agents/coding/official_docs_seed.py` | C | STACK_TO_DOCS + seed_official_docs. |
-| `src/yule_orchestrator/agents/messaging/dispatcher.py` | U | TaskType.FULL_STACK_APP 추가 + TASK_ROLE_SEQUENCE 매핑. |
-| `src/yule_orchestrator/discord/engineering_conversation.py` | U | `_suggest_task_type` 가 combo 우선 / 5 신규 intent 분류 + responders / hard rule (auto_collect 차단) / wire-in. |
-| `src/yule_orchestrator/agents/coding/coding_bootstrap.py` | C | should_bypass_insufficiency(text, user_links). |
+| `apps/engineering-agent/src/yule_engineering/agents/coding/stack_detector.py` | C | STACK_LEXICON + detect_stacks + classify_full_stack. |
+| `apps/engineering-agent/src/yule_engineering/agents/coding/official_docs_seed.py` | C | STACK_TO_DOCS + seed_official_docs. |
+| `apps/engineering-agent/src/yule_engineering/agents/messaging/dispatcher.py` | U | TaskType.FULL_STACK_APP 추가 + TASK_ROLE_SEQUENCE 매핑. |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_conversation.py` | U | `_suggest_task_type` 가 combo 우선 / 5 신규 intent 분류 + responders / hard rule (auto_collect 차단) / wire-in. |
+| `apps/engineering-agent/src/yule_engineering/agents/coding/coding_bootstrap.py` | C | should_bypass_insufficiency(text, user_links). |
 | `tests/agents/coding/test_stack_detector.py` | C | (+ 4 추가 test 파일). |
 
 ## 3. 신규 conversation intents

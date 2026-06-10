@@ -19,8 +19,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-import yule_orchestrator.discord.commands as discord_commands
-from yule_orchestrator.agents import WorkflowError
+import yule_engineering.discord.commands as discord_commands
+from yule_engineering.agents import WorkflowError
 
 
 class EngineerWorkflowSlashHelpersTestCase(unittest.TestCase):

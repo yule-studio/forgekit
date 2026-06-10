@@ -138,7 +138,7 @@ async def route_forum_message(
     # Branch 1 — Obsidian save request → ApprovalRequest producer.
     # ------------------------------------------------------------------
 
-    from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+    from yule_engineering.agents.job_queue.forum_obsidian_handoff import (
         SKIPPED_NOT_SAVE_REQUEST,
         render_handoff_response,
         route_forum_obsidian_save_request,
@@ -190,7 +190,7 @@ async def route_forum_message(
     # Branch 2 — role-change request ("QA도 참여시켜").
     # ------------------------------------------------------------------
 
-    from yule_orchestrator.agents.lifecycle.role_selection import (
+    from yule_engineering.agents.lifecycle.role_selection import (
         ROLE_TECH_LEAD,
         apply_role_change,
         append_role_change_audit,
@@ -321,16 +321,16 @@ def _resolve_queue_deps(*, queue, approval_worker, session_lister):
 
     if queue is not None and approval_worker is not None and session_lister is not None:
         return queue, approval_worker, session_lister
-    from yule_orchestrator.agents.job_queue import (
+    from yule_engineering.agents.job_queue import (
         ApprovalWorker,
         HeartbeatStore,
         JobQueue,
     )
-    from yule_orchestrator.agents.job_queue.approval_discord_poster import (
+    from yule_engineering.agents.job_queue.approval_discord_poster import (
         build_approval_channel_resolver,
         build_production_post_fn,
     )
-    from yule_orchestrator.agents.workflow_state import list_sessions as _list_sessions
+    from yule_engineering.agents.workflow_state import list_sessions as _list_sessions
 
     q = queue or JobQueue()
     if approval_worker is None:
@@ -366,8 +366,8 @@ def _resolve_obsidian_writer_worker(*, obsidian_writer_worker, queue):
     if obsidian_writer_worker is not None:
         return obsidian_writer_worker
     try:
-        from yule_orchestrator.agents.job_queue import HeartbeatStore
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue import HeartbeatStore
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             ObsidianWriterWorker,
             default_render_fn,
             default_vault_root_resolver,
@@ -395,7 +395,7 @@ def _resolve_session_persistence(*, session_loader, session_updater):
     if session_loader is not None and session_updater is not None:
         return session_loader, session_updater
     try:
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             load_session as _load,
             update_session as _update,
         )

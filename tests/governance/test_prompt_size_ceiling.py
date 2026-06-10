@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.preamble import build_default_preamble
+from yule_engineering.agents.preamble import build_default_preamble
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

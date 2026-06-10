@@ -23,7 +23,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.memory import (
+from yule_engineering.agents.memory import (
     ENV_LONG_TERM_MEMORY_ENABLED,
     LongTermMemory,
     MemoryFilter,

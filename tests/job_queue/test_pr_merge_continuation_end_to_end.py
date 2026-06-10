@@ -30,10 +30,10 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.coding_session_context import (
+from yule_engineering.agents.coding.coding_session_context import (
     prepare_coding_session_context,
 )
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_DECIDED_AT,
     EXTRA_DECIDED_BY,
     EXTRA_SCOPE,
@@ -47,27 +47,27 @@ from yule_orchestrator.agents.lifecycle.session_mode import (
     ensure_session_mode,
     parse_mode_hints,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
     WorktreeContext,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.next_slice_dispatcher import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.next_slice_dispatcher import (
     EXTRA_CODING_BACKLOG,
     EXTRA_SESSION_COMPLETED_REASON,
     NextSliceAction,
     decide_next_slice,
     dispatch_next_coding_slice,
 )
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.pr_approval import (
     PRMergeProposal,
     PRMergeReplyDispatch,
     PRMergeReplyIntent,
     PRMergeReplyResult,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+from yule_engineering.agents.job_queue.pr_merge_continuation import (
     EXTRA_PR_MERGE_AUDIT,
     EXTRA_PR_MERGE_PR_NUMBER,
     EXTRA_PR_MERGE_REPO,
@@ -76,7 +76,7 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
     STAGE_PR_MERGE_PENDING,
     STAGE_PR_MERGED,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
+from yule_engineering.agents.job_queue.pr_merge_continuation_worker import (
     ACTION_APPROVAL_CARD_ENQUEUED,
     ACTION_AUTONOMOUS_MERGE_BLOCKED,
     ACTION_AUTONOMOUS_MERGE_SUCCEEDED,
@@ -84,9 +84,9 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
     advance_pending_session,
     iter_pending_session_ids,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
@@ -366,7 +366,7 @@ class ApprovalReplyRoutingTests(unittest.TestCase):
         직접 import 가 가능한 helper 를 단위 테스트 — Discord 객체 없이.
         """
 
-        from yule_orchestrator.discord.approval import reply_router as router_mod
+        from yule_engineering.discord.approval import reply_router as router_mod
 
         # ``handle_pr_merge_approval_reply`` 를 fake 로 교체해서 호출되는지
         # 확인. 진짜 queue scan 까지 하지 않아도 wiring 만 검증되면 충분.
@@ -427,7 +427,7 @@ class ApprovalReplyRoutingTests(unittest.TestCase):
         self.assertEqual(called["kwargs"]["session_id"], "s")
         self.assertEqual(len(sent), 1)
         # merge_disabled 면 RESPONSE_PR_MERGE_DISABLED 가 ack
-        from yule_orchestrator.discord.approval.reply_router import (
+        from yule_engineering.discord.approval.reply_router import (
             RESPONSE_PR_MERGE_DISABLED,
         )
 
@@ -652,7 +652,7 @@ class FrontendBackendPlanningMetadataTests(unittest.TestCase):
         }
         # decide_post_pr_action 이 stage 를 머지하면 role_takes / role_reviews
         # 는 절대 덮어쓰지 않아야 한다.
-        from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+        from yule_engineering.agents.job_queue.pr_merge_continuation import (
             decide_post_pr_action,
         )
 

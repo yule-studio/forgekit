@@ -188,7 +188,7 @@ contract: research-forum-export/v0
 
 ## 8. Adapter 계층 (`discord/research_forum.py`)
 
-본 정책 v0의 게시·댓글 규약을 코드로 옮긴 모듈. 진실 소스는 `src/yule_orchestrator/discord/research_forum.py`. 대부분이 순수 함수이고 Discord API와 닿는 면적은 `create_research_post` / `post_agent_comment` 두 함수뿐이다.
+본 정책 v0의 게시·댓글 규약을 코드로 옮긴 모듈. 진실 소스는 `apps/engineering-agent/src/yule_engineering/discord/research_forum.py`. 대부분이 순수 함수이고 Discord API와 닿는 면적은 `create_research_post` / `post_agent_comment` 두 함수뿐이다.
 
 ### 8.1 공개 표면
 

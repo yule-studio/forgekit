@@ -12,7 +12,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.preamble import (
+from yule_engineering.agents.preamble import (
     Preamble,
     PreambleBuilder,
     PreambleCache,
@@ -20,7 +20,7 @@ from yule_orchestrator.agents.preamble import (
     build_default_preamble,
     get_shared_cache,
 )
-from yule_orchestrator.agents.preamble.cache import reset_shared_cache_for_tests
+from yule_engineering.agents.preamble.cache import reset_shared_cache_for_tests
 
 
 class PreambleBuilderTests(unittest.TestCase):

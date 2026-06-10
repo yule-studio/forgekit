@@ -9,11 +9,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.messaging.dispatcher import (
+from yule_engineering.agents.messaging.dispatcher import (
     TASK_ROLE_SEQUENCE,
     TaskType,
 )
-from yule_orchestrator.discord.engineering_conversation import (
+from yule_engineering.discord.engineering_conversation import (
     _suggest_task_type,
 )
 

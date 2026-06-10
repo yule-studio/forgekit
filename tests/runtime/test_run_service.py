@@ -18,7 +18,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.run_service import (
+from yule_engineering.runtime.run_service import (
     EXIT_UNKNOWN_SERVICE,
     parse_args_and_run,
     run_service_main,

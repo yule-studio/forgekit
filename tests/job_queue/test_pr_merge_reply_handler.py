@@ -18,13 +18,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeProposal,
     PRMergeReplyDispatch,
@@ -32,7 +32,7 @@ from yule_orchestrator.agents.job_queue.pr_approval import (
     PRMergeReplyResult,
     handle_pr_merge_approval_reply,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _proposal(**overrides) -> PRMergeProposal:
@@ -82,7 +82,7 @@ class _Fixture(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         """Enqueue a PR_MERGE approval card so the handler can find it."""
 
-        from yule_orchestrator.discord.integrations.pr_merge_adapter import (
+        from yule_engineering.discord.integrations.pr_merge_adapter import (
             enqueue_pr_merge_approval,
         )
         from types import SimpleNamespace

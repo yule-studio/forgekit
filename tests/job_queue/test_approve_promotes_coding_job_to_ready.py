@@ -25,21 +25,21 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     CodingAuthorizationProposal,
     LIFECYCLE_MODE_IMPLEMENTATION,
 )
-from yule_orchestrator.agents.coding.job import STATUS_READY
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.coding.job import STATUS_READY
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     SESSION_EXTRA_DISPATCH_KEY,
     iter_ready_coding_jobs,
 )
-from yule_orchestrator.agents.workflow_state import load_session, update_session
+from yule_engineering.agents.workflow_state import load_session, update_session
 from datetime import datetime, timezone
 from pathlib import Path
 

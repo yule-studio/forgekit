@@ -20,7 +20,7 @@ preconditions:
 references:
   - policies/runtime/agents/engineering-agent/ecc-foundation.md
   - policies/runtime/agents/engineering-agent/lifecycle-mvp.md
-  - src/yule_orchestrator/agents/lifecycle_status.py
+  - apps/engineering-agent/src/yule_engineering/agents/lifecycle_status.py
 related_skills:
   - skills/research-collect.md
 ---
@@ -98,9 +98,9 @@ deliberation 진입 직전
 
 본 markdown 은 정책 명시화. 실제 코드 측면 enforcement 는 이미 다음에 존재한다:
 
-- `src/yule_orchestrator/agents/lifecycle_status.py::compute_lifecycle_status` — work_report status 평가
-- `src/yule_orchestrator/agents/lifecycle_status.py::can_generate_final_work_report` — research_status 가 missing 이면 final 금지
-- `src/yule_orchestrator/agents/lifecycle_status.py::can_write_obsidian_record` — obsidian write gate
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle_status.py::compute_lifecycle_status` — work_report status 평가
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle_status.py::can_generate_final_work_report` — research_status 가 missing 이면 final 금지
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle_status.py::can_write_obsidian_record` — obsidian write gate
 
 본 hook 의 dispatcher 가 land 하면 위 함수들을 호출하는 wiring 만 추가하면 됨. 새 enforcement 코드 작성 불필요.
 

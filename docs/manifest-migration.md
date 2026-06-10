@@ -69,12 +69,12 @@ F11 core 필드는 캐노니컬 값으로 정정 (placeholder 였던
 
 다음 6 개 코드 경로를 `manifest.json` 으로 일괄 전환:
 
-- `src/yule_orchestrator/core/context_loader.py`
-- `src/yule_orchestrator/discord/member_bots.py`
-- `src/yule_orchestrator/agents/role_profiles.py`
-- `src/yule_orchestrator/agents/coding/authorization.py`
-- `src/yule_orchestrator/agents/runners/github_copilot.py` (docstring)
-- `src/yule_orchestrator/agents/messaging/registry.py` (docstring)
+- `apps/engineering-agent/src/yule_engineering/core/context_loader.py`
+- `apps/engineering-agent/src/yule_engineering/discord/member_bots.py`
+- `apps/engineering-agent/src/yule_engineering/agents/role_profiles.py`
+- `apps/engineering-agent/src/yule_engineering/agents/coding/authorization.py`
+- `apps/engineering-agent/src/yule_engineering/agents/runners/github_copilot.py` (docstring)
+- `apps/engineering-agent/src/yule_engineering/agents/messaging/registry.py` (docstring)
 
 동시에 부서 레벨 파일을 git mv:
 

@@ -29,7 +29,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.status import (
+from yule_engineering.runtime.status import (
     ACTION_KIND_AUTONOMY_ERROR,
     ACTION_KIND_BLOCKED,
     ACTION_KIND_CIRCUIT_OPEN,

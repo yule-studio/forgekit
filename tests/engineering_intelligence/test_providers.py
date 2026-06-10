@@ -9,20 +9,20 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     CollectionMode,
     SourceEntry,
     SourceKind,
     SourceTier,
 )
-from yule_orchestrator.agents.engineering_intelligence.providers import (
+from yule_engineering.agents.engineering_intelligence.providers import (
     LiveProviderSpec,
     ProviderTransport,
     StubLiveSourceFetcher,
     provider_spec_for,
     specs_for_role,
 )
-from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+from yule_engineering.agents.engineering_intelligence.source_registry import (
     SUPPORTED_ROLES,
     find_source,
 )

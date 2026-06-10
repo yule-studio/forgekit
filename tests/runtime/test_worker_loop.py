@@ -19,10 +19,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.worker_loop import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
     run_worker_loop,
 )
@@ -231,7 +231,7 @@ class SupervisorWatchLoopTests(_Fixture):
         sweep_calls: List[float] = []
 
         def fake_sweep(*, heartbeat_store, job_queue, deadline_seconds):
-            from yule_orchestrator.agents.job_queue.heartbeat import (
+            from yule_engineering.agents.job_queue.heartbeat import (
                 SupervisorSweepReport,
             )
 
@@ -265,7 +265,7 @@ class SupervisorWatchLoopTests(_Fixture):
             attempts.append(1)
             if len(attempts) == 1:
                 raise RuntimeError("sqlite blip")
-            from yule_orchestrator.agents.job_queue.heartbeat import (
+            from yule_engineering.agents.job_queue.heartbeat import (
                 SupervisorSweepReport,
             )
 

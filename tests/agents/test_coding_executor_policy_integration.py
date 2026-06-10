@@ -28,14 +28,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.governance.runtime_policy import (
+from yule_engineering.agents.governance.runtime_policy import (
     PR_REQUIRED_SECTIONS,
     validate_pr_body,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     _draft_pr_body,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     REASON_BRANCH_POLICY_VIOLATION,
@@ -44,10 +44,10 @@ from yule_orchestrator.agents.job_queue.coding_executor_worker import (
     REASON_TEST_FAILED,
     WorktreeContext,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     PROGRESS_CODING_BLOCKED,
     PROGRESS_CODING_IN_PROGRESS,
     PROGRESS_DRAFT_PR_OPENED,
@@ -112,7 +112,7 @@ def _patch_workflow_state(registry: _SessionRegistry):
     progress markers on session.extra.
     """
 
-    from yule_orchestrator.agents import workflow_state as _ws
+    from yule_engineering.agents import workflow_state as _ws
 
     def _load(session_id: str):
         return registry.sessions.get(session_id)
@@ -182,7 +182,7 @@ class _Fixture(unittest.TestCase):
         self.addCleanup(self._restore_workflow_state)
 
     def _restore_workflow_state(self) -> None:
-        from yule_orchestrator.agents import workflow_state as _ws
+        from yule_engineering.agents import workflow_state as _ws
 
         _ws.load_session = self._origs[0]
         _ws.update_session = self._origs[1]

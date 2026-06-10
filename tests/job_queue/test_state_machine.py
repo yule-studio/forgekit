@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.state_machine import (
+from yule_engineering.agents.job_queue.state_machine import (
     JobState,
     STATE_TRANSITIONS,
     TERMINAL_STATES,

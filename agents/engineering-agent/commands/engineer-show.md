@@ -11,7 +11,7 @@ autonomy_level: L0_AUTO_RECORD_OPTIONAL
 required_approval: false
 references:
   - docs/engineering.md
-  - src/yule_orchestrator/cli/engineer.py
+  - apps/engineering-agent/src/yule_engineering/cli/engineer.py
   - policies/runtime/agents/engineering-agent/lifecycle-mvp.md
 related_skills:
   - skills/research-collect.md

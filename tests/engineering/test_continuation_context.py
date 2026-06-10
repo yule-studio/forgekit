@@ -20,13 +20,13 @@ except ModuleNotFoundError:
 
 from tests._helpers import isolate_cache_for_test as _isolate_cache_for_test
 
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
     save_session,
 )
-from yule_orchestrator.discord.bot import (
+from yule_engineering.discord.bot import (
     _is_command_only_prompt,
     _record_engineering_continuation,
 )
@@ -168,7 +168,7 @@ class RecordEngineeringContinuationTests(unittest.TestCase):
 
 class ExtractSessionIdFromTextTests(unittest.TestCase):
     def test_pulls_id_from_korean_status_question(self) -> None:
-        from yule_orchestrator.discord.bot import _extract_session_id_from_text
+        from yule_engineering.discord.bot import _extract_session_id_from_text
 
         cases = (
             "세션 a8d1707808ac 기준으로 운영 리서치 어디까지 됐어?",
@@ -183,7 +183,7 @@ class ExtractSessionIdFromTextTests(unittest.TestCase):
                 )
 
     def test_returns_none_when_no_session_keyword(self) -> None:
-        from yule_orchestrator.discord.bot import _extract_session_id_from_text
+        from yule_engineering.discord.bot import _extract_session_id_from_text
 
         # A bare 12-hex token without "세션"/"session" must NOT match —
         # otherwise random hashes in URLs / commit shas would hijack.
@@ -193,7 +193,7 @@ class ExtractSessionIdFromTextTests(unittest.TestCase):
         self.assertIsNone(_extract_session_id_from_text(""))
 
     def test_returns_none_for_short_hex(self) -> None:
-        from yule_orchestrator.discord.bot import _extract_session_id_from_text
+        from yule_engineering.discord.bot import _extract_session_id_from_text
 
         self.assertIsNone(_extract_session_id_from_text("세션 abcd 어디"))
 
@@ -203,13 +203,13 @@ class FindSessionWithResumedThreadTests(unittest.TestCase):
         _isolate_cache_for_test(self)
 
     def test_finds_session_via_extra_resumed_thread_id(self) -> None:
-        from yule_orchestrator.discord.bot import _find_session_with_resumed_thread
+        from yule_engineering.discord.bot import _find_session_with_resumed_thread
 
         session = _seed_session()
         # Manually persist resumed_thread_id (not on session.thread_id)
         # so the helper has to read session.extra.
         from dataclasses import replace
-        from yule_orchestrator.agents.workflow_state import update_session
+        from yule_engineering.agents.workflow_state import update_session
 
         updated = replace(
             session,
@@ -222,7 +222,7 @@ class FindSessionWithResumedThreadTests(unittest.TestCase):
         self.assertEqual(match.session_id, "abc123def456")
 
     def test_returns_none_when_no_match(self) -> None:
-        from yule_orchestrator.discord.bot import _find_session_with_resumed_thread
+        from yule_engineering.discord.bot import _find_session_with_resumed_thread
 
         _seed_session()
         self.assertIsNone(_find_session_with_resumed_thread(7777))
@@ -230,7 +230,7 @@ class FindSessionWithResumedThreadTests(unittest.TestCase):
 
 class StatusDiagnosticSurfacingTests(unittest.TestCase):
     def test_canonical_prompt_override_appears_in_diagnostic_body(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             format_status_diagnostic_response,
         )
 
@@ -260,7 +260,7 @@ class StatusDiagnosticSurfacingTests(unittest.TestCase):
         self.assertNotIn("최근 continuation prompt", body)
 
     def test_continuation_prompt_appears_when_distinct_from_canonical(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             format_status_diagnostic_response,
         )
 

@@ -32,7 +32,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
@@ -41,7 +41,7 @@ from yule_orchestrator.discord.engineering_channel_router import (
     persist_research_forum_status,
     route_engineering_message,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
 
 
 class _MutableSession:
@@ -80,7 +80,7 @@ class PersistThreadIdTests(unittest.TestCase):
         # ``replace`` + ``update_session`` path doesn't raise and
         # returns an updated dataclass.
         _isolate_cache_for_test(self)
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             save_session,
             load_session,
         )

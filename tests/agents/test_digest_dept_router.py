@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.digest.dept_router import (
+from yule_engineering.agents.digest.dept_router import (
     DEPARTMENTS,
     classify_evidence,
 )

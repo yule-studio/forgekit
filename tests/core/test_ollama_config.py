@@ -8,7 +8,7 @@ except ModuleNotFoundError:
 import unittest
 from unittest.mock import patch
 
-from yule_orchestrator.planning.ollama_config import (
+from yule_engineering.planning.ollama_config import (
     load_ollama_conversation_config,
     load_ollama_planning_config,
 )

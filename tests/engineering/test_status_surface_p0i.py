@@ -19,10 +19,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.session_status import (
+from yule_engineering.agents.lifecycle.session_status import (
     diagnose_session,
 )
-from yule_orchestrator.discord.engineering_conversation import (
+from yule_engineering.discord.engineering_conversation import (
     format_status_diagnostic_response,
 )
 

@@ -17,5 +17,5 @@
   "autonomy_level": "advisory",
   "paste_guard_required": true,
   "risk_class": "MEDIUM",
-  "module_path": "yule_orchestrator.agents.learning.mistake_ledger"
+  "module_path": "yule_engineering.agents.learning.mistake_ledger"
 }

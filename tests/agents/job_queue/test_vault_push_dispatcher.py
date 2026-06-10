@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.vault_push_dispatcher import (
+from yule_engineering.agents.job_queue.vault_push_dispatcher import (
     ACTION_VAULT_REMOTE_PUSH,
     ACTION_VAULT_RESEARCH_LOG_COMMIT,
     STATUS_INVALID_REQUEST,

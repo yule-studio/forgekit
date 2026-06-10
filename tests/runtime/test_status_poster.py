@@ -34,19 +34,19 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_discord_poster import (
+from yule_engineering.agents.job_queue.approval_discord_poster import (
     PostResponse,
 )
-from yule_orchestrator.runtime.circuit_breaker import (
+from yule_engineering.runtime.circuit_breaker import (
     CircuitBreakerPolicy,
     CircuitBreakerRegistry,
 )
-from yule_orchestrator.runtime.fallback import (
+from yule_engineering.runtime.fallback import (
     FALLBACK_AUTHORITY_DETERMINISTIC_TEMPLATE,
     build_fallback_audit_record,
     summarise_role_results,
 )
-from yule_orchestrator.runtime.status import (
+from yule_engineering.runtime.status import (
     HEALTH_ALIVE,
     HEALTH_STALE,
     HEALTH_UNKNOWN,
@@ -55,7 +55,7 @@ from yule_orchestrator.runtime.status import (
     RuntimeStatusReport,
     ServiceStatus,
 )
-from yule_orchestrator.runtime.status_poster import (
+from yule_engineering.runtime.status_poster import (
     GUILD_ID_ENV,
     STATUS_CHANNEL_ID_ENV,
     STATUS_CHANNEL_NAME_ENV,

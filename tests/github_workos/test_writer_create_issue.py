@@ -22,13 +22,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.audit import (
+from yule_engineering.agents.github_workos.audit import (
     ACTION_GITHUB_ISSUE_CREATE,
     OUTCOME_DENIED_BY_POLICY,
     OUTCOME_DRY_RUN,
     OUTCOME_OK,
 )
-from yule_orchestrator.agents.github_workos.github_writer import (
+from yule_engineering.agents.github_workos.github_writer import (
     GithubWriter,
     PolicyGateDecision,
     make_default_policy_gate,
@@ -171,7 +171,7 @@ class _FakeHTTP:
         self.gotten: List[Dict[str, Any]] = []
 
     def post(self, url, *, headers, body):
-        from yule_orchestrator.github_app.client import HTTPResponse
+        from yule_engineering.github_app.client import HTTPResponse
 
         self.posted.append({"url": url, "headers": dict(headers), "body": dict(body)})
         # Token mint endpoint — return a fake installation token.
@@ -191,7 +191,7 @@ class _FakeHTTP:
         return HTTPResponse(status=201, body={})
 
     def get(self, url, *, headers):  # pragma: no cover - unused here
-        from yule_orchestrator.github_app.client import HTTPResponse
+        from yule_engineering.github_app.client import HTTPResponse
 
         self.gotten.append({"url": url, "headers": dict(headers)})
         return HTTPResponse(status=200, body={})
@@ -203,8 +203,8 @@ class _NullSigner:
 
 
 def _build_live_client(http: _FakeHTTP):
-    from yule_orchestrator.github_app.live_client import LiveGithubAppClient
-    from yule_orchestrator.github_app.config import GitHubAppConfig
+    from yule_engineering.github_app.live_client import LiveGithubAppClient
+    from yule_engineering.github_app.config import GitHubAppConfig
 
     cfg = GitHubAppConfig(
         app_id="123",

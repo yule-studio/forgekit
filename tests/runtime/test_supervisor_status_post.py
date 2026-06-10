@@ -21,12 +21,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import (
+from yule_engineering.agents.job_queue.heartbeat import (
     HeartbeatStore,
     SupervisorSweepReport,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.worker_loop import (
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
 )
 
@@ -181,7 +181,7 @@ class SelfImprovementDispatchCadenceTests(_LoopFixture):
     on. Failures in detect_fn / dispatch_fn must not crash the loop."""
 
     def _signal(self):
-        from yule_orchestrator.agents.lifecycle.self_improvement import (
+        from yule_engineering.agents.lifecycle.self_improvement import (
             SEVERITY_MEDIUM,
             SIGNAL_FAILED_RETRYABLE_PILEUP,
             SelfImprovementSignal,
@@ -196,7 +196,7 @@ class SelfImprovementDispatchCadenceTests(_LoopFixture):
         )
 
     def test_dispatch_fn_receives_signal_and_plan(self) -> None:
-        from yule_orchestrator.agents.lifecycle.self_improvement import (
+        from yule_engineering.agents.lifecycle.self_improvement import (
             SelfImprovementProposal,
         )
 

@@ -30,7 +30,7 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_BACKEND_ENGINEER_",
   "autonomy_level": "supervised",
   "risk_class": "MEDIUM",
-  "module_path": "yule_orchestrator.agents.engineering.backend_engineer.runner",
+  "module_path": "yule_engineering.agents.engineering.backend_engineer.runner",
   "discord_token_env": "ENGINEERING_AGENT_BOT_BACKEND_ENGINEER_TOKEN",
   "instruction_entry": "agents/engineering-agent/backend-engineer/CLAUDE.md",
   "description": "Backend Engineer는 제품 요구사항을 안정적인 서버 계약, 도메인 규칙, 데이터 정합성, 권한 경계, 실패 복구 전략으로 변환하는 engineering-agent 멤버다. 단순 구현보다 API 계약의 신뢰성, DB 무결성, 트랜잭션 안정성, 운영 관측 가능성을 우선하며, frontend/AI/QA/devops가 의존할 수 있는 backend handoff를 제공한다.",

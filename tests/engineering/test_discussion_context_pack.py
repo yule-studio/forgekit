@@ -1,4 +1,4 @@
-"""Tests for ``yule_orchestrator.agents.discussion.context_pack``."""
+"""Tests for ``yule_engineering.agents.discussion.context_pack``."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.discussion import (
+from yule_engineering.agents.discussion import (
     CodeHint,
     ContextPack,
     ContextPackBuilder,
@@ -22,7 +22,7 @@ from yule_orchestrator.agents.discussion import (
     RelevantMemorySelector,
     ThreadMessage,
 )
-from yule_orchestrator.agents.engineering_intelligence import (
+from yule_engineering.agents.engineering_intelligence import (
     KnowledgeRecord,
     KnowledgeRetriever,
     SourceAxis,

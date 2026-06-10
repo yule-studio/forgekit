@@ -23,7 +23,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.hook_candidate import (
+from yule_engineering.agents.lifecycle.hook_candidate import (
     HOOK_CANDIDATE_ID_PREFIX,
     collect_hook_candidates,
     promote_postmortem_to_hook_candidate,
@@ -31,7 +31,7 @@ from yule_orchestrator.agents.lifecycle.hook_candidate import (
     render_hook_candidate_block,
     slugify_hook_id,
 )
-from yule_orchestrator.agents.lifecycle.mistake_ledger import (
+from yule_engineering.agents.lifecycle.mistake_ledger import (
     SEVERITY_HIGH,
     SEVERITY_LOW,
     SEVERITY_MEDIUM,

@@ -6,7 +6,7 @@ from datetime import datetime
 import sys
 from typing import Any, Optional, Sequence
 
-from yule_orchestrator.agents.workflow_state import load_session, update_session
+from yule_engineering.agents.workflow_state import load_session, update_session
 from ..config import DiscordBotConfig
 from ..engineering_channel_router import EngineeringRouteContext
 from ..engineering_team_runtime import (
@@ -195,7 +195,7 @@ async def run_member_bot_until_shutdown(
 ) -> None:
     """SIGTERM-aware member-bot runner — P0-C (#132).
 
-    Mirrors :func:`yule_orchestrator.discord.bot.run_engineering_gateway_until_shutdown`
+    Mirrors :func:`yule_engineering.discord.bot.run_engineering_gateway_until_shutdown`
     so ``yule runtime up`` 's subprocess supervisor can drive a member
     bot the same way it drives the gateway. The runtime owns the main
     loop, so discord.py's internal signal handlers never fire — this

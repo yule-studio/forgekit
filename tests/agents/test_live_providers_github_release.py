@@ -1,4 +1,4 @@
-"""Tests for :mod:`yule_orchestrator.agents.research.providers.live.github_release`.
+"""Tests for :mod:`yule_engineering.agents.research.providers.live.github_release`.
 
 F5 / issue #92. GithubReleaseProvider 회귀.
 """
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from yule_orchestrator.agents.research.providers.live import (
+from yule_engineering.agents.research.providers.live import (
     KIND_GITHUB_RELEASE,
     GithubReleaseProvider,
     LiveSource,

@@ -10,13 +10,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.integrations.calendar.models import CalendarTodo
-from yule_orchestrator.planning.category_policy import (
+from yule_engineering.integrations.calendar.models import CalendarTodo
+from yule_engineering.planning.category_policy import (
     NAVER_CATEGORY_POLICY_JSON_ENV,
     reset_naver_category_policy_cache,
 )
-from yule_orchestrator.planning.models import PlanningInputs
-from yule_orchestrator.planning.planner import build_daily_plan
+from yule_engineering.planning.models import PlanningInputs
+from yule_engineering.planning.planner import build_daily_plan
 
 
 class PlanningCategoryPolicyTestCase(unittest.TestCase):

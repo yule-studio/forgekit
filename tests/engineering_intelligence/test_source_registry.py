@@ -9,13 +9,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     SourceAxis,
     SourceKind,
     SourceTier,
     default_refresh_interval_for_kind,
 )
-from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+from yule_engineering.agents.engineering_intelligence.source_registry import (
     COMMON_CORE_SOURCES,
     SUPPORTED_ROLES,
     auto_collectable_sources,

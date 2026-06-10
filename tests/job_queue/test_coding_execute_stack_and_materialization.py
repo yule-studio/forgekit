@@ -41,7 +41,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.coding_execute_repo_materializer import (
+from yule_engineering.agents.job_queue.coding_execute_repo_materializer import (
     ACTION_CLONED,
     ACTION_FAILED,
     ACTION_FETCHED,
@@ -55,7 +55,7 @@ from yule_orchestrator.agents.job_queue.coding_execute_repo_materializer import 
     MaterializationResult,
     materialize_repo,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_test_command import (
+from yule_engineering.agents.job_queue.coding_execute_test_command import (
     PYTHON_UNITTEST_DEFAULT,
     STRATEGY_JS_PM_DEFAULT,
     STRATEGY_JS_SCRIPT,
@@ -65,12 +65,12 @@ from yule_orchestrator.agents.job_queue.coding_execute_test_command import (
     TestCommandSelection,
     select_test_command,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     LocalGitWorktreeProvisioner,
     SubprocessTestRunner,
     TargetRepoUnavailableError,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
 )
@@ -212,7 +212,7 @@ class StackAwareTestCommandTests(unittest.TestCase):
         """case 5 — SubprocessTestRunner 가 실패 시 test_summary 에
         selection (strategy / command / package_manager) 를 stamp."""
 
-        from yule_orchestrator.agents.job_queue.coding_executor_live import (
+        from yule_engineering.agents.job_queue.coding_executor_live import (
             _SubprocessError,
         )
 

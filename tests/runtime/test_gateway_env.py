@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.gateway_env import (
+from yule_engineering.runtime.gateway_env import (
     GATEWAY_TOKEN_ENV,
     build_gateway_env_overrides,
     resolve_gateway_token,

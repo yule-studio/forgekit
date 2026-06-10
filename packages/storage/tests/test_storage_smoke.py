@@ -1,7 +1,7 @@
 """Smoke tests for the extracted ``yule_storage`` package.
 
 Covers the public API surface, a JSON cache round-trip against a temp
-SQLite db, and old-path shim identity (the ``yule_orchestrator.storage``
+SQLite db, and old-path shim identity (the ``yule_engineering.storage``
 modules must be the *same* objects as ``yule_storage``).
 """
 
@@ -57,10 +57,10 @@ def test_json_cache_roundtrip(tmp_path: Path, monkeypatch) -> None:
 def test_old_path_shim_identity() -> None:
     import yule_storage
     import yule_storage.local_cache as new_local_cache
-    import yule_orchestrator.storage as old_storage
-    import yule_orchestrator.storage.local_cache as old_local_cache
-    import yule_orchestrator.storage.calendar_state as old_calendar_state
-    import yule_orchestrator.storage._sqlite as old_sqlite
+    import yule_engineering.storage as old_storage
+    import yule_engineering.storage.local_cache as old_local_cache
+    import yule_engineering.storage.calendar_state as old_calendar_state
+    import yule_engineering.storage._sqlite as old_sqlite
 
     assert old_storage.load_json_cache is yule_storage.load_json_cache
     assert old_local_cache is new_local_cache

@@ -183,7 +183,7 @@ issue body 와 동일하되 추가:
 
 본 컨벤션은 `yule-studio-agent` 내부에 한정되지 않는다. **봇이 GitHub write 를 수행하는 모든 target repo** (예: `yule-studio/naver-search-clone`, 향후 engineering runtime 이 coding_execute / github_work_order / draft PR 을 만드는 모든 repo) 에 동일하게 적용된다. repo-local stricter policy 가 있으면 그것이 우선하되, 기본은 본 SSoT 를 상속한다.
 
-코드 SSoT — [`src/yule_orchestrator/agents/governance/repo_write_policy.py`](../../../../src/yule_orchestrator/agents/governance/repo_write_policy.py) 가 commit / issue title / PR title / issue anchor 4-종 hard guard 를 한 자리에 모은다. live path (GithubAppCommitter / GithubAppDraftPRCreator / GithubWriter.create_issue 등) 가 그 validator 를 호출하고 실패 시 raise.
+코드 SSoT — [`apps/engineering-agent/src/yule_engineering/agents/governance/repo_write_policy.py`](../../../../apps/engineering-agent/src/yule_engineering/agents/governance/repo_write_policy.py) 가 commit / issue title / PR title / issue anchor 4-종 hard guard 를 한 자리에 모은다. live path (GithubAppCommitter / GithubAppDraftPRCreator / GithubWriter.create_issue 등) 가 그 validator 를 호출하고 실패 시 raise.
 
 ### 3.2 커밋 분리 정책 (필수)
 

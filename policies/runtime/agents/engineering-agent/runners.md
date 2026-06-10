@@ -7,7 +7,7 @@
 - out of scope: 멤버 디스패치 로직, Discord 통합, 자동 reference 수집기 구현체, 멀티봇 토큰 운용.
 
 ## Contract
-런너는 `src/yule_orchestrator/agents/runners/base.py`의 다음 계약을 구현한다.
+런너는 `apps/engineering-agent/src/yule_engineering/agents/runners/base.py`의 다음 계약을 구현한다.
 
 - `AgentRunner.is_available()` — 백엔드 호출 가능 여부를 빠르게 반환한다. doctor 명령과 레지스트리 빌드 시점에서 호출된다.
 - `AgentRunner.submit(request)` — 실제 백엔드 호출. 실패는 예외 대신 `AgentResponse.status`로 표현한다 (`OK` / `ERROR` / `UNAVAILABLE`).

@@ -7,7 +7,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.messaging.message import (
+from yule_engineering.agents.messaging.message import (
     AgentMessage,
     ContextRef,
     Priority,

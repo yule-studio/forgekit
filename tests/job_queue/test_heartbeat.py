@@ -15,13 +15,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import (
+from yule_engineering.agents.job_queue.heartbeat import (
     DEFAULT_HEARTBEAT_DEADLINE_SECONDS,
     HeartbeatStore,
     run_supervisor_sweep,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 class _Fixture(unittest.TestCase):

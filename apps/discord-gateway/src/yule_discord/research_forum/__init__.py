@@ -1,11 +1,11 @@
 """Forward-compat shim — ``research_forum`` now lives under ``agents``.
 
 The canonical package moved to
-:mod:`yule_orchestrator.agents.research.forum` as part of breaking the
+:mod:`yule_engineering.agents.research.forum` as part of breaking the
 ``agents → discord`` import cycle. This shim aliases the new package (and
 each of its submodules) under the old discord path so existing
 discord-side importers and tests
-(``from yule_orchestrator.discord.research_forum import X`` /
+(``from yule_engineering.discord.research_forum import X`` /
 ``from ..research_forum import X``) keep working with object identity
 preserved.
 """
@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import sys
 
-from yule_orchestrator.agents.research import forum as _pkg
-from yule_orchestrator.agents.research.forum import (  # noqa: F401
+from yule_engineering.agents.research import forum as _pkg
+from yule_engineering.agents.research.forum import (  # noqa: F401
     config as _config,
     formatters as _formatters,
     posting as _posting,
@@ -23,7 +23,7 @@ from yule_orchestrator.agents.research.forum import (  # noqa: F401
 )
 
 # Alias each submodule under the old dotted path so
-# ``import yule_orchestrator.discord.research_forum.config`` (and
+# ``import yule_engineering.discord.research_forum.config`` (and
 # ``is``/reload/monkeypatch against it) resolve to the canonical objects.
 sys.modules[__name__ + ".config"] = _config
 sys.modules[__name__ + ".formatters"] = _formatters

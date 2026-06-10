@@ -68,7 +68,7 @@ write 발생:
 
 ## 4.1 Runtime governance hard rails (P0-T)
 
-**코드 SSoT**: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py).
+**코드 SSoT**: [`apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py`](../apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py).
 **회귀 test**: [`tests/governance/test_runtime_policy.py`](../tests/governance/test_runtime_policy.py).
 **docs cross-link**: [`/docs/github-agent-workos.md`](github-agent-workos.md) §1.2.1 / [`/docs/memory.md`](memory.md).
 
@@ -138,15 +138,15 @@ green 이어도 성능 개선은 자동 의무가 아니다. 다음 8 종 중 **
 막힘이 발생했는데 그 기록이 *대화창에만* 남고 시스템에는 안 남는 상태를 **금지**
 한다. 코드 SSoT:
 
-- [`agents/lifecycle/troubleshooting_record.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_record.py)
+- [`agents/lifecycle/troubleshooting_record.py`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/troubleshooting_record.py)
   — 20 필드 `TroubleshootingRecord` + 30+ `CaptureReason` enum + 8 섹션 markdown 렌더러.
-- [`agents/lifecycle/troubleshooting_ledger.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_ledger.py)
+- [`agents/lifecycle/troubleshooting_ledger.py`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/troubleshooting_ledger.py)
   — 3 surface fan-out + 같은 signature 2회 이상이면 mistake ledger 자동 승격.
-- [`agents/lifecycle/troubleshooting_enforcer.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_enforcer.py)
+- [`agents/lifecycle/troubleshooting_enforcer.py`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/troubleshooting_enforcer.py)
   — `mandatory_capture` context manager / `record_silent_correction` /
   `record_claude_correction` / `record_codex_correction`. Claude Code / Codex
   도 같은 ledger 에 누적.
-- [`agents/lifecycle/troubleshooting_preflight.py`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_preflight.py)
+- [`agents/lifecycle/troubleshooting_preflight.py`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/troubleshooting_preflight.py)
   — 작업 시작 전 prior record / mistake ledger 둘 다 조회해 advisory /
   warning / block verdict 결합.
 

@@ -11,10 +11,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.autonomy_policy import (
+from yule_engineering.agents.lifecycle.autonomy_policy import (
     AutonomyLevel,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement import (
+from yule_engineering.agents.lifecycle.self_improvement import (
     SEVERITY_HIGH,
     SEVERITY_MEDIUM,
     SIGNAL_DUPLICATE_TOPIC_APPROVAL,

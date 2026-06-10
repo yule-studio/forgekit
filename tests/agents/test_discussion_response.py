@@ -35,7 +35,7 @@ class _PytestStub:
 
 pytest = _PytestStub()
 
-from yule_orchestrator.agents.conversation.discussion_response import (
+from yule_engineering.agents.conversation.discussion_response import (
     DiscussionResponse,
     EVIDENCE_SCORE_THRESHOLD,
     EvidenceRef,
@@ -49,8 +49,8 @@ from yule_orchestrator.agents.conversation.discussion_response import (
     NullRetrievalProvider,
     build_discussion_response,
 )
-from yule_orchestrator.agents.decision.context_pack import ContextPack
-from yule_orchestrator.agents.decision.router import DecisionRequest
+from yule_engineering.agents.decision.context_pack import ContextPack
+from yule_engineering.agents.decision.router import DecisionRequest
 
 
 # ---------------------------------------------------------------------------

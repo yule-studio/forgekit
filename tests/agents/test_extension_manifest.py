@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.extension.manifest import (
+from yule_engineering.agents.extension.manifest import (
     AUTONOMY_LEVELS,
     AgentManifest,
     HookEvent,
@@ -35,7 +35,7 @@ _VALID_PLUGIN_DICT = {
     "autonomy_level": "supervised",
     "paste_guard_required": False,
     "risk_class": "HIGH",
-    "module_path": "yule_orchestrator.agents.security.paste_guard",
+    "module_path": "yule_engineering.agents.security.paste_guard",
 }
 
 _VALID_AGENT_DICT = {

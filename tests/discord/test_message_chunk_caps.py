@@ -21,13 +21,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchRequest,
     ResearchSource,
 )
-from yule_orchestrator.discord.ui.formatter import split_discord_message
-from yule_orchestrator.discord.research_forum import (
+from yule_engineering.discord.ui.formatter import split_discord_message
+from yule_engineering.discord.research_forum import (
     DISCORD_MESSAGE_REPLY_LIMIT,
     FORUM_STARTER_CONTENT_LIMIT,
     ResearchForumContext,
@@ -221,7 +221,7 @@ class DecisionAndKickoffCapTests(unittest.TestCase):
 
     def test_decision_comment_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_orchestrator.agents.research.loop import _post_decision_comment
+        from yule_engineering.agents.research.loop import _post_decision_comment
 
         synthesis = SimpleNamespace(
             consensus="이번 릴리스는 starter 본문 캡 + thread 분할 게시 방식을 채택한다.",
@@ -249,7 +249,7 @@ class DecisionAndKickoffCapTests(unittest.TestCase):
 
     def test_kickoff_directive_is_chunked(self) -> None:
         from types import SimpleNamespace
-        import yule_orchestrator.agents.research.loop as research_loop
+        import yule_engineering.agents.research.loop as research_loop
 
         # Force ``research_open_call_directive`` to return a huge body
         # so we exercise the kickoff chunker even for extreme directives.
@@ -264,7 +264,7 @@ class DecisionAndKickoffCapTests(unittest.TestCase):
         # Patch the lazy import target inside _post_research_kickoff_comment.
         # (engineering_team_runtime relocated discord → agents to break the
         # import cycle; loop.py now imports it via the agents path.)
-        from yule_orchestrator.agents import engineering_team_runtime
+        from yule_engineering.agents import engineering_team_runtime
 
         original_directive = engineering_team_runtime.research_open_call_directive
 
@@ -306,7 +306,7 @@ class FallbackAndStatusCapTests(unittest.TestCase):
     bypasses the chunker breaks loudly."""
 
     def test_long_fallback_markdown_chunks_under_1900(self) -> None:
-        from yule_orchestrator.discord.research_forum import (
+        from yule_engineering.discord.research_forum import (
             format_thread_markdown_fallback,
         )
 
@@ -341,7 +341,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
 
     def test_team_turn_long_post_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_orchestrator.discord.member.bot import _post_team_turn
+        from yule_engineering.discord.member.bot import _post_team_turn
 
         long_post = "라" * 5000
 
@@ -358,7 +358,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
                 captured.append(content)
 
         # Avoid touching the real session cache from the persistence helper.
-        from yule_orchestrator.discord.member import bot as member_bot_mod
+        from yule_engineering.discord.member import bot as member_bot_mod
 
         original_persist = member_bot_mod._mark_team_turn_persisted
         member_bot_mod._mark_team_turn_persisted = lambda *_a, **_kw: None
@@ -373,7 +373,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
 
     def test_research_turn_long_post_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_orchestrator.discord.member.bot import _post_research_turn
+        from yule_engineering.discord.member.bot import _post_research_turn
 
         long_message = "z" * 4500
         outcome = SimpleNamespace(message=long_message)

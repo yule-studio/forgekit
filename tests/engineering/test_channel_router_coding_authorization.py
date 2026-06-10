@@ -30,8 +30,8 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.agents.coding.authorization import reset_role_profile_cache
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.agents.coding.authorization import reset_role_profile_cache
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringRouteContext,
     is_coding_approval_phrase,
     is_coding_proposal_request,
@@ -281,7 +281,7 @@ class NoBackpressureOnUnrelatedFlowsTests(unittest.TestCase):
         called = {"conversation": 0}
 
         def conversation_fn(**_):
-            from yule_orchestrator.discord.engineering_channel_router import (
+            from yule_engineering.discord.engineering_channel_router import (
                 EngineeringConversationOutcome,
             )
 
@@ -354,7 +354,7 @@ class NoCodeChangeOverrideTests(_CodingGateHarness):
         # The coding gate must return None — but the rest of the route
         # (conversation_fn) WILL run, so we replace the AssertionError
         # mocks with one that's allowed to be called once.
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             EngineeringConversationOutcome,
         )
 
@@ -401,7 +401,7 @@ class NoCodeChangeOverrideTests(_CodingGateHarness):
             channel=_channel(),
         )
 
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             EngineeringConversationOutcome,
         )
 

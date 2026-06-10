@@ -17,7 +17,7 @@ Discord 멤버 봇이 부서 토론 thread 에 응답할 때 사용하는 페이
 
 ## 운영 가이드
 - 끄는 방법: 끄지 말 것. 끄면 멤버 봇 응답 양식이 free-form 으로 회귀.
-- 양식 변경: 코드 안 템플릿 (`src/yule_orchestrator/agents/conversation/discussion_response.py`)
+- 양식 변경: 코드 안 템플릿 (`apps/engineering-agent/src/yule_engineering/agents/conversation/discussion_response.py`)
   편집 + 회귀 테스트 (`tests/conversation/test_discussion_response*`).
 
 ## 관련 정책 / 이슈

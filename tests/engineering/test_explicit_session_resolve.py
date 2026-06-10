@@ -31,20 +31,20 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringRouteContext,
     _can_save_to_obsidian,
     _extract_session_id_from_router_text,
     route_engineering_message,
 )
-from yule_orchestrator.agents.obsidian.writer import ENV_VAULT_PATH
-from yule_orchestrator.agents.obsidian.approval import (
+from yule_engineering.agents.obsidian.writer import ENV_VAULT_PATH
+from yule_engineering.agents.obsidian.approval import (
     build_save_proposal,
     store_pending_proposal,
 )
-from yule_orchestrator.agents.research.pack import ResearchPack, ResearchSource
-from yule_orchestrator.agents.research.pack import pack_to_dict
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.research.pack import ResearchPack, ResearchSource
+from yule_engineering.agents.research.pack import pack_to_dict
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
@@ -217,7 +217,7 @@ class ExplicitSessionIdObsidianResolveTests(unittest.TestCase):
                 self.calls = []
 
             def __call__(self, *args, **kwargs):
-                from yule_orchestrator.agents.obsidian.writer import ObsidianWriteResult
+                from yule_engineering.agents.obsidian.writer import ObsidianWriteResult
 
                 self.calls.append({"args": args, "kwargs": kwargs})
                 return ObsidianWriteResult(
@@ -227,7 +227,7 @@ class ExplicitSessionIdObsidianResolveTests(unittest.TestCase):
                 )
 
             def kwargs_path(self, kwargs):
-                from yule_orchestrator.agents.obsidian.writer import resolve_vault_root
+                from yule_engineering.agents.obsidian.writer import resolve_vault_root
 
                 vault = resolve_vault_root()
                 relative = kwargs.get("relative_path") or "x.md"

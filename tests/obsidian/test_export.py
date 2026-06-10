@@ -8,8 +8,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.deliberation import TechLeadSynthesis
-from yule_orchestrator.agents.obsidian.export import (
+from yule_engineering.agents.deliberation import TechLeadSynthesis
+from yule_engineering.agents.obsidian.export import (
     CONTRACT_VERSION,
     DEFAULT_PROJECT,
     INBOX_UNSORTED,
@@ -30,13 +30,13 @@ from yule_orchestrator.agents.obsidian.export import (
 
 def _default_project_folder(subdir: str, project: str = DEFAULT_PROJECT) -> str:
     return f"{PROJECTS_BASE}/{project}/{subdir}"
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchAttachment,
     ResearchSource,
     ResearchPack,
     pack_from_discord_message,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
 
 
 def _session(**overrides) -> WorkflowSession:
@@ -393,7 +393,7 @@ class FrontmatterShapeTestCase(unittest.TestCase):
 
 class ProjectVaultLayoutTests(unittest.TestCase):
     def test_project_kw_routes_research_into_projects_tree(self) -> None:
-        from yule_orchestrator.agents.obsidian.export import recommend_path
+        from yule_engineering.agents.obsidian.export import recommend_path
 
         path = recommend_path(
             title="Stripe pricing hero copy",
@@ -405,7 +405,7 @@ class ProjectVaultLayoutTests(unittest.TestCase):
         self.assertTrue(path.folder.endswith("/research"))
 
     def test_project_decision_uses_decisions_subdir(self) -> None:
-        from yule_orchestrator.agents.obsidian.export import recommend_path
+        from yule_engineering.agents.obsidian.export import recommend_path
 
         path = recommend_path(
             title="hero copy 분할",
@@ -419,7 +419,7 @@ class ProjectVaultLayoutTests(unittest.TestCase):
         # New default: even without explicit project / session.extra, the
         # path uses the configured default project (yule-studio-agent).
         # Legacy ``Agents/Engineering/...`` is opt-in only.
-        from yule_orchestrator.agents.obsidian.export import (
+        from yule_engineering.agents.obsidian.export import (
             DEFAULT_PROJECT,
             recommend_path,
         )
@@ -470,7 +470,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         )
 
     def test_long_korean_prompt_collapses_to_short_title(self) -> None:
-        from yule_orchestrator.agents.obsidian.export import derive_short_title
+        from yule_engineering.agents.obsidian.export import derive_short_title
 
         pack = ResearchPack(title=self.LONG_PROMPT, summary="")
         title = derive_short_title(pack, session=self._session())
@@ -480,7 +480,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         self.assertNotIn("\n", title)
 
     def test_session_extra_short_title_wins(self) -> None:
-        from yule_orchestrator.agents.obsidian.export import derive_short_title
+        from yule_engineering.agents.obsidian.export import derive_short_title
 
         pack = ResearchPack(title=self.LONG_PROMPT, summary="")
         session = self._session(extra={"short_title": "에이전트 병렬 회의 구조"})
@@ -532,7 +532,7 @@ class ShortTitleAndFilenameTests(unittest.TestCase):
         self.assertIn("original_prompt:", note.content)
 
     def test_clean_title_strips_research_prefix_bold_and_newlines(self) -> None:
-        from yule_orchestrator.agents.obsidian.export import _clean_title
+        from yule_engineering.agents.obsidian.export import _clean_title
 
         out = _clean_title("[Research] **에이전트 회의**\n구조 정리")
         self.assertEqual(out, "에이전트 회의 구조 정리")

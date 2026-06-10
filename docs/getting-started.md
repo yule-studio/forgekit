@@ -93,7 +93,7 @@ yule discord up             # 실제로 띄움 (dev 전용)
 엔트리포인트 설치가 덜 맞물려 있을 때 모듈 형태로 동일하게 사용할 수 있다.
 
 ```bash
-PYTHONPATH=src python3 -m yule_orchestrator doctor
-PYTHONPATH=src python3 -m yule_orchestrator planning daily --json
-PYTHONPATH=src python3 -m yule_orchestrator discord bot
+PYTHONPATH=src python3 -m yule_engineering doctor
+PYTHONPATH=src python3 -m yule_engineering planning daily --json
+PYTHONPATH=src python3 -m yule_engineering discord bot
 ```

@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.ui.typing_indicator import (
+from yule_engineering.discord.ui.typing_indicator import (
     typing_keepalive,
     wrap_send_chunks_with_typing,
 )

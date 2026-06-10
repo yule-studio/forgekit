@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.role_profiles import (
+from yule_engineering.agents.role_profiles import (
     forbidden_actions_for_role,
     output_template_for_role,
     required_context_for_role,
@@ -79,7 +79,7 @@ class RuntimePrefaceIncludesOutputTemplateTests(unittest.TestCase):
     role bot's take follows the template."""
 
     def setUp(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             reset_handled_turns_for_tests,
         )
 
@@ -87,7 +87,7 @@ class RuntimePrefaceIncludesOutputTemplateTests(unittest.TestCase):
         self.addCleanup(reset_handled_turns_for_tests)
 
     def _session(self):
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
@@ -105,7 +105,7 @@ class RuntimePrefaceIncludesOutputTemplateTests(unittest.TestCase):
         )
 
     def test_devops_open_call_preface_lists_output_sections(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 

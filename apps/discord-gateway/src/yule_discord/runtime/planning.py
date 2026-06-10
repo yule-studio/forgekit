@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
-from yule_orchestrator.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
-from yule_orchestrator.planning.snapshots import DailyPlanSnapshot, load_daily_plan_snapshot
-from yule_orchestrator.storage import load_json_cache, save_json_cache
+from yule_engineering.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
+from yule_engineering.planning.snapshots import DailyPlanSnapshot, load_daily_plan_snapshot
+from yule_engineering.storage import load_json_cache, save_json_cache
 
 CHECKPOINT_SNAPSHOT_NAMESPACE = "planning-checkpoint-snapshots"
 CHECKPOINT_SNAPSHOT_PROVIDER = "discord-bot"

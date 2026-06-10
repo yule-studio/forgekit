@@ -2,7 +2,7 @@
 
 These assert the open/closed transition semantics through the
 ``yule_runtime`` import path and confirm the legacy
-``yule_orchestrator.runtime`` shim resolves to the *same* objects.
+``yule_engineering.runtime`` shim resolves to the *same* objects.
 """
 
 from yule_runtime.circuit_breaker import (
@@ -58,7 +58,7 @@ def test_reset_clears_state():
 
 
 def test_legacy_shim_is_same_module_object():
-    import yule_orchestrator.runtime.circuit_breaker as shim
+    import yule_engineering.runtime.circuit_breaker as shim
     import yule_runtime.circuit_breaker as real
 
     assert shim is real

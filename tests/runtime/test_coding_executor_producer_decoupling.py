@@ -31,24 +31,24 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.job import STATUS_READY, build_coding_job_from_proposal
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.job import STATUS_READY, build_coding_job_from_proposal
+from yule_engineering.agents.coding.authorization import (
     CodingAuthorizationProposal,
     proposal_from_dict,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     SESSION_EXTRA_DISPATCH_KEY,
     dispatch_ready_coding_jobs,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     PROGRESS_CODING_DISPATCH_QUEUED,
     PROGRESS_CODING_JOB_READY,
     SESSION_EXTRA_CODING_JOB_KEY,
@@ -214,7 +214,7 @@ class MarkerCorrectnessTests(unittest.TestCase):
         """`promote_session_to_coding_ready` 자체는 절대 dispatch_queued
         stamp 하면 안 됨 (queue row 존재 보장 없음)."""
 
-        from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+        from yule_engineering.agents.job_queue.work_order_coding_continuation import (
             promote_session_to_coding_ready,
         )
 
@@ -403,7 +403,7 @@ class ProducerLoopBackgroundTaskTests(unittest.TestCase):
     """`coding_executor_runner._producer_loop` 가 shutdown 까지 살아있음."""
 
     def test_producer_loop_calls_dispatch_then_exits_on_shutdown(self) -> None:
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _producer_loop,
         )
 
@@ -413,7 +413,7 @@ class ProducerLoopBackgroundTaskTests(unittest.TestCase):
             calls.append(1)
             return ()
 
-        import yule_orchestrator.runtime.coding_executor_runner as runner_mod
+        import yule_engineering.runtime.coding_executor_runner as runner_mod
 
         original = runner_mod.dispatch_ready_coding_jobs
         runner_mod.dispatch_ready_coding_jobs = _fake_dispatch

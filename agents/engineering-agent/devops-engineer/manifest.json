@@ -30,7 +30,7 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_DEVOPS_ENGINEER_",
   "autonomy_level": "supervised",
   "risk_class": "HIGH",
-  "module_path": "yule_orchestrator.agents.engineering.devops_engineer.runner",
+  "module_path": "yule_engineering.agents.engineering.devops_engineer.runner",
   "discord_token_env": "ENGINEERING_AGENT_BOT_DEVOPS_ENGINEER_TOKEN",
   "instruction_entry": "agents/engineering-agent/devops-engineer/CLAUDE.md",
   "description": "CI/CD, GitHub Actions, Docker, deployment strategy, env/secret/permissions, observability(logging/metrics/alerts), rollback, incident response, release checklist, infrastructure/runtime reliability를 책임지는 부서 멤버. 다른 역할이 만들어낸 변경이 운영 사고 없이 배포되고 모니터링되도록 운영 관점의 검토를 자문한다.",
@@ -129,8 +129,8 @@
     "docker-compose*.yml",
     "scripts/**",
     "infra/**",
-    "src/yule_orchestrator/cli/**",
-    "src/yule_orchestrator/observability/**",
+    "apps/engineering-agent/src/yule_engineering/cli/**",
+    "apps/engineering-agent/src/yule_engineering/observability/**",
     "tests/cli/**"
   ],
   "forbidden_scope": [

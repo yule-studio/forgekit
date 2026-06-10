@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-yule = "yule_orchestrator.cli:main"
+yule = "yule_engineering.cli:main"
 
 [tool.setuptools.packages.find]
 # Monorepo packages live under packages/<name>/src and are discovered here so
@@ -23,9 +23,10 @@ yule = "yule_orchestrator.cli:main"
 # package also ships its own pyproject for standalone builds. New ``packages/*``
 # entries are added to this list as they are extracted (merge-order foundation:
 # agent-contracts first). ``apps/*/src`` entries are added as runnable units are
-# extracted from the monolith (planning-agent first).
+# extracted from the monolith (planning-agent first). The former monolith
+# (``src/yule_orchestrator``) now lives at ``apps/engineering-agent/src/yule_engineering``.
 where = [
-    "src",
+    "apps/engineering-agent/src",
     "packages/agent-contracts/src",
     "packages/memory/src",
     "packages/llm-gateway/src",

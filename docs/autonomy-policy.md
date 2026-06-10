@@ -12,9 +12,9 @@ A-M10 부터는 모든 행동을 다음 5 단계 자율성 사다리(autonomy la
 결정되며, **자동 실행 vs 사람 승인** 의 경계를 명시한다.
 
 본 문서가 정의한 매트릭스는 코드로
-[`src/yule_orchestrator/agents/lifecycle/autonomy_policy.py`](../src/yule_orchestrator/agents/lifecycle/autonomy_policy.py)
+[`apps/engineering-agent/src/yule_engineering/agents/lifecycle/autonomy_policy.py`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/autonomy_policy.py)
 에 박혀 있고, 모든 자동 실행은
-[`agents/lifecycle/agent_ops_log.py`](../src/yule_orchestrator/agents/lifecycle/agent_ops_log.py)
+[`agents/lifecycle/agent_ops_log.py`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/agent_ops_log.py)
 의 `AgentOpsEntry` 로 audit 가 남는다.
 
 ## 0. Work mode / topology — session-start ask-once (P0-G 1차)

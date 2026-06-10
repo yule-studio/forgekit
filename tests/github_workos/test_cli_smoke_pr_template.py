@@ -20,12 +20,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.pr_template import render_pr_body
-from yule_orchestrator.agents.github_workos.repository_pr_template import (
+from yule_engineering.agents.github_workos.pr_template import render_pr_body
+from yule_engineering.agents.github_workos.repository_pr_template import (
     PrTemplateFillContext,
     compose_pr_body,
 )
-from yule_orchestrator.cli.github_workos import _resolve_repo_root_for_template
+from yule_engineering.cli.github_workos import _resolve_repo_root_for_template
 
 
 @contextmanager

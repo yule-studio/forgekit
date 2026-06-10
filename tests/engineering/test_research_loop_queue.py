@@ -18,12 +18,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue import (
+from yule_engineering.agents.job_queue import (
     JOB_TYPE_RESEARCH_COLLECT,
     JobQueue,
     JobState,
 )
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringResearchLoopReport,
     _run_research_loop_hook,
 )

@@ -127,11 +127,11 @@ yule-agent-vault/README.md       (오픈소스 README, vault 진입점)
 
 ## 코드 enforcement
 
-- `src/yule_orchestrator/agents/obsidian/filename_convention.py` —
+- `apps/engineering-agent/src/yule_engineering/agents/obsidian/filename_convention.py` —
   `validate_filename` 이 단일 판정 소스
-- `src/yule_orchestrator/agents/obsidian/export.py` —
+- `apps/engineering-agent/src/yule_engineering/agents/obsidian/export.py` —
   `recommend_path` 가 본 컨벤션으로 basename 생성 (날짜 제거됨)
-- `src/yule_orchestrator/agents/obsidian/knowledge_writer.py` — 같음
+- `apps/engineering-agent/src/yule_engineering/agents/obsidian/knowledge_writer.py` — 같음
 - `tests/engineering/test_obsidian_convention_governance.py` —
   hard rail CI 게이트
 - mistake_ledger signature: `obsidian.filename.date-prefix` /

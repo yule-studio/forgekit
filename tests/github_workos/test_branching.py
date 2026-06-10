@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.branching import (
+from yule_engineering.agents.github_workos.branching import (
     PROTECTED_BRANCHES,
     derive_branch_name,
     derive_branch_with_collision_suffix,

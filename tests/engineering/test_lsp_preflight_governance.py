@@ -32,7 +32,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.static_analysis import (
+from yule_engineering.agents.static_analysis import (
     DEFAULT_TIMEOUT_SECONDS,
     LSP_ROLE_RUNNER_CHAINS,
     LspFinding,
@@ -40,17 +40,17 @@ from yule_orchestrator.agents.static_analysis import (
     PreflightLspLevel,
     judge_lsp_preflight,
 )
-from yule_orchestrator.agents.static_analysis.lsp_preflight import (
+from yule_engineering.agents.static_analysis.lsp_preflight import (
     ENV_PREFLIGHT_ENABLED,
     ENV_TIMEOUT_SECONDS,
     SEVERITY_ERROR,
     SEVERITY_WARNING,
 )
-from yule_orchestrator.agents.static_analysis.runners import (
+from yule_engineering.agents.static_analysis.runners import (
     build_runner_registry,
     mask_stderr,
 )
-from yule_orchestrator.agents.static_analysis.runners.python_ruff import (
+from yule_engineering.agents.static_analysis.runners.python_ruff import (
     PythonRuffRunner,
 )
 
@@ -102,7 +102,7 @@ class LspPreflightGovernanceTests(unittest.TestCase):
     def test_missing_binary_yields_advisory_not_block(self) -> None:
         ruff = PythonRuffRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_ruff.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_ruff.which_binary",
             return_value=None,
         ):
             result = ruff.run(["foo.py"])
@@ -127,7 +127,7 @@ class LspPreflightGovernanceTests(unittest.TestCase):
 
         ruff = PythonRuffRunner()
         with mock.patch(
-            "yule_orchestrator.agents.static_analysis.runners.python_ruff.which_binary",
+            "yule_engineering.agents.static_analysis.runners.python_ruff.which_binary",
             return_value="/usr/bin/ruff",
         ):
             ruff.run(["foo.py"], timeout=9999, subprocess_runner=runner)

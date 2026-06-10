@@ -48,14 +48,14 @@ gateway 가 GitHub 링크를 받았을 때 코딩 작업 세션으로 정확히 
 | 위치 | C/R/U/D | 책임 |
 | --- | --- | --- |
 | `docs/policy-stack-stage2-gateway-coding-session.md` | C (본 doc) | 7-commit single source of truth. |
-| `src/yule_orchestrator/agents/git/github_url.py` | C | GithubTarget dataclass + parse_github_url (5 shape). |
-| `src/yule_orchestrator/agents/research/collector.py` | U | 기존 `parse_github_url` 을 github_url 모듈 위임 wrapper 로. |
-| `src/yule_orchestrator/agents/git/repo_contract.py` | C | RepoContract dataclass + discover (gh CLI / 로컬 클론) + fallback. |
-| `src/yule_orchestrator/agents/lifecycle/session_mode.py` | C | ensure_session_mode helper + question prompt builder. |
-| `src/yule_orchestrator/agents/coding/handoff_packet.py` | C | CodingHandoffPacket dataclass + build_packet. |
-| `src/yule_orchestrator/agents/lifecycle/session_status.py` | U | SessionStatusReport 신규 7 필드 + diagnose_session 추출. |
-| `src/yule_orchestrator/discord/engineering_conversation.py` | U | format_status_diagnostic_response 신규 라인 + build_engineering_conversation_response 가 GithubTarget / RepoContract 인식. |
-| `src/yule_orchestrator/discord/engineering_channel_router.py` | U | URL 발견 → RepoContract discovery → mode negotiation → handoff packet 순서로 wiring. |
+| `apps/engineering-agent/src/yule_engineering/agents/git/github_url.py` | C | GithubTarget dataclass + parse_github_url (5 shape). |
+| `apps/engineering-agent/src/yule_engineering/agents/research/collector.py` | U | 기존 `parse_github_url` 을 github_url 모듈 위임 wrapper 로. |
+| `apps/engineering-agent/src/yule_engineering/agents/git/repo_contract.py` | C | RepoContract dataclass + discover (gh CLI / 로컬 클론) + fallback. |
+| `apps/engineering-agent/src/yule_engineering/agents/lifecycle/session_mode.py` | C | ensure_session_mode helper + question prompt builder. |
+| `apps/engineering-agent/src/yule_engineering/agents/coding/handoff_packet.py` | C | CodingHandoffPacket dataclass + build_packet. |
+| `apps/engineering-agent/src/yule_engineering/agents/lifecycle/session_status.py` | U | SessionStatusReport 신규 7 필드 + diagnose_session 추출. |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_conversation.py` | U | format_status_diagnostic_response 신규 라인 + build_engineering_conversation_response 가 GithubTarget / RepoContract 인식. |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_channel_router.py` | U | URL 발견 → RepoContract discovery → mode negotiation → handoff packet 순서로 wiring. |
 | `tests/agents/git/test_github_url.py` | C | URL parser test (5 shape + edge). |
 | `tests/agents/git/test_repo_contract.py` | C | RepoContract discovery + fallback test. |
 | `tests/agents/lifecycle/test_session_mode.py` | C | mode negotiation + persistence + no-repeat test. |

@@ -28,10 +28,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.cli.main import main as cli_main
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.cli.main import main as cli_main
 
 
 class _CliFixture(unittest.TestCase):
@@ -158,7 +158,7 @@ class CircuitOpenSurfaceTests(_CliFixture):
     def test_status_text_render_marks_circuit_open_service(self) -> None:
         # Land an open circuit row directly in the persistence DB
         # (the same SQLite the CLI auto-loads via YULE_CACHE_DB_PATH).
-        from yule_orchestrator.runtime.circuit_breaker import (
+        from yule_engineering.runtime.circuit_breaker import (
             CircuitBreakerPersistence,
         )
 
@@ -186,7 +186,7 @@ class CircuitOpenSurfaceTests(_CliFixture):
         self.assertIn("yule runtime circuit reset", text)
 
     def test_status_json_carries_circuit_open_health(self) -> None:
-        from yule_orchestrator.runtime.circuit_breaker import (
+        from yule_engineering.runtime.circuit_breaker import (
             CircuitBreakerPersistence,
         )
 
@@ -240,8 +240,8 @@ class RuntimePostDiscordTests(_CliFixture):
         """Wrap the real entrypoint so the CLI invokes it with our
         injected ``post_fn`` / ``state_store`` stubs.
         """
-        from yule_orchestrator.cli import main as cli_module
-        from yule_orchestrator.runtime import status_cli
+        from yule_engineering.cli import main as cli_module
+        from yule_engineering.runtime import status_cli
 
         real = status_cli.run_runtime_status_command
 
@@ -259,7 +259,7 @@ class RuntimePostDiscordTests(_CliFixture):
     def test_post_discord_invokes_injected_post_fn(self) -> None:
         # Use a temp state file inside the test tmpdir so the CLI's
         # default state path doesn't pollute the operator cache.
-        from yule_orchestrator.runtime.status_poster import (
+        from yule_engineering.runtime.status_poster import (
             StatusPosterStateStore,
         )
 
@@ -276,7 +276,7 @@ class RuntimePostDiscordTests(_CliFixture):
         # Patch the lazy-imported dispatch so our stub flows through.
         # We patch ``run_runtime_status_command`` at the cli.main
         # call site by monkey-injecting kwargs through a wrapper.
-        from yule_orchestrator.runtime import status_cli as scl
+        from yule_engineering.runtime import status_cli as scl
 
         original = scl.run_runtime_status_command
 
@@ -304,7 +304,7 @@ class RuntimePostDiscordTests(_CliFixture):
         self.assertIn("posted to #봇-상태", buf_err.getvalue())
 
     def test_post_discord_dedup_skips_second_identical_call(self) -> None:
-        from yule_orchestrator.runtime.status_poster import (
+        from yule_engineering.runtime.status_poster import (
             StatusPosterStateStore,
         )
 
@@ -318,7 +318,7 @@ class RuntimePostDiscordTests(_CliFixture):
             path=Path(self._tmp.name) / "poster_state.json"
         )
 
-        from yule_orchestrator.runtime import status_cli as scl
+        from yule_engineering.runtime import status_cli as scl
 
         original = scl.run_runtime_status_command
 
@@ -342,7 +342,7 @@ class RuntimePostDiscordTests(_CliFixture):
     def test_post_discord_failure_prints_error_and_returns_nonzero(
         self,
     ) -> None:
-        from yule_orchestrator.runtime.status_poster import (
+        from yule_engineering.runtime.status_poster import (
             StatusPostError,
             StatusPosterStateStore,
         )
@@ -354,7 +354,7 @@ class RuntimePostDiscordTests(_CliFixture):
             path=Path(self._tmp.name) / "poster_state.json"
         )
 
-        from yule_orchestrator.runtime import status_cli as scl
+        from yule_engineering.runtime import status_cli as scl
 
         original = scl.run_runtime_status_command
 

@@ -34,7 +34,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.coding_execute_test_command import (
+from yule_engineering.agents.job_queue.coding_execute_test_command import (
     BOOTSTRAP_REASON_EMPTY_REPO,
     BOOTSTRAP_REASON_NO_STACK,
     PYTHON_UNITTEST_DEFAULT,
@@ -43,20 +43,20 @@ from yule_orchestrator.agents.job_queue.coding_execute_test_command import (
     STRATEGY_PYTHON_UNITTEST_DEFAULT,
     select_test_command,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     RecordOnlyCodeEditor,
     SubprocessTestRunner,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
     REASON_BOOTSTRAP_REQUIRED,
     WorktreeContext,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"
@@ -283,7 +283,7 @@ class WorkerBootstrapRequiredHandlingTests(unittest.TestCase):
             }
             job_id = self._make_in_progress_job("11917bf1e75d", payload)
 
-            from yule_orchestrator.agents.job_queue.store import Job
+            from yule_engineering.agents.job_queue.store import Job
 
             picked = self.queue.pick(
                 worker_id="t",
@@ -327,7 +327,7 @@ class CanonicalSessionShapeTests(unittest.TestCase):
     """
 
     def test_reason_constant_is_exported(self) -> None:
-        from yule_orchestrator.agents.job_queue import coding_executor_worker as mod
+        from yule_engineering.agents.job_queue import coding_executor_worker as mod
 
         self.assertIn("REASON_BOOTSTRAP_REQUIRED", mod.__all__)
         self.assertEqual(
@@ -335,7 +335,7 @@ class CanonicalSessionShapeTests(unittest.TestCase):
         )
 
     def test_selection_module_exports_bootstrap_constants(self) -> None:
-        from yule_orchestrator.agents.job_queue import (
+        from yule_engineering.agents.job_queue import (
             coding_execute_test_command as mod,
         )
 

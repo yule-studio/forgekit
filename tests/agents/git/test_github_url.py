@@ -13,7 +13,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.git.github_url import (
+from yule_engineering.agents.git.github_url import (
     GithubTarget,
     parse_github_target,
     parse_github_targets,
@@ -142,13 +142,13 @@ class TreeBlobShapeTests(unittest.TestCase):
 
     def test_blob_file(self) -> None:
         t = parse_github_target(
-            "https://github.com/foo/bar/blob/main/src/yule_orchestrator/main.py"
+            "https://github.com/foo/bar/blob/main/apps/engineering-agent/src/yule_engineering/main.py"
         )
         self.assertIsNotNone(t)
         assert t is not None
         self.assertEqual(t.kind, "blob")
         self.assertEqual(t.branch_or_sha, "main")
-        self.assertEqual(t.file_path, "/src/yule_orchestrator/main.py")
+        self.assertEqual(t.file_path, "/apps/engineering-agent/src/yule_engineering/main.py")
 
 
 class NonGithubTests(unittest.TestCase):

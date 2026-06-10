@@ -8,14 +8,14 @@
 
 from __future__ import annotations
 
-from yule_orchestrator.agents.conversation.discussion_response import (
+from yule_engineering.agents.conversation.discussion_response import (
     DiscussionResponse,
     EvidenceRef,
     MODE_HINT_IMPLEMENTATION_CANDIDATE,
     MODE_HINT_RESEARCH_ONLY,
     MemoryRef,
 )
-from yule_orchestrator.agents.conversation.response_format import (
+from yule_engineering.agents.conversation.response_format import (
     render_operator_surface,
     render_user_surface,
 )

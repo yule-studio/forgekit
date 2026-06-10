@@ -30,7 +30,7 @@ from datetime import datetime
 
 import unittest
 
-from yule_orchestrator.agents.council import (
+from yule_engineering.agents.council import (
     ALL_SUBSTAGES,
     DELIBERATION_SUBSTAGES,
     EXECUTION_REVIEW_SUBSTAGES,
@@ -53,14 +53,14 @@ from yule_orchestrator.agents.council import (
     ready_for_synthesis,
     synthesis_block_reason,
 )
-from yule_orchestrator.agents.lifecycle.council_substage import (
+from yule_engineering.agents.lifecycle.council_substage import (
     LIFECYCLE_SUBSTAGE_EXTRA_KEY,
 )
-from yule_orchestrator.agents.messaging.message import (
+from yule_engineering.agents.messaging.message import (
     REQUEST_ACTIONS,
     RequestedAction,
 )
-from yule_orchestrator.agents.review_loop import (
+from yule_engineering.agents.review_loop import (
     ExecutionReviewDecision as ReviewLoopERD,
 )
 

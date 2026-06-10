@@ -9,18 +9,18 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.bot import _extract_conversation_prompt, _should_handle_message
-from yule_orchestrator.discord.runtime.checkpoint_state import (
+from yule_engineering.discord.bot import _extract_conversation_prompt, _should_handle_message
+from yule_engineering.discord.runtime.checkpoint_state import (
     CHECKPOINT_RESPONSE_STATUS_DONE,
     CHECKPOINT_RESPONSE_STATUS_SKIPPED,
     CheckpointPendingResponse,
 )
-from yule_orchestrator.discord.conversation import (
+from yule_engineering.discord.conversation import (
     build_conversation_response,
     build_conversation_response_envelope,
     detect_conversation_intent,
 )
-from yule_orchestrator.planning.ollama_config import OllamaConversationConfig
+from yule_engineering.planning.ollama_config import OllamaConversationConfig
 
 
 class DiscordConversationTestCase(unittest.TestCase):
@@ -148,9 +148,9 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertEqual(intent.intent_id, "schedule_change_proposal")
         self.assertTrue(intent.proposal_only)
 
-    @patch("yule_orchestrator.discord.conversation.generate_ollama_text")
-    @patch("yule_orchestrator.discord.conversation.load_ollama_conversation_config")
-    @patch("yule_orchestrator.discord.conversation.load_plan_today_snapshot")
+    @patch("yule_engineering.discord.conversation.generate_ollama_text")
+    @patch("yule_engineering.discord.conversation.load_ollama_conversation_config")
+    @patch("yule_engineering.discord.conversation.load_plan_today_snapshot")
     def test_build_conversation_response_uses_ollama_for_priority_response(
         self,
         load_plan_today_snapshot_mock,
@@ -181,8 +181,8 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertNotIn("<@777>", content)
         generate_ollama_text_mock.assert_called_once()
 
-    @patch("yule_orchestrator.discord.conversation.load_ollama_conversation_config")
-    @patch("yule_orchestrator.discord.conversation.load_plan_today_snapshot")
+    @patch("yule_engineering.discord.conversation.load_ollama_conversation_config")
+    @patch("yule_engineering.discord.conversation.load_plan_today_snapshot")
     def test_build_conversation_response_returns_schedule_change_proposal_without_execution(
         self,
         load_plan_today_snapshot_mock,
@@ -211,9 +211,9 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertIn("승인 전 메모:", content)
         self.assertIn("아직 실제 일정이나 상태는 변경하지 않았습니다.", content)
 
-    @patch("yule_orchestrator.discord.conversation.load_ollama_conversation_config")
-    @patch("yule_orchestrator.discord.conversation.load_plan_today_snapshot")
-    @patch("yule_orchestrator.discord.conversation.build_due_checkpoints")
+    @patch("yule_engineering.discord.conversation.load_ollama_conversation_config")
+    @patch("yule_engineering.discord.conversation.load_plan_today_snapshot")
+    @patch("yule_engineering.discord.conversation.build_due_checkpoints")
     def test_build_conversation_response_returns_checkpoint_summary(
         self,
         build_due_checkpoints_mock,
@@ -240,8 +240,8 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertIn("09:55", content)
         self.assertIn("업무 수행 마무리 확인", content)
 
-    @patch("yule_orchestrator.discord.conversation.load_ollama_conversation_config")
-    @patch("yule_orchestrator.discord.conversation.load_plan_today_snapshot")
+    @patch("yule_engineering.discord.conversation.load_ollama_conversation_config")
+    @patch("yule_engineering.discord.conversation.load_plan_today_snapshot")
     def test_envelope_signals_regeneration_when_snapshot_missing_for_briefing_intent(
         self,
         load_plan_today_snapshot_mock,
@@ -265,9 +265,9 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertEqual(envelope.intent_id, "briefing_refresh")
         self.assertIn("브리핑 데이터를 준비하고 있습니다", envelope.content)
 
-    @patch("yule_orchestrator.discord.conversation.save_json_cache")
-    @patch("yule_orchestrator.discord.conversation.load_ollama_conversation_config")
-    @patch("yule_orchestrator.discord.conversation.load_plan_today_snapshot")
+    @patch("yule_engineering.discord.conversation.save_json_cache")
+    @patch("yule_engineering.discord.conversation.load_ollama_conversation_config")
+    @patch("yule_engineering.discord.conversation.load_plan_today_snapshot")
     def test_checkpoint_lookup_without_due_items_asks_for_yes_no_confirmation(
         self,
         load_plan_today_snapshot_mock,
@@ -298,9 +298,9 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertIn("no", content.lower())
         save_json_cache_mock.assert_called()
 
-    @patch("yule_orchestrator.discord.conversation.clear_checkpoint_pending_response")
-    @patch("yule_orchestrator.discord.conversation.mark_checkpoint_responded")
-    @patch("yule_orchestrator.discord.conversation.load_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.clear_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.mark_checkpoint_responded")
+    @patch("yule_engineering.discord.conversation.load_checkpoint_pending_response")
     def test_yes_reply_marks_pending_checkpoints_as_done(
         self,
         load_pending_mock,
@@ -331,9 +331,9 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertEqual(ids, {"cp-1", "cp-2"})
         clear_pending_mock.assert_called_once_with(user_id=777)
 
-    @patch("yule_orchestrator.discord.conversation.clear_checkpoint_pending_response")
-    @patch("yule_orchestrator.discord.conversation.mark_checkpoint_responded")
-    @patch("yule_orchestrator.discord.conversation.load_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.clear_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.mark_checkpoint_responded")
+    @patch("yule_engineering.discord.conversation.load_checkpoint_pending_response")
     def test_skip_reply_marks_pending_checkpoints_as_skipped(
         self,
         load_pending_mock,
@@ -364,10 +364,10 @@ class DiscordConversationTestCase(unittest.TestCase):
         )
         clear_pending_mock.assert_called_once_with(user_id=777)
 
-    @patch("yule_orchestrator.discord.conversation.load_ollama_conversation_config")
-    @patch("yule_orchestrator.discord.conversation.load_plan_today_snapshot")
-    @patch("yule_orchestrator.discord.conversation.mark_checkpoint_responded")
-    @patch("yule_orchestrator.discord.conversation.load_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.load_ollama_conversation_config")
+    @patch("yule_engineering.discord.conversation.load_plan_today_snapshot")
+    @patch("yule_engineering.discord.conversation.mark_checkpoint_responded")
+    @patch("yule_engineering.discord.conversation.load_checkpoint_pending_response")
     def test_yes_reply_falls_through_when_no_pending_checkpoint(
         self,
         load_pending_mock,
@@ -393,9 +393,9 @@ class DiscordConversationTestCase(unittest.TestCase):
         self.assertNotEqual(envelope.intent_id, "checkpoint_response")
         mark_responded_mock.assert_not_called()
 
-    @patch("yule_orchestrator.discord.conversation.clear_checkpoint_pending_response")
-    @patch("yule_orchestrator.discord.conversation.mark_checkpoint_responded")
-    @patch("yule_orchestrator.discord.conversation.load_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.clear_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.mark_checkpoint_responded")
+    @patch("yule_engineering.discord.conversation.load_checkpoint_pending_response")
     def test_done_replies_recognize_korean_and_chat_slang_variants(
         self,
         load_pending_mock,
@@ -429,9 +429,9 @@ class DiscordConversationTestCase(unittest.TestCase):
                 f"reply={reply!r}",
             )
 
-    @patch("yule_orchestrator.discord.conversation.clear_checkpoint_pending_response")
-    @patch("yule_orchestrator.discord.conversation.mark_checkpoint_responded")
-    @patch("yule_orchestrator.discord.conversation.load_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.clear_checkpoint_pending_response")
+    @patch("yule_engineering.discord.conversation.mark_checkpoint_responded")
+    @patch("yule_engineering.discord.conversation.load_checkpoint_pending_response")
     def test_skip_replies_recognize_korean_and_chat_slang_variants(
         self,
         load_pending_mock,

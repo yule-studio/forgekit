@@ -37,8 +37,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.member.bot import _dispatch_member_message
-from yule_orchestrator.discord.member.bots import MemberBotProfile
+from yule_engineering.discord.member.bot import _dispatch_member_message
+from yule_engineering.discord.member.bots import MemberBotProfile
 
 
 def _profile(role: str = "tech-lead") -> MemberBotProfile:
@@ -80,7 +80,7 @@ class PreParseSilenceTests(unittest.TestCase):
     """No marker / mismatched role → handler never called, typing never opened."""
 
     def test_no_marker_does_not_call_handlers(self) -> None:
-        from yule_orchestrator.discord.member import bot as mb
+        from yule_engineering.discord.member import bot as mb
 
         channel = _Channel()
         message = SimpleNamespace(content="평범한 메시지", channel=channel)
@@ -120,7 +120,7 @@ class PreParseSilenceTests(unittest.TestCase):
     def test_wrong_role_marker_silent(self) -> None:
         # research-turn marker but role=ai-engineer; this bot is
         # tech-lead → pre-gate False, handler not called.
-        from yule_orchestrator.discord.member import bot as mb
+        from yule_engineering.discord.member import bot as mb
 
         channel = _Channel()
         message = SimpleNamespace(
@@ -159,7 +159,7 @@ class PreParseWrapsExpensiveHandlerTests(unittest.TestCase):
     """Matching marker → keepalive wraps *around* the handler invocation."""
 
     def test_research_turn_keepalive_wraps_handler(self) -> None:
-        from yule_orchestrator.discord.member import bot as mb
+        from yule_engineering.discord.member import bot as mb
 
         channel = _Channel()
         message = SimpleNamespace(
@@ -210,7 +210,7 @@ class PreParseWrapsExpensiveHandlerTests(unittest.TestCase):
         )
 
     def test_team_turn_keepalive_wraps_handler(self) -> None:
-        from yule_orchestrator.discord.member import bot as mb
+        from yule_engineering.discord.member import bot as mb
 
         channel = _Channel()
         message = SimpleNamespace(
@@ -264,7 +264,7 @@ class PreParseWrapsExpensiveHandlerTests(unittest.TestCase):
         # [research-open:<sid>] has no role, so every active member
         # bot enters the keepalive path. Handler then enforces the
         # active_research_roles guard.
-        from yule_orchestrator.discord.member import bot as mb
+        from yule_engineering.discord.member import bot as mb
 
         channel = _Channel()
         message = SimpleNamespace(

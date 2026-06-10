@@ -28,19 +28,19 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     JOB_TYPE_OBSIDIAN_WRITE,
     ObsidianWriterWorker,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.approval.reply_router import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.discord.approval.reply_router import (
     RESPONSE_APPROVED,
     RESPONSE_DUPLICATE,
     RESPONSE_HOLD_OR_UNCLEAR,
@@ -345,7 +345,7 @@ class RouterRejectBranchTests(_RouterFixture):
         # adapter calls it under the hood) so we can pass the test
         # persist_fn. Easier than patching for now — the persist
         # injection + outcome shape is what really matters.
-        from yule_orchestrator.agents.job_queue.approval_reply import (
+        from yule_engineering.agents.job_queue.approval_reply import (
             handle_approval_reply,
         )
 

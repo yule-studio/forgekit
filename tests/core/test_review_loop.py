@@ -11,14 +11,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     WorkflowError,
     WorkflowOrchestrator,
     WorkflowState,
     build_participants_pool,
 )
-from yule_orchestrator.agents.review_loop import (
+from yule_engineering.agents.review_loop import (
     ReviewFeedback,
     ReviewSeverity,
     ReviewSource,

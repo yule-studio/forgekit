@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from yule_orchestrator.planning.day_profile import load_day_profile
+from yule_engineering.planning.day_profile import load_day_profile
 from ..config import DiscordBotConfig
 from .channels import _channel_target_text, _normalize_channel_name
 from .scheduling import (

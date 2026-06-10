@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchAttachment,
     ResearchFinding,
     ResearchPack,
@@ -175,7 +175,7 @@ class PackWithExtraSourceTestCase(unittest.TestCase):
         self.assertIn("https://b", result.urls)
 
     def test_no_dup_when_same_message(self) -> None:
-        from yule_orchestrator.agents.research.pack import SourceType
+        from yule_engineering.agents.research.pack import SourceType
 
         pack = pack_from_discord_message(title="t", content="https://a", message_id=1, channel_id=10)
         # Same source_type as pack_from_discord_message (USER_MESSAGE) so the
@@ -405,13 +405,13 @@ class TypedSourceConstructorsTestCase(unittest.TestCase):
 
     def test_code_context(self) -> None:
         src = source_from_code_context(
-            repo_path="src/yule_orchestrator/agents/research_pack.py",
+            repo_path="apps/engineering-agent/src/yule_engineering/agents/research_pack.py",
             summary="ResearchPack 정의 위치",
             collected_by_role="engineering-agent/backend-engineer",
             line_range=(100, 130),
         )
         self.assertEqual(src.source_type, SourceType.CODE_CONTEXT)
-        self.assertEqual(src.extra["repo_path"], "src/yule_orchestrator/agents/research_pack.py")
+        self.assertEqual(src.extra["repo_path"], "apps/engineering-agent/src/yule_engineering/agents/research_pack.py")
         self.assertEqual(src.extra["line_range"], [100, 130])
 
     def test_official_docs(self) -> None:

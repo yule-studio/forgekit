@@ -280,7 +280,7 @@ class Phase6ProfileWiringTests(unittest.TestCase):
         # role_profiles helper가 backend-engineer의 output_sections를
         # 반환하는지 확인. 이건 phase 1-5에서도 통과 가능 — 기존
         # role_profiles_data에 이미 정의됨.
-        from yule_orchestrator.agents.role_profiles import (
+        from yule_engineering.agents.role_profiles import (
             output_template_for_role,
         )
 

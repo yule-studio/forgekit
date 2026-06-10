@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.github_app import (
+from yule_engineering.github_app import (
     CHECK_ENV_CONFIG,
     CHECK_LIVE_INSTALLATION_TOKEN,
     CHECK_LIVE_REPO_ACCESS,
@@ -45,7 +45,7 @@ from yule_orchestrator.github_app import (
     doctor,
     redact_secret_like,
 )
-from yule_orchestrator.github_app.auth import fake_signer
+from yule_engineering.github_app.auth import fake_signer
 
 
 class _RecordingHTTP:

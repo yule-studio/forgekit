@@ -1,4 +1,4 @@
-"""Tests for :mod:`yule_orchestrator.agents.research.providers.live.rss_atom`.
+"""Tests for :mod:`yule_engineering.agents.research.providers.live.rss_atom`.
 
 F5 / issue #92. RssAtomProvider + parse_feed 의 행위 회귀.
 
@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from yule_orchestrator.agents.research.providers.live import (
+from yule_engineering.agents.research.providers.live import (
     KIND_ATOM,
     KIND_RSS,
     LiveSource,
     RssAtomProvider,
 )
-from yule_orchestrator.agents.research.providers.live.rss_atom import parse_feed
+from yule_engineering.agents.research.providers.live.rss_atom import parse_feed
 
 
 # ---------------------------------------------------------------------------

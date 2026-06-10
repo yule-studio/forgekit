@@ -10,11 +10,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchSource,
 )
-from yule_orchestrator.agents.research.sufficiency import (
+from yule_engineering.agents.research.sufficiency import (
     DEFAULT_ROLE_TARGETS,
     RoleSufficiencyTarget,
     score_research_sufficiency,

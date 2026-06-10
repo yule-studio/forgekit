@@ -32,7 +32,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
@@ -167,7 +167,7 @@ class PersistResearchArtifactsTests(unittest.TestCase):
             )
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router."
+            "yule_engineering.discord.engineering_channel_router."
             "research_loop.persist_research_artifacts"
         ) as persist_spy:
             persist_spy.side_effect = lambda session, *_a, **_kw: session
@@ -201,7 +201,7 @@ class PersistResearchArtifactsTests(unittest.TestCase):
         )
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router."
+            "yule_engineering.discord.engineering_channel_router."
             "research_loop.persist_research_artifacts"
         ) as persist_spy:
             persist_spy.side_effect = lambda session, *_a, **_kw: session
@@ -235,7 +235,7 @@ class PersistResearchArtifactsTests(unittest.TestCase):
             return EngineeringResearchLoopReport()
 
         with patch(
-            "yule_orchestrator.discord.engineering_channel_router."
+            "yule_engineering.discord.engineering_channel_router."
             "research_loop.persist_research_artifacts"
         ) as persist_spy:
             self._route(

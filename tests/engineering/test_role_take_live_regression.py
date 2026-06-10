@@ -34,20 +34,20 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue import (
+from yule_engineering.agents.job_queue import (
     JOB_TYPE_ROLE_TAKE,
     HeartbeatStore,
     JobQueue,
     JobState,
     service_id_for_role,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
     save_session,
 )
-from yule_orchestrator.discord.engineering_team_runtime import _legacy as etr
+from yule_engineering.discord.engineering_team_runtime import _legacy as etr
 
 
 SESSION_ID = "live-m4-sess1"
@@ -179,7 +179,7 @@ class OpenCallEndToEndTests(_Harness):
         # primitives so we can assert the full queued → assigned →
         # in_progress → saved walk really happens (handle_research_*
         # only shows the start and end states from the outside).
-        from yule_orchestrator.agents.job_queue.role_take_worker import (
+        from yule_engineering.agents.job_queue.role_take_worker import (
             KIND_OPEN,
             RoleTakeWorker,
         )
@@ -220,7 +220,7 @@ class RoleScopedPickTests(_Harness):
         # only see its own — even after another worker has picked
         # one of the others. Mirrors the M6 systemd scenario where
         # qa-engineer.service must not steal backend-engineer.service's row.
-        from yule_orchestrator.agents.job_queue.role_take_worker import (
+        from yule_engineering.agents.job_queue.role_take_worker import (
             JOB_TYPE_ROLE_TAKE,
             KIND_OPEN,
             RoleTakeWorker,
@@ -288,7 +288,7 @@ class DuplicateMarkerTests(_Harness):
         # one is terminal. To prove the in-flight dedup contract,
         # plant a fresh job in IN_PROGRESS and verify the second
         # call is silenced.
-        from yule_orchestrator.agents.job_queue.role_take_worker import (
+        from yule_engineering.agents.job_queue.role_take_worker import (
             KIND_OPEN,
             RoleTakeWorker,
         )

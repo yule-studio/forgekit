@@ -1,6 +1,6 @@
 # Autonomous Research Collector — v0 (MVP)
 
-이 문서는 engineering-agent가 사용자에게 링크/이미지를 묻기 **전에** 1차 자료를 자동 수집하는 collector MVP의 정책 기준선이다. 코드 진실 소스는 `src/yule_orchestrator/agents/research_collector.py`.
+이 문서는 engineering-agent가 사용자에게 링크/이미지를 묻기 **전에** 1차 자료를 자동 수집하는 collector MVP의 정책 기준선이다. 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/agents/research_collector.py`.
 
 ## 1. 흐름
 
@@ -156,7 +156,7 @@ API 응답을 ResearchSource로 변환하는 `_result_dict_to_source`는 다음 
 
 ## 12. Background ingestion scheduler (engineering_intelligence)
 
-본 §1~§11은 **요청이 들어왔을 때** intake 가 부르는 collector를 다룬다. master plan §6.1의 background knowledge loop는 별개 모듈이며, 코드 진실 소스는 `src/yule_orchestrator/agents/engineering_intelligence/scheduler.py`.
+본 §1~§11은 **요청이 들어왔을 때** intake 가 부르는 collector를 다룬다. master plan §6.1의 background knowledge loop는 별개 모듈이며, 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/agents/engineering_intelligence/scheduler.py`.
 
 ### 12.1 흐름
 
@@ -206,7 +206,7 @@ scheduler 자체는 env를 읽지 않는다. 다만 **runtime 가 본 모듈을 
 
 ## 13. Live provider seam (engineering_intelligence)
 
-코드 진실 소스: `src/yule_orchestrator/agents/engineering_intelligence/providers.py`.
+코드 진실 소스: `apps/engineering-agent/src/yule_engineering/agents/engineering_intelligence/providers.py`.
 
 ### 13.1 디스패치
 

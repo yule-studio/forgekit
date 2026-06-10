@@ -24,12 +24,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.completion_funnel import (
+from yule_engineering.agents.job_queue.completion_funnel import (
     COMPLETION_FUNNEL_EXTRA_KEY,
     build_completion_funnel,
     funnel_completion,
 )
-from yule_orchestrator.agents.job_queue.completion_hook import (
+from yule_engineering.agents.job_queue.completion_hook import (
     COMPLETION_BLOCKED,
     COMPLETION_DONE,
     COMPLETION_NEEDS_APPROVAL,
@@ -139,7 +139,7 @@ class CompletionFunnelTickFailureTests(unittest.TestCase):
         import logging
 
         funnel_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.completion_funnel"
+            "yule_engineering.agents.job_queue.completion_funnel"
         )
         previous = funnel_logger.level
         funnel_logger.setLevel(logging.CRITICAL)

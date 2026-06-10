@@ -29,23 +29,23 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue import (
+from yule_engineering.agents.job_queue import (
     CodingExecutorWorker,
     HeartbeatStore,
     JobQueue,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     SESSION_EXTRA_DISPATCH_KEY,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     JOB_TYPE_CODING_EXECUTE,
 )
-from yule_orchestrator.runtime.run_service import (
+from yule_engineering.runtime.run_service import (
     _build_process_job,
     _pick_filters_for,
     build_coding_executor_bundle,
 )
-from yule_orchestrator.runtime.services import resolve_service
+from yule_engineering.runtime.services import resolve_service
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ class CodingExecutorBuilderTests(_Fixture):
         # processes the job.
         free = inspect.getclosurevars(process_fn).nonlocals
         worker = free.get("worker")
-        from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+        from yule_engineering.agents.job_queue.coding_executor_worker import (
             CodingExecuteRequest,
         )
         request = CodingExecuteRequest(
@@ -230,7 +230,7 @@ class CodingExecutorBuilderTests(_Fixture):
             if r.job_type == JOB_TYPE_CODING_EXECUTE
         ]
         self.assertEqual(len(rows), 1)
-        from yule_orchestrator.agents.job_queue.state_machine import JobState
+        from yule_engineering.agents.job_queue.state_machine import JobState
         self.assertEqual(rows[0].state, JobState.SAVED)
 
 

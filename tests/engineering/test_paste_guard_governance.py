@@ -38,13 +38,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     RecordOnlyCodeEditor,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     is_protected_branch,
 )
-from yule_orchestrator.agents.security.paste_guard import (
+from yule_engineering.agents.security.paste_guard import (
     GuardVerdict,
     OutboundChannel,
     RISK_ADVISORY,

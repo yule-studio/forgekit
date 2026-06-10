@@ -1,6 +1,6 @@
 # Engineering Agent Discord Conversation Layer (v0)
 
-이 문서는 engineering-agent가 Discord `#업무-접수` 채널에서 자연어를 **유도리 있게 받아들이는** 대화 레이어의 정책 기준선이다. 코드 진실 소스는 `src/yule_orchestrator/discord/engineering_conversation.py`. 본 단계는 순수 함수와 응답 envelope만 정의하며 bot.py 배선은 후속 마일스톤에서 진행한다.
+이 문서는 engineering-agent가 Discord `#업무-접수` 채널에서 자연어를 **유도리 있게 받아들이는** 대화 레이어의 정책 기준선이다. 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/discord/engineering_conversation.py`. 본 단계는 순수 함수와 응답 envelope만 정의하며 bot.py 배선은 후속 마일스톤에서 진행한다.
 
 ## 1. planning conversation과의 차이
 

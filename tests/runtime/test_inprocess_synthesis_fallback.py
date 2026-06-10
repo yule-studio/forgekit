@@ -21,18 +21,18 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.role_take_worker import (
+from yule_engineering.agents.job_queue.role_take_worker import (
     JOB_TYPE_ROLE_TAKE,
     KIND_OPEN,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     save_session,
 )
-from yule_orchestrator.discord.engineering_team_runtime import (
+from yule_engineering.discord.engineering_team_runtime import (
     handle_research_turn_message,
     reset_handled_turns_for_tests,
 )

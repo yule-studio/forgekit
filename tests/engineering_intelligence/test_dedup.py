@@ -9,12 +9,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.dedup import (
+from yule_engineering.agents.engineering_intelligence.dedup import (
     compute_dedup_key,
     dedup_items,
     enforce_same_day_topic_uniqueness,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     SourceKind,
 )

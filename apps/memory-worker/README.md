@@ -2,8 +2,8 @@
 
 > memory 인덱싱 / retrieval eval / vault sync / knowledge housekeeping 를
 > 담당하는 백그라운드 워커. 본 디렉터리는 현재 **책임 문서(scaffold)** 만
-> 두며, 코드는 아직 `src/yule_orchestrator/memory/**` 와 `cli/memory.py`
-> (= `src/yule_orchestrator/cli/memory.py`) 에 있다.
+> 두며, 코드는 아직 `apps/engineering-agent/src/yule_engineering/memory/**` 와 `cli/memory.py`
+> (= `apps/engineering-agent/src/yule_engineering/cli/memory.py`) 에 있다.
 
 ## 책임 범위
 
@@ -27,8 +27,8 @@
 
 | 현재 위치 | 이전 대상 |
 | --- | --- |
-| `src/yule_orchestrator/memory/**` | 검색/인덱싱 코어는 `packages/memory`, 워커 구동부는 `apps/memory-worker` |
-| `src/yule_orchestrator/cli/memory.py` | `apps/memory-worker` CLI 진입점 |
+| `apps/engineering-agent/src/yule_engineering/memory/**` | 검색/인덱싱 코어는 `packages/memory`, 워커 구동부는 `apps/memory-worker` |
+| `apps/engineering-agent/src/yule_engineering/cli/memory.py` | `apps/memory-worker` CLI 진입점 |
 
 ## migration TODO
 

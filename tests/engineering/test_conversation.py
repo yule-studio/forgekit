@@ -10,7 +10,7 @@ except ModuleNotFoundError:
 from datetime import datetime
 from types import SimpleNamespace
 
-from yule_orchestrator.discord.engineering_conversation import (
+from yule_engineering.discord.engineering_conversation import (
     CONFIRM_INTAKE,
     GENERAL_ENGINEERING_HELP,
     NEEDS_CLARIFICATION,
@@ -174,7 +174,7 @@ class ResponseEnvelopeTestCase(unittest.TestCase):
         # ready_to_intake=True with intake_prompt="이대로 진행" → that
         # routed the confirmation phrase itself into research loop +
         # forum thread title. Now downgrades to APPROVAL_ACTION ack.
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             APPROVAL_ACTION,
         )
 
@@ -562,7 +562,7 @@ class BuildResearchPackTestCase(unittest.TestCase):
 
 class AutoCollectWireUpTestCase(unittest.TestCase):
     def _enabled_cfg(self):
-        from yule_orchestrator.agents.research.collector import (
+        from yule_engineering.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
@@ -575,7 +575,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         )
 
     def test_intake_candidate_runs_collector_and_attaches_pack(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             build_engineering_conversation_response,
             TASK_INTAKE_CANDIDATE,
         )
@@ -602,7 +602,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertNotIn("forum", response.content)
 
     def test_disabling_auto_collect_keeps_legacy_response(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             build_engineering_conversation_response,
             TASK_INTAKE_CANDIDATE,
         )
@@ -617,11 +617,11 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertNotIn("1차 자료를", response.content)
 
     def test_user_provided_links_route_to_user_provided_mode(self) -> None:
-        from yule_orchestrator.agents.research.collector import (
+        from yule_engineering.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             build_engineering_conversation_response,
         )
 
@@ -644,11 +644,11 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertIn("보내주신 자료를 1순위", response.content)
 
     def test_unknown_role_falls_through_to_needs_user_input(self) -> None:
-        from yule_orchestrator.agents.research.collector import (
+        from yule_engineering.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             build_engineering_conversation_response,
         )
 
@@ -671,7 +671,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertNotIn("`이대로 진행`", response.content)
 
     def test_topic_is_summarized_when_prompt_is_long(self) -> None:
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             build_engineering_conversation_response,
         )
 
@@ -695,7 +695,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
     def test_response_has_paragraph_structure(self) -> None:
         """Spec says 2~4 sentences per paragraph and short paragraphs."""
 
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             build_engineering_conversation_response,
         )
 
@@ -713,8 +713,8 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
         self.assertLessEqual(len(paragraphs[0].splitlines()), 2)
 
     def test_collector_failure_does_not_break_response(self) -> None:
-        from yule_orchestrator.agents.research.collector import ResearchCollector
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.agents.research.collector import ResearchCollector
+        from yule_engineering.discord.engineering_conversation import (
             TASK_INTAKE_CANDIDATE,
             build_engineering_conversation_response,
         )
@@ -725,7 +725,7 @@ class AutoCollectWireUpTestCase(unittest.TestCase):
             def search(self, query):  # noqa: D401 - test stub
                 raise RuntimeError("provider down")
 
-        from yule_orchestrator.agents.research.collector import (
+        from yule_engineering.agents.research.collector import (
             CollectorConfig,
             PROVIDER_MOCK,
         )
@@ -800,7 +800,7 @@ class BotEchoAndCommandOnlyGuardTests(unittest.TestCase):
         # That caused the bare command-only phrase to feed the research
         # loop + forum thread title. Now it downgrades to
         # APPROVAL_ACTION and the collector still must not run.
-        from yule_orchestrator.discord.engineering_conversation import (
+        from yule_engineering.discord.engineering_conversation import (
             APPROVAL_ACTION,
         )
 

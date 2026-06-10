@@ -9,11 +9,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     SourceAxis,
     SourceTier,
 )
-from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+from yule_engineering.agents.engineering_intelligence.source_registry import (
     SUPPORTED_ROLES,
     RoleAxisGroup,
     RoleFeedDigest,
@@ -53,7 +53,7 @@ class RoleFeedDigestTests(unittest.TestCase):
             )
 
     def test_feed_count_matches_role_sources(self) -> None:
-        from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+        from yule_engineering.agents.engineering_intelligence.source_registry import (
             role_sources,
         )
 
@@ -66,7 +66,7 @@ class RoleFeedDigestTests(unittest.TestCase):
             )
 
     def test_auto_collect_feed_count_matches_filter(self) -> None:
-        from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+        from yule_engineering.agents.engineering_intelligence.source_registry import (
             auto_collectable_sources,
         )
 

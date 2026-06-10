@@ -1,6 +1,6 @@
 # Engineering Agent Gateway Dispatcher (v0)
 
-이 문서는 engineering-agent 게이트웨이가 들어온 요청 하나를 받아 **참여 후보, 실행 후보/검토 후보 모델, 참고 reference, write 게이트**를 결정하는 디스패처의 정책 기준선이다. 코드 진실 소스는 `src/yule_orchestrator/agents/dispatcher.py`이며, 본 문서는 운영자가 읽고 수정 절차를 따르는 규약이다.
+이 문서는 engineering-agent 게이트웨이가 들어온 요청 하나를 받아 **참여 후보, 실행 후보/검토 후보 모델, 참고 reference, write 게이트**를 결정하는 디스패처의 정책 기준선이다. 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/agents/dispatcher.py`이며, 본 문서는 운영자가 읽고 수정 절차를 따르는 규약이다.
 
 ## 1. 입력과 출력
 

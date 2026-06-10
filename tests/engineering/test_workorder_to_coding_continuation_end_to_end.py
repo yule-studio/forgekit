@@ -31,31 +31,31 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.job import STATUS_READY
-from yule_orchestrator.agents.github_workos.audit import OUTCOME_OK
-from yule_orchestrator.agents.git.repo_contract import RepoContract
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.coding.job import STATUS_READY
+from yule_engineering.agents.github_workos.audit import OUTCOME_OK
+from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_engineering.agents.job_queue.approval_worker import (
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     build_coding_execute_request,
     iter_ready_coding_jobs,
 )
-from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+from yule_engineering.agents.job_queue.github_work_order_executor import (
     GitHubWorkOrderWorker,
     SESSION_EXTRA_GITHUB_ISSUE_KEY,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     PROGRESS_CODING_DISPATCH_QUEUED,
     PROGRESS_CODING_JOB_READY,
     PROGRESS_ISSUE_CREATED,
     SESSION_EXTRA_CODING_JOB_KEY,
     SESSION_EXTRA_PROGRESS_KEY,
 )
-from yule_orchestrator.discord.integrations.github_workos_adapter import (
+from yule_engineering.discord.integrations.github_workos_adapter import (
     enqueue_github_work_approval,
     handle_github_work_approval_reply,
 )
@@ -353,7 +353,7 @@ class ContinuationEndToEndTests(unittest.TestCase):
         것을 핀.
         """
 
-        from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+        from yule_engineering.agents.job_queue.work_order_coding_continuation import (
             CONTINUATION_NOOP_ALREADY_READY,
             promote_session_to_coding_ready,
         )

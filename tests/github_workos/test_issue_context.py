@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.issue_context import (
+from yule_engineering.agents.github_workos.issue_context import (
     SourceKind,
     WorkRequest,
     build_request_from_discord_intake,

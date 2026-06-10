@@ -15,17 +15,17 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.deliberation import (
+from yule_engineering.agents.deliberation import (
     TechLeadSynthesis,
     synthesis_to_dict,
 )
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchSource,
     pack_to_dict,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.cli.obsidian import run_obsidian_sync_command
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.cli.obsidian import run_obsidian_sync_command
 
 
 def _session(extra) -> WorkflowSession:
@@ -61,7 +61,7 @@ def _pack() -> ResearchPack:
 class ObsidianSyncCommandTestCase(unittest.TestCase):
     def test_missing_session_returns_error(self) -> None:
         with patch(
-            "yule_orchestrator.cli.obsidian.load_session", return_value=None
+            "yule_engineering.cli.obsidian.load_session", return_value=None
         ):
             buf_err = io.StringIO()
             with redirect_stderr(buf_err):
@@ -78,7 +78,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
     def test_session_without_pack_returns_error(self) -> None:
         session = _session(extra={})
         with patch(
-            "yule_orchestrator.cli.obsidian.load_session", return_value=session
+            "yule_engineering.cli.obsidian.load_session", return_value=session
         ):
             buf_err = io.StringIO()
             with redirect_stderr(buf_err):
@@ -98,7 +98,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ), patch.dict(
                 "os.environ",
                 {k: v for k, v in __import__("os").environ.items()
@@ -126,7 +126,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -145,7 +145,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -171,7 +171,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -204,7 +204,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -240,7 +240,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 buf_err = io.StringIO()
                 with redirect_stderr(buf_err):
@@ -265,7 +265,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -281,11 +281,11 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ), patch(
-                "yule_orchestrator.cli.obsidian.commit_single_file"
+                "yule_engineering.cli.obsidian.commit_single_file"
             ) as commit_spy, patch(
-                "yule_orchestrator.cli.obsidian.find_git_repo_root"
+                "yule_engineering.cli.obsidian.find_git_repo_root"
             ) as find_spy:
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -302,7 +302,7 @@ class ObsidianSyncCommandTestCase(unittest.TestCase):
         session = _session(extra={"research_pack": pack_to_dict(_pack())})
         with tempfile.TemporaryDirectory() as tmp:
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 first_buf = io.StringIO()
                 with redirect_stdout(first_buf):
@@ -372,7 +372,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
             unrelated.write_text("noise\n", encoding="utf-8")
 
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 buf_out = io.StringIO()
                 with redirect_stdout(buf_out):
@@ -412,7 +412,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
             _init_repo(vault)
 
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 buf_out = io.StringIO()
                 with redirect_stdout(buf_out):
@@ -444,7 +444,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
             vault = Path(tmp)
 
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 buf_err = io.StringIO()
                 with redirect_stderr(buf_err):
@@ -473,7 +473,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
             )
 
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 buf_err = io.StringIO()
                 with redirect_stderr(buf_err):
@@ -495,7 +495,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
             _init_repo(vault)
 
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc = run_obsidian_sync_command(
                     session.session_id,
@@ -522,7 +522,7 @@ class ObsidianSyncGitCommitTestCase(unittest.TestCase):
             _init_repo(vault)
 
             with patch(
-                "yule_orchestrator.cli.obsidian.load_session", return_value=session
+                "yule_engineering.cli.obsidian.load_session", return_value=session
             ):
                 rc1 = run_obsidian_sync_command(
                     session.session_id,

@@ -25,7 +25,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.approval_policy import (
+from yule_engineering.agents.approval_policy import (
     ACTION_CODE_WRITE,
     ACTION_DATA_DELETE,
     ACTION_DATA_OVERWRITE,
@@ -346,7 +346,7 @@ class AuditRecordTests(unittest.TestCase):
         # the audit record builder must refuse — non-empty reason is
         # the load-bearing field that defends "왜 사람 승인 없이 실행했냐"
         # later.
-        from yule_orchestrator.agents.approval_policy import ApprovalDecision
+        from yule_engineering.agents.approval_policy import ApprovalDecision
 
         decision = decide_approval(_ctx(ACTION_RSS_FETCH))
         # Force a blank reason via dataclass replace — emulates a

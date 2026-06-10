@@ -62,10 +62,10 @@ agent 가 issue 본문을 추측해 꾸며내지 않는다. placeholder/HTML 주
 
 ### 1.2.1 Runtime hard rails — branch / PR / tag (P0-T)
 
-코드 SSoT: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py).
+코드 SSoT: [`apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py`](../apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py).
 Caller 통합 (P0-T caller integration):
-- [`agents/job_queue/coding_executor_worker.py`](../src/yule_orchestrator/agents/job_queue/coding_executor_worker.py) `process_job` — branch 결정 후 `validate_branch_name` 호출, deny 시 `REASON_BRANCH_POLICY_VIOLATION` terminal + `coding_blocked` progress marker
-- [`agents/job_queue/coding_executor_live.py`](../src/yule_orchestrator/agents/job_queue/coding_executor_live.py) `GithubAppDraftPRCreator.open` — `_draft_pr_body` 직후 `validate_pr_body` 호출, warning 은 logger 로 audit (caller-driven gate). `_draft_pr_body` 자체가 5 섹션 + audit block 충족하도록 정렬
+- [`agents/job_queue/coding_executor_worker.py`](../apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_worker.py) `process_job` — branch 결정 후 `validate_branch_name` 호출, deny 시 `REASON_BRANCH_POLICY_VIOLATION` terminal + `coding_blocked` progress marker
+- [`agents/job_queue/coding_executor_live.py`](../apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live.py) `GithubAppDraftPRCreator.open` — `_draft_pr_body` 직후 `validate_pr_body` 호출, warning 은 logger 로 audit (caller-driven gate). `_draft_pr_body` 자체가 5 섹션 + audit block 충족하도록 정렬
 
 **Branch**
 - protected branch (`main` / `master` / `develop` / `release*` / `hotfix*` / `production` / `prod`) 직접 작업 금지.

@@ -17,8 +17,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.services import ENGINEERING_PROFILE
-from yule_orchestrator.runtime.subprocess_supervisor import (
+from yule_engineering.runtime.services import ENGINEERING_PROFILE
+from yule_engineering.runtime.subprocess_supervisor import (
     DEFAULT_BACKOFF_SCHEDULE,
     EXIT_PREVENT_RESTART,
     build_dry_run_plan,
@@ -157,7 +157,7 @@ class DryRunPlanTests(unittest.TestCase):
         import importlib
         import os
 
-        from yule_orchestrator.runtime import (
+        from yule_engineering.runtime import (
             services as services_mod,
             subprocess_supervisor as supervisor_mod,
         )
@@ -277,7 +277,7 @@ class SpawnAndSuperviseTests(unittest.TestCase):
             t = asyncio.create_task(trigger_shutdown())
             # Restrict the profile to just one service so we can
             # observe its restart precisely.
-            from yule_orchestrator.runtime import services as svc_mod
+            from yule_engineering.runtime import services as svc_mod
 
             original = svc_mod.PROFILES
             svc_mod.PROFILES = {  # type: ignore[assignment]
@@ -309,7 +309,7 @@ class SpawnAndSuperviseTests(unittest.TestCase):
         # A-M7: every spawn crashes with exit_code=1. With a tight
         # circuit policy (1 restart in 60s) the breaker opens after
         # the first crash → the supervisor must stop respawning.
-        from yule_orchestrator.runtime.circuit_breaker import (
+        from yule_engineering.runtime.circuit_breaker import (
             CircuitBreakerPolicy,
             CircuitBreakerRegistry,
         )
@@ -338,7 +338,7 @@ class SpawnAndSuperviseTests(unittest.TestCase):
                 shutdown.set()
 
             t = asyncio.create_task(trigger_shutdown())
-            from yule_orchestrator.runtime import services as svc_mod
+            from yule_engineering.runtime import services as svc_mod
 
             original = svc_mod.PROFILES
             svc_mod.PROFILES = {  # type: ignore[assignment]
@@ -402,7 +402,7 @@ class SpawnAndSuperviseTests(unittest.TestCase):
                 shutdown.set()
 
             t = asyncio.create_task(trigger_shutdown())
-            from yule_orchestrator.runtime import services as svc_mod
+            from yule_engineering.runtime import services as svc_mod
 
             original = svc_mod.PROFILES
             svc_mod.PROFILES = {  # type: ignore[assignment]

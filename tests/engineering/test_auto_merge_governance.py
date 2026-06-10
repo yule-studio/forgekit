@@ -30,11 +30,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.learning.mistake_ledger import (
+from yule_engineering.agents.learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
-from yule_orchestrator.agents.release.auto_merge_decider import (
+from yule_engineering.agents.release.auto_merge_decider import (
     AutoMergeVerdict,
     PrDiffSummary,
     PrMetadata,
@@ -123,7 +123,7 @@ class HighCriticalNeverEligibleTests(unittest.TestCase):
     ) -> None:
         diff = _low_diff(
             modules_touched=(
-                "src/yule_orchestrator/agents/security/paste_guard.py",
+                "apps/engineering-agent/src/yule_engineering/agents/security/paste_guard.py",
             ),
         )
         verdict = evaluate_auto_merge(

@@ -13,7 +13,7 @@
 ## 1. 인지 부조화 (원인 요약)
 
 ### 문제 1 — forum thread fallthrough
-- `src/yule_orchestrator/discord/forum_message_adapter.py:103` 의 `route_forum_message` 가 처리하는 intent 는 **2개뿐**:
+- `apps/engineering-agent/src/yule_engineering/discord/forum_message_adapter.py:103` 의 `route_forum_message` 가 처리하는 intent 는 **2개뿐**:
   1. Branch 1 (line 141) — Obsidian save request.
   2. Branch 2 (line 193) — role-change request.
 - 일반 follow-up 질문은 line 202 의 `parse_role_change_request(text) is None` 분기에서 `handled=False` 로 빠진다.
@@ -21,12 +21,12 @@
 - 결과: 사용자 follow-up 메시지가 어디서도 처리되지 않음.
 
 ### 문제 2 — raw prompt query
-- `src/yule_orchestrator/agents/research/collector.py:570` `build_query_for_role` 가 prompt 첫 줄을 그대로 query 토큰화. 케이스 정규화, alias 보정, 도메인 lexicon 매칭 모두 없음.
+- `apps/engineering-agent/src/yule_engineering/agents/research/collector.py:570` `build_query_for_role` 가 prompt 첫 줄을 그대로 query 토큰화. 케이스 정규화, alias 보정, 도메인 lexicon 매칭 모두 없음.
 - 결과: `dRAG memory 구조 비교` → query `dRAG memory 구조 비교` 그대로. 도메인 용어 (`RAG`/`CAG`/`LLM`/`JWT`/`CI/CD`) 의 대소문자·variant 가 그대로 collector 에 도달.
 - mock fallback (provider/key 미설정 시) 은 query 토큰 매칭으로 hit bucket 을 고르므로, 정규화 안 된 query 는 잘못된 bucket 의 canned 결과를 끌어옴 → 사용자 눈엔 "엉뚱한 답" 으로 보임.
 
 ### 문제 3 — typing 시작 시점
-- `src/yule_orchestrator/discord/member_bot.py:284` `handle_research_turn_message(...)` 호출이 **typing wrap 바깥**. 이 핸들러는 cheap 하지 않음 — `load_session`, deliberation re-render, synthesis 큐잉 수행 (`engineering_team_runtime.py:523` 이하).
+- `apps/engineering-agent/src/yule_engineering/discord/member_bot.py:284` `handle_research_turn_message(...)` 호출이 **typing wrap 바깥**. 이 핸들러는 cheap 하지 않음 — `load_session`, deliberation re-render, synthesis 큐잉 수행 (`engineering_team_runtime.py:523` 이하).
 - typing_keepalive 진입은 line 318 (handler 결과가 non-None 인 다음). 즉 expensive computation 의 절반이 끝난 다음에야 typing 시작.
 
 ## 2. 5 가지 의심 spot (이번 PR 처리 범위)

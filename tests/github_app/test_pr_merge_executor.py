@@ -16,15 +16,15 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.pr_approval import (
     PRMergeProposal,
     PRMergeReplyDispatch,
 )
-from yule_orchestrator.github_app.live_client import (
+from yule_engineering.github_app.live_client import (
     LiveGithubAppHTTPError,
     LiveGithubAppMergeDisabled,
 )
-from yule_orchestrator.github_app.pr_merge_executor import (
+from yule_engineering.github_app.pr_merge_executor import (
     build_pr_merge_executor,
 )
 

@@ -2,7 +2,7 @@
 
 The engineering-agent team-runtime orchestration logic moved from
 ``discord/engineering_team_runtime`` to
-``yule_orchestrator.agents.engineering_team_runtime`` to break an
+``yule_engineering.agents.engineering_team_runtime`` to break an
 artificial ``agents ↔ discord`` import cycle (the module contained zero
 discord transport — only agents deliberation/research orchestration).
 
@@ -14,8 +14,8 @@ because no ``agents/`` file imports this discord path anymore.
 
 from __future__ import annotations
 
-from yule_orchestrator.agents.engineering_team_runtime import *  # noqa: F401,F403
-from yule_orchestrator.agents.engineering_team_runtime import (  # noqa: F401
+from yule_engineering.agents.engineering_team_runtime import *  # noqa: F401,F403
+from yule_engineering.agents.engineering_team_runtime import (  # noqa: F401
     _HANDLED_TURNS,
     _HANDLED_TURNS_SET,
     _retrieve_memory_for_role,

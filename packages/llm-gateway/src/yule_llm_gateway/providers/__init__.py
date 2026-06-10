@@ -8,7 +8,7 @@ EXCEPT the echo provider which returns a deterministic response for tests and
 dry-run wiring.
 
 DELIBERATE non-goal: these adapters do NOT import the real runners
-(``yule_orchestrator.agents.runners.*`` / ``yule_orchestrator.planning.ollama``).
+(``yule_engineering.agents.runners.*`` / ``yule_engineering.planning.ollama``).
 Importing them would couple the gateway package to app internals and risk import
 cycles. The migration path is to have those runners *register* themselves with
 :class:`yule_llm_gateway.client.LLMGateway`, not the other way around.

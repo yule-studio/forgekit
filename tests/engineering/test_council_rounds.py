@@ -19,7 +19,7 @@ from typing import Any
 
 import unittest
 
-from yule_orchestrator.agents.council import (
+from yule_engineering.agents.council import (
     CouncilConsensusStatus,
     DEFAULT_COUNCIL_ROUND_CAP,
     canonical_role,
@@ -30,7 +30,7 @@ from yule_orchestrator.agents.council import (
     role_councils_to_extra,
     short_role,
 )
-from yule_orchestrator.agents.council_bootstrap import (
+from yule_engineering.agents.council_bootstrap import (
     PROVIDER_SEAT_MATRIX_EXTRA_KEY,
     ROLE_WORK_ORDERS_EXTRA_KEY,
     TASK_BRIEF_EXTRA_KEY,
@@ -43,7 +43,7 @@ from yule_orchestrator.agents.council_bootstrap import (
     role_work_order_to_payload,
     task_brief_to_payload,
 )
-from yule_orchestrator.agents.lifecycle.council_status_signals import (
+from yule_engineering.agents.lifecycle.council_status_signals import (
     COUNCIL_BOOTSTRAP_ERROR,
     COUNCIL_ESCALATED_CODE,
     COUNCIL_READY_FOR_SYNTHESIS_CODE,
@@ -51,7 +51,7 @@ from yule_orchestrator.agents.lifecycle.council_status_signals import (
     COUNCIL_STATE_MISSING,
     collect_council_signals,
 )
-from yule_orchestrator.agents.lifecycle.council_substage import (
+from yule_engineering.agents.lifecycle.council_substage import (
     COUNCIL_BOOTSTRAP_ERROR_EXTRA_KEY,
     COUNCIL_ESCALATION_EXTRA_KEY,
     LIFECYCLE_SUBSTAGE_EXTRA_KEY,
@@ -60,7 +60,7 @@ from yule_orchestrator.agents.lifecycle.council_substage import (
     SUBSTAGE_COUNCIL_READY_FOR_SYNTHESIS,
     SUBSTAGE_COUNCIL_ROUND_COMPLETE,
 )
-from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+from yule_engineering.discord.engineering_channel_router.council_flow import (
     advance_council_for_role,
     maybe_bootstrap_council,
 )

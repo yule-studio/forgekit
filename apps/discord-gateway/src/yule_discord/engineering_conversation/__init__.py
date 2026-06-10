@@ -2,7 +2,7 @@
 
 The engineering-agent free-form conversation layer moved from
 ``discord/engineering_conversation`` to
-``yule_orchestrator.agents.engineering_conversation`` to break an
+``yule_engineering.agents.engineering_conversation`` to break an
 artificial ``agents ↔ discord`` import cycle (the module contained only
 agents task-shaping / intent / research-bootstrap logic, no discord
 transport).
@@ -17,8 +17,8 @@ because no ``agents/`` file imports this discord path anymore.
 
 from __future__ import annotations
 
-from yule_orchestrator.agents.engineering_conversation import *  # noqa: F401,F403
-from yule_orchestrator.agents.engineering_conversation import (  # noqa: F401
+from yule_engineering.agents.engineering_conversation import *  # noqa: F401,F403
+from yule_engineering.agents.engineering_conversation import (  # noqa: F401
     __all__,
     # Explicitly re-exported by the original facade though not in __all__.
     _suggest_task_type,

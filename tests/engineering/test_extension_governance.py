@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.extension.manifest import (
+from yule_engineering.agents.extension.manifest import (
     load_agent_manifest_from_dict,
     load_plugin_manifest_from_dict,
 )

@@ -30,7 +30,7 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_FRONTEND_ENGINEER_",
   "autonomy_level": "supervised",
   "risk_class": "MEDIUM",
-  "module_path": "yule_orchestrator.agents.engineering.frontend_engineer.runner",
+  "module_path": "yule_engineering.agents.engineering.frontend_engineer.runner",
   "discord_token_env": "ENGINEERING_AGENT_BOT_FRONTEND_ENGINEER_TOKEN",
   "instruction_entry": "agents/engineering-agent/frontend-engineer/CLAUDE.md",
   "description": "UI 컴포넌트, 사용자 흐름, 상태 관리, 접근성과 인터랙션을 책임지는 부서 멤버. backend API 계약과 디자인 가이드를 입력으로 받아 사용자가 실제로 보는 화면을 일관성 있게 구현하고, qa-engineer가 회귀를 잡을 수 있도록 컴포넌트 단위의 검증 가능한 산출물을 만든다.",

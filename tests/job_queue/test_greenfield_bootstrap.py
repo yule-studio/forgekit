@@ -35,34 +35,34 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.greenfield_bootstrap import (
+from yule_engineering.agents.coding.greenfield_bootstrap import (
     MODE_GREENFIELD_FULL_STACK,
     MODE_GREENFIELD_PYTHON,
     apply_bootstrap_plan,
     detect_bootstrap_mode,
     plan_greenfield_scaffold,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_test_command import (
+from yule_engineering.agents.job_queue.coding_execute_test_command import (
     STRATEGY_BOOTSTRAP_REQUIRED,
     STRATEGY_JS_SCRIPT,
     select_test_command,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     BootstrapLiveEditorUnavailable,
     ENV_GREENFIELD_BOOTSTRAP_ENABLED,
     GreenfieldBootstrapEditor,
     SubprocessTestRunner,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
     REASON_BOOTSTRAP_REQUIRED,
     WorktreeContext,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"

@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     DECIDED_BY_INFERRED,
     DECIDED_BY_USER,
     EXTRA_DECIDED_AT,

@@ -19,7 +19,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.governance.code_audit import (
+from yule_engineering.agents.governance.code_audit import (
     FILE_SIZE_ALLOWLIST,
     SPLIT_LOC,
     SPLIT_NOW_PENDING,
@@ -53,13 +53,13 @@ def _patch_allowlist(mapping):
     automatic when the context exits / test method returns.
     """
 
-    import yule_orchestrator.agents.governance.code_audit as code_audit_mod
+    import yule_engineering.agents.governance.code_audit as code_audit_mod
 
     return patch.object(code_audit_mod, "FILE_SIZE_ALLOWLIST", mapping)
 
 
 def _patch_pending(mapping):
-    import yule_orchestrator.agents.governance.code_audit as code_audit_mod
+    import yule_engineering.agents.governance.code_audit as code_audit_mod
 
     return patch.object(code_audit_mod, "SPLIT_NOW_PENDING", mapping)
 
@@ -104,7 +104,7 @@ class AuditOrchestratorFileSizesTests(unittest.TestCase):
         self.tmp_path = Path(self._tmp.name)
 
     def test_splits_files_into_correct_verdict_buckets(self) -> None:
-        base = self.tmp_path / "src" / "yule_orchestrator"
+        base = self.tmp_path / "apps" / "engineering-agent" / "src" / "yule_engineering"
         base.mkdir(parents=True)
         _write(base / "tiny.py", lines=100)
         _write(base / "warn.py", lines=WARN_LOC + 5)
@@ -114,7 +114,7 @@ class AuditOrchestratorFileSizesTests(unittest.TestCase):
         multi_resp_extra = (
             "def route_engineering_message(msg):\n    return None\n"
             "def render_runtime_status(s):\n    save_session(s)\n"
-            "from yule_orchestrator.discord.bot import build_engineering_gateway_bot\n"
+            "from yule_engineering.discord.bot import build_engineering_gateway_bot\n"
         )
         _write(
             base / "huge_multi.py",
@@ -123,21 +123,21 @@ class AuditOrchestratorFileSizesTests(unittest.TestCase):
         )
 
         audit = audit_orchestrator_file_sizes(
-            repo_root=self.tmp_path, package_root="src/yule_orchestrator"
+            repo_root=self.tmp_path, package_root="apps/engineering-agent/src/yule_engineering"
         )
 
         by_path = {row.path: row for row in audit.rows}
         self.assertEqual(
-            by_path["src/yule_orchestrator/tiny.py"].verdict, VERDICT_SAFE
+            by_path["apps/engineering-agent/src/yule_engineering/tiny.py"].verdict, VERDICT_SAFE
         )
         self.assertEqual(
-            by_path["src/yule_orchestrator/warn.py"].verdict, VERDICT_WARN
+            by_path["apps/engineering-agent/src/yule_engineering/warn.py"].verdict, VERDICT_WARN
         )
         self.assertEqual(
-            by_path["src/yule_orchestrator/split_soon.py"].verdict,
+            by_path["apps/engineering-agent/src/yule_engineering/split_soon.py"].verdict,
             VERDICT_SPLIT_SOON,
         )
-        huge = by_path["src/yule_orchestrator/huge_multi.py"]
+        huge = by_path["apps/engineering-agent/src/yule_engineering/huge_multi.py"]
         self.assertEqual(huge.verdict, VERDICT_SPLIT_NOW)
         self.assertGreaterEqual(len(huge.responsibilities), 2)
 
@@ -145,15 +145,15 @@ class AuditOrchestratorFileSizesTests(unittest.TestCase):
         self.assertIn(huge, audit.violations)
 
     def test_honors_allowlist_with_explicit_reason(self) -> None:
-        base = self.tmp_path / "src" / "yule_orchestrator"
+        base = self.tmp_path / "apps" / "engineering-agent" / "src" / "yule_engineering"
         base.mkdir(parents=True)
         _write(base / "_legacy.py", lines=SPLIT_LOC + 500)
 
         with _patch_allowlist(
-            {"src/yule_orchestrator/_legacy.py": "test allowlist reason"}
+            {"apps/engineering-agent/src/yule_engineering/_legacy.py": "test allowlist reason"}
         ):
             audit = audit_orchestrator_file_sizes(
-                repo_root=self.tmp_path, package_root="src/yule_orchestrator"
+                repo_root=self.tmp_path, package_root="apps/engineering-agent/src/yule_engineering"
             )
 
         self.assertEqual(len(audit.allowed_exceptions), 1)
@@ -164,7 +164,7 @@ class AuditOrchestratorFileSizesTests(unittest.TestCase):
 
     def test_returns_empty_for_missing_package_root(self) -> None:
         audit = audit_orchestrator_file_sizes(
-            repo_root=self.tmp_path, package_root="src/yule_orchestrator"
+            repo_root=self.tmp_path, package_root="apps/engineering-agent/src/yule_engineering"
         )
         self.assertEqual(audit.rows, ())
         self.assertFalse(audit.is_blocking())
@@ -250,7 +250,7 @@ class RenderAuditSummaryTests(unittest.TestCase):
         self.tmp_path = Path(self._tmp.name)
 
     def test_shows_violations_then_warnings_then_exceptions(self) -> None:
-        base = self.tmp_path / "src" / "yule_orchestrator"
+        base = self.tmp_path / "apps" / "engineering-agent" / "src" / "yule_engineering"
         base.mkdir(parents=True)
         _write(
             base / "huge_multi.py",
@@ -264,10 +264,10 @@ class RenderAuditSummaryTests(unittest.TestCase):
         _write(base / "_legacy.py", lines=SPLIT_LOC + 500)
 
         with _patch_allowlist(
-            {"src/yule_orchestrator/_legacy.py": "in-flight"}
+            {"apps/engineering-agent/src/yule_engineering/_legacy.py": "in-flight"}
         ):
             audit = audit_orchestrator_file_sizes(
-                repo_root=self.tmp_path, package_root="src/yule_orchestrator"
+                repo_root=self.tmp_path, package_root="apps/engineering-agent/src/yule_engineering"
             )
         summary = render_audit_summary(audit)
 
@@ -279,7 +279,7 @@ class RenderAuditSummaryTests(unittest.TestCase):
     def test_handles_empty_audit(self) -> None:
         audit = audit_orchestrator_file_sizes(
             repo_root=Path("/nonexistent-root-for-audit"),
-            package_root="src/yule_orchestrator",
+            package_root="apps/engineering-agent/src/yule_engineering",
         )
         summary = render_audit_summary(audit)
         self.assertIn("통과", summary)
@@ -297,7 +297,7 @@ class SplitNowPendingTests(unittest.TestCase):
         self.tmp_path = Path(self._tmp.name)
 
     def _make_multi_resp_file(self, rel: str) -> None:
-        base = self.tmp_path / "src" / "yule_orchestrator"
+        base = self.tmp_path / "apps" / "engineering-agent" / "src" / "yule_engineering"
         base.mkdir(parents=True, exist_ok=True)
         _write(
             base / Path(rel).name,
@@ -309,7 +309,7 @@ class SplitNowPendingTests(unittest.TestCase):
         )
 
     def test_future_deadline_moves_to_pending_bucket(self) -> None:
-        rel = "src/yule_orchestrator/big_pending.py"
+        rel = "apps/engineering-agent/src/yule_engineering/big_pending.py"
         self._make_multi_resp_file(rel)
 
         with _patch_pending(
@@ -323,7 +323,7 @@ class SplitNowPendingTests(unittest.TestCase):
         ):
             audit = audit_orchestrator_file_sizes(
                 repo_root=self.tmp_path,
-                package_root="src/yule_orchestrator",
+                package_root="apps/engineering-agent/src/yule_engineering",
                 today=date(2026, 5, 17),
             )
 
@@ -335,7 +335,7 @@ class SplitNowPendingTests(unittest.TestCase):
         self.assertFalse(audit.is_blocking())
 
     def test_past_deadline_escalates_to_violation(self) -> None:
-        rel = "src/yule_orchestrator/big_overdue.py"
+        rel = "apps/engineering-agent/src/yule_engineering/big_overdue.py"
         self._make_multi_resp_file(rel)
 
         with _patch_pending(
@@ -349,7 +349,7 @@ class SplitNowPendingTests(unittest.TestCase):
         ):
             audit = audit_orchestrator_file_sizes(
                 repo_root=self.tmp_path,
-                package_root="src/yule_orchestrator",
+                package_root="apps/engineering-agent/src/yule_engineering",
                 today=date(2026, 5, 17),
             )
 
@@ -419,25 +419,25 @@ class LiveKindToJobTypeWiringTests(unittest.TestCase):
         없는 것이므로 hard fail.
         """
 
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             JOB_TYPE_APPROVAL_POST,
         )
-        from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+        from yule_engineering.agents.job_queue.coding_executor_worker import (
             JOB_TYPE_CODING_EXECUTE,
         )
-        from yule_orchestrator.agents.job_queue.github_work_order import (
+        from yule_engineering.agents.job_queue.github_work_order import (
             JOB_TYPE_GITHUB_WORK_ORDER,
         )
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             JOB_TYPE_OBSIDIAN_WRITE,
         )
-        from yule_orchestrator.agents.job_queue.research_worker import (
+        from yule_engineering.agents.job_queue.research_worker import (
             JOB_TYPE_RESEARCH_COLLECT,
         )
-        from yule_orchestrator.agents.job_queue.role_take_worker import (
+        from yule_engineering.agents.job_queue.role_take_worker import (
             JOB_TYPE_ROLE_TAKE,
         )
-        from yule_orchestrator.runtime.status import _KIND_TO_JOB_TYPE
+        from yule_engineering.runtime.status import _KIND_TO_JOB_TYPE
 
         declared = [
             JOB_TYPE_RESEARCH_COLLECT,

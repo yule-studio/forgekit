@@ -28,8 +28,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.pr_template import render_pr_body
-from yule_orchestrator.agents.github_workos.repository_pr_template import (
+from yule_engineering.agents.github_workos.pr_template import render_pr_body
+from yule_engineering.agents.github_workos.repository_pr_template import (
     DEFAULT_TEMPLATE_PATHS,
     PrTemplateFillContext,
     TEMPLATE_REASON_FOUND_DIRECTORY_FIRST,

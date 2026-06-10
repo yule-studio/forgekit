@@ -28,21 +28,21 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.approval_reply import (
+from yule_engineering.agents.job_queue.approval_reply import (
     find_approval_by_posted_message_id,
     find_open_approval_cards_by_kind,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeProposal,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
+from yule_engineering.agents.job_queue.pr_merge_continuation_worker import (
     _supersede_old_pr_merge_cards,
     advance_pending_session,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +361,7 @@ class AdvancePendingSessionIntegrationTests(unittest.TestCase):
     def test_escalation_supersedes_old_card_and_audits(self) -> None:
         queue, tmp = _make_queue()
         self.addCleanup(tmp.cleanup)
-        from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+        from yule_engineering.agents.job_queue.pr_merge_continuation import (
             EXTRA_PR_MERGE_AUDIT,
             EXTRA_PR_MERGE_PR_NUMBER,
             EXTRA_PR_MERGE_REPO,
@@ -369,7 +369,7 @@ class AdvancePendingSessionIntegrationTests(unittest.TestCase):
             STAGE_AWAITING_DRAFT_APPROVAL,
             STAGE_PR_MERGE_PENDING,
         )
-        from yule_orchestrator.agents.lifecycle.session_mode import (
+        from yule_engineering.agents.lifecycle.session_mode import (
             EXTRA_WORK_MODE,
             WORK_MODE_AUTONOMOUS,
         )

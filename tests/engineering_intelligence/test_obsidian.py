@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     Audience,
     CagContext,
     EngineeringKnowledgeItem,
@@ -20,7 +20,7 @@ from yule_orchestrator.agents.engineering_intelligence.models import (
     PracticeVerification,
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.obsidian import (
+from yule_engineering.agents.engineering_intelligence.obsidian import (
     build_engineering_knowledge_write_request,
     build_rejected_quality_gate_audit,
     evaluate_quality_gate,

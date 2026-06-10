@@ -1,7 +1,7 @@
 """classifier_factory — Round 2 of #73.
 
 Pins the env contract + JSON parser + provider priority of
-:mod:`yule_orchestrator.agents.decision.classifier_factory`.
+:mod:`yule_engineering.agents.decision.classifier_factory`.
 
 The hard rails this suite enforces:
 
@@ -26,7 +26,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.decision.classifier_factory import (
+from yule_engineering.agents.decision.classifier_factory import (
     AnthropicClassifier,
     BlockedClassifierError,
     ClassifierResolution,
@@ -44,7 +44,7 @@ from yule_orchestrator.agents.decision.classifier_factory import (
     OpenAIClassifier,
     build_classifier_from_env,
 )
-from yule_orchestrator.agents.decision.classifier_factory import (
+from yule_engineering.agents.decision.classifier_factory import (
     _BlockedAdapter,
     _build_classification_prompt,
     _extract_json,
@@ -52,7 +52,7 @@ from yule_orchestrator.agents.decision.classifier_factory import (
     _parse_classifier_response,
     _safe_int,
 )
-from yule_orchestrator.agents.decision.router import (
+from yule_engineering.agents.decision.router import (
     DecisionRequest,
     MODE_CLARIFICATION_NEEDED,
     MODE_DISCUSSION,

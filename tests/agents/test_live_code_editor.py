@@ -27,7 +27,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     BlockedLiveEditorError,
     ENV_LIVE_EDITOR_ENABLED,
     ENV_LIVE_EDITOR_MAX_RETRIES,
@@ -39,7 +39,7 @@ from yule_orchestrator.agents.job_queue.coding_executor_live import (
     PROVIDER_OPENAI,
     build_live_editor_from_env,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
     is_protected_branch,
@@ -260,7 +260,7 @@ class PasteGuardPreflightTests(unittest.TestCase):
         #
         # Simpler: poke guard_outbound by monkey-patching to return
         # ``blocked=True`` so we exercise the editor branch directly.
-        from yule_orchestrator.agents.security import paste_guard as pg_mod
+        from yule_engineering.agents.security import paste_guard as pg_mod
 
         original = pg_mod.guard_outbound
 

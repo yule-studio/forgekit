@@ -23,7 +23,7 @@ stores sharing one write lock, with no agent/discord/LLM dependencies.
 ## Dependency rule
 
 `yule_storage` depends on **stdlib + sqlite3 only** (`dependencies =
-[]`). It MUST NOT import `yule_orchestrator` runtime, Discord, or agent
+[]`). It MUST NOT import `yule_engineering` runtime, Discord, or agent
 internals.
 
 The runtime DAG is **`yule_integrations → yule_storage`** (one
@@ -35,8 +35,8 @@ for type hints — it never executes, so there is no import cycle.
 
 ## Compatibility
 
-`yule_orchestrator.storage.{__init__,_sqlite,calendar_state,local_cache,task_history}`
+`yule_engineering.storage.{__init__,_sqlite,calendar_state,local_cache,task_history}`
 are thin shims. The submodule shims alias the new modules via
 `sys.modules`, so deep imports and test patches against
-`yule_orchestrator.storage.<mod>.<attr>` resolve to the identical module
+`yule_engineering.storage.<mod>.<attr>` resolve to the identical module
 objects.

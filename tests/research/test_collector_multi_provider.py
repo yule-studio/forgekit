@@ -29,7 +29,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.collector import (
+from yule_engineering.agents.research.collector import (
     BraveSearchCollector,
     BudgetTracker,
     CollectionMode,
@@ -55,7 +55,7 @@ from yule_orchestrator.agents.research.collector import (
     auto_collect_or_request_more_input,
     build_collector,
 )
-from yule_orchestrator.agents.research.pack import ResearchSource, SourceType
+from yule_engineering.agents.research.pack import ResearchSource, SourceType
 
 
 # ---------------------------------------------------------------------------

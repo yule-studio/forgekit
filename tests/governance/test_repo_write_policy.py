@@ -27,7 +27,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.governance.repo_write_policy import (
+from yule_engineering.agents.governance.repo_write_policy import (
     ALLOWED_GITMOJI,
     INITIAL_COMMIT_TITLE_EXACT,
     InitialCommitDecision,
@@ -259,7 +259,7 @@ class LiveWiringExistsTests(unittest.TestCase):
         from pathlib import Path
 
         src = Path(
-            "src/yule_orchestrator/agents/job_queue/coding_executor_live.py"
+            "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live.py"
         ).read_text(encoding="utf-8")
         self.assertIn("enforce_commit_message", src)
         self.assertIn("is_initial_commit_context", src)
@@ -268,7 +268,7 @@ class LiveWiringExistsTests(unittest.TestCase):
         from pathlib import Path
 
         src = Path(
-            "src/yule_orchestrator/agents/job_queue/coding_executor_live.py"
+            "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live.py"
         ).read_text(encoding="utf-8")
         self.assertIn("enforce_pr_title", src)
         self.assertIn("enforce_issue_anchor", src)
@@ -277,7 +277,7 @@ class LiveWiringExistsTests(unittest.TestCase):
         from pathlib import Path
 
         src = Path(
-            "src/yule_orchestrator/agents/github_workos/github_writer.py"
+            "apps/engineering-agent/src/yule_engineering/agents/github_workos/github_writer.py"
         ).read_text(encoding="utf-8")
         self.assertIn("enforce_issue_title", src)
 

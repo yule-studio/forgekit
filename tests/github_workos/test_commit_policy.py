@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.commit_policy import (
+from yule_engineering.agents.github_workos.commit_policy import (
     CommitAuthor,
     CommitIdentity,
     derive_commit_identity,

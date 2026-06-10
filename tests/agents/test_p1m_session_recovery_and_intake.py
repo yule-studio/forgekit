@@ -33,28 +33,28 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.coding_backlog_seed import (
+from yule_engineering.agents.coding.coding_backlog_seed import (
     EXTRA_CODING_BACKLOG,
     FULL_STACK_SEARCH_MVP_PLAN,
     detect_backlog_plan,
     seed_coding_backlog,
 )
-from yule_orchestrator.agents.coding.human_titles import (
+from yule_engineering.agents.coding.human_titles import (
     build_issue_title,
     build_pr_body_intro,
     build_pr_title,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     ENV_PLANNING_ONLY_PR_FORBIDDEN,
     GreenfieldBootstrapEditor,
     NonGreenfieldRealEditUnavailable,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE,
     WorktreeContext,
 )
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_DECIDED_AT,
     EXTRA_DECIDED_BY,
     EXTRA_SCOPE,
@@ -66,10 +66,10 @@ from yule_orchestrator.agents.lifecycle.session_mode import (
     WORK_MODE_AUTONOMOUS,
     DECIDED_BY_USER,
 )
-from yule_orchestrator.agents.lifecycle.session_recovery import (
+from yule_engineering.agents.lifecycle.session_recovery import (
     recover_session_full,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
@@ -186,7 +186,7 @@ class CurrentSessionRecoveryTests(_CacheTmpFixture):
 
 class NewIntakeModePersistenceTests(_CacheTmpFixture):
     def test_explicit_autonomous_merge_persists(self) -> None:
-        from yule_orchestrator.agents.coding.coding_session_context import (
+        from yule_engineering.agents.coding.coding_session_context import (
             prepare_coding_session_context,
         )
 
@@ -204,7 +204,7 @@ class NewIntakeModePersistenceTests(_CacheTmpFixture):
         )
 
     def test_explicit_approval_required_persists(self) -> None:
-        from yule_orchestrator.agents.coding.coding_session_context import (
+        from yule_engineering.agents.coding.coding_session_context import (
             prepare_coding_session_context,
         )
 
@@ -262,7 +262,7 @@ class ProductionWiringTests(unittest.TestCase):
         """P1-M B 회귀 가드 — 옛 wiring 은 None 반환 (ApprovalWorker init 실패).
         새 wiring 은 production post_fn + channel_resolver 주입."""
 
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _maybe_build_approval_enqueuer,
         )
 
@@ -274,7 +274,7 @@ class ProductionWiringTests(unittest.TestCase):
     def test_merge_executor_respects_env_opt_in(self) -> None:
         """live merge executor 는 env opt-in 시에만 wiring."""
 
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _maybe_build_live_pr_merge_executor,
         )
 
@@ -289,7 +289,7 @@ class ProductionWiringTests(unittest.TestCase):
     def test_pr_merge_reply_routing_helper_exists(self) -> None:
         """approval reply router 가 pr_merge 분기를 갖고 있는지."""
 
-        from yule_orchestrator.discord.approval.reply_router import (
+        from yule_engineering.discord.approval.reply_router import (
             _try_handle_pr_merge_reply,
         )
 
@@ -482,10 +482,10 @@ class DuplicateReplayGuardTests(unittest.TestCase):
         """
 
         import tempfile
-        from yule_orchestrator.agents.job_queue.next_slice_dispatcher import (
+        from yule_engineering.agents.job_queue.next_slice_dispatcher import (
             dispatch_next_coding_slice,
         )
-        from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+        from yule_engineering.agents.job_queue.pr_merge_continuation import (
             EXTRA_PR_MERGE_STAGE,
             STAGE_PR_MERGED,
         )

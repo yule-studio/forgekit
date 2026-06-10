@@ -2,7 +2,7 @@
 
 These exercise the 6 contract models the package exists to provide, plus the
 round-trip message helpers that were relocated here from
-``yule_orchestrator.agents.messaging.message``.
+``yule_engineering.agents.messaging.message``.
 """
 
 from __future__ import annotations

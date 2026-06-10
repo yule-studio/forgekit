@@ -4,8 +4,8 @@ from datetime import date, datetime, time, timedelta, tzinfo
 import re
 from typing import Optional, Sequence
 
-from yule_orchestrator.core.timezone import local_tz
-from yule_orchestrator.integrations.calendar.models import CalendarEvent, build_fallback_item_uid
+from yule_engineering.core.timezone import local_tz
+from yule_engineering.integrations.calendar.models import CalendarEvent, build_fallback_item_uid
 from .models import PlanningCheckpoint, PlanningExecutionBlock, PlanningTaskCandidate, PlanningTimeBlock
 
 PLANNING_DAY_START = time(hour=6, minute=0)

@@ -10,12 +10,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     ParticipantsPool,
     RegistryError,
     build_participants_pool,
 )
-from yule_orchestrator.agents.runners import (
+from yule_engineering.agents.runners import (
     AgentRequest,
     AgentResponse,
     AgentRunner,
@@ -149,11 +149,11 @@ class RunnerHookTestCase(unittest.TestCase):
 
 class RunnerAvailabilityTestCase(unittest.TestCase):
     def test_unavailable_runner_returns_unavailable_status(self) -> None:
-        from yule_orchestrator.agents.runners.claude_code import ClaudeCodeRunner
+        from yule_engineering.agents.runners.claude_code import ClaudeCodeRunner
 
         runner = ClaudeCodeRunner()
         request = AgentRequest(prompt="hi", role="tech-lead", task_id="t-5")
-        with patch("yule_orchestrator.agents.runners.claude_code.shutil.which", return_value=None):
+        with patch("yule_engineering.agents.runners.claude_code.shutil.which", return_value=None):
             response = runner.submit(request)
 
         self.assertEqual(response.status, RunnerStatus.UNAVAILABLE)

@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.exploration.repo_map import (
+from yule_engineering.agents.exploration.repo_map import (
     ALL_ROLE_IDS,
     HOT_FILE_WEIGHT,
     KEYWORD_OVERLAP_BONUS,
@@ -65,13 +65,13 @@ class RoleCatalogTests(unittest.TestCase):
         profile = _map().profile_for(ROLE_BACKEND_ENGINEER)
         self.assertIsNotNone(profile)
         assert profile is not None  # mypy / type narrowing
-        self.assertIn("src/yule_orchestrator/agents", profile.preferred_prefixes)
-        self.assertIn("src/yule_orchestrator/storage", profile.preferred_prefixes)
+        self.assertIn("apps/engineering-agent/src/yule_engineering/agents", profile.preferred_prefixes)
+        self.assertIn("apps/engineering-agent/src/yule_engineering/storage", profile.preferred_prefixes)
         self.assertIn(
-            "src/yule_orchestrator/integrations", profile.preferred_prefixes
+            "apps/engineering-agent/src/yule_engineering/integrations", profile.preferred_prefixes
         )
         self.assertIn(
-            "src/yule_orchestrator/github_workos", profile.preferred_prefixes
+            "apps/engineering-agent/src/yule_engineering/github_workos", profile.preferred_prefixes
         )
 
     def test_frontend_engineer_is_reserved_empty_slot(self) -> None:
@@ -94,15 +94,15 @@ class RoleCatalogTests(unittest.TestCase):
     def test_devops_engineer_anchors_runtime_and_workflows(self) -> None:
         profile = _map().profile_for(ROLE_DEVOPS_ENGINEER)
         assert profile is not None
-        self.assertIn("src/yule_orchestrator/runtime", profile.preferred_prefixes)
+        self.assertIn("apps/engineering-agent/src/yule_engineering/runtime", profile.preferred_prefixes)
         self.assertIn(".github/workflows", profile.preferred_prefixes)
         # supervisor / services / CI workflow are explicit risky entries.
         self.assertIn(
-            "src/yule_orchestrator/runtime/subprocess_supervisor.py",
+            "apps/engineering-agent/src/yule_engineering/runtime/subprocess_supervisor.py",
             profile.risky_files,
         )
         self.assertIn(
-            "src/yule_orchestrator/runtime/services.py", profile.risky_files
+            "apps/engineering-agent/src/yule_engineering/runtime/services.py", profile.risky_files
         )
         self.assertIn(".github/workflows/ci.yml", profile.risky_files)
 
@@ -121,13 +121,13 @@ class RoleCatalogTests(unittest.TestCase):
         profile = _map().profile_for(ROLE_AI_ENGINEER)
         assert profile is not None
         self.assertIn(
-            "src/yule_orchestrator/agents/decision", profile.preferred_prefixes
+            "apps/engineering-agent/src/yule_engineering/agents/decision", profile.preferred_prefixes
         )
         self.assertIn(
-            "src/yule_orchestrator/agents/runners", profile.preferred_prefixes
+            "apps/engineering-agent/src/yule_engineering/agents/runners", profile.preferred_prefixes
         )
         self.assertIn(
-            "src/yule_orchestrator/agents/decision/classifier_factory.py",
+            "apps/engineering-agent/src/yule_engineering/agents/decision/classifier_factory.py",
             profile.hot_files,
         )
 
@@ -146,7 +146,7 @@ class ScoreCompositionTests(unittest.TestCase):
     def test_hot_file_match_yields_hot_weight(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/job_queue/store.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             role=ROLE_BACKEND_ENGINEER,
         )
         self.assertAlmostEqual(score, HOT_FILE_WEIGHT)
@@ -154,7 +154,7 @@ class ScoreCompositionTests(unittest.TestCase):
     def test_prefix_only_match_yields_prefix_weight(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/coding/foo.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/coding/foo.py",
             role=ROLE_BACKEND_ENGINEER,
         )
         self.assertAlmostEqual(score, PREFIX_WEIGHT)
@@ -162,7 +162,7 @@ class ScoreCompositionTests(unittest.TestCase):
     def test_risky_file_match_yields_risky_weight(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/runtime/subprocess_supervisor.py",
+            path="apps/engineering-agent/src/yule_engineering/runtime/subprocess_supervisor.py",
             role=ROLE_DEVOPS_ENGINEER,
         )
         # subprocess_supervisor is both hot AND risky — hot wins.
@@ -174,7 +174,7 @@ class ScoreCompositionTests(unittest.TestCase):
         # storage — risky wins (higher weight, more specific signal).
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/storage/db.py",
+            path="apps/engineering-agent/src/yule_engineering/storage/db.py",
             role=ROLE_BACKEND_ENGINEER,
         )
         self.assertAlmostEqual(score, RISKY_FILE_WEIGHT)
@@ -182,7 +182,7 @@ class ScoreCompositionTests(unittest.TestCase):
     def test_keyword_overlap_bumps_score(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/coding/coding_job.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/coding/coding_job.py",
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("coding", "job"),
         )
@@ -192,7 +192,7 @@ class ScoreCompositionTests(unittest.TestCase):
         # hot (0.8) + keyword bonus (0.2) = 1.0 — must equal cap exactly.
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/job_queue/store.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("store",),
         )
@@ -209,7 +209,7 @@ class ScoreCompositionTests(unittest.TestCase):
     def test_unknown_role_returns_zero_safely(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/job_queue/store.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             role="totally-not-a-role",
         )
         self.assertEqual(score, 0.0)
@@ -237,7 +237,7 @@ class ScoreCompositionTests(unittest.TestCase):
         # the scorer must accept it without normalisation upstream.
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/job_queue/store.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             role="engineering-agent/backend-engineer",
         )
         self.assertAlmostEqual(score, HOT_FILE_WEIGHT)
@@ -247,19 +247,19 @@ class RoleMatrixTests(unittest.TestCase):
     """Role × path matrix sanity — each role hits its turf, misses others."""
 
     CASES = (
-        (ROLE_BACKEND_ENGINEER, "src/yule_orchestrator/agents/workflow.py"),
+        (ROLE_BACKEND_ENGINEER, "apps/engineering-agent/src/yule_engineering/agents/workflow.py"),
         (
             ROLE_QA_ENGINEER,
             "tests/agents/test_coding_executor_worker.py",
         ),
         (
             ROLE_DEVOPS_ENGINEER,
-            "src/yule_orchestrator/runtime/services.py",
+            "apps/engineering-agent/src/yule_engineering/runtime/services.py",
         ),
         (ROLE_TECH_LEAD, "CLAUDE.md"),
         (
             ROLE_AI_ENGINEER,
-            "src/yule_orchestrator/agents/decision/router.py",
+            "apps/engineering-agent/src/yule_engineering/agents/decision/router.py",
         ),
         (ROLE_PRODUCT_DESIGNER, "docs/feature-x.md"),
     )
@@ -289,7 +289,7 @@ class RoleMatrixTests(unittest.TestCase):
         self.assertEqual(
             score_file_relevance(
                 repo_map,
-                path="src/yule_orchestrator/runtime/subprocess_supervisor.py",
+                path="apps/engineering-agent/src/yule_engineering/runtime/subprocess_supervisor.py",
                 role=ROLE_QA_ENGINEER,
             ),
             0.0,
@@ -315,10 +315,10 @@ class RankingTests(unittest.TestCase):
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("store",),
             candidates=[
-                "src/yule_orchestrator/agents/job_queue/store.py",  # hot + kw
-                "src/yule_orchestrator/storage/db.py",  # risky
-                "src/yule_orchestrator/agents/workflow.py",  # hot
-                "src/yule_orchestrator/agents/coding/foo.py",  # prefix
+                "apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",  # hot + kw
+                "apps/engineering-agent/src/yule_engineering/storage/db.py",  # risky
+                "apps/engineering-agent/src/yule_engineering/agents/workflow.py",  # hot
+                "apps/engineering-agent/src/yule_engineering/agents/coding/foo.py",  # prefix
                 "notes/vault-mirror/foo.md",  # zero — must be dropped
             ],
         )
@@ -326,7 +326,7 @@ class RankingTests(unittest.TestCase):
         self.assertEqual(len(ranked), 4)  # zero entry dropped
         self.assertEqual(
             ranked[0].path,
-            "src/yule_orchestrator/agents/job_queue/store.py",
+            "apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
         )
         # ordering by score (desc)
         scores = [sf.score for sf in ranked]
@@ -353,7 +353,7 @@ class RankingTests(unittest.TestCase):
             _map(),
             role="not-a-role",
             candidates=[
-                "src/yule_orchestrator/agents/job_queue/store.py",
+                "apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             ],
         )
         self.assertEqual(ranked, ())
@@ -364,17 +364,17 @@ class RankingTests(unittest.TestCase):
             _map(),
             role=ROLE_BACKEND_ENGINEER,
             candidates=[
-                "src/yule_orchestrator/integrations/zeta.py",
-                "src/yule_orchestrator/integrations/alpha.py",
-                "src/yule_orchestrator/integrations/mu.py",
+                "apps/engineering-agent/src/yule_engineering/integrations/zeta.py",
+                "apps/engineering-agent/src/yule_engineering/integrations/alpha.py",
+                "apps/engineering-agent/src/yule_engineering/integrations/mu.py",
             ],
         )
         self.assertEqual(
             [sf.path for sf in ranked],
             [
-                "src/yule_orchestrator/integrations/alpha.py",
-                "src/yule_orchestrator/integrations/mu.py",
-                "src/yule_orchestrator/integrations/zeta.py",
+                "apps/engineering-agent/src/yule_engineering/integrations/alpha.py",
+                "apps/engineering-agent/src/yule_engineering/integrations/mu.py",
+                "apps/engineering-agent/src/yule_engineering/integrations/zeta.py",
             ],
         )
 
@@ -383,13 +383,13 @@ class RankingTests(unittest.TestCase):
             _map(),
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("workflow",),
-            candidates=["src/yule_orchestrator/agents/workflow.py"],
+            candidates=["apps/engineering-agent/src/yule_engineering/agents/workflow.py"],
         )
         self.assertEqual(len(ranked), 1)
         sf = ranked[0]
         self.assertIsInstance(sf, ScoredFile)
         self.assertEqual(
-            sf.matched_prefix, "src/yule_orchestrator/agents/workflow.py"
+            sf.matched_prefix, "apps/engineering-agent/src/yule_engineering/agents/workflow.py"
         )
         self.assertEqual(sf.matched_keyword, "workflow")
 
@@ -399,8 +399,8 @@ class RankingTests(unittest.TestCase):
             _map(),
             role=ROLE_BACKEND_ENGINEER,
             candidates=[
-                Path("src/yule_orchestrator/agents/job_queue/store.py"),
-                Path("./src/yule_orchestrator/agents/workflow.py"),
+                Path("apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py"),
+                Path("./apps/engineering-agent/src/yule_engineering/agents/workflow.py"),
             ],
         )
         self.assertEqual(len(ranked), 2)
@@ -414,7 +414,7 @@ class TokenisationTests(unittest.TestCase):
     def test_keyword_overlap_picks_camel_case_tokens(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/coding/foo.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/coding/foo.py",
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("codingExecutorWorker",),
         )
@@ -425,7 +425,7 @@ class TokenisationTests(unittest.TestCase):
     def test_keyword_overlap_picks_snake_case_tokens(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/coding/foo.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/coding/foo.py",
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("coding_executor_worker",),
         )
@@ -434,7 +434,7 @@ class TokenisationTests(unittest.TestCase):
     def test_keyword_overlap_picks_whitespace_separated_tokens(self) -> None:
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/coding/foo.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/coding/foo.py",
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("coding executor worker",),
         )
@@ -445,7 +445,7 @@ class TokenisationTests(unittest.TestCase):
         # any path. Otherwise the bonus would fire on almost every path.
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents/coding/foo.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/coding/foo.py",
             role=ROLE_BACKEND_ENGINEER,
             task_keywords=("a", "b"),
         )
@@ -454,11 +454,11 @@ class TokenisationTests(unittest.TestCase):
 
 class PrefixBoundaryTests(unittest.TestCase):
     def test_prefix_respects_directory_boundary(self) -> None:
-        # "src/yule_orchestrator/agents" must NOT match
-        # "src/yule_orchestrator/agents_data/foo.py" (no boundary slash).
+        # "apps/engineering-agent/src/yule_engineering/agents" must NOT match
+        # "apps/engineering-agent/src/yule_engineering/agents_data/foo.py" (no boundary slash).
         score = score_file_relevance(
             _map(),
-            path="src/yule_orchestrator/agents_data/foo.py",
+            path="apps/engineering-agent/src/yule_engineering/agents_data/foo.py",
             role=ROLE_BACKEND_ENGINEER,
         )
         self.assertEqual(score, 0.0)

@@ -1,4 +1,4 @@
-"""Tests for :mod:`yule_orchestrator.agents.research.scoring`.
+"""Tests for :mod:`yule_engineering.agents.research.scoring`.
 
 F5 / issue #92. TrustScore / FreshnessScore / rank_for_request 회귀.
 """
@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from yule_orchestrator.agents.research.providers.live import (
+from yule_engineering.agents.research.providers.live import (
     KIND_ATOM,
     KIND_GITHUB_RELEASE,
     KIND_RSS,
     LiveEvidence,
     LiveSource,
 )
-from yule_orchestrator.agents.research.scoring import (
+from yule_engineering.agents.research.scoring import (
     FreshnessScore,
     TrustScore,
     freshness_score,

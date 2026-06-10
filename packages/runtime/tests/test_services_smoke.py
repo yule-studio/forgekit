@@ -51,7 +51,7 @@ def test_profiles_mapping_exposes_engineering():
 
 
 def test_legacy_shim_is_same_module_object():
-    import yule_orchestrator.runtime.services as shim
+    import yule_engineering.runtime.services as shim
     import yule_runtime.services as real
 
     assert shim is real

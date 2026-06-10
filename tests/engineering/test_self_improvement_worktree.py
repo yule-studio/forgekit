@@ -12,7 +12,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.self_improvement_worktree import (
+from yule_engineering.agents.lifecycle.self_improvement_worktree import (
     DEFAULT_BRANCH_PREFIX,
     InMemoryWorktreeRegistry,
     WorktreeMetadata,

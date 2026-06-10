@@ -1,11 +1,11 @@
 # planning-agent
 
 > 일정/계획/브리핑을 담당하는 앱. 코드는 `apps/planning-agent/src/yule_planning/`
-> 로 **실제 이동 완료**. 옛 경로 `src/yule_orchestrator/planning/**` 는 `yule_planning`
+> 로 **실제 이동 완료**. 옛 경로 `apps/engineering-agent/src/yule_engineering/planning/**` 는 `yule_planning`
 > 을 가리키는 compat shim(`sys.modules` alias / public re-export) 으로만 남아 기존
 > import 가 그대로 동작한다. 신규 코드는 `yule_planning` 직접 import.
 >
-> 과도기 부채: `yule_planning` 은 아직 `yule_orchestrator.{core,integrations,storage}`
+> 과도기 부채: `yule_planning` 은 아직 `yule_engineering.{core,integrations,storage}`
 > 공유 인프라를 import 한다(apps → monolith). 이 인프라가 `packages/*` 로 추출되면
 > 해당 edge 는 사라진다.
 
@@ -31,7 +31,7 @@
 
 | 현재 위치 | 이전 대상 |
 | --- | --- |
-| `src/yule_orchestrator/planning/**` | `apps/planning-agent/**` |
+| `apps/engineering-agent/src/yule_engineering/planning/**` | `apps/planning-agent/**` |
 
 ## migration TODO
 

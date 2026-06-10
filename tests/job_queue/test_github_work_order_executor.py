@@ -26,16 +26,16 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.audit import (
+from yule_engineering.agents.github_workos.audit import (
     OUTCOME_DRY_RUN,
     OUTCOME_OK,
 )
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     JOB_TYPE_GITHUB_WORK_ORDER,
     dispatch_github_work_order,
 )
-from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+from yule_engineering.agents.job_queue.github_work_order_executor import (
     CREATED_VIA_AUTO_CREATE,
     CREATED_VIA_DRY_RUN,
     CREATED_VIA_EXISTING_ANCHOR,
@@ -45,8 +45,8 @@ from yule_orchestrator.agents.job_queue.github_work_order_executor import (
     SKIPPED_NO_REPO,
     SKIPPED_NO_WRITER,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------

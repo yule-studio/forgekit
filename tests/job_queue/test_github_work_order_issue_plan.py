@@ -19,7 +19,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     GitHubWorkOrderProposal,
 )

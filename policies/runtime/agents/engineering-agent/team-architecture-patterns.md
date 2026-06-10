@@ -16,15 +16,15 @@
 
 | 항목 | 현재 baseline 모듈 / 문서 | 핵심 surface |
 | --- | --- | --- |
-| Department gateway | `src/yule_orchestrator/discord/engineering_channel_router.py`, `team-structure.md` | `route_engineering_message`, intake → triage → role_selection → … 13 단계 |
-| Role 정의 | `src/yule_orchestrator/agents/role_profiles_data.py`, `role-profiles.md` | RoleProfile 7 종 + ParticipationLevel 5 + fallback 6 |
-| Selector | `src/yule_orchestrator/agents/lifecycle/role_selection.py` | `recommend_active_roles`, `apply_role_selection_to_extra` |
-| Tech-lead aggregator | `src/yule_orchestrator/agents/tech_lead_aggregator.py` | `aggregate_role_outputs`, research-only 자동 코딩 차단 |
-| Lifecycle status / gate | `src/yule_orchestrator/agents/lifecycle/lifecycle_status.py` | `compute_report_status`, `can_write_obsidian_record` |
-| Coding authorization | `src/yule_orchestrator/agents/coding/authorization.py` | executor 추천 + 사용자 승인 게이트 |
-| GitHub workspace | `src/yule_orchestrator/agents/github_workos/` (G2~G6) | `senior_triage`, `decide_permission`, branch/commit/PR/audit 어댑터 |
-| Engineering intelligence | `src/yule_orchestrator/agents/engineering_intelligence/` | RAG/CAG 학습 지식 수집 + Obsidian L1 자동 저장 |
-| Supervisor / health | `src/yule_orchestrator/agents/job_queue/worker_loop.py`, `runtime/run_service.py` | heartbeat sweep, lease reaper, self-improvement detect hook |
+| Department gateway | `apps/engineering-agent/src/yule_engineering/discord/engineering_channel_router.py`, `team-structure.md` | `route_engineering_message`, intake → triage → role_selection → … 13 단계 |
+| Role 정의 | `apps/engineering-agent/src/yule_engineering/agents/role_profiles_data.py`, `role-profiles.md` | RoleProfile 7 종 + ParticipationLevel 5 + fallback 6 |
+| Selector | `apps/engineering-agent/src/yule_engineering/agents/lifecycle/role_selection.py` | `recommend_active_roles`, `apply_role_selection_to_extra` |
+| Tech-lead aggregator | `apps/engineering-agent/src/yule_engineering/agents/tech_lead_aggregator.py` | `aggregate_role_outputs`, research-only 자동 코딩 차단 |
+| Lifecycle status / gate | `apps/engineering-agent/src/yule_engineering/agents/lifecycle/lifecycle_status.py` | `compute_report_status`, `can_write_obsidian_record` |
+| Coding authorization | `apps/engineering-agent/src/yule_engineering/agents/coding/authorization.py` | executor 추천 + 사용자 승인 게이트 |
+| GitHub workspace | `apps/engineering-agent/src/yule_engineering/agents/github_workos/` (G2~G6) | `senior_triage`, `decide_permission`, branch/commit/PR/audit 어댑터 |
+| Engineering intelligence | `apps/engineering-agent/src/yule_engineering/agents/engineering_intelligence/` | RAG/CAG 학습 지식 수집 + Obsidian L1 자동 저장 |
+| Supervisor / health | `apps/engineering-agent/src/yule_engineering/agents/job_queue/worker_loop.py`, `runtime/run_service.py` | heartbeat sweep, lease reaper, self-improvement detect hook |
 
 Yule 은 이미 Pipeline (lifecycle 13 단계), Fan-out (multi-role research), Producer-Reviewer (coding authorization 의 executor + reviewer split), Supervisor (`run_supervisor_watch_loop`) 의 **부분 구현**을 갖고 있다. Harness 6 패턴은 이 파편들을 한 회사 모델 안에서 일관성 있게 묶기 위한 어휘다.
 

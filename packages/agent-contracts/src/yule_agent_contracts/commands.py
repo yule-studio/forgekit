@@ -3,7 +3,7 @@
 ``AgentCommand`` is the department-agnostic envelope for "do this" instructions
 flowing *into* an agent (from the gateway, from another agent, or from the
 Agent Town front-end). It is intentionally thin: the heavyweight in-process
-representation is ``yule_orchestrator.agents.job_queue.store.Job``, whose
+representation is ``yule_engineering.agents.job_queue.store.Job``, whose
 ``job_type`` + ``payload`` map onto ``command`` + ``payload`` here. Keeping the
 contract separate from the queue row lets transports (Discord, HTTP, sockets)
 speak a stable shape without importing the queue internals.

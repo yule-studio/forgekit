@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.research_topic import (
+from yule_engineering.agents.lifecycle.research_topic import (
     DEFAULT_TITLE_MAX_LEN,
     STATUS_PENDING_APPROVAL,
     STATUS_RESEARCHING,
@@ -35,7 +35,7 @@ from yule_orchestrator.agents.lifecycle.research_topic import (
     transition_topic_ledger,
     write_topic_ledger,
 )
-from yule_orchestrator.agents.lifecycle.thread_snapshot import (
+from yule_engineering.agents.lifecycle.thread_snapshot import (
     DEFAULT_MAX_LINKS,
     ThreadMessage,
     ThreadSnapshot,

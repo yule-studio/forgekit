@@ -14,10 +14,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.discord_summary import (
+from yule_engineering.agents.engineering_intelligence.discord_summary import (
     render_daily_role_summary,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     Audience,
     CagContext,
     EngineeringKnowledgeItem,
@@ -27,13 +27,13 @@ from yule_orchestrator.agents.engineering_intelligence.models import (
     PracticeVerification,
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.obsidian import (
+from yule_engineering.agents.engineering_intelligence.obsidian import (
     build_engineering_knowledge_write_request,
     evaluate_quality_gate,
     shareable_external_payload,
     vault_only_metadata,
 )
-from yule_orchestrator.agents.engineering_intelligence.renderer import (
+from yule_engineering.agents.engineering_intelligence.renderer import (
     RendererError,
     render_engineering_knowledge_note,
     required_sections,

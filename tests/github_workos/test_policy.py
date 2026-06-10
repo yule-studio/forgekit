@@ -9,8 +9,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.models import PermissionLevel
-from yule_orchestrator.agents.github_workos.policy import (
+from yule_engineering.agents.github_workos.models import PermissionLevel
+from yule_engineering.agents.github_workos.policy import (
     ACTION_BRANCH_PLAN,
     ACTION_DEPLOY,
     ACTION_DESTRUCTIVE_DELETE,

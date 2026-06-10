@@ -174,7 +174,7 @@ inbox** 로 동작한다. agent 가 진행 중에 사람의 응답을 필요로 
 | Secret | secret 키 이름 정의, `.env.example` / compose / CI wiring 작성, GitHub Actions secret 이름 제안, 어떤 값이 필요한지 설명 | 실제 secret 값, secret 저장 위치, secret 등록 승인 |
 
 위 경계는 코드에서도 명시:
-`src/yule_orchestrator/agents/coding/authorization.py` →
+`apps/engineering-agent/src/yule_engineering/agents/coding/authorization.py` →
 `TECH_DECISION_AUTONOMOUS` / `EXTERNAL_FACT_HUMAN_REQUIRED` /
 `classify_user_request_facts(...)`.
 
@@ -192,7 +192,7 @@ agent 가 절대 자동으로 하면 안 되는 것
 - prod `.env` 파일 직접 변경
 - 기존 secret 값을 다른 위치로 복사 / mirror
 
-위 두 목록은 `src/yule_orchestrator/agents/operator_action.py` 의
+위 두 목록은 `apps/engineering-agent/src/yule_engineering/agents/operator_action.py` 의
 `SECRET_AUTO_ALLOWED` / `SECRET_AUTO_FORBIDDEN` 와 동기화 유지.
 
 `SECRET_REQUIRED` 카드의 thread reply 는 반드시 **저장 위치만** 받는다 —
