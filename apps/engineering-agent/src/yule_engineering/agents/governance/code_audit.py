@@ -101,11 +101,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "command group split",
     },
-    "apps/engineering-agent/src/yule_engineering/agents/engineering_conversation/research_bootstrap.py": {
-        "deadline": "2026-06-14",
-        "owner": "codwithyc",
-        "axes": "bootstrap, runtime, formatting",
-    },
     "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
