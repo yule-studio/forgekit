@@ -56,10 +56,12 @@ from .models import (
     TASK_INTAKE_CANDIDATE,
 )
 from .research_bootstrap import (
+    _maybe_run_auto_collect,
+)
+from .research_bootstrap_format import (
     _format_coding_bootstrap_body,
     _format_collection_announcement,
     _format_intake_with_collection,
-    _maybe_run_auto_collect,
 )
 from .status_responses import (
     _asks_about_member_bots,
