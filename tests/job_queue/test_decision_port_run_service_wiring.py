@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+from yule_engineering.agents.job_queue.claude_decision_seam import (
     DECISION_KIND_RETRY_GUARD,
     DecisionResponse,
     ENV_CLAUDE_DECISION_PROVIDER,
@@ -30,12 +30,12 @@ from yule_orchestrator.agents.job_queue.claude_decision_seam import (
     PROVIDER_EXTERNAL,
     PROVIDER_RECORD,
 )
-from yule_orchestrator.agents.job_queue.claude_subprocess_adapter import (
+from yule_engineering.agents.job_queue.claude_subprocess_adapter import (
     ENV_LIVE_BINARY,
     ENV_LIVE_ENABLED,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
         self.heartbeats = HeartbeatStore(db_path=db_path)
 
     def test_default_chain_is_deterministic_only(self) -> None:
-        from yule_orchestrator.runtime import run_service as rs
+        from yule_engineering.runtime import run_service as rs
 
         with _Env(
             **{
@@ -106,7 +106,7 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
         port = producer._decision_port  # type: ignore[attr-defined]
         self.assertIsNotNone(port)
         # Deterministic-only chain still answers ``advance`` for any kind.
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionRequest,
         )
 
@@ -120,7 +120,7 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
     def test_external_factory_hook_overridable(self) -> None:
         """A follow-up PR can monkeypatch the factory to plug a live tier."""
 
-        from yule_orchestrator.runtime import run_service as rs
+        from yule_engineering.runtime import run_service as rs
 
         captured: List[Any] = []
 
@@ -152,7 +152,7 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
             self.skipTest("autonomy producer construction degraded — env-side issue")
         producer = tick_fn.__closure__[0].cell_contents  # type: ignore[union-attr]
         port = producer._decision_port  # type: ignore[attr-defined]
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionRequest,
         )
 
@@ -166,7 +166,7 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
         self.assertEqual(len(captured), 1)
 
     def test_record_token_layers_record_only(self) -> None:
-        from yule_orchestrator.runtime import run_service as rs
+        from yule_engineering.runtime import run_service as rs
 
         with _Env(
             **{
@@ -181,7 +181,7 @@ class RunServiceDecisionPortWiringTests(unittest.TestCase):
             self.skipTest("autonomy producer construction degraded — env-side issue")
         producer = tick_fn.__closure__[0].cell_contents  # type: ignore[union-attr]
         port = producer._decision_port  # type: ignore[attr-defined]
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionRequest,
         )
 
@@ -217,7 +217,7 @@ class RunServiceSubprocessAdapterWiringTests(unittest.TestCase):
     def test_default_factory_returns_subprocess_callable_when_opted_in(
         self,
     ) -> None:
-        from yule_orchestrator.runtime import run_service as rs
+        from yule_engineering.runtime import run_service as rs
 
         factory = rs._resolve_external_decision_callable_factory()
         callable_ = factory(
@@ -235,7 +235,7 @@ class RunServiceSubprocessAdapterWiringTests(unittest.TestCase):
         self.assertIsNotNone(callable_)
 
     def test_default_factory_returns_none_when_live_flag_missing(self) -> None:
-        from yule_orchestrator.runtime import run_service as rs
+        from yule_engineering.runtime import run_service as rs
 
         factory = rs._resolve_external_decision_callable_factory()
         # Provider chain wants ``external`` but ``YULE_CLAUDE_DECISION_LIVE_ENABLED``
@@ -249,7 +249,7 @@ class RunServiceSubprocessAdapterWiringTests(unittest.TestCase):
         """End-to-end: env opts in, factory hands the live callable
         through, autonomy producer's decision port routes to it."""
 
-        from yule_orchestrator.runtime import run_service as rs
+        from yule_engineering.runtime import run_service as rs
 
         with _Env(
             **{
@@ -271,7 +271,7 @@ class RunServiceSubprocessAdapterWiringTests(unittest.TestCase):
         # contract), but composition itself proves the live tier was
         # surfaced. The chain still has the deterministic fallback so
         # any kind we ask resolves.
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionRequest,
         )
 

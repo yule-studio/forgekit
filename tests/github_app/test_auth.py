@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.github_app.auth import (
+from yule_engineering.github_app.auth import (
     GITHUB_APP_JWT_ALGORITHM,
     GITHUB_APP_JWT_TTL_SECONDS,
     GitHubAppDependencyError,

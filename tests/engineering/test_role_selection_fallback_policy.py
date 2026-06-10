@@ -25,7 +25,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.role_selection import (
+from yule_engineering.agents.lifecycle.role_selection import (
     FALLBACK_EMPTY_PROMPT,
     FALLBACK_LEGACY_QUARTET,
     FALLBACK_VAGUE_AI_RESEARCH,

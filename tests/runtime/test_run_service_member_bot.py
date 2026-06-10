@@ -23,12 +23,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.run_service import (
+from yule_engineering.runtime.run_service import (
     EXIT_OK,
     EXIT_UNKNOWN_SERVICE,
     _run_discord_member_bot,
 )
-from yule_orchestrator.runtime.services import ENGINEERING_PROFILE, ServiceKind
+from yule_engineering.runtime.services import ENGINEERING_PROFILE, ServiceKind
 
 
 def _member_spec(role: str):
@@ -140,7 +140,7 @@ class GracefulDisableTests(unittest.TestCase):
     def test_spec_without_role_exits_78(self) -> None:
         # Defensive: a malformed inventory row missing ``role`` (should
         # never happen) must not silently start an anonymous bot.
-        from yule_orchestrator.runtime.services import ServiceSpec
+        from yule_engineering.runtime.services import ServiceSpec
 
         spec = ServiceSpec(
             service_id="eng-member-orphan",
@@ -165,7 +165,7 @@ class ValidTokenDispatchTests(unittest.TestCase):
         sys.stderr = self._original_stderr
 
     def test_valid_token_invokes_runner(self) -> None:
-        from yule_orchestrator.discord.member import bot as member_bot_mod
+        from yule_engineering.discord.member import bot as member_bot_mod
 
         captured: dict = {}
 

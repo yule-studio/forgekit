@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     Audience,
     CagContext,
     EngineeringKnowledgeItem,
@@ -19,7 +19,7 @@ from yule_orchestrator.agents.engineering_intelligence.models import (
     ProjectApplicability,
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.renderer import (
+from yule_engineering.agents.engineering_intelligence.renderer import (
     RendererError,
     render_engineering_knowledge_note,
     render_frontmatter,
@@ -88,7 +88,7 @@ def _full_item(**overrides) -> EngineeringKnowledgeItem:
         review_after_days=60,
         project_applicability=ProjectApplicability(
             related_repo="yule-studio-agent",
-            related_module="src/yule_orchestrator/memory",
+            related_module="apps/engineering-agent/src/yule_engineering/memory",
             possible_issue_title="RAG faithfulness 회귀 지표 추가",
             implementation_risk="low",
         ),

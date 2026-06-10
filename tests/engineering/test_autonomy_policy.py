@@ -26,7 +26,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.autonomy_policy import (
+from yule_engineering.agents.lifecycle.autonomy_policy import (
     ACTION_AGENT_OPS_RECORD,
     ACTION_BLOG_PUBLICATION,
     ACTION_BRANCH_MERGE,

@@ -15,7 +15,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.runtime import (
+from yule_engineering.agents.runtime import (
     INTENT_APPEND_CONTEXT,
     INTENT_CLARIFICATION_NEEDED,
     INTENT_CONTINUE_EXISTING_WORK,
@@ -29,7 +29,7 @@ from yule_orchestrator.agents.runtime import (
     RuntimeIntent,
     RuntimeObservation,
 )
-from yule_orchestrator.agents.runtime.understand import (
+from yule_engineering.agents.runtime.understand import (
     classify_intent_deterministic,
     make_understand_fn,
 )

@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.decision import (
+from yule_engineering.agents.decision import (
     ContextPack,
     build_context_pack,
 )

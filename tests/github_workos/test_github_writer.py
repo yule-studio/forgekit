@@ -30,13 +30,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.actions import (
+from yule_engineering.agents.github_workos.actions import (
     ActionStep,
     GithubActionPlan,
     build_github_action_plan,
     execute_github_action_plan,
 )
-from yule_orchestrator.agents.github_workos.audit import (
+from yule_engineering.agents.github_workos.audit import (
     ACTION_GITHUB_BRANCH_CREATE,
     ACTION_GITHUB_ISSUE_COMMENT,
     ACTION_GITHUB_LABEL_ADD,
@@ -47,7 +47,7 @@ from yule_orchestrator.agents.github_workos.audit import (
     OUTCOME_FAILED,
     OUTCOME_OK,
 )
-from yule_orchestrator.agents.github_workos.github_writer import (
+from yule_engineering.agents.github_workos.github_writer import (
     GithubWriter,
     PolicyGateDecision,
     make_default_policy_gate,

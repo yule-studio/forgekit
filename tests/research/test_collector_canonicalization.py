@@ -26,14 +26,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.collector import (
+from yule_engineering.agents.research.collector import (
     CollectionMode,
     CollectorConfig,
     auto_collect_or_request_more_input,
     build_canonical_query_for_role,
     build_query_for_role,
 )
-from yule_orchestrator.agents.research.query_canonicalizer import CanonicalQuery
+from yule_engineering.agents.research.query_canonicalizer import CanonicalQuery
 
 
 class BuildQueryNormalizationTests(unittest.TestCase):
@@ -123,10 +123,10 @@ class CollectionOutcomeMetadataTests(unittest.TestCase):
         # tokens with first-char match. We exercise it directly by
         # patching the canonicalize_query call to return a 0.6-confidence
         # rewrite, then assert the outcome suppresses publish.
-        from yule_orchestrator.agents.research import (
+        from yule_engineering.agents.research import (
             query_canonicalizer as qc,
         )
-        from yule_orchestrator.agents.research.query_canonicalizer import (
+        from yule_engineering.agents.research.query_canonicalizer import (
             Replacement,
         )
 
@@ -166,10 +166,10 @@ class CollectionOutcomeMetadataTests(unittest.TestCase):
             def search(self, query):  # noqa: ANN001
                 return ()
 
-        from yule_orchestrator.agents.research import (
+        from yule_engineering.agents.research import (
             query_canonicalizer as qc,
         )
-        from yule_orchestrator.agents.research.query_canonicalizer import (
+        from yule_engineering.agents.research.query_canonicalizer import (
             Replacement,
         )
 

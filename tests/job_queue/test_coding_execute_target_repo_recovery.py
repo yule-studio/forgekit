@@ -40,17 +40,17 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.coding_execute_recovery import (
+from yule_engineering.agents.job_queue.coding_execute_recovery import (
     TARGET_REPO_MISSING_REASON_PREFIX,
     _revive_failed_terminal_row,
     recover_target_repo_missing_rows,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     REASON_TARGET_REPO_MISSING,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"
@@ -105,7 +105,7 @@ class ClassificationIsRecoverableTests(unittest.TestCase):
         """Functional fallback — source-level guard: the ``target_repo_unavail``
         branch must set ``terminal = False``."""
 
-        from yule_orchestrator.agents.job_queue import coding_executor_worker as mod
+        from yule_engineering.agents.job_queue import coding_executor_worker as mod
 
         source = Path(mod.__file__).read_text(encoding="utf-8")
         # find the line where target_repo_unavail branch sets terminal

@@ -18,13 +18,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchSource,
     pack_to_dict,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.memory import (
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.memory import (
     MEMORY_DB_ENV,
     MemoryDocument,
     open_memory_index,
@@ -32,8 +32,8 @@ from yule_orchestrator.memory import (
     reindex_workflow_sessions,
     search,
 )
-from yule_orchestrator.memory.indexer import _document_from_workflow_session
-from yule_orchestrator.memory.models import (
+from yule_engineering.memory.indexer import _document_from_workflow_session
+from yule_engineering.memory.models import (
     SOURCE_OBSIDIAN,
     SOURCE_POLICY,
     SOURCE_WORKFLOW,

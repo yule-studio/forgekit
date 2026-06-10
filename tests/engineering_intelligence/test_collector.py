@@ -9,12 +9,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.collector import (
+from yule_engineering.agents.engineering_intelligence.collector import (
     FakeSourceCollectorAdapter,
     collect_for_role,
     utc_now_iso,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     Importance,
     SourceKind,
@@ -52,7 +52,7 @@ class AdapterCallTests(unittest.TestCase):
         result = collect_for_role("backend-engineer", adapter=adapter)
         self.assertGreater(len(adapter.calls), 0)
         # Every visited id must be an auto-collectable source for the role.
-        from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+        from yule_engineering.agents.engineering_intelligence.source_registry import (
             auto_collectable_sources,
         )
 

@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.core.tls import apply_ca_bundle_fallback, resolve_ca_bundle
+from yule_engineering.core.tls import apply_ca_bundle_fallback, resolve_ca_bundle
 
 
 class TLSBundleTestCase(unittest.TestCase):
@@ -27,8 +27,8 @@ class TLSBundleTestCase(unittest.TestCase):
         self.assertEqual(bundle.cafile, str(cafile))
         self.assertTrue(bundle.exists)
 
-    @patch("yule_orchestrator.core.tls._load_certifi_cafile")
-    @patch("yule_orchestrator.core.tls.ssl.get_default_verify_paths")
+    @patch("yule_engineering.core.tls._load_certifi_cafile")
+    @patch("yule_engineering.core.tls.ssl.get_default_verify_paths")
     def test_apply_ca_bundle_fallback_uses_certifi_when_default_is_missing(
         self,
         get_default_verify_paths_mock,
@@ -48,8 +48,8 @@ class TLSBundleTestCase(unittest.TestCase):
         self.assertEqual(bundle.cafile, str(certifi_bundle))
         self.assertEqual(applied, str(certifi_bundle))
 
-    @patch("yule_orchestrator.core.tls._load_certifi_cafile")
-    @patch("yule_orchestrator.core.tls.ssl.get_default_verify_paths")
+    @patch("yule_engineering.core.tls._load_certifi_cafile")
+    @patch("yule_engineering.core.tls.ssl.get_default_verify_paths")
     def test_resolve_ca_bundle_reports_missing_when_nothing_is_available(
         self,
         get_default_verify_paths_mock,

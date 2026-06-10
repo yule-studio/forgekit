@@ -12,26 +12,26 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.delegated_operator import (
+from yule_engineering.agents.lifecycle.delegated_operator import (
     DelegatedRateLedger,
 )
-from yule_orchestrator.agents.lifecycle.problem_ledger import (
+from yule_engineering.agents.lifecycle.problem_ledger import (
     ProblemLedger,
     ProblemStatus,
 )
-from yule_orchestrator.agents.lifecycle.runtime_self_improvement_loop import (
+from yule_engineering.agents.lifecycle.runtime_self_improvement_loop import (
     SelfImprovementDispatcher,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement import (
+from yule_engineering.agents.lifecycle.self_improvement import (
     SEVERITY_HIGH,
     SelfImprovementSignal,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement_seed_detectors import (
+from yule_engineering.agents.lifecycle.self_improvement_seed_detectors import (
     ObservationContext,
     SIGNAL_ENGINEERING_WRITE_REPLY_MISMATCH,
     SIGNAL_QA_TEST_MISCLASSIFICATION,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement_worktree import (
+from yule_engineering.agents.lifecycle.self_improvement_worktree import (
     InMemoryWorktreeRegistry,
     WorktreeProvisioner,
 )

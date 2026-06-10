@@ -26,13 +26,13 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.coding_backlog_seed import (
+from yule_engineering.agents.coding.coding_backlog_seed import (
     EXTRA_CODING_BACKLOG,
 )
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.pr_approval import (
     PRMergeReplyDispatch,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+from yule_engineering.agents.job_queue.pr_merge_continuation import (
     EXTRA_PR_MERGE_AUDIT,
     EXTRA_PR_MERGE_PR_NUMBER,
     EXTRA_PR_MERGE_REPO,
@@ -41,14 +41,14 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
     STAGE_PR_MERGE_PENDING,
     STAGE_PR_MERGED,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
+from yule_engineering.agents.job_queue.pr_merge_continuation_worker import (
     ACTION_APPROVAL_CARD_ENQUEUED,
     ACTION_AUTONOMOUS_MERGE_BLOCKED,
     ACTION_AUTONOMOUS_MERGE_SUCCEEDED,
     ACTION_SKIPPED_ALREADY_ENQUEUED,
     advance_pending_session,
 )
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_DECIDED_BY,
     EXTRA_SCOPE,
     EXTRA_TOPOLOGY,
@@ -58,20 +58,20 @@ from yule_orchestrator.agents.lifecycle.session_mode import (
     WORK_MODE_APPROVAL,
     WORK_MODE_AUTONOMOUS,
 )
-from yule_orchestrator.agents.lifecycle.session_recovery import (
+from yule_engineering.agents.lifecycle.session_recovery import (
     recover_session_full,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
     save_session,
 )
-from yule_orchestrator.github_app.client import (
+from yule_engineering.github_app.client import (
     GitHubAppHTTPError,
     GitHubAppNotFoundError,
 )
-from yule_orchestrator.github_app.live_client import LiveGithubAppHTTPError
+from yule_engineering.github_app.live_client import LiveGithubAppHTTPError
 
 
 _CANONICAL_PROMPT = (
@@ -226,7 +226,7 @@ class MissingPRDeterministicBlockedTests(unittest.TestCase):
             loop.close()
         self.assertNotEqual(outcome2.action, ACTION_AUTONOMOUS_MERGE_BLOCKED)
         # not-pending 분기
-        from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
+        from yule_engineering.agents.job_queue.pr_merge_continuation_worker import (
             ACTION_SKIPPED_NOT_PENDING,
         )
 

@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     APPROVAL_KIND_RESEARCH_PROMOTION,
     ApprovalRequest,
@@ -33,9 +33,9 @@ from yule_orchestrator.agents.job_queue.approval_worker import (
     env_approval_channel_resolver,
     render_approval_request,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _run(coro):

@@ -36,12 +36,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+from yule_engineering.agents.job_queue.claude_decision_seam import (
     DECISION_KIND_RETRY_GUARD,
     DecisionRequest,
     DecisionResponse,
 )
-from yule_orchestrator.agents.job_queue.claude_subprocess_adapter import (
+from yule_engineering.agents.job_queue.claude_subprocess_adapter import (
     ClaudeSubprocessConfig,
     DEFAULT_LIVE_BINARY,
     DEFAULT_LIVE_TIMEOUT_SECONDS,
@@ -359,7 +359,7 @@ class SubprocessCallableFailureTests(unittest.TestCase):
         import logging
 
         adapter_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_subprocess_adapter"
+            "yule_engineering.agents.job_queue.claude_subprocess_adapter"
         )
         previous = adapter_logger.level
         adapter_logger.setLevel(logging.CRITICAL)
@@ -431,7 +431,7 @@ class SubprocessFactoryEnvTests(unittest.TestCase):
         import logging
 
         adapter_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_subprocess_adapter"
+            "yule_engineering.agents.job_queue.claude_subprocess_adapter"
         )
         previous = adapter_logger.level
         adapter_logger.setLevel(logging.CRITICAL)
@@ -515,7 +515,7 @@ class SubprocessAdapterSeamIntegrationTests(unittest.TestCase):
     """
 
     def test_subprocess_adapter_drives_external_tier(self) -> None:
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             ENV_CLAUDE_DECISION_PROVIDER,
             PROVIDER_EXTERNAL,
             build_decision_port_from_env,
@@ -546,7 +546,7 @@ class SubprocessAdapterSeamIntegrationTests(unittest.TestCase):
         self.assertEqual(response.reason, "live tier punts retry")
 
     def test_subprocess_disabled_falls_back_to_deterministic(self) -> None:
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             ENV_CLAUDE_DECISION_PROVIDER,
             PROVIDER_EXTERNAL,
             build_decision_port_from_env,

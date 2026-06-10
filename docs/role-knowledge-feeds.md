@@ -34,7 +34,7 @@ covers the GeekNews-style "constant pulse" without the long tail.
 `RoleFeedDigest` grouping every seeded source by axis:
 
 ```python
-from yule_orchestrator.agents.engineering_intelligence import role_feed_digest
+from yule_engineering.agents.engineering_intelligence import role_feed_digest
 
 digest = role_feed_digest("backend-engineer")
 print(digest.headline())

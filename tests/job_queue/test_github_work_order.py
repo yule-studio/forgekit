@@ -29,7 +29,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     APPROVAL_KIND_GITHUB_WORK_ORDER,
     JOB_TYPE_GITHUB_WORK_ORDER,
     SKIPPED_AWAITING_APPROVAL,
@@ -41,7 +41,7 @@ from yule_orchestrator.agents.job_queue.github_work_order import (
     dispatch_github_work_order,
     find_active_work_order,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 class _QueueFixture(unittest.TestCase):

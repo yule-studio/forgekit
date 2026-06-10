@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.handoff_packet import (
+from yule_engineering.agents.coding.handoff_packet import (
     CodingHandoffPacket,
     NEXT_ANALYZE_COMMIT,
     NEXT_ANALYZE_COMPARE,
@@ -27,8 +27,8 @@ from yule_orchestrator.agents.coding.handoff_packet import (
     TRACKING_STANDALONE,
     build_coding_handoff_packet,
 )
-from yule_orchestrator.agents.git.github_url import parse_github_target
-from yule_orchestrator.agents.git.repo_contract import RepoContract
+from yule_engineering.agents.git.github_url import parse_github_target
+from yule_engineering.agents.git.repo_contract import RepoContract
 
 
 class TrackingModeDerivationTests(unittest.TestCase):

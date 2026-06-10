@@ -10,15 +10,15 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.integrations.calendar.models import CalendarQueryResult
-from yule_orchestrator.integrations.github.issues import GitHubIssue
-from yule_orchestrator.integrations.calendar.errors import build_calendar_error
-from yule_orchestrator.integrations.github.issues import GitHubIssueError
-from yule_orchestrator.planning.inputs import collect_planning_inputs
+from yule_engineering.integrations.calendar.models import CalendarQueryResult
+from yule_engineering.integrations.github.issues import GitHubIssue
+from yule_engineering.integrations.calendar.errors import build_calendar_error
+from yule_engineering.integrations.github.issues import GitHubIssueError
+from yule_engineering.planning.inputs import collect_planning_inputs
 
 
 class PlanningInputsTestCase(unittest.TestCase):
-    @patch("yule_orchestrator.planning.inputs.list_calendar_state_records")
+    @patch("yule_engineering.planning.inputs.list_calendar_state_records")
     def test_collect_planning_inputs_prefers_local_calendar_state(
         self,
         list_calendar_state_records_mock,
@@ -59,7 +59,7 @@ class PlanningInputsTestCase(unittest.TestCase):
         self.assertEqual(inputs.source_statuses[0].source_id, "calendar-state")
         self.assertTrue(inputs.source_statuses[0].ok)
 
-    @patch("yule_orchestrator.planning.inputs.list_calendar_state_records")
+    @patch("yule_engineering.planning.inputs.list_calendar_state_records")
     def test_collect_planning_inputs_emits_warning_when_state_is_empty(
         self,
         list_calendar_state_records_mock,
@@ -80,8 +80,8 @@ class PlanningInputsTestCase(unittest.TestCase):
         self.assertEqual(inputs.calendar_events, [])
         self.assertTrue(any("calendar" in warning for warning in inputs.warnings))
 
-    @patch("yule_orchestrator.planning.inputs.list_naver_calendar_items")
-    @patch("yule_orchestrator.planning.inputs.list_calendar_state_records")
+    @patch("yule_engineering.planning.inputs.list_naver_calendar_items")
+    @patch("yule_engineering.planning.inputs.list_calendar_state_records")
     def test_collect_planning_inputs_fetches_calendar_only_after_state_miss(
         self,
         list_calendar_state_records_mock,
@@ -102,8 +102,8 @@ class PlanningInputsTestCase(unittest.TestCase):
         self.assertEqual(inputs.source_statuses[0].source_id, "calendar-live")
         self.assertTrue(inputs.source_statuses[0].ok)
 
-    @patch("yule_orchestrator.planning.inputs.list_naver_calendar_items")
-    @patch("yule_orchestrator.planning.inputs.list_calendar_state_records")
+    @patch("yule_engineering.planning.inputs.list_naver_calendar_items")
+    @patch("yule_engineering.planning.inputs.list_calendar_state_records")
     def test_collect_planning_inputs_preserves_calendar_live_fetch_error(
         self,
         list_calendar_state_records_mock,
@@ -150,7 +150,7 @@ class PlanningInputsTestCase(unittest.TestCase):
         self.assertEqual(inputs.github_issues, [])
         self.assertTrue(any("github" in warning for warning in inputs.warnings))
 
-    @patch("yule_orchestrator.planning.inputs.list_open_issues")
+    @patch("yule_engineering.planning.inputs.list_open_issues")
     def test_collect_planning_inputs_preserves_github_live_fetch_error(self, list_open_issues_mock) -> None:
         list_open_issues_mock.side_effect = GitHubIssueError("gh auth expired")
 
@@ -170,7 +170,7 @@ class PlanningInputsTestCase(unittest.TestCase):
         self.assertEqual(github_status.warning, "gh auth expired")
         self.assertIn("github: gh auth expired", inputs.warnings)
 
-    @patch("yule_orchestrator.planning.inputs.list_calendar_state_records")
+    @patch("yule_engineering.planning.inputs.list_calendar_state_records")
     def test_collect_planning_inputs_uses_prefetched_sources(
         self,
         list_calendar_state_records_mock,

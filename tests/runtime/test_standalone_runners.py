@@ -20,7 +20,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.standalone_runners import (
+from yule_engineering.agents.job_queue.standalone_runners import (
     build_research_runner,
     build_role_take_runner,
 )

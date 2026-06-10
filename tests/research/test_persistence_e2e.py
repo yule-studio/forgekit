@@ -21,9 +21,9 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.pack import ResearchPack, ResearchSource
-from yule_orchestrator.agents.research.persistence import persist_research_artifacts
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.research.pack import ResearchPack, ResearchSource
+from yule_engineering.agents.research.persistence import persist_research_artifacts
+from yule_engineering.agents.workflow_state import (
     WORKFLOW_NAMESPACE,
     WorkflowSession,
     WorkflowState,

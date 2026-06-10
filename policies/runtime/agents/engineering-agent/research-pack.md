@@ -1,6 +1,6 @@
 # ResearchPack — neutral data model (v0.2)
 
-이 문서는 engineering-agent(및 향후 cto-agent / design-agent / marketing-agent)가 **연구·심의 자료를 한 덩어리로 다루기 위한 데이터 모델**을 정의한다. 코드 진실 소스는 `src/yule_orchestrator/agents/research_pack.py`.
+이 문서는 engineering-agent(및 향후 cto-agent / design-agent / marketing-agent)가 **연구·심의 자료를 한 덩어리로 다루기 위한 데이터 모델**을 정의한다. 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/agents/research_pack.py`.
 
 본 모듈은 transport 비종속이며 **순수 dataclass + 작은 URL/dedup/classification helper**로만 구성된다. Discord API, 웹 자동 수집, vision 분석, 파일 쓰기는 모두 본 모듈 밖이다.
 
@@ -166,7 +166,7 @@ ResearchAttachment
 ### 6.1 legacy — 단일 Discord 메시지 (v0)
 
 ```python
-from yule_orchestrator.agents.research_pack import (
+from yule_engineering.agents.research_pack import (
     pack_from_discord_message, merge_packs,
 )
 
@@ -194,7 +194,7 @@ bundle = merge_packs([p1, p2])
 ### 6.2 v0.2 — 역할별 Research Profile에 맞춘 typed 수집
 
 ```python
-from yule_orchestrator.agents.research_pack import (
+from yule_engineering.agents.research_pack import (
     make_research_request, make_finding,
     pack_from_request, pack_with_finding,
     source_from_user_message, source_from_url,
@@ -258,9 +258,9 @@ pack = pack_with_finding(
 )
 
 # 직렬화: 외부 transport / 디버깅용
-import json; json.dumps(pack_to_dict := __import__("yule_orchestrator.agents.research_pack", fromlist=["pack_to_dict"]).pack_to_dict(pack), ensure_ascii=False)
+import json; json.dumps(pack_to_dict := __import__("yule_engineering.agents.research_pack", fromlist=["pack_to_dict"]).pack_to_dict(pack), ensure_ascii=False)
 # 사람용 마크다운: forum thread / 운영자 리뷰용
-print(__import__("yule_orchestrator.agents.research_pack", fromlist=["pack_to_markdown"]).pack_to_markdown(pack))
+print(__import__("yule_engineering.agents.research_pack", fromlist=["pack_to_markdown"]).pack_to_markdown(pack))
 ```
 
 ## 7. 변경 절차

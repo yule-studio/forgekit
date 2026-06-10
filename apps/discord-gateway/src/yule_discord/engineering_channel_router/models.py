@@ -26,7 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional, Union
 
-from yule_orchestrator.agents.routing import EngineeringRoutingDecision
+from yule_engineering.agents.routing import EngineeringRoutingDecision
 
 
 @dataclass(frozen=True)

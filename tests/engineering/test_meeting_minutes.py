@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.reports.meeting_minutes import (
+from yule_engineering.agents.reports.meeting_minutes import (
     MeetingMinutes,
     build_meeting_minutes,
     format_meeting_minutes_markdown,

@@ -23,7 +23,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.git.repo_contract import (
+from yule_engineering.agents.git.repo_contract import (
     RepoContract,
     discover_repo_contract,
 )

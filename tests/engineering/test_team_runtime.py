@@ -9,14 +9,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchSource,
     SourceType,
     pack_to_dict,
 )
-from yule_orchestrator.discord.engineering_team_runtime import (
+from yule_engineering.discord.engineering_team_runtime import (
     PLAYED_ROLES_KEY,
     TEAM_CONVERSATION_KEY,
     TeamTurn,
@@ -432,7 +432,7 @@ class DefaultResearchRoleSequenceTests(unittest.TestCase):
     """
 
     def test_default_sequence_includes_ai_and_devops(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             DEFAULT_RESEARCH_ROLE_SEQUENCE,
         )
 
@@ -440,7 +440,7 @@ class DefaultResearchRoleSequenceTests(unittest.TestCase):
         self.assertIn("devops-engineer", DEFAULT_RESEARCH_ROLE_SEQUENCE)
 
     def test_normalised_sequence_falls_back_to_default_when_session_empty(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             deliberation_research_role_sequence,
         )
 
@@ -460,8 +460,8 @@ class DevOpsRoleDeliberationTests(unittest.TestCase):
     instead of the unknown-role placeholder so the member bot can post."""
 
     def test_deliberation_role_turn_returns_devops_take(self) -> None:
-        from yule_orchestrator.agents.deliberation import DevOpsEngineerTake
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.agents.deliberation import DevOpsEngineerTake
+        from yule_engineering.discord.engineering_team_runtime import (
             deliberation_role_turn,
         )
 

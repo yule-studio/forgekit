@@ -16,14 +16,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.runtime.models import (
+from yule_engineering.agents.runtime.models import (
     COVERAGE_HIGH,
     COVERAGE_LOW,
     COVERAGE_MEDIUM,
     RuntimeRecallResult,
     SessionCandidate,
 )
-from yule_orchestrator.agents.runtime.recall import compute_recall_coverage
+from yule_engineering.agents.runtime.recall import compute_recall_coverage
 
 
 def _now() -> datetime:

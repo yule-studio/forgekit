@@ -13,7 +13,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.next_task_selector import (
+from yule_engineering.agents.job_queue.next_task_selector import (
     SOURCE_APPROVED_CODING_JOB,
     SOURCE_CI_FAILED_PR,
     SOURCE_IDLE,

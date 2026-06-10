@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.completion_hook import (
+from yule_engineering.agents.job_queue.completion_hook import (
     COMPLETION_BLOCKED,
     COMPLETION_DONE,
     COMPLETION_NEEDS_APPROVAL,
@@ -18,7 +18,7 @@ from yule_orchestrator.agents.job_queue.completion_hook import (
     normalise_completion_status,
     record_completion,
 )
-from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+from yule_engineering.agents.lifecycle.agent_ops_log import (
     SESSION_EXTRA_KEY,
 )
 

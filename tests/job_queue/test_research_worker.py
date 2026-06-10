@@ -20,14 +20,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.research_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.research_worker import (
     JOB_TYPE_RESEARCH_COLLECT,
     SERVICE_ID_RESEARCH_WORKER,
     ResearchWorker,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _run(coro):

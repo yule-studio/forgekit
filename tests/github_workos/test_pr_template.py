@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.pr_template import (
+from yule_engineering.agents.github_workos.pr_template import (
     PR_REQUIRED_SECTIONS,
     PrBody,
     render_pr_body,

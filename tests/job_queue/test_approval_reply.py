@@ -26,7 +26,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_reply import (
+from yule_engineering.agents.job_queue.approval_reply import (
     ApprovalIntent,
     ApprovalReplyOutcome,
     approval_to_obsidian_write_request,
@@ -34,20 +34,20 @@ from yule_orchestrator.agents.job_queue.approval_reply import (
     handle_approval_reply,
     parse_approval_intent,
 )
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     APPROVAL_KIND_RESEARCH_PROMOTION,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     JOB_TYPE_OBSIDIAN_WRITE,
     NOTE_KIND_KNOWLEDGE,
     ObsidianWriterWorker,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _run(coro):
@@ -496,7 +496,7 @@ class HandleApprovalReplyTests(_FixtureBase):
         # downstream (yet). Resolver matches → converter refuses →
         # outcome carries skipped_reason="approval_kind_not_handled"
         # so the gateway can render an informative message.
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             APPROVAL_KIND_RESEARCH_PROMOTION,
             ApprovalRequest as _AR,
         )

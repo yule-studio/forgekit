@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.security.paste_guard import (
+from yule_engineering.agents.security.paste_guard import (
     GuardVerdict,
     OutboundChannel,
     PasteGuardError,
@@ -236,7 +236,7 @@ class GuardFailClosedTests(unittest.TestCase):
     """``fail_closed=True`` must drop the payload on internal error."""
 
     def test_fail_closed_returns_empty_redacted_on_exception(self) -> None:
-        import yule_orchestrator.agents.security.paste_guard as pg
+        import yule_engineering.agents.security.paste_guard as pg
 
         original = pg.redact_payload
 
@@ -259,7 +259,7 @@ class GuardFailClosedTests(unittest.TestCase):
         self.assertTrue(verdict.original_hash.startswith("sha256:"))
 
     def test_fail_open_propagates_exception(self) -> None:
-        import yule_orchestrator.agents.security.paste_guard as pg
+        import yule_engineering.agents.security.paste_guard as pg
 
         original = pg.scan_payload
 

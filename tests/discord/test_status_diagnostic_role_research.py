@@ -26,8 +26,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.discord.engineering_conversation import (
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.discord.engineering_conversation import (
     format_status_diagnostic_response,
 )
 

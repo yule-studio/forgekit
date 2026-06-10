@@ -24,12 +24,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.worker_loop import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
 )
-from yule_orchestrator.runtime.status import (
+from yule_engineering.runtime.status import (
     ACTION_KIND_GRACEFUL_DISABLED,
     ACTION_KIND_UNKNOWN_SERVICE,
     HEALTH_ALIVE,
@@ -230,7 +230,7 @@ class StatusCLICompletionFunnelTests(unittest.TestCase):
         """status_cli 가 build_runtime_status 에 completion_funnel_recent
         를 실제로 전달하는지 — 빈 lister 라도 호출 path 가 살아있음."""
 
-        from yule_orchestrator.runtime.status_cli import (
+        from yule_engineering.runtime.status_cli import (
             _load_completion_funnel_safe,
         )
 
@@ -268,7 +268,7 @@ class StatusCLICompletionFunnelTests(unittest.TestCase):
         self.assertEqual(recent[0].completion_status, "done")
 
     def test_cli_falls_back_to_empty_on_lister_failure(self) -> None:
-        from yule_orchestrator.runtime.status_cli import (
+        from yule_engineering.runtime.status_cli import (
             _load_completion_funnel_safe,
         )
 

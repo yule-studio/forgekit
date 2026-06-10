@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.github_app import (
+from yule_engineering.github_app import (
     ENV_GITHUB_APP_ID,
     ENV_GITHUB_APP_INSTALLATION_ID,
     ENV_GITHUB_APP_PRIVATE_KEY_PATH,

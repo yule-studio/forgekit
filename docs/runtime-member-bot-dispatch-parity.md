@@ -10,7 +10,7 @@ P0-C v1 (#133 머지) 이후:
 - 사용자 보고: "회사처럼 안 보임" — 봇이 살아 있는지 죽었는지 typing 으로도 판단 어려움.
 
 증거:
-- `src/yule_orchestrator/discord/member_bot.py:312-340` — `_dispatch_member_message(profile, bot, message)` 본문이 `return None`. P0-C v1 의 minimum viable 의 placeholder.
+- `apps/engineering-agent/src/yule_engineering/discord/member_bot.py:312-340` — `_dispatch_member_message(profile, bot, message)` 본문이 `return None`. P0-C v1 의 minimum viable 의 placeholder.
 - `build_member_bot.MemberBot.on_message` (line 244-250) — runtime path 의 bot 의 유일한 message handler. placeholder 만 호출.
 - 반면 sync `run_member_bot` (line 95-176) — dev/test path 의 closure 가 80+ 라인의 실제 dispatch (research-open / research-turn / team-turn 매칭 + typing + post + error fallback).
 

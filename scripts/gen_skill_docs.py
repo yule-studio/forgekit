@@ -20,7 +20,7 @@ from typing import Mapping, Optional
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from yule_orchestrator.agents.preamble import PreambleBuilder  # noqa: E402
+from yule_engineering.agents.preamble import PreambleBuilder  # noqa: E402
 
 
 SKILL_TEMPLATES_DIR = _REPO_ROOT / "prompts" / "skills"

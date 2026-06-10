@@ -19,7 +19,7 @@ def test_supervisor_imports_and_wires_siblings():
 
 
 def test_legacy_shim_is_same_module_object():
-    import yule_orchestrator.runtime.subprocess_supervisor as shim
+    import yule_engineering.runtime.subprocess_supervisor as shim
     import yule_runtime.subprocess_supervisor as real
 
     assert shim is real

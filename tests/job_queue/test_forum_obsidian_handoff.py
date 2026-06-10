@@ -21,11 +21,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+from yule_engineering.agents.job_queue.forum_obsidian_handoff import (
     RESPONSE_APPROVAL_CHANNEL_UNSET,
     RESPONSE_APPROVAL_DUPLICATE,
     RESPONSE_APPROVAL_QUEUED,
@@ -37,8 +37,8 @@ from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
     render_handoff_response,
     route_forum_obsidian_save_request,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _run(coro):
@@ -191,7 +191,7 @@ class IdempotencyTests(_HandoffFixture):
         # existing approval job id for navigation). M7.5 message-id
         # dedup remains as a final safety net for sessions where
         # ledger persistence didn't take.
-        from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+        from yule_engineering.agents.job_queue.forum_obsidian_handoff import (
             SKIPPED_TOPIC_PENDING_APPROVAL,
         )
 
@@ -374,10 +374,10 @@ class EndToEndApprovalToObsidianWriteTests(_HandoffFixture):
     def test_approve_reply_after_forum_handoff_enqueues_obsidian_write(
         self,
     ) -> None:
-        from yule_orchestrator.agents.job_queue.approval_reply import (
+        from yule_engineering.agents.job_queue.approval_reply import (
             handle_approval_reply,
         )
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             JOB_TYPE_OBSIDIAN_WRITE,
             ObsidianWriterWorker,
         )
@@ -445,7 +445,7 @@ class AgentOpsAuditTests(_HandoffFixture):
     """
 
     def _read_audit(self, session) -> list:
-        from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+        from yule_engineering.agents.lifecycle.agent_ops_log import (
             read_agent_ops_audit,
         )
 
@@ -477,7 +477,7 @@ class AgentOpsAuditTests(_HandoffFixture):
         self.assertTrue(finalize_rows[0].topic_key)
 
     def test_topic_pending_dedup_records_l1_audit_entry(self) -> None:
-        from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+        from yule_engineering.agents.job_queue.forum_obsidian_handoff import (
             SKIPPED_TOPIC_PENDING_APPROVAL,
         )
 
@@ -527,7 +527,7 @@ class AgentOpsAuditTests(_HandoffFixture):
         )
 
     def test_approval_channel_unset_records_failure_entry(self) -> None:
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             ApprovalWorker as Worker,
         )
 
@@ -581,7 +581,7 @@ class ResearchLogAutoSaveTests(_HandoffFixture):
     """
 
     def _writer(self):
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             ObsidianWriterWorker,
         )
 
@@ -596,7 +596,7 @@ class ResearchLogAutoSaveTests(_HandoffFixture):
         )
 
     def test_approval_card_triggers_research_log_enqueue(self) -> None:
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             JOB_TYPE_OBSIDIAN_WRITE,
             NOTE_KIND_RESEARCH_LOG,
         )
@@ -630,7 +630,7 @@ class ResearchLogAutoSaveTests(_HandoffFixture):
         self.assertIn("thread_snapshot", metadata)
         self.assertEqual(metadata.get("autonomy_level"), "L1_AUTO_RECORD_REQUIRED")
         # Audit row records the L1 research-log decision.
-        from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+        from yule_engineering.agents.lifecycle.agent_ops_log import (
             read_agent_ops_audit,
         )
 
@@ -649,7 +649,7 @@ class ResearchLogAutoSaveTests(_HandoffFixture):
         # Production-shaped tests that don't pass the writer must
         # not silently swallow the approval card. The L3 approval
         # path is unaffected.
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             JOB_TYPE_OBSIDIAN_WRITE,
         )
 
@@ -748,10 +748,10 @@ class HydrationMarkerTests(_HandoffFixture):
         # extra → ObsidianWriteRequest.metadata via
         # approval_to_obsidian_write_request. M10b regression guard
         # for the converter's key-preservation loop.
-        from yule_orchestrator.agents.job_queue.approval_reply import (
+        from yule_engineering.agents.job_queue.approval_reply import (
             approval_to_obsidian_write_request,
         )
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             ApprovalRequest,
         )
 
@@ -794,16 +794,16 @@ class HydrationMarkerTests(_HandoffFixture):
         import tempfile
         from unittest import mock
 
-        from yule_orchestrator.agents.job_queue.approval_reply import (
+        from yule_engineering.agents.job_queue.approval_reply import (
             approval_to_obsidian_write_request,
         )
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             ApprovalRequest,
         )
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             default_render_fn,
         )
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             save_session,
@@ -878,7 +878,7 @@ class HydrationMarkerTests(_HandoffFixture):
         # summary surfaces ``superseded_candidate_path`` so the
         # operator can decide whether to retire the prior file. The
         # agent never deletes; it only marks the candidate.
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             NOTE_KIND_KNOWLEDGE,
             ObsidianWriteRequest,
             ObsidianWriterWorker,

@@ -29,24 +29,24 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.governance.repo_write_policy import (
+from yule_engineering.agents.governance.repo_write_policy import (
     PolicyViolation,
     REASON_ISSUE_REQUIRED_FOR_REPO_WORK,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     LocalGitWorktreeProvisioner,
     WorktreeProvisionError,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
 )
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.pr_approval import (
     PRMergeProposal,
     PRMergeReplyDispatch,
     PRMergeReplyIntent,
     handle_pr_merge_approval_reply,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+from yule_engineering.agents.job_queue.pr_merge_continuation import (
     EXTRA_PR_MERGE_AUDIT,
     EXTRA_PR_MERGE_PR_NUMBER,
     EXTRA_PR_MERGE_REPO,
@@ -56,13 +56,13 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
     STAGE_PR_MERGE_PENDING,
     STAGE_PR_MERGED,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
+from yule_engineering.agents.job_queue.pr_merge_continuation_worker import (
     ACTION_AUTONOMOUS_MERGE_SUCCEEDED,
     ACTION_DRAFT_ESCALATED_TO_APPROVAL,
     REASON_APPROVAL_NEEDED_FOR_READY_FOR_REVIEW,
     advance_pending_session,
 )
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_SCOPE,
     EXTRA_TOPOLOGY,
     EXTRA_WORK_MODE,
@@ -71,13 +71,13 @@ from yule_orchestrator.agents.lifecycle.session_mode import (
     WORK_MODE_APPROVAL,
     WORK_MODE_AUTONOMOUS,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,
     save_session,
 )
-from yule_orchestrator.github_app.live_client import LiveGithubAppClient
+from yule_engineering.github_app.live_client import LiveGithubAppClient
 
 
 def _now() -> datetime:
@@ -280,7 +280,7 @@ class DraftReplyReadyForReviewTests(_CacheFixture):
         검증.
         """
 
-        from yule_orchestrator.agents.job_queue.pr_approval import (
+        from yule_engineering.agents.job_queue.pr_approval import (
             APPROVAL_KIND_PR_MERGE,
         )
 
@@ -322,7 +322,7 @@ class DraftReplyReadyForReviewTests(_CacheFixture):
         merge_executor,
         ready_action,
     ):
-        import yule_orchestrator.agents.job_queue.pr_approval as pa
+        import yule_engineering.agents.job_queue.pr_approval as pa
 
         original_find = pa.find_replyable_approval
         pa.find_replyable_approval = lambda **kw: fake_job
@@ -554,7 +554,7 @@ class IssueFirstHardGuardTests(unittest.TestCase):
         """validator 가 repo 와 무관하게 동일 동작 — yule-studio-agent /
         naver-search-clone / 임의 target repo 모두 동일."""
 
-        from yule_orchestrator.agents.governance.repo_write_policy import (
+        from yule_engineering.agents.governance.repo_write_policy import (
             IssueAnchorContext,
             validate_issue_anchor,
         )
@@ -620,7 +620,7 @@ class MarkPRReadyForReviewOptInGuardTests(unittest.TestCase):
         """opt-in env 없으면 LiveGithubAppMergeDisabled raise — 어떤
         HTTP 호출도 일어나지 않음."""
 
-        from yule_orchestrator.github_app.live_client import (
+        from yule_engineering.github_app.live_client import (
             LiveGithubAppMergeDisabled,
             _is_merge_enabled,
         )

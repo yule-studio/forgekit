@@ -10,10 +10,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.digest.crawler import fetch_source
-from yule_orchestrator.agents.digest.dedup_ledger import DigestDedupLedger
-from yule_orchestrator.agents.digest.scheduler import SchedulerConfig
-from yule_orchestrator.agents.digest.source_catalog import (
+from yule_engineering.agents.digest.crawler import fetch_source
+from yule_engineering.agents.digest.dedup_ledger import DigestDedupLedger
+from yule_engineering.agents.digest.scheduler import SchedulerConfig
+from yule_engineering.agents.digest.source_catalog import (
     ROLE_SOURCE_CATALOG,
     AuthoritativeSource,
     all_allowed_hosts,

@@ -113,17 +113,17 @@ flowchart LR
 
 ```python
 # bot.py / commands.py / supervisor.py / tests 모두 무회귀
-from yule_orchestrator.discord.research_forum import (
+from yule_engineering.discord.research_forum import (
     ResearchForumContext, create_research_post, post_agent_comment,
     derive_research_topic, normalize_thread_title, ForumPostOutcome,
     chunk_for_discord_message, FORUM_STARTER_CONTENT_LIMIT, ...
 )
-from yule_orchestrator.discord.engineering_team_runtime import (
+from yule_engineering.discord.engineering_team_runtime import (
     kickoff_directive, handle_research_turn_message, build_turn_plan,
     record_role_turn_event, record_role_research_result,
     handle_team_turn_message, run_deliberation_loop, ...
 )
-from yule_orchestrator.discord.bot import (
+from yule_engineering.discord.bot import (
     run_discord_bot, build_engineering_gateway_bot, ...
 )
 ```

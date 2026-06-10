@@ -33,14 +33,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.runners.bootstrap import (
+from yule_engineering.agents.runners.bootstrap import (
     ENV_PROVIDERS,
     REASON_NOT_OPTED_IN,
     REASON_OPTED_IN_AVAILABLE,
     build_role_runner_candidates,
     build_role_runner_dispatch_from_env,
 )
-from yule_orchestrator.agents.runners.role_runner import (
+from yule_engineering.agents.runners.role_runner import (
     PROVIDER_CLAUDE,
     PROVIDER_CODEX,
     PROVIDER_DETERMINISTIC,
@@ -210,7 +210,7 @@ class FakeProviderChainTests(unittest.TestCase):
         # the same shape the bootstrap builds — record-only writer
         # delegates to a session-aware capture so we exercise the
         # bootstrap-shaped public API surface.
-        from yule_orchestrator.agents.runners.role_runner import (
+        from yule_engineering.agents.runners.role_runner import (
             build_role_runner_dispatcher,
         )
 
@@ -309,7 +309,7 @@ class SanitisedReasonsTests(unittest.TestCase):
         # Every reason matches one of the canonical sanitised strings.
         # Importing them here keeps the test resilient to wording
         # changes — the test breaks only when the constants drift.
-        from yule_orchestrator.agents.runners.bootstrap import (
+        from yule_engineering.agents.runners.bootstrap import (
             REASON_CLI_NOT_FOUND,
             REASON_ENDPOINT_UNREACHABLE,
             REASON_NOT_OPTED_IN,

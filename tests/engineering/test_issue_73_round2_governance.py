@@ -35,7 +35,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.decision.classifier_factory import (
+from yule_engineering.agents.decision.classifier_factory import (
     ENV_ANTHROPIC_API_KEY,
     ENV_ANTHROPIC_API_KEY_ALT,
     ENV_OLLAMA_ENABLED,
@@ -43,22 +43,22 @@ from yule_orchestrator.agents.decision.classifier_factory import (
     ENV_OPENAI_API_KEY,
     build_classifier_from_env,
 )
-from yule_orchestrator.agents.job_queue.ci_status import (
+from yule_engineering.agents.job_queue.ci_status import (
     CI_FAILURE,
     CIRetryPolicy,
     CIStatus,
     RetryAttemptLog,
     decide_retry,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     RecordOnlyCodeEditor,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
     is_protected_branch,
 )
-from yule_orchestrator.runtime.services import (
+from yule_engineering.runtime.services import (
     ENV_CODING_EXECUTOR_AUTOSPAWN,
     build_engineering_profile,
 )

@@ -33,14 +33,14 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.next_slice_dispatcher import (
+from yule_engineering.agents.job_queue.next_slice_dispatcher import (
     EXTRA_CODING_BACKLOG,
 )
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.pr_approval import (
     PRMergeProposal,
     PRMergeReplyDispatch,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+from yule_engineering.agents.job_queue.pr_merge_continuation import (
     EXTRA_PR_MERGE_AUDIT,
     EXTRA_PR_MERGE_PR_NUMBER,
     EXTRA_PR_MERGE_REPO,
@@ -48,19 +48,19 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
     STAGE_PR_MERGE_PENDING,
     STAGE_PR_MERGED,
 )
-from yule_orchestrator.agents.job_queue.pr_merge_continuation_worker import (
+from yule_engineering.agents.job_queue.pr_merge_continuation_worker import (
     ACTION_APPROVAL_CARD_ENQUEUED,
     ACTION_AUTONOMOUS_MERGE_SUCCEEDED,
     ACTION_SKIPPED_ALREADY_ENQUEUED,
     advance_pending_session,
     iter_pending_session_ids,
 )
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_WORK_MODE,
     WORK_MODE_APPROVAL,
     WORK_MODE_AUTONOMOUS,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     list_sessions,
@@ -139,7 +139,7 @@ class StartupSweepTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         import os
-        from yule_orchestrator import storage as _storage
+        from yule_engineering import storage as _storage
 
         self._old_root = getattr(_storage, "_CACHE_ROOT_OVERRIDE", None)
         os.environ["YULE_AGENT_CACHE_DIR"] = self._tmp.name
@@ -318,7 +318,7 @@ class LiveExecutorWiringTests(unittest.TestCase):
     def test_builder_returns_none_when_env_unset(self) -> None:
         import os
 
-        from yule_orchestrator.discord.bot._legacy import (
+        from yule_engineering.discord.bot._legacy import (
             _build_pr_merge_executor_for_bot,
         )
 
@@ -333,8 +333,8 @@ class LiveExecutorWiringTests(unittest.TestCase):
     def test_runner_helper_matches_bot_helper(self) -> None:
         """runner 와 bot wiring 이 동일 env contract 를 쓰는지 보장."""
 
-        from yule_orchestrator.discord.bot import _legacy as bot_legacy
-        from yule_orchestrator.runtime import (
+        from yule_engineering.discord.bot import _legacy as bot_legacy
+        from yule_engineering.runtime import (
             coding_executor_runner as runner,
         )
 
@@ -409,7 +409,7 @@ class AutonomousMergeLiveClosureTests(unittest.TestCase):
         # next slice 는 runner 의 별도 단계 — dispatch_next_coding_slice
         # 콜백을 직접 호출해서 한 번만 동작 + 두 번째 호출은 backlog 가 이미
         # 줄어든 상태를 본다.
-        from yule_orchestrator.agents.job_queue.next_slice_dispatcher import (
+        from yule_engineering.agents.job_queue.next_slice_dispatcher import (
             NextSliceAction,
             dispatch_next_coding_slice,
         )

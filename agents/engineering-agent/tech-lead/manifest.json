@@ -31,7 +31,7 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_TECH_LEAD_",
   "autonomy_level": "supervised",
   "risk_class": "MEDIUM",
-  "module_path": "yule_orchestrator.agents.engineering.tech_lead.runner",
+  "module_path": "yule_engineering.agents.engineering.tech_lead.runner",
   "discord_token_env": "ENGINEERING_AGENT_BOT_TECH_LEAD_TOKEN",
   "instruction_entry": "agents/engineering-agent/tech-lead/CLAUDE.md",
   "description": "작업 성격 분석, 작업 분해, 역할별 의견 종합, 충돌 조정, 최종 합의안과 승인 문서 초안, 누가 executor가 되어야 하는지에 대한 권한 제안을 책임지는 부서 멤버. 코드 직접 작성보다 부서 안 결정 흐름과 권한 경계를 단단히 만든다.",

@@ -26,10 +26,10 @@ preconditions:
   - workflow_session 존재
   - role_id 와 action(예: coding_execute / discussion_handoff)이 정해져 있음
 references:
-  - src/yule_orchestrator/agents/lifecycle/mistake_ledger.py
-  - src/yule_orchestrator/agents/lifecycle/preflight_judgement.py
-  - src/yule_orchestrator/agents/lifecycle/hook_candidate.py
-  - src/yule_orchestrator/agents/lifecycle/mistake_surface.py
+  - apps/engineering-agent/src/yule_engineering/agents/lifecycle/mistake_ledger.py
+  - apps/engineering-agent/src/yule_engineering/agents/lifecycle/preflight_judgement.py
+  - apps/engineering-agent/src/yule_engineering/agents/lifecycle/hook_candidate.py
+  - apps/engineering-agent/src/yule_engineering/agents/lifecycle/mistake_surface.py
 related_skills: []
 ---
 
@@ -99,10 +99,10 @@ threshold 는 `PreflightThresholds` 로 호출 측에서 바꿀 수 있다.
 
 본 markdown 은 정책 명시화. 실제 코드 측면 enforcement 는 다음에 존재한다:
 
-- `src/yule_orchestrator/agents/lifecycle/mistake_ledger.py::record_mistake / read_mistake_ledger` — ledger 기록/조회
-- `src/yule_orchestrator/agents/lifecycle/preflight_judgement.py::evaluate_preflight` — verdict 산출 (pure-python, side-effect 없음)
-- `src/yule_orchestrator/agents/lifecycle/hook_candidate.py::promote_record_to_hook_candidate` — 반복 실수 → 후보 hook 승격
-- `src/yule_orchestrator/agents/lifecycle/mistake_surface.py::build_operator_surface` — 운영자 surface (preflight + ledger + 후보 hook 합본)
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle/mistake_ledger.py::record_mistake / read_mistake_ledger` — ledger 기록/조회
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle/preflight_judgement.py::evaluate_preflight` — verdict 산출 (pure-python, side-effect 없음)
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle/hook_candidate.py::promote_record_to_hook_candidate` — 반복 실수 → 후보 hook 승격
+- `apps/engineering-agent/src/yule_engineering/agents/lifecycle/mistake_surface.py::build_operator_surface` — 운영자 surface (preflight + ledger + 후보 hook 합본)
 
 이 hook 의 dispatcher 가 land 하면 위 함수들을 호출하는 wiring 만 추가하면 됨. 새 enforcement 코드 작성 불필요.
 

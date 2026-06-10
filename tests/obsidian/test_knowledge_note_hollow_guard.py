@@ -24,8 +24,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     JOB_TYPE_OBSIDIAN_WRITE,
     NOTE_KIND_KNOWLEDGE,
     ObsidianRenderError,
@@ -33,8 +33,8 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
     ObsidianWriterWorker,
     default_render_fn,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _run(coro):
@@ -49,7 +49,7 @@ class HollowKnowledgeNoteTests(unittest.TestCase):
     """pack/snapshot/synthesis 모두 비면 hollow vault file 거부."""
 
     def test_default_render_fn_raises_on_hollow_inputs(self) -> None:
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             save_session,

@@ -21,11 +21,11 @@ from .session_persistence import (
     _load_session_by_id,
     _most_recent_session,
 )
-from yule_orchestrator.agents.lifecycle.resolver import (
+from yule_engineering.agents.lifecycle.resolver import (
     _EXPLICIT_SESSION_ID_RE,
     extract_explicit_session_id as _extract_session_id_from_router_text,
 )
-from yule_orchestrator.agents.obsidian.approval import (
+from yule_engineering.agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     clear_pending_proposal,
@@ -54,7 +54,7 @@ def _can_save_to_obsidian(session: Any) -> tuple[bool, Optional[str]]:
     # helper so the router, work_report builder, and Discord status
     # diagnostic all share one set of "can we save?" rules. The block
     # reasons stay identical to keep operator-visible messages stable.
-    from yule_orchestrator.agents.lifecycle.status import can_write_obsidian_record
+    from yule_engineering.agents.lifecycle.status import can_write_obsidian_record
 
     return can_write_obsidian_record(session)
 
@@ -104,7 +104,7 @@ async def _run_obsidian_approval_gate(
     candidate: Optional[Any] = None
     if explicit_id:
         try:
-            from yule_orchestrator.agents.workflow_state import load_session as _load_session
+            from yule_engineering.agents.workflow_state import load_session as _load_session
 
             candidate = _load_session(explicit_id)
         except Exception:  # noqa: BLE001 - lookup failure falls through

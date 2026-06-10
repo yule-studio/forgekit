@@ -1,8 +1,12 @@
 # engineering-agent
 
-> 개발 작업을 받아 코드 작업으로 끌고 가는 엔지니어링 앱. 본 디렉터리는
-> 현재 **책임 문서(scaffold)** 만 두며, 코드는 아직
-> `src/yule_orchestrator/**` 에 있다.
+> 개발 작업을 받아 코드 작업으로 끌고 가는 엔지니어링 앱. 구 모놀리스
+> `src/yule_orchestrator` 가 `src/yule_engineering/` 으로 **이동 + 전역 rename**
+> 되어 본 앱이 보유한다(루트 `src/` 및 `yule_orchestrator` 모듈은 제거됨).
+>
+> 과도기: `yule_engineering` 안에는 아직 분해되지 않은 agents 코어와,
+> packages/* 및 다른 app(planning/discord) 을 가리키는 compat shim 이 공존한다.
+> agents 코어의 thoughtful 분해는 `docs/monorepo-structure.md §4` 로드맵 참조.
 
 ## 책임 범위
 
@@ -29,8 +33,8 @@
 
 | 현재 위치 | 이전 대상 |
 | --- | --- |
-| `src/yule_orchestrator/agents/**` | `apps/engineering-agent/**` (코어) + `packages/runtime`, `packages/agent-contracts` 로 분리 |
-| `src/yule_orchestrator/discord/engineering_channel_router/**` | command/event 변환부는 `apps/discord-gateway`, 의사결정 로직은 본 앱 |
+| `apps/engineering-agent/src/yule_engineering/agents/**` | `apps/engineering-agent/**` (코어) + `packages/runtime`, `packages/agent-contracts` 로 분리 |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_channel_router/**` | command/event 변환부는 `apps/discord-gateway`, 의사결정 로직은 본 앱 |
 
 ## migration TODO
 

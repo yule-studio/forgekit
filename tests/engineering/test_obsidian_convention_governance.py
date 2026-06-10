@@ -24,11 +24,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.obsidian.filename_convention import (
+from yule_engineering.agents.obsidian.filename_convention import (
     ALLOWED_KINDS,
     validate_filename,
 )
-from yule_orchestrator.agents.obsidian.vault_auto_push import (
+from yule_engineering.agents.obsidian.vault_auto_push import (
     ENV_AUTOPUSH_ENABLED,
     push_vault_if_ready,
 )

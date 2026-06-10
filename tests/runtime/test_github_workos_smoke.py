@@ -51,20 +51,20 @@ class ServiceIdReservationTests(unittest.TestCase):
     """Pin the service ids G1–G4 will register with the supervisor.
 
     Existing service ids live in
-    ``yule_orchestrator.agents.job_queue`` (e.g.
+    ``yule_engineering.agents.job_queue`` (e.g.
     ``SERVICE_ID_RESEARCH_WORKER``). The new ids must NOT collide.
     """
 
     def test_reserved_ids_do_not_collide_with_existing_workers(self) -> None:
         # Import existing constants — collision would mean a typo in
         # the brief / a producer reusing an existing id.
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             SERVICE_ID_APPROVAL_WORKER,
         )
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             SERVICE_ID_OBSIDIAN_WRITER,
         )
-        from yule_orchestrator.agents.job_queue.research_worker import (
+        from yule_engineering.agents.job_queue.research_worker import (
             SERVICE_ID_RESEARCH_WORKER,
         )
 

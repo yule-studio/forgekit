@@ -119,11 +119,11 @@
 
 | 파일 | LOC | 이유 |
 | --- | --- | --- |
-| `src/yule_orchestrator/discord/bot/_legacy.py` | ~2700 | P0-Q discord/ 분해 진행 중 — 의미 그룹 추출 후 점진 제거 |
-| `src/yule_orchestrator/discord/engineering_team_runtime/_legacy.py` | ~2150 | P0-Q discord/ 분해 진행 중 — 같은 사이클 |
-| `src/yule_orchestrator/runtime/status.py` | ~2000 | 라이브 상태 표면화 — 도메인 단일, 단계별 helper 추출 후속 작업 |
-| `src/yule_orchestrator/agents/research/collector.py` | ~2400 | 다중 provider adapter — `agents/research/<provider>` 패키지화 후속 |
-| `src/yule_orchestrator/agents/deliberation.py` | ~1750 | TechLead 합의 단일 도메인 — open_research/synthesis 분리 검토 |
+| `apps/engineering-agent/src/yule_engineering/discord/bot/_legacy.py` | ~2700 | P0-Q discord/ 분해 진행 중 — 의미 그룹 추출 후 점진 제거 |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_team_runtime/_legacy.py` | ~2150 | P0-Q discord/ 분해 진행 중 — 같은 사이클 |
+| `apps/engineering-agent/src/yule_engineering/runtime/status.py` | ~2000 | 라이브 상태 표면화 — 도메인 단일, 단계별 helper 추출 후속 작업 |
+| `apps/engineering-agent/src/yule_engineering/agents/research/collector.py` | ~2400 | 다중 provider adapter — `agents/research/<provider>` 패키지화 후속 |
+| `apps/engineering-agent/src/yule_engineering/agents/deliberation.py` | ~1750 | TechLead 합의 단일 도메인 — open_research/synthesis 분리 검토 |
 
 새 파일이 1000 줄을 넘었는데 위에 없으면 분리 PR 을 먼저 띄우거나,
 이 표에 이유와 함께 추가해야 한다. silently 자라는 것을 막기 위함.
@@ -146,7 +146,7 @@
   의 docstring 검증 라인이 핵심 섹션 존재를 지킨다.
 - runtime hard rail (branch / PR / tag / curated note / retrieval eval /
   post-test hardening) 은 [`tests/governance/test_runtime_policy.py`](../../tests/governance/test_runtime_policy.py)
-  가 검사 — 코드 SSoT 는 [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../../src/yule_orchestrator/agents/governance/runtime_policy.py).
+  가 검사 — 코드 SSoT 는 [`apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py`](../../apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py).
 - 세 자동 가드와 본 규칙은 **상호 보완** — ceiling 은 토큰/회귀 보호,
   본 규칙은 책임 분리 보호, runtime_policy 는 git/vault/eval drift 보호.
 

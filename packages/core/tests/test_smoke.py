@@ -1,7 +1,7 @@
 """Smoke tests for the extracted ``yule_core`` package.
 
-Verifies the public surface imports without any ``yule_orchestrator``
-dependency, and that the ``yule_orchestrator.core`` compat shims alias
+Verifies the public surface imports without any ``yule_engineering``
+dependency, and that the ``yule_engineering.core`` compat shims alias
 the *same* module objects / functions (so monkeypatch/reload callers in
 the 13 external importers keep working).
 """
@@ -69,11 +69,11 @@ def test_timezone_now_local_is_tz_aware() -> None:
 
 def test_shim_module_identity() -> None:
     """The old import paths must alias the *same* module objects."""
-    from yule_orchestrator import core as shim_core
-    from yule_orchestrator.core import timezone as shim_timezone
-    from yule_orchestrator.core import env_loader as shim_env_loader
-    from yule_orchestrator.core import tls as shim_tls
-    from yule_orchestrator.core import context_loader as shim_context_loader
+    from yule_engineering import core as shim_core
+    from yule_engineering.core import timezone as shim_timezone
+    from yule_engineering.core import env_loader as shim_env_loader
+    from yule_engineering.core import tls as shim_tls
+    from yule_engineering.core import context_loader as shim_context_loader
 
     assert shim_timezone is yule_core.timezone
     assert shim_env_loader is yule_core.env_loader

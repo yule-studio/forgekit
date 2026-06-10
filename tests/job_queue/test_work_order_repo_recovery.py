@@ -30,13 +30,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.audit import OUTCOME_OK
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.github_workos.audit import OUTCOME_OK
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     dispatch_github_work_order,
     JOB_TYPE_GITHUB_WORK_ORDER,
 )
-from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+from yule_engineering.agents.job_queue.github_work_order_executor import (
     CREATED_VIA_AUTO_CREATE,
     GitHubWorkOrderWorker,
     SESSION_EXTRA_GITHUB_ISSUE_KEY,
@@ -45,9 +45,9 @@ from yule_orchestrator.agents.job_queue.github_work_order_executor import (
     requeue_missing_plan_failures,
     requeue_no_repo_failures,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------
@@ -530,7 +530,7 @@ class ProducerRepoExtractTests(unittest.TestCase):
     def test_extract_repo_from_session_references(self) -> None:
         from types import SimpleNamespace
 
-        from yule_orchestrator.discord.commands import (
+        from yule_engineering.discord.commands import (
             _extract_repo_from_session,
         )
 
@@ -548,7 +548,7 @@ class ProducerRepoExtractTests(unittest.TestCase):
     def test_extract_repo_from_prompt_text(self) -> None:
         from types import SimpleNamespace
 
-        from yule_orchestrator.discord.commands import (
+        from yule_engineering.discord.commands import (
             _extract_repo_from_session,
         )
 
@@ -565,7 +565,7 @@ class ProducerRepoExtractTests(unittest.TestCase):
     def test_extract_repo_none_when_no_github_url(self) -> None:
         from types import SimpleNamespace
 
-        from yule_orchestrator.discord.commands import (
+        from yule_engineering.discord.commands import (
             _extract_repo_from_session,
         )
 

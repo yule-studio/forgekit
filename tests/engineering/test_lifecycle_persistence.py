@@ -14,7 +14,7 @@ except ModuleNotFoundError:
 
 from tests._helpers import isolate_cache_for_test as _isolate_cache_for_test
 
-from yule_orchestrator.agents.lifecycle.persistence import (
+from yule_engineering.agents.lifecycle.persistence import (
     PersistenceResult,
     merge_session_extra,
     persist_research_forum_link,
@@ -23,7 +23,7 @@ from yule_orchestrator.agents.lifecycle.persistence import (
     persist_work_report_state,
     to_json_safe,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     load_session,

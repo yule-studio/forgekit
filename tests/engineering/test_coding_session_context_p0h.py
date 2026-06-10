@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.coding_session_context import (
+from yule_engineering.agents.coding.coding_session_context import (
     CodingSessionContext,
     merge_into_extra,
     prepare_coding_session_context,
@@ -221,10 +221,10 @@ class RepoContractIntegrationTests(unittest.TestCase):
     def test_repo_contract_summary_in_extras(self) -> None:
         # Inject a mocked discover_repo_contract via the helper's import path.
         # Easiest: patch the symbol in the coding_session_context module.
-        from yule_orchestrator.agents.coding import (
+        from yule_engineering.agents.coding import (
             coding_session_context as csc,
         )
-        from yule_orchestrator.agents.git.repo_contract import RepoContract
+        from yule_engineering.agents.git.repo_contract import RepoContract
 
         def fake_discover(*, owner, repo, **kwargs):
             return RepoContract(

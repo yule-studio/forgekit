@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.identity import (
+from yule_engineering.agents.github_workos.identity import (
     COMMIT_AUTHOR_POLICY_OWNER_AS_AUTHOR,
     GITHUB_APP_ACTOR,
     SUPPORTED_ROLE_IDS,

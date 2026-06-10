@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.github_app.live_client import (
+from yule_engineering.github_app.live_client import (
     ENV_GITHUB_MERGE_ENABLED,
     LiveGithubAppHTTPError,
     LiveGithubAppMergeDisabled,

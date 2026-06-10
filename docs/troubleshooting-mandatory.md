@@ -18,7 +18,7 @@ executor 도 같은 규칙을 따른다**.
 | session.extra audit (보조) | `stamp_troubleshooting_audit` | session 단위 추적 |
 | Record ledger (필수) | `TroubleshootingLedger` JSON sidecar | 영속화 + dedup |
 
-[`CaptureOutcome.meets_minimum_surfaces(minimum=2)`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_ledger.py)
+[`CaptureOutcome.meets_minimum_surfaces(minimum=2)`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/troubleshooting_ledger.py)
 가 호출 측에서 §C 의 "최소 2 표면" 정책을 자동 검증한다.
 
 ## 2. 강제 capture 가 발생하는 trigger (§A + §B + §I)
@@ -80,7 +80,7 @@ Obsidian markdown 노트는 **항상 8 섹션 헤더가 있다**. 빈 섹션은
 
 `TroubleshootingLedger.capture(...)` 가 같은 `problem_signature` 의 2 번째
 호출을 받으면 `_promote_to_mistake_ledger` 가 자동 fire → `record_mistake` 가
-mistake ledger row 를 만든다. 이후 [`preflight_judgement`](../src/yule_orchestrator/agents/lifecycle/preflight_judgement.py)
+mistake ledger row 를 만든다. 이후 [`preflight_judgement`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/preflight_judgement.py)
 가 다음 작업 진입을 advisory/warning/block 으로 자동 분류.
 
 특별 케이스 (즉시 승격):
@@ -91,7 +91,7 @@ mistake ledger row 를 만든다. 이후 [`preflight_judgement`](../src/yule_orc
 
 ## 6. Preflight enforcement (§G + §H)
 
-작업 시작 전 [`troubleshooting_preflight.evaluate_combined_preflight`](../src/yule_orchestrator/agents/lifecycle/troubleshooting_preflight.py) 호출:
+작업 시작 전 [`troubleshooting_preflight.evaluate_combined_preflight`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/troubleshooting_preflight.py) 호출:
 
 ```python
 briefing = evaluate_combined_preflight(
@@ -157,7 +157,7 @@ record_claude_correction(
     attempted_fix="reply_router.py 만 수정",
     final_fix="channel router 의 phrase_detect 도 동시 수정",
     prevention_rule="slash path 와 channel path 변경은 항상 paired diff 확인",
-    related_files=("src/yule_orchestrator/discord/...",),
+    related_files=("apps/engineering-agent/src/yule_engineering/discord/...",),
 )
 ```
 
@@ -186,7 +186,7 @@ runtime agent record 와 같은 ledger 에 누적된다. mistake ledger 승격 /
 - worktree provision / executor handoff
 - **자동: TroubleshootingRecord 생성** (signal_id → CaptureReason 매핑)
 
-[`runtime_self_improvement_loop._SIGNAL_TO_CAPTURE_REASON`](../src/yule_orchestrator/agents/lifecycle/runtime_self_improvement_loop.py)
+[`runtime_self_improvement_loop._SIGNAL_TO_CAPTURE_REASON`](../apps/engineering-agent/src/yule_engineering/agents/lifecycle/runtime_self_improvement_loop.py)
 이 mapping 의 SSoT.
 
 ## 11. 적용 범위 + cross-link

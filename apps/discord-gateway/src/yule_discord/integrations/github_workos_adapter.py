@@ -61,19 +61,19 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
-from yule_orchestrator.agents.job_queue.approval_reply import find_replyable_approval
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_reply import find_replyable_approval
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.git.repo_contract import RepoContract
-from yule_orchestrator.agents.github_workos.issue_auto_create import (
+from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_engineering.agents.github_workos.issue_auto_create import (
     AUDIT_TEMPLATE_FALLBACK,
     IssueAutoCreateOutcome,
     build_issue_auto_create_plan,
 )
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     APPROVAL_KIND_GITHUB_WORK_ORDER,
     GitHubWorkOrder,
     GitHubWorkOrderDispatchOutcome,
@@ -83,7 +83,7 @@ from yule_orchestrator.agents.job_queue.github_work_order import (
     detect_coding_intent,
     dispatch_github_work_order,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------

@@ -89,7 +89,7 @@ def _stub_triage(*, issue: FakeIssue, dry_run: bool = True) -> TriageReport:
                     "기존 forum_obsidian_handoff 테스트 회귀 없는지 확인",
                 ),
                 deliverables=(
-                    "src/yule_orchestrator/agents/job_queue/forum_obsidian_handoff.py 패치",
+                    "apps/engineering-agent/src/yule_engineering/agents/job_queue/forum_obsidian_handoff.py 패치",
                     "tests/job_queue/test_forum_obsidian_handoff.py 신규 케이스",
                 ),
             ),

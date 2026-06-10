@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.loop import (
+from yule_engineering.agents.research.loop import (
     ForumPublicationOutcome,
     ResearchLoopOutcome,
     RoleAssignment,
@@ -18,8 +18,8 @@ from yule_orchestrator.agents.research.loop import (
     publish_research_loop_to_forum,
     run_research_loop,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.discord.research_forum import (
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.discord.research_forum import (
     PREFIX_DECISION,
     PREFIX_RESEARCH,
     PREFIX_REFERENCE,
@@ -423,7 +423,7 @@ class PublishResearchLoopToForumTestCase(unittest.TestCase):
 
 class RunnerInjectionTestCase(unittest.TestCase):
     def test_runner_take_is_used(self) -> None:
-        from yule_orchestrator.agents.deliberation import (
+        from yule_engineering.agents.deliberation import (
             DeliberationContext,
             FrontendEngineerTake,
         )

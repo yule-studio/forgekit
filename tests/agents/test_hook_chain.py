@@ -11,13 +11,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.extension.hook_chain import (
+from yule_engineering.agents.extension.hook_chain import (
     HookLevel,
     HookResult,
     invoke_hook,
 )
-from yule_orchestrator.agents.extension.manifest import HookEvent, PluginManifest
-from yule_orchestrator.agents.extension.plugin_registry import PluginRegistry
+from yule_engineering.agents.extension.manifest import HookEvent, PluginManifest
+from yule_engineering.agents.extension.plugin_registry import PluginRegistry
 
 
 def _manifest(

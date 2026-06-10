@@ -34,15 +34,15 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.decision.context_pack import (
+from yule_engineering.agents.decision.context_pack import (
     ContextPack,
     build_context_pack,
 )
-from yule_orchestrator.agents.learning.mistake_ledger import (
+from yule_engineering.agents.learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
-from yule_orchestrator.agents.memory import (
+from yule_engineering.agents.memory import (
     ENV_LONG_TERM_MEMORY_ENABLED,
     AuditSource,
     DecisionSource,
@@ -57,7 +57,7 @@ from yule_orchestrator.agents.memory import (
     ShardKind,
     build_memory_pack,
 )
-from yule_orchestrator.agents.security.paste_guard import (
+from yule_engineering.agents.security.paste_guard import (
     OutboundChannel,
     guard_outbound,
 )
@@ -222,7 +222,7 @@ class MemoryUnifierGovernanceTests(unittest.TestCase):
 
     # 8
     def test_public_surface_explicit(self) -> None:
-        import yule_orchestrator.agents.memory as memory_pkg
+        import yule_engineering.agents.memory as memory_pkg
 
         expected = {
             "AuditSource",

@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.digest.source_catalog import (
+from yule_engineering.agents.digest.source_catalog import (
     ROLE_SOURCE_CATALOG,
     all_allowed_hosts,
     host_to_roles,

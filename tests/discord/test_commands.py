@@ -9,8 +9,8 @@ import os
 import tempfile
 import unittest
 
-import yule_orchestrator.discord.commands as discord_commands
-from yule_orchestrator.agents.review_loop import ReviewSeverity, ReviewSource
+import yule_engineering.discord.commands as discord_commands
+from yule_engineering.agents.review_loop import ReviewSeverity, ReviewSource
 
 
 class DiscordCommandsTestCase(unittest.TestCase):

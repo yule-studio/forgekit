@@ -20,17 +20,17 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeProposal,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.integrations.pr_merge_adapter import (
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.discord.integrations.pr_merge_adapter import (
     PRMergeApprovalOutcome,
     SKIPPED_DUPLICATE_PR_MERGE_CARD,
     SKIPPED_NO_PROPOSAL,

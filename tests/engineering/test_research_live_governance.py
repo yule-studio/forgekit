@@ -15,7 +15,7 @@
 
 from __future__ import annotations
 
-from yule_orchestrator.agents.research.providers.live import (
+from yule_engineering.agents.research.providers.live import (
     KIND_GITHUB_RELEASE,
     KIND_RSS,
     LiveSource,
@@ -23,7 +23,7 @@ from yule_orchestrator.agents.research.providers.live import (
     build_live_provider_registry_from_env,
     default_role_source_catalog,
 )
-from yule_orchestrator.agents.research.scoring import trust_score_for_source
+from yule_engineering.agents.research.scoring import trust_score_for_source
 
 
 def test_env_default_off_means_no_fetch_no_evidence() -> None:

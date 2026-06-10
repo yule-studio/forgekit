@@ -14,13 +14,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.extension.loader import (
+from yule_engineering.agents.extension.loader import (
     ManifestDiscoveryError,
     discover_manifests,
     discover_manifests_with_report,
     load_plugin_module,
 )
-from yule_orchestrator.agents.extension.manifest import PluginManifest
+from yule_engineering.agents.extension.manifest import PluginManifest
 
 
 _PLUGIN_VALID = {
@@ -34,7 +34,7 @@ _PLUGIN_VALID = {
     "autonomy_level": "supervised",
     "paste_guard_required": False,
     "risk_class": "HIGH",
-    "module_path": "yule_orchestrator.agents.security.paste_guard",
+    "module_path": "yule_engineering.agents.security.paste_guard",
 }
 
 _AGENT_VALID = {
@@ -88,7 +88,7 @@ class DiscoverManifestsTests(unittest.TestCase):
                 "hooks_provided": ["PREFLIGHT", "COMPLETION"],
                 "paste_guard_required": True,
                 "autonomy_level": "advisory",
-                "module_path": "yule_orchestrator.agents.learning.mistake_ledger",
+                "module_path": "yule_engineering.agents.learning.mistake_ledger",
             }
         )
         _write_manifest(self.plugins_dir, "hookify", hookify)

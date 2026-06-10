@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Optional, Sequence
 
-from yule_orchestrator.agents.routing import EngineeringRoutingDecision
+from yule_engineering.agents.routing import EngineeringRoutingDecision
 from .models import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
@@ -51,7 +51,7 @@ async def _emit_work_report_preview(
     if session is None:
         return
     try:
-        from yule_orchestrator.agents.reports.work_report import (
+        from yule_engineering.agents.reports.work_report import (
             build_work_report,
             format_work_report_markdown,
         )

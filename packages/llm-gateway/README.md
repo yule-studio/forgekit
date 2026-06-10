@@ -27,7 +27,7 @@ them.
 
 ## Dependency rule
 
-Standard library only. `yule_llm_gateway` MUST NOT import `yule_orchestrator`
+Standard library only. `yule_llm_gateway` MUST NOT import `yule_engineering`
 (the app) or any `apps/*` code — the arrow always points the other way
 (`app -> gateway`). The provider placeholders deliberately do **not** import the
 real runners, to avoid blast radius and import cycles.
@@ -38,12 +38,12 @@ These existing call sites are the ones a later milestone should wrap behind
 `LLMGateway.register_provider(...)`. They are referenced (in docstrings) but
 **not imported** by this package:
 
-- [ ] `src/yule_orchestrator/agents/runners/claude_code.py` — `ClaudeCodeRunner` (local `claude` CLI).
-- [ ] `src/yule_orchestrator/agents/runners/gemini.py` — `GeminiRunner` (`gemini` CLI, long-context).
-- [ ] `src/yule_orchestrator/agents/runners/codex.py` — `CodexRunner` (`codex` CLI, advise/review/patch).
-- [ ] `src/yule_orchestrator/agents/runners/bootstrap.py` — env-driven runner wiring (`build_role_runner_candidates`).
-- [ ] `src/yule_orchestrator/planning/ollama.py` — `generate_ollama_text` / `generate_human_briefing` (HTTP `/api/generate`).
-- [ ] `src/yule_orchestrator/planning/ollama_config.py` — `OllamaPlanningConfig` / `OllamaConversationConfig` (env config).
+- [ ] `apps/engineering-agent/src/yule_engineering/agents/runners/claude_code.py` — `ClaudeCodeRunner` (local `claude` CLI).
+- [ ] `apps/engineering-agent/src/yule_engineering/agents/runners/gemini.py` — `GeminiRunner` (`gemini` CLI, long-context).
+- [ ] `apps/engineering-agent/src/yule_engineering/agents/runners/codex.py` — `CodexRunner` (`codex` CLI, advise/review/patch).
+- [ ] `apps/engineering-agent/src/yule_engineering/agents/runners/bootstrap.py` — env-driven runner wiring (`build_role_runner_candidates`).
+- [ ] `apps/engineering-agent/src/yule_engineering/planning/ollama.py` — `generate_ollama_text` / `generate_human_briefing` (HTTP `/api/generate`).
+- [ ] `apps/engineering-agent/src/yule_engineering/planning/ollama_config.py` — `OllamaPlanningConfig` / `OllamaConversationConfig` (env config).
 
 ## Usage
 

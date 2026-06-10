@@ -30,32 +30,32 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.autonomy_lock import (
+from yule_engineering.agents.job_queue.autonomy_lock import (
     AutonomyLockRegistry,
     coding_job_scope,
 )
-from yule_orchestrator.agents.job_queue.autonomy_producer import (
+from yule_engineering.agents.job_queue.autonomy_producer import (
     AUTONOMY_PRODUCER_HOLDER,
     AutonomyDispatch,
     AutonomyProducer,
     DispatchOutcome,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     SESSION_EXTRA_DISPATCH_KEY,
     WorkflowSessionState,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.next_task_selector import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.next_task_selector import (
     SOURCE_APPROVED_CODING_JOB,
     SOURCE_IDLE,
     SOURCE_UNRESOLVED_DISCUSSION,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------
@@ -360,7 +360,7 @@ class AutonomyProducerDiscussionPlumbingTests(unittest.TestCase):
 
         rows = [{"session_id": "S2"}]
         producer_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.autonomy_producer"
+            "yule_engineering.agents.job_queue.autonomy_producer"
         )
         previous = producer_logger.level
         producer_logger.setLevel(logging.CRITICAL)
@@ -427,7 +427,7 @@ class _SkipPort:
 
     def decide(self, *, request):
         self.calls.append(request)
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionResponse,
         )
 
@@ -444,7 +444,7 @@ class _AdvancePort:
 
     def decide(self, *, request):
         self.calls.append(request)
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionResponse,
         )
 
@@ -576,7 +576,7 @@ class AutonomyProducerCiRetryGuardTests(unittest.TestCase):
             ]
 
         producer_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.autonomy_producer"
+            "yule_engineering.agents.job_queue.autonomy_producer"
         )
         previous = producer_logger.level
         producer_logger.setLevel(logging.CRITICAL)

@@ -3,14 +3,14 @@
 이 문서는 engineering-agent의 ResearchPack/deliberation 결과를 **개인 Obsidian vault**로 내보낼 때 사용할 Markdown 구조와 path 규칙을 정의한다. 문자열 생성은 `obsidian_export`가, 실제 파일 쓰기는 `obsidian_writer` + `yule obsidian sync` CLI가 담당한다.
 
 코드 진실 소스:
-- 문자열 생성: `src/yule_orchestrator/agents/obsidian_export.py` (contract 식별자: `research-forum-export/v0`).
-- 파일 쓰기: `src/yule_orchestrator/agents/obsidian_writer.py` (얇은 IO 레이어 — exporter contract는 그대로 유지).
-- CLI: `src/yule_orchestrator/cli/obsidian.py` (`yule obsidian sync`).
+- 문자열 생성: `apps/engineering-agent/src/yule_engineering/agents/obsidian_export.py` (contract 식별자: `research-forum-export/v0`).
+- 파일 쓰기: `apps/engineering-agent/src/yule_engineering/agents/obsidian_writer.py` (얇은 IO 레이어 — exporter contract는 그대로 유지).
+- CLI: `apps/engineering-agent/src/yule_engineering/cli/obsidian.py` (`yule obsidian sync`).
 
 ## 1. 진입점
 
 ```python
-from yule_orchestrator.agents.obsidian_export import (
+from yule_engineering.agents.obsidian_export import (
     render_research_note, recommend_path,
 )
 
@@ -198,7 +198,7 @@ $OBSIDIAN_VAULT_PATH/Agents/Engineering/References/2026-04-30_landing-references
 
 `yule obsidian sync`는 `session.extra["research_pack"]`를 입력으로 받는다. 이 키가 누락되면 sync 자체가 종료되므로, intake 시점에 안전하게 채워두는 일이 핵심이다.
 
-- 진실 소스: `src/yule_orchestrator/agents/research_persistence.py` (`persist_research_artifacts`).
+- 진실 소스: `apps/engineering-agent/src/yule_engineering/agents/research_persistence.py` (`persist_research_artifacts`).
 - 호출 시점:
   1. **engineering channel router**가 `intake_fn`(또는 thread continuation)이 세션을 만든 직후, `outcome.research_pack`/`outcome.collection_outcome`이 있으면 즉시 호출.
   2. **forum research-loop hook**이 deliberation을 마치고 추가로 호출 — synthesis/collection 메타데이터를 함께 저장.
@@ -247,7 +247,7 @@ Agents/Engineering/Research/2026-04-30_stripe-pricing_3.md    # 3회차
 
 ### 8.9 vault git auto-commit
 
-`yule obsidian sync`는 옵션으로 vault repo에 자동 commit을 남길 수 있다. 대상 git repo는 **이 코드 저장소가 아니라** `OBSIDIAN_VAULT_PATH`가 가리키는 Obsidian vault repo다. 코드 진실 소스: `src/yule_orchestrator/agents/obsidian_git.py`.
+`yule obsidian sync`는 옵션으로 vault repo에 자동 commit을 남길 수 있다. 대상 git repo는 **이 코드 저장소가 아니라** `OBSIDIAN_VAULT_PATH`가 가리키는 Obsidian vault repo다. 코드 진실 소스: `apps/engineering-agent/src/yule_engineering/agents/obsidian_git.py`.
 
 ```bash
 yule obsidian sync --session abc12345 --git-commit

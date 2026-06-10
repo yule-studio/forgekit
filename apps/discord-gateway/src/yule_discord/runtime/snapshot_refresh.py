@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-from yule_orchestrator.integrations.calendar import list_naver_calendar_items
-from yule_orchestrator.integrations.github.issues import list_open_issues
-from yule_orchestrator.integrations.github.pulls import list_open_pull_requests
-from yule_orchestrator.planning import (
+from yule_engineering.integrations.calendar import list_naver_calendar_items
+from yule_engineering.integrations.github.issues import list_open_issues
+from yule_engineering.integrations.github.pulls import list_open_pull_requests
+from yule_engineering.planning import (
     build_daily_plan,
     collect_planning_inputs,
     load_reminder_items,

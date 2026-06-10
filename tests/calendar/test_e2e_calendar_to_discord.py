@@ -16,11 +16,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.ui.formatter import format_plan_today_message
-from yule_orchestrator.integrations.calendar.models import CalendarEvent, CalendarTodo
-from yule_orchestrator.planning.inputs import build_planning_inputs
-from yule_orchestrator.planning.planner import build_daily_plan
-from yule_orchestrator.planning.snapshots import (
+from yule_engineering.discord.ui.formatter import format_plan_today_message
+from yule_engineering.integrations.calendar.models import CalendarEvent, CalendarTodo
+from yule_engineering.planning.inputs import build_planning_inputs
+from yule_engineering.planning.planner import build_daily_plan
+from yule_engineering.planning.snapshots import (
     load_daily_plan_snapshot,
     save_daily_plan_snapshot,
 )

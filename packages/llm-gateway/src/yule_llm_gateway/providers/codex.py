@@ -1,9 +1,9 @@
 """Codex provider placeholder.
 
 Real call site (do NOT import from here):
-    src/yule_orchestrator/agents/runners/codex.py
+    apps/engineering-agent/src/yule_engineering/agents/runners/codex.py
         ``CodexRunner`` — wraps the OpenAI ``codex`` CLI (advise / review / patch).
-    src/yule_orchestrator/agents/runners/bootstrap.py
+    apps/engineering-agent/src/yule_engineering/agents/runners/bootstrap.py
         ``build_role_runner_candidates`` — env-driven runner wiring (claude/codex/ollama).
 
 This stub documents the seam; ``build_codex_provider`` returns a callable that
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from .base import Provider, _stub_provider
 
-_RUNNER_REFERENCE = "src/yule_orchestrator/agents/runners/codex.py (CodexRunner)"
+_RUNNER_REFERENCE = "apps/engineering-agent/src/yule_engineering/agents/runners/codex.py (CodexRunner)"
 
 
 def build_codex_provider() -> Provider:

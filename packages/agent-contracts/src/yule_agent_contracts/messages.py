@@ -19,7 +19,7 @@ dataclasses into whichever channel they own.
 
 .. note::
    This module is the canonical home of the agent message contract. It was
-   relocated here from ``yule_orchestrator.agents.messaging.message`` as part
+   relocated here from ``yule_engineering.agents.messaging.message`` as part
    of the ``agent-contracts`` package extraction. The old import path remains
    a compatibility shim that re-exports everything defined here.
 """

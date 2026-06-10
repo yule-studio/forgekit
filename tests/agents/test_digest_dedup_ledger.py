@@ -12,7 +12,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.digest.dedup_ledger import (
+from yule_engineering.agents.digest.dedup_ledger import (
     DigestDedupLedger,
     hash_title,
     hash_url,

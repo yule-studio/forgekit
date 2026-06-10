@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.role_profiles import (
+from yule_engineering.agents.role_profiles import (
     default_response_template_for,
     output_template_for_role,
     required_context_catalog_for_role,

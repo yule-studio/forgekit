@@ -34,7 +34,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.greenfield_bootstrap import (
+from yule_engineering.agents.coding.greenfield_bootstrap import (
     BOOTSTRAP_ESSENTIAL_PREFIXES,
     BOOTSTRAP_HARD_FORBIDDEN_NAMES,
     BootstrapApplyResult,
@@ -45,25 +45,25 @@ from yule_orchestrator.agents.coding.greenfield_bootstrap import (
     detect_bootstrap_mode,
     plan_greenfield_scaffold,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     BootstrapApplyFailed,
     ENV_GREENFIELD_BOOTSTRAP_ENABLED,
     GreenfieldBootstrapEditor,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_test_command import (
+from yule_engineering.agents.job_queue.coding_execute_test_command import (
     STRATEGY_JS_SCRIPT,
     select_test_command,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
     REASON_BOOTSTRAP_REQUIRED,
     WorktreeContext,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"
@@ -171,7 +171,7 @@ class BootstrapEssentialExceptionTests(unittest.TestCase):
         """Coverage guard — plan 의 모든 path 가 essential allowlist 와
         매칭되는지 확인 (allowlist 가 drift 하면 catch)."""
 
-        from yule_orchestrator.agents.coding.greenfield_bootstrap import (
+        from yule_engineering.agents.coding.greenfield_bootstrap import (
             _is_bootstrap_essential,
         )
 
@@ -294,13 +294,13 @@ class ScopeRefusedSurfaceTests(unittest.TestCase):
         # GreenfieldBootstrapEditor 는 항상 exception=True 로 apply 호출
         # (정상 동작). 이 테스트는 raise 메시지 mapping 자체를 검증하기
         # 위해 ``apply_bootstrap_plan`` 직접 호출.
-        from yule_orchestrator.agents.job_queue.coding_executor_live import (
+        from yule_engineering.agents.job_queue.coding_executor_live import (
             BootstrapApplyFailed,
         )
 
         # 명시 scope 가 모든 essential 을 refuse 하도록 만들고, 그 사실을
         # editor 가 sub_reason 으로 surface 하는지 source-grep 으로 확인.
-        from yule_orchestrator.agents.job_queue import (
+        from yule_engineering.agents.job_queue import (
             coding_executor_live as live_mod,
         )
 

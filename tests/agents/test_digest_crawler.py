@@ -11,13 +11,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.digest.crawler import (
+from yule_engineering.agents.digest.crawler import (
     CrawlOutcome,
     fetch_source,
     crawl_role,
 )
-from yule_orchestrator.agents.digest.dedup_ledger import DigestDedupLedger
-from yule_orchestrator.agents.digest.source_catalog import AuthoritativeSource
+from yule_engineering.agents.digest.dedup_ledger import DigestDedupLedger
+from yule_engineering.agents.digest.source_catalog import AuthoritativeSource
 
 
 _RSS_FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
@@ -159,7 +159,7 @@ class CrawlRoleTests(unittest.TestCase):
         poster = _StubPoster(_RSS_FIXTURE)
         outcomes = crawl_role("backend-engineer", ledger=ledger, http_poster=poster)
         # backend-engineer 카탈로그 host 수만큼
-        from yule_orchestrator.agents.digest.source_catalog import sources_for_role
+        from yule_engineering.agents.digest.source_catalog import sources_for_role
         expected = len(sources_for_role("backend-engineer"))
         self.assertEqual(len(outcomes), expected)
 

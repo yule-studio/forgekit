@@ -19,8 +19,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.role_take_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.role_take_worker import (
     JOB_TYPE_ROLE_TAKE,
     KIND_OPEN,
     KIND_SYNTHESIS,
@@ -28,8 +28,8 @@ from yule_orchestrator.agents.job_queue.role_take_worker import (
     RoleTakeWorker,
     service_id_for_role,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 class _Fixture(unittest.TestCase):

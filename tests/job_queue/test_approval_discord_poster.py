@@ -33,7 +33,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_discord_poster import (
+from yule_engineering.agents.job_queue.approval_discord_poster import (
     DEFAULT_POST_TIMEOUT_SECONDS,
     DISCORD_API_BASE,
     ERROR_CHANNEL_NOT_FOUND,
@@ -49,7 +49,7 @@ from yule_orchestrator.agents.job_queue.approval_discord_poster import (
     resolve_approval_channel_id,
     resolve_discord_bot_token,
 )
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalRequest,
 )
@@ -499,12 +499,12 @@ class IntegrationWithApprovalWorkerTests(unittest.TestCase):
         import tempfile
         from pathlib import Path
 
-        from yule_orchestrator.agents.job_queue.approval_worker import (
+        from yule_engineering.agents.job_queue.approval_worker import (
             ApprovalWorker,
         )
-        from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-        from yule_orchestrator.agents.job_queue.state_machine import JobState
-        from yule_orchestrator.agents.job_queue.store import JobQueue
+        from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+        from yule_engineering.agents.job_queue.state_machine import JobState
+        from yule_engineering.agents.job_queue.store import JobQueue
 
         with tempfile.TemporaryDirectory() as tmp:
             db = Path(tmp) / "queue.sqlite3"

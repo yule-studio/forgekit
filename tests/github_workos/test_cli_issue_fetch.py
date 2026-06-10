@@ -18,7 +18,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.cli.github_workos import _fetch_issue_payload
+from yule_engineering.cli.github_workos import _fetch_issue_payload
 
 
 class GithubWorkosCliIssueFetchTests(unittest.TestCase):

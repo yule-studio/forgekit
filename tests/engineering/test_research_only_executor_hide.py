@@ -22,14 +22,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     LIFECYCLE_MODE_IMPLEMENTATION,
     LIFECYCLE_MODE_RESEARCH_ONLY,
     format_authorization_message,
     recommend_authorization,
     reset_role_profile_cache,
 )
-from yule_orchestrator.agents.coding.job import (
+from yule_engineering.agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
@@ -156,7 +156,7 @@ class ResearchOnlySessionExtraTests(unittest.TestCase):
         reset_role_profile_cache()
 
     def _persist(self, prompt: str) -> dict:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             _persist_lifecycle_mode,
         )
 

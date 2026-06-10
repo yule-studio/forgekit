@@ -22,7 +22,7 @@ owns one slice of the gateway orchestration:
                                     + clarification CREATE/JOIN drivers.
 
 This ``__init__.py`` is the **thin facade** — re-exports the public API
-so ``from yule_orchestrator.discord.engineering_channel_router import X``
+so ``from yule_engineering.discord.engineering_channel_router import X``
 keeps working for every external import site (bot.py, commands.py,
 supervisor.py, all test fixtures) without source changes.
 """
@@ -74,7 +74,7 @@ from .session_persistence import (  # noqa: F401 — facade re-export
 )
 # Backward-compat alias: tests + bot.py imported the legacy alias that
 # pointed at lifecycle.resolver.extract_explicit_session_id.
-from yule_orchestrator.agents.lifecycle.resolver import (  # noqa: F401 — facade re-export
+from yule_engineering.agents.lifecycle.resolver import (  # noqa: F401 — facade re-export
     extract_explicit_session_id as _extract_session_id_from_router_text,
 )
 # Coding 권한 / 승인 gate (P0-P step 7).

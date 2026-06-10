@@ -1,13 +1,13 @@
 """F16 PR-2 — Discord adapter: enqueue a PR merge approval card.
 
-Mirrors :mod:`yule_orchestrator.discord.github_workos_adapter` (the
+Mirrors :mod:`yule_engineering.discord.github_workos_adapter` (the
 ENGINEERING_WRITE path) but for a different
-:data:`~yule_orchestrator.agents.job_queue.pr_approval.APPROVAL_KIND_PR_MERGE`.
+:data:`~yule_engineering.agents.job_queue.pr_approval.APPROVAL_KIND_PR_MERGE`.
 
 The adapter does **NOT** call GitHub. It receives a
 :class:`PRMergeProposal` from a producer (``pr_event_producer``) and
 builds the :class:`ApprovalRequest` that the
-:class:`~yule_orchestrator.agents.job_queue.approval_worker.ApprovalWorker`
+:class:`~yule_engineering.agents.job_queue.approval_worker.ApprovalWorker`
 posts to ``#승인-대기``.
 
 Why a separate adapter (not reuse ENGINEERING_WRITE):
@@ -29,9 +29,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Optional
 
-from yule_orchestrator.agents.job_queue.approval_reply import find_replyable_approval
-from yule_orchestrator.agents.job_queue.approval_worker import ApprovalRequest, ApprovalWorker
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.approval_reply import find_replyable_approval
+from yule_engineering.agents.job_queue.approval_worker import ApprovalRequest, ApprovalWorker
+from yule_engineering.agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeProposal,
     render_pr_merge_summary,

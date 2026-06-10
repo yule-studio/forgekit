@@ -23,14 +23,14 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.runners.base import (
+from yule_engineering.agents.runners.base import (
     AgentRequest,
     AgentResponse,
     AgentRunner,
     RunnerCapability,
     RunnerStatus,
 )
-from yule_orchestrator.agents.runners.role_runner import (
+from yule_engineering.agents.runners.role_runner import (
     PROVIDER_CLAUDE,
     PROVIDER_CODEX,
     PROVIDER_OLLAMA,

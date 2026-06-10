@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.feed_parser import (
+from yule_engineering.agents.engineering_intelligence.feed_parser import (
     BytesFetcher,
     FeedParserError,
     canonicalize_feed_title,
@@ -20,18 +20,18 @@ from yule_orchestrator.agents.engineering_intelligence.feed_parser import (
     parse_rss_bytes,
     register_safe_feed_providers,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.providers import (
+from yule_engineering.agents.engineering_intelligence.providers import (
     ProviderTransport,
     provider_spec_for,
 )
-from yule_orchestrator.agents.engineering_intelligence.provider_registry import (
+from yule_engineering.agents.engineering_intelligence.provider_registry import (
     ProviderAvailability,
     default_registry,
 )
-from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+from yule_engineering.agents.engineering_intelligence.source_registry import (
     find_source,
 )
 
@@ -443,7 +443,7 @@ class RegisterSafeFeedProvidersTests(unittest.TestCase):
         )
 
     def test_skips_transports_not_in_registry(self) -> None:
-        from yule_orchestrator.agents.engineering_intelligence.provider_registry import (
+        from yule_engineering.agents.engineering_intelligence.provider_registry import (
             KnowledgeProviderRegistry,
         )
 

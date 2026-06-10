@@ -30,7 +30,7 @@ from .models import (
     SendChunksFn,
 )
 from .session_persistence import _persist_extra_keys
-from yule_orchestrator.agents.research.persistence import persist_research_artifacts
+from yule_engineering.agents.research.persistence import persist_research_artifacts
 from .utils import _maybe_await, _optional_str, _safe_int, extract_message_attachments
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ def _research_loop_blocked_by_command_only(prompt_text: Optional[str]) -> bool:
     if not prompt_text:
         return False
     try:
-        from yule_orchestrator.agents.routing import is_non_actionable_prompt
+        from yule_engineering.agents.routing import is_non_actionable_prompt
     except Exception:  # noqa: BLE001 - partial install safe-side
         return False
     return bool(is_non_actionable_prompt(prompt_text))
@@ -140,7 +140,7 @@ async def _run_research_loop_hook(
     # so "입력 중..." stays visible from the moment we start collecting
     # until the loop returns a follow-up message (or an error).
     from ..ui.typing_indicator import typing_keepalive
-    from yule_orchestrator.agents.job_queue import (
+    from yule_engineering.agents.job_queue import (
         HeartbeatStore,
         JobQueue,
         ResearchWorker,
@@ -262,7 +262,7 @@ def persist_research_forum_status(
     # Behaviour is identical; the helper covers the dataclass replace,
     # in-place test-stub fallback, structured persistence_error stamp,
     # and stale-error cleanup that this function used to inline.
-    from yule_orchestrator.agents.lifecycle.persistence import persist_research_forum_link
+    from yule_engineering.agents.lifecycle.persistence import persist_research_forum_link
 
     open_call_posted = report.kickoff_posted if report.forum_comment_mode == "member-bots" else None
     open_call_error = report.kickoff_error if report.forum_comment_mode == "member-bots" else None
@@ -377,7 +377,7 @@ async def make_default_research_loop(
     # without depending on env state.
     if forum_comment_mode is None:
         try:
-            from yule_orchestrator.agents.research.collector import resolve_forum_comment_mode
+            from yule_engineering.agents.research.collector import resolve_forum_comment_mode
         except Exception:  # noqa: BLE001
             forum_comment_mode = "member-bots"
         else:

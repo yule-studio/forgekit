@@ -24,7 +24,7 @@
 
 ## 3. role-runner dispatch input 압축 (정책)
 
-[M11b RoleRunner dispatcher](../../../../src/yule_orchestrator/agents/runners/role_runner.py) 가 `RoleRunnerInput.previous_decisions` 를 받아 LLM runner 에 보낼 때.
+[M11b RoleRunner dispatcher](../../../../apps/engineering-agent/src/yule_engineering/agents/runners/role_runner.py) 가 `RoleRunnerInput.previous_decisions` 를 받아 LLM runner 에 보낼 때.
 
 ### 3.1 threshold
 

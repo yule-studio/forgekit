@@ -22,8 +22,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.job import STATUS_READY
-from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+from yule_engineering.agents.coding.job import STATUS_READY
+from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     CONTINUATION_NOOP_ALREADY_READY,
     CONTINUATION_NOOP_BUILD_FAILED,
     CONTINUATION_NOOP_NO_PROPOSAL,

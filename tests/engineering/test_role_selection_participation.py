@@ -15,13 +15,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.role_selection import (
+from yule_engineering.agents.lifecycle.role_selection import (
     SOURCE_TECH_LEAD_RULE,
     SOURCE_USER_EXPLICIT,
     apply_role_selection_to_extra,
     recommend_active_roles,
 )
-from yule_orchestrator.agents.role_profiles import (
+from yule_engineering.agents.role_profiles import (
     PARTICIPATION_EXCLUDED,
     PARTICIPATION_PRIMARY,
     PARTICIPATION_REQUIRED,
@@ -145,7 +145,7 @@ class ParticipationLevelTests(unittest.TestCase):
 
 class FallbackPolicyTagTests(unittest.TestCase):
     def test_empty_prompt_carries_empty_prompt_policy_tag(self) -> None:
-        from yule_orchestrator.agents.lifecycle.role_selection import (
+        from yule_engineering.agents.lifecycle.role_selection import (
             FALLBACK_EMPTY_PROMPT,
             FALLBACK_LEGACY_QUARTET,
         )

@@ -4,11 +4,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Sequence
 
-from yule_orchestrator.planning.briefings import normalize_paragraph_spacing
-from yule_orchestrator.planning.ollama import generate_ollama_text, validate_conversation_response
-from yule_orchestrator.planning.ollama_config import load_ollama_conversation_config
-from yule_orchestrator.planning.snapshots import DailyPlanSnapshot
-from yule_orchestrator.storage import load_json_cache, save_json_cache
+from yule_engineering.planning.briefings import normalize_paragraph_spacing
+from yule_engineering.planning.ollama import generate_ollama_text, validate_conversation_response
+from yule_engineering.planning.ollama_config import load_ollama_conversation_config
+from yule_engineering.planning.snapshots import DailyPlanSnapshot
+from yule_engineering.storage import load_json_cache, save_json_cache
 from ..runtime.checkpoint_state import (
     CHECKPOINT_RESPONSE_STATUS_DONE,
     CHECKPOINT_RESPONSE_STATUS_SKIPPED,

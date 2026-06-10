@@ -34,8 +34,8 @@ references:
   - policies/runtime/agents/engineering-agent/lifecycle-mvp.md
   - policies/runtime/agents/engineering-agent/research-budget.md
   - policies/runtime/agents/engineering-agent/role-profiles.md
-  - src/yule_orchestrator/agents/research_collector.py
-  - src/yule_orchestrator/agents/research_sufficiency.py
+  - apps/engineering-agent/src/yule_engineering/agents/research_collector.py
+  - apps/engineering-agent/src/yule_engineering/agents/research_sufficiency.py
 related_hooks:
   - hooks/research-first-gate.md
 ---

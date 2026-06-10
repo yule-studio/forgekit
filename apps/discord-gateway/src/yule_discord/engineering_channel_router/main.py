@@ -34,16 +34,16 @@ import os
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     CodingAuthorizationProposal,
     format_authorization_message,
     recommend_authorization,
 )
-from yule_orchestrator.agents.coding.job import (
+from yule_engineering.agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
-from yule_orchestrator.agents.obsidian.approval import (
+from yule_engineering.agents.obsidian.approval import (
     ObsidianApprovalError,
     build_save_proposal,
     execute_pending_proposal,
@@ -52,8 +52,8 @@ from yule_orchestrator.agents.obsidian.approval import (
     is_obsidian_save_request,
     store_pending_proposal,
 )
-from yule_orchestrator.agents.research.persistence import persist_research_artifacts
-from yule_orchestrator.agents.routing import (
+from yule_engineering.agents.research.persistence import persist_research_artifacts
+from yule_engineering.agents.routing import (
     ACTION_APPEND_CONTEXT,
     ACTION_ASK,
     ACTION_CREATE,
@@ -66,7 +66,7 @@ from yule_orchestrator.agents.routing import (
     is_non_actionable_prompt,
     list_open_sessions,
 )
-from yule_orchestrator.agents.runtime import (
+from yule_engineering.agents.runtime import (
     ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,
@@ -249,7 +249,7 @@ async def route_engineering_message(
         explicit_session_id = _explicit_session_request(prompt_text)
         if explicit_session_id:
             try:
-                from yule_orchestrator.agents.workflow_state import load_session as _load_session
+                from yule_engineering.agents.workflow_state import load_session as _load_session
                 target_session = _load_session(explicit_session_id)
             except Exception:  # noqa: BLE001 - lookup failures fall through to legacy flow
                 target_session = None

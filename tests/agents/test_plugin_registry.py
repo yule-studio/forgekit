@@ -9,8 +9,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.extension.manifest import HookEvent, PluginManifest
-from yule_orchestrator.agents.extension.plugin_registry import PluginRegistry
+from yule_engineering.agents.extension.manifest import HookEvent, PluginManifest
+from yule_engineering.agents.extension.plugin_registry import PluginRegistry
 
 
 def _make(plugin_id: str, hooks_provided=()) -> PluginManifest:

@@ -19,7 +19,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.harness import load_grant_table
+from yule_engineering.agents.harness import load_grant_table
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPT = _REPO_ROOT / "scripts" / "sync_harness_skills.py"

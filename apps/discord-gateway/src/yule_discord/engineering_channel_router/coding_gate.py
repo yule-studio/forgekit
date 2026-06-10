@@ -40,11 +40,11 @@ from ..engineering.phrase_detect import (
     is_coding_proposal_request,
     user_explicitly_blocked_coding as _user_explicitly_blocked_coding,
 )
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     format_authorization_message,
     recommend_authorization,
 )
-from yule_orchestrator.agents.coding.job import (
+from yule_engineering.agents.coding.job import (
     CodingJob,
     STATUS_READY,
     build_coding_job_from_proposal,
@@ -348,7 +348,7 @@ async def _run_coding_authorization_gate(
 # share one canonical implementation. The router-private alias is
 # kept for backward compat with internal callers (and the runtime
 # preflight ``_explicit_session_id`` substring check).
-from yule_orchestrator.agents.lifecycle.resolver import (
+from yule_engineering.agents.lifecycle.resolver import (
     _EXPLICIT_SESSION_ID_RE as _EXPLICIT_SESSION_ID_RE,
     extract_explicit_session_id as _extract_session_id_from_router_text,
 )

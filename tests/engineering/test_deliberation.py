@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.deliberation import (
+from yule_engineering.agents.deliberation import (
     BackendEngineerTake,
     DeliberationContext,
     FrontendEngineerTake,
@@ -39,14 +39,14 @@ from yule_orchestrator.agents.deliberation import (
     synthesis_to_dict,
     synthesize,
 )
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchAttachment,
     ResearchPack,
     ResearchSource,
     pack_from_discord_message,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.discord.engineering_team_runtime import (
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.discord.engineering_team_runtime import (
     DeliberationLoopResult,
     DeliberationTurnRecord,
     deliberation_role_sequence,
@@ -1177,7 +1177,7 @@ class DeliberationLoopTestCase(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-from yule_orchestrator.agents.deliberation import (  # noqa: E402  (placed after the rest for grouping)
+from yule_engineering.agents.deliberation import (  # noqa: E402  (placed after the rest for grouping)
     AiEngineerTake,
     RetrievedMemory,
     _deterministic_role_take,
@@ -1463,11 +1463,11 @@ class SynthesizeThreadPipesMemoryTestCase(unittest.TestCase):
             return TechLeadSynthesis(consensus="stub", todos=())
 
         with patch(
-            "yule_orchestrator.discord.engineering_team_runtime._legacy."
+            "yule_engineering.discord.engineering_team_runtime._legacy."
             "_retrieve_memory_for_role",
             side_effect=stub_retrieve,
         ), patch(
-            "yule_orchestrator.discord.engineering_team_runtime._legacy.synthesize",
+            "yule_engineering.discord.engineering_team_runtime._legacy.synthesize",
             side_effect=fake_synthesize,
         ):
             synthesize_thread(session, role_takes=())
@@ -1481,7 +1481,7 @@ class SynthesizeThreadPipesMemoryTestCase(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
-from yule_orchestrator.agents.deliberation import (  # noqa: E402
+from yule_engineering.agents.deliberation import (  # noqa: E402
     assign_citation_ids,
     format_memory_block,
     memory_hits_by,

@@ -25,8 +25,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.cli.supervisor import (
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.cli.supervisor import (
     render_session_block,
     run_supervisor_run_once_command,
 )
@@ -145,7 +145,7 @@ class SupervisorRunOnceTests(unittest.TestCase):
 
 class RenderSessionBlockTests(unittest.TestCase):
     def test_block_includes_pipeline_state_marks(self) -> None:
-        from yule_orchestrator.agents.lifecycle.session_status import diagnose_session
+        from yule_engineering.agents.lifecycle.session_status import diagnose_session
 
         session = _session(
             extra={

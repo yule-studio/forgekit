@@ -10,26 +10,26 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     find_latest_open_session,
     list_sessions as workflow_list_sessions,
     load_session,
     update_session,
 )
-from yule_orchestrator.integrations.calendar import list_naver_calendar_items
-from yule_orchestrator.integrations.calendar.models import build_fallback_item_uid
-from yule_orchestrator.integrations.github.issues import list_open_issues
-from yule_orchestrator.integrations.github.pulls import list_open_pull_requests
-from yule_orchestrator.observability import RuntimeStepMetric, save_runtime_metric_run
-from yule_orchestrator.planning import build_daily_plan, collect_planning_inputs, load_reminder_items, save_daily_plan_snapshot
-from yule_orchestrator.planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
-from yule_orchestrator.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
-from yule_orchestrator.storage import load_json_cache, save_json_cache
+from yule_engineering.integrations.calendar import list_naver_calendar_items
+from yule_engineering.integrations.calendar.models import build_fallback_item_uid
+from yule_engineering.integrations.github.issues import list_open_issues
+from yule_engineering.integrations.github.pulls import list_open_pull_requests
+from yule_engineering.observability import RuntimeStepMetric, save_runtime_metric_run
+from yule_engineering.planning import build_daily_plan, collect_planning_inputs, load_reminder_items, save_daily_plan_snapshot
+from yule_engineering.planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
+from yule_engineering.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
+from yule_engineering.storage import load_json_cache, save_json_cache
 from ..runtime.checkpoint_state import (
     filter_unresponded_checkpoints,
     save_checkpoint_pending_response,
@@ -58,15 +58,15 @@ from ..ui.typing_indicator import (
     typing_keepalive,
     wrap_send_chunks_with_typing,
 )
-from yule_orchestrator.agents.research.loop import (
+from yule_engineering.agents.research.loop import (
     publish_research_loop_to_forum,
     run_research_loop,
 )
-from yule_orchestrator.agents.research.collector import resolve_forum_comment_mode
-from yule_orchestrator.agents.deliberation import synthesis_to_dict
-from yule_orchestrator.agents.research.pack import pack_to_dict
-from yule_orchestrator.agents.research.persistence import persist_research_artifacts
-from yule_orchestrator.agents.research.profiles import format_research_hints_block
+from yule_engineering.agents.research.collector import resolve_forum_comment_mode
+from yule_engineering.agents.deliberation import synthesis_to_dict
+from yule_engineering.agents.research.pack import pack_to_dict
+from yule_engineering.agents.research.persistence import persist_research_artifacts
+from yule_engineering.agents.research.profiles import format_research_hints_block
 from ..engineering_team_runtime import kickoff_directive
 from ..ui.formatter import (
     format_checkpoints_message,
@@ -1043,7 +1043,7 @@ def _install_engineering_role_runner_dispatch_for_gateway() -> None:
     """
 
     try:
-        from yule_orchestrator.agents.runners.bootstrap import (
+        from yule_engineering.agents.runners.bootstrap import (
             install_engineering_role_runner_dispatch,
         )
     except Exception as exc:  # noqa: BLE001 - partial install fallback
@@ -1416,7 +1416,7 @@ async def _route_engineering_approval_reply(
     ):
         return None
 
-    from yule_orchestrator.agents.job_queue import (
+    from yule_engineering.agents.job_queue import (
         HeartbeatStore,
         JobQueue,
         ObsidianWriterWorker,
@@ -1424,7 +1424,7 @@ async def _route_engineering_approval_reply(
         default_vault_root_resolver,
         default_write_fn,
     )
-    from yule_orchestrator.agents.workflow_state import list_sessions as _list_sessions
+    from yule_engineering.agents.workflow_state import list_sessions as _list_sessions
 
     queue = JobQueue()
     obsidian_worker = ObsidianWriterWorker(
@@ -1488,11 +1488,11 @@ def _build_ready_for_review_action_for_bot():
     """
 
     try:
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             ENV_GITHUB_APP_MERGE_OPT_IN,
             _opt_in_enabled,
         )
-        from yule_orchestrator.github_app.live_client import build_live_client_from_env
+        from yule_engineering.github_app.live_client import build_live_client_from_env
     except Exception:  # noqa: BLE001
         return None
     if not _opt_in_enabled():
@@ -1518,7 +1518,7 @@ def _build_pr_merge_executor_for_bot():
     """
 
     try:
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _maybe_build_live_pr_merge_executor,
         )
     except Exception:  # noqa: BLE001
@@ -1548,15 +1548,15 @@ def _advance_to_merged_and_dispatch_next_slice(*, result) -> None:
     if not session_id:
         return
 
-    from yule_orchestrator.agents.job_queue.next_slice_dispatcher import (
+    from yule_engineering.agents.job_queue.next_slice_dispatcher import (
         dispatch_next_coding_slice,
     )
-    from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+    from yule_engineering.agents.job_queue.pr_merge_continuation import (
         STAGE_PR_MERGED,
         advance_stage,
     )
-    from yule_orchestrator.agents.workflow_state import load_session
-    from yule_orchestrator.runtime.coding_executor_runner import (
+    from yule_engineering.agents.workflow_state import load_session
+    from yule_engineering.runtime.coding_executor_runner import (
         _build_next_slice_dispatcher,
         _persist_session_extra,
     )
@@ -1569,7 +1569,7 @@ def _advance_to_merged_and_dispatch_next_slice(*, result) -> None:
         current_extra = dict(current_extra) if current_extra else {}
     # 같은 sha 로 이미 pr_merged 면 no-op — 사람 reply + bg loop 가
     # 동시에 들어와도 중복 advance 방지.
-    from yule_orchestrator.agents.job_queue.pr_merge_continuation import EXTRA_PR_MERGE_STAGE
+    from yule_engineering.agents.job_queue.pr_merge_continuation import EXTRA_PR_MERGE_STAGE
 
     if current_extra.get(EXTRA_PR_MERGE_STAGE) == STAGE_PR_MERGED:
         return
@@ -2083,7 +2083,7 @@ def _record_engineering_continuation(
     # *task* prompts; persisting the operational phrase causes
     # "[Reference] 진행 해줘" thread spam.
     try:
-        from yule_orchestrator.agents.routing import is_non_actionable_prompt
+        from yule_engineering.agents.routing import is_non_actionable_prompt
     except Exception:  # noqa: BLE001 - partial install safe-side
         is_non_actionable_prompt = None  # type: ignore[assignment]
     prompt_is_command_only = bool(
@@ -2129,7 +2129,7 @@ def _record_engineering_continuation(
 
     try:
         from dataclasses import replace
-        from yule_orchestrator.agents.workflow_state import update_session
+        from yule_engineering.agents.workflow_state import update_session
 
         updated = replace(session, extra=extra)
     except Exception:  # noqa: BLE001 - degrade gracefully for stub sessions
@@ -2802,7 +2802,7 @@ def _build_kickoff_routing_summary(session: Any) -> Optional[str]:
     if not isinstance(selected, (list, tuple)) or not selected:
         return None
     try:
-        from yule_orchestrator.agents.lifecycle.role_selection import (
+        from yule_engineering.agents.lifecycle.role_selection import (
             ROLE_TECH_LEAD,
             RoleSelection,
             SOURCE_USER_ALL_TEAM,

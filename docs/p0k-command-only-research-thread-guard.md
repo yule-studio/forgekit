@@ -53,12 +53,12 @@ CONFIRM_INTAKE 와의 차이: CONFIRM_INTAKE 는 *직전 제안* 을 intake 로 
 | 위치 | 책임 |
 | --- | --- |
 | `docs/p0k-command-only-research-thread-guard.md` | 본 doc. |
-| `src/yule_orchestrator/agents/routing.py` | `_COMMAND_ONLY_PROMPTS` 확장 (5+ phrase). |
-| `src/yule_orchestrator/discord/engineering_conversation.py` | APPROVAL_ACTION intent + matcher + formatter + READ_ONLY_INTENTS 에 추가. CONFIRM_INTAKE 가드. |
-| `src/yule_orchestrator/discord/bot.py` | `_record_engineering_continuation` 가드. |
-| `src/yule_orchestrator/discord/engineering_channel_router.py` | `_run_research_loop_hook` 호출부 2 site 가드. |
-| `src/yule_orchestrator/discord/research_forum.py` | `derive_research_topic` / `normalize_thread_title` 가드. |
-| `src/yule_orchestrator/discord/forum_message_adapter.py` | `_resolve_session_for_forum_thread` 가 `resumed_thread_id` 보조 lookup. |
+| `apps/engineering-agent/src/yule_engineering/agents/routing.py` | `_COMMAND_ONLY_PROMPTS` 확장 (5+ phrase). |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_conversation.py` | APPROVAL_ACTION intent + matcher + formatter + READ_ONLY_INTENTS 에 추가. CONFIRM_INTAKE 가드. |
+| `apps/engineering-agent/src/yule_engineering/discord/bot.py` | `_record_engineering_continuation` 가드. |
+| `apps/engineering-agent/src/yule_engineering/discord/engineering_channel_router.py` | `_run_research_loop_hook` 호출부 2 site 가드. |
+| `apps/engineering-agent/src/yule_engineering/discord/research_forum.py` | `derive_research_topic` / `normalize_thread_title` 가드. |
+| `apps/engineering-agent/src/yule_engineering/discord/forum_message_adapter.py` | `_resolve_session_for_forum_thread` 가 `resumed_thread_id` 보조 lookup. |
 | tests/discord/test_p0k_*.py | 시나리오 e2e + 무회귀. |
 
 ## 6. 변경 이력

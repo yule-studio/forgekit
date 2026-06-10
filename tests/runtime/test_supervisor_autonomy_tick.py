@@ -18,9 +18,9 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.worker_loop import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.worker_loop import (
     run_supervisor_watch_loop,
 )
 
@@ -43,7 +43,7 @@ class _Fixture(unittest.TestCase):
 
     @staticmethod
     def _stub_sweep(**_kwargs):
-        from yule_orchestrator.agents.job_queue.heartbeat import (
+        from yule_engineering.agents.job_queue.heartbeat import (
             SupervisorSweepReport,
         )
 
@@ -139,7 +139,7 @@ class SupervisorAutonomyTickEnabledTests(_Fixture):
         import logging
 
         loop_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.worker_loop"
+            "yule_engineering.agents.job_queue.worker_loop"
         )
         previous = loop_logger.level
         loop_logger.setLevel(logging.CRITICAL)
@@ -205,10 +205,10 @@ class SupervisorOnReportRecordsToJournalTests(_Fixture):
     next status post sees what the runtime just decided to do."""
 
     def test_on_report_appends_summary_to_default_journal(self) -> None:
-        from yule_orchestrator.runtime.run_service import (
+        from yule_engineering.runtime.run_service import (
             _supervisor_autonomy_on_report,
         )
-        from yule_orchestrator.runtime.status import (
+        from yule_engineering.runtime.status import (
             AUTONOMY_OUTCOME_DISPATCHED,
             get_default_autonomy_journal,
         )
@@ -256,7 +256,7 @@ class SupervisorOnReportRecordsToJournalTests(_Fixture):
         # callback must NOT propagate — the supervisor's last-resort
         # wrapper already catches exceptions from on_report, but the
         # callback itself takes a defensive try/except.
-        import yule_orchestrator.runtime.run_service as run_service_mod
+        import yule_engineering.runtime.run_service as run_service_mod
 
         called: list = []
 
@@ -267,7 +267,7 @@ class SupervisorOnReportRecordsToJournalTests(_Fixture):
         original = run_service_mod.__dict__
         # Patch the import lookup inside the function — the function
         # imports lazily so we need to swap status.record_autonomy_report.
-        import yule_orchestrator.runtime.status as status_mod
+        import yule_engineering.runtime.status as status_mod
 
         prior = status_mod.record_autonomy_report
         status_mod.record_autonomy_report = boom
@@ -285,7 +285,7 @@ class SupervisorAutonomyTickBuilderTests(_Fixture):
     def test_builder_returns_dormant_when_env_unset(self) -> None:
         import os
 
-        from yule_orchestrator.runtime.run_service import (
+        from yule_engineering.runtime.run_service import (
             ENV_AUTONOMY_PRODUCER_ENABLED,
             _build_autonomy_producer_tick,
         )
@@ -304,7 +304,7 @@ class SupervisorAutonomyTickBuilderTests(_Fixture):
     def test_builder_returns_callable_when_env_truthy(self) -> None:
         import os
 
-        from yule_orchestrator.runtime.run_service import (
+        from yule_engineering.runtime.run_service import (
             DEFAULT_AUTONOMY_PRODUCER_INTERVAL_SECONDS,
             ENV_AUTONOMY_PRODUCER_ENABLED,
             _build_autonomy_producer_tick,

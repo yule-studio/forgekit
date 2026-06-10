@@ -21,9 +21,9 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.github_app.client import HTTPResponse
-from yule_orchestrator.github_app.config import GitHubAppConfig
-from yule_orchestrator.github_app.live_client import LiveGithubAppClient
+from yule_engineering.github_app.client import HTTPResponse
+from yule_engineering.github_app.config import GitHubAppConfig
+from yule_engineering.github_app.live_client import LiveGithubAppClient
 
 
 # A 32-byte fake PEM-shaped key satisfies GitHubAppConfig's path

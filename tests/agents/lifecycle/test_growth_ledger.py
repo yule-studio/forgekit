@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.growth_ledger import (
+from yule_engineering.agents.lifecycle.growth_ledger import (
     EVENT_DECISION_MADE,
     EVENT_REFERENCE_USED,
     EVENT_REGRET,

@@ -13,12 +13,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.ui.formatter import format_references_block
-from yule_orchestrator.discord.member.bot import (
+from yule_engineering.discord.ui.formatter import format_references_block
+from yule_engineering.discord.member.bot import (
     _PermissionTarget,
     _member_bot_startup_permission_lines,
 )
-from yule_orchestrator.discord.member.bots import (
+from yule_engineering.discord.member.bots import (
     GATEWAY_ROLE_KEY,
     MemberBotProfile,
     env_key_for,
@@ -424,7 +424,7 @@ class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
         isolate_cache_for_test(self)
 
         from datetime import datetime
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             save_session,
@@ -442,12 +442,12 @@ class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
         save_session(self._session)
 
     def _reload(self):
-        from yule_orchestrator.agents.workflow_state import load_session
+        from yule_engineering.agents.workflow_state import load_session
 
         return load_session("sess-mb-evt")
 
     def _make_outcome(self, *, is_synthesis: bool = False, next_directive=None):
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             ResearchTurnOutcome,
         )
 
@@ -473,7 +473,7 @@ class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
     def test_open_call_post_records_posted_event(self) -> None:
         import asyncio
 
-        from yule_orchestrator.discord.member.bot import _post_research_turn
+        from yule_engineering.discord.member.bot import _post_research_turn
 
         channel, sent = self._fake_channel()
         outcome = self._make_outcome()  # next_directive=None → kind=open
@@ -490,7 +490,7 @@ class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
     def test_synthesis_post_records_synthesis_kind(self) -> None:
         import asyncio
 
-        from yule_orchestrator.discord.member.bot import _post_research_turn
+        from yule_engineering.discord.member.bot import _post_research_turn
 
         channel, sent = self._fake_channel()
         outcome = self._make_outcome(is_synthesis=True)
@@ -502,7 +502,7 @@ class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
     def test_chained_turn_post_records_turn_kind(self) -> None:
         import asyncio
 
-        from yule_orchestrator.discord.member.bot import _post_research_turn
+        from yule_engineering.discord.member.bot import _post_research_turn
 
         channel, sent = self._fake_channel()
         outcome = self._make_outcome(next_directive="[research-turn:sess-mb-evt qa-engineer]")
@@ -514,7 +514,7 @@ class PostResearchTurnRecordsRoleEventTestCase(unittest.TestCase):
     def test_send_failure_records_error_and_re_raises(self) -> None:
         import asyncio
 
-        from yule_orchestrator.discord.member.bot import _post_research_turn
+        from yule_engineering.discord.member.bot import _post_research_turn
 
         channel, _ = self._fake_channel(raise_on_send=True)
         outcome = self._make_outcome()

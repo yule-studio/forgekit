@@ -10,27 +10,27 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     SourceAxis,
 )
-from yule_orchestrator.agents.engineering_intelligence.providers import (
+from yule_engineering.agents.engineering_intelligence.providers import (
     ProviderTransport,
     provider_spec_for,
 )
-from yule_orchestrator.agents.engineering_intelligence.provider_registry import (
+from yule_engineering.agents.engineering_intelligence.provider_registry import (
     ProviderAvailability,
     default_registry,
 )
-from yule_orchestrator.agents.engineering_intelligence.provider_routing import (
+from yule_engineering.agents.engineering_intelligence.provider_routing import (
     RoutedRefreshCandidate,
     axis_priority_order,
     route_refresh_plan,
     select_routed_due,
 )
-from yule_orchestrator.agents.engineering_intelligence.scheduler import (
+from yule_engineering.agents.engineering_intelligence.scheduler import (
     compute_refresh_plan,
 )
-from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+from yule_engineering.agents.engineering_intelligence.source_registry import (
     SUPPORTED_ROLES,
     role_sources,
 )

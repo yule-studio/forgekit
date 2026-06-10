@@ -30,16 +30,16 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.role_take_worker import (
+from yule_engineering.agents.job_queue.role_take_worker import (
     JOB_TYPE_ROLE_TAKE,
     KIND_OPEN,
 )
-from yule_orchestrator.agents.job_queue.standalone_runners import (
+from yule_engineering.agents.job_queue.standalone_runners import (
     _default_build_synthesis_outcome,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     save_session,
@@ -132,7 +132,7 @@ class _SynthesisRunnerFixture(unittest.TestCase):
         # default branch (no degrade, no fallback) reuses the cached
         # text instead of recomputing.
         from dataclasses import replace as _replace
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             update_session,
         )
 
@@ -305,7 +305,7 @@ class AuditPersistenceTests(_SynthesisRunnerFixture):
 
         # Reload the session via the production loader so we see the
         # bucket that the fallback audit wrote.
-        from yule_orchestrator.agents.workflow_state import load_session
+        from yule_engineering.agents.workflow_state import load_session
 
         reloaded = load_session(self.SESSION_ID)
         assert reloaded is not None

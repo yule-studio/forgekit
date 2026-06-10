@@ -20,22 +20,22 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.deliberation import (
+from yule_engineering.agents.deliberation import (
     DeliberationContext,
     RetrievedMemory,
 )
-from yule_orchestrator.agents.research.pack import ResearchPack
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.memory import (
+from yule_engineering.agents.research.pack import ResearchPack
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.memory import (
     MEMORY_DB_ENV,
     open_memory_index,
     reindex_paths,
 )
-from yule_orchestrator.memory.models import (
+from yule_engineering.memory.models import (
     SOURCE_OBSIDIAN,
     SOURCE_POLICY,
 )
-from yule_orchestrator.memory.retrieval import fetch_role_context
+from yule_engineering.memory.retrieval import fetch_role_context
 
 
 def _write(path: Path, content: str) -> None:
@@ -148,7 +148,7 @@ class FetchRoleContextTests(unittest.TestCase):
 
     def test_search_failure_is_swallowed(self) -> None:
         with patch(
-            "yule_orchestrator.memory.retrieval.search",
+            "yule_engineering.memory.retrieval.search",
             side_effect=RuntimeError("boom"),
         ):
             result = fetch_role_context(
@@ -223,7 +223,7 @@ class DeliberationRetrievalIntegrationTests(unittest.TestCase):
             captured["ctx"] = ctx
             return None  # let deterministic fallback run
 
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             deliberation_role_turn,
         )
 
@@ -247,7 +247,7 @@ class DeliberationRetrievalIntegrationTests(unittest.TestCase):
             captured["ctx"] = ctx
             return None
 
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             deliberation_role_turn,
         )
 

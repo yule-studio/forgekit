@@ -31,7 +31,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
@@ -209,7 +209,7 @@ class ResearchLoopHookTests(unittest.TestCase):
 
 class DefaultResearchLoopTests(unittest.TestCase):
     def test_publishes_to_forum_when_pack_present(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -246,7 +246,7 @@ class DefaultResearchLoopTests(unittest.TestCase):
         self.assertFalse(report.insufficient)
 
     def test_skips_forum_when_pack_missing(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -268,7 +268,7 @@ class DefaultResearchLoopTests(unittest.TestCase):
         self.assertIsNone(report.forum_status_message)
 
     def test_runs_deliberation_and_posts_to_thread(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -314,7 +314,7 @@ class DefaultResearchLoopTests(unittest.TestCase):
         self.assertIsNone(report.error)
 
     def test_deliberation_failure_is_non_fatal(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -344,7 +344,7 @@ class DefaultResearchLoopTests(unittest.TestCase):
 
 class CentralisedLabelTests(unittest.TestCase):
     def test_pretty_provider_known_and_unknown(self) -> None:
-        from yule_orchestrator.agents.research.collector import pretty_provider
+        from yule_engineering.agents.research.collector import pretty_provider
 
         self.assertEqual(pretty_provider("mock"), "기본 검색(mock)")
         self.assertEqual(pretty_provider("tavily"), "Tavily 검색")
@@ -353,7 +353,7 @@ class CentralisedLabelTests(unittest.TestCase):
         self.assertEqual(pretty_provider(None), "알 수 없음")
 
     def test_pretty_task_type_unknown_passthrough(self) -> None:
-        from yule_orchestrator.agents.research.collector import pretty_task_type
+        from yule_engineering.agents.research.collector import pretty_task_type
 
         self.assertEqual(pretty_task_type("landing-page"), "랜딩 페이지")
         self.assertEqual(pretty_task_type("design-system"), "design-system")
@@ -361,8 +361,8 @@ class CentralisedLabelTests(unittest.TestCase):
         self.assertEqual(pretty_task_type(""), "일반")
 
     def test_pretty_source_type_unknown_passthrough(self) -> None:
-        from yule_orchestrator.agents.research.collector import pretty_source_type
-        from yule_orchestrator.agents.research.pack import SourceType
+        from yule_engineering.agents.research.collector import pretty_source_type
+        from yule_engineering.agents.research.pack import SourceType
 
         self.assertEqual(pretty_source_type(SourceType.OFFICIAL_DOCS), "공식 문서")
         # Raw enum values still translate
@@ -373,7 +373,7 @@ class CentralisedLabelTests(unittest.TestCase):
         self.assertEqual(pretty_source_type(None), "기타")
 
     def test_pretty_confidence_unknown_passthrough(self) -> None:
-        from yule_orchestrator.agents.research.collector import pretty_confidence
+        from yule_engineering.agents.research.collector import pretty_confidence
 
         self.assertEqual(pretty_confidence("high"), "신뢰도 높음")
         self.assertEqual(pretty_confidence("medium"), "신뢰도 보통")
@@ -392,11 +392,11 @@ class ResearchTurnKickoffInForumTests(unittest.TestCase):
     """member-bots mode posts one open-call directive into the forum thread."""
 
     def test_member_bots_mode_posts_open_call_directive_only(self) -> None:
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -468,7 +468,7 @@ class ResearchTurnProtocolTests(unittest.TestCase):
     the wiring they enable."""
 
     def test_parse_marker_extracts_session_and_role(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             parse_research_dispatch_marker,
         )
 
@@ -480,7 +480,7 @@ class ResearchTurnProtocolTests(unittest.TestCase):
         )
 
     def test_parse_marker_returns_none_when_missing(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             parse_research_dispatch_marker,
         )
 
@@ -491,7 +491,7 @@ class ResearchTurnProtocolTests(unittest.TestCase):
         )
 
     def test_parse_open_marker_extracts_session(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             parse_research_open_marker,
         )
 
@@ -501,7 +501,7 @@ class ResearchTurnProtocolTests(unittest.TestCase):
         )
 
     def test_dispatch_directive_format(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             research_dispatch_directive,
         )
 
@@ -511,11 +511,11 @@ class ResearchTurnProtocolTests(unittest.TestCase):
         )
 
     def test_role_sequence_normalises_session_role_sequence(self) -> None:
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             deliberation_research_role_sequence,
         )
 
@@ -541,11 +541,11 @@ class ResearchTurnProtocolTests(unittest.TestCase):
         self.assertEqual(len(set(seq)), len(seq))  # no duplicates
 
     def test_role_sequence_default_when_session_blank(self) -> None:
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             DEFAULT_RESEARCH_ROLE_SEQUENCE,
             deliberation_research_role_sequence,
         )
@@ -570,7 +570,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         # Reset the process-local duplicate-suppression set so tests in
         # earlier modules don't leak ``(role, session, kind)`` markers
         # and trick handle_research_turn_message into a no-op return.
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             reset_handled_turns_for_tests,
         )
 
@@ -578,7 +578,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.addCleanup(reset_handled_turns_for_tests)
 
     def _session(self):
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
@@ -601,7 +601,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         )
 
     def test_marker_for_other_role_returns_none(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -613,7 +613,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertIsNone(outcome)
 
     def test_open_call_for_own_role_renders_independent_take(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -631,7 +631,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertIsNone(outcome.next_directive)
 
     def test_open_call_for_non_participant_returns_none(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -644,7 +644,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertIsNone(outcome)
 
     def test_marker_for_own_role_renders_take_and_next_directive(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -664,7 +664,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertFalse(outcome.is_synthesis)
 
     def test_last_role_emits_synthesis_directive(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -681,7 +681,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         )
 
     def test_synthesis_marker_renders_synthesis_text(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -697,7 +697,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertNotIn("[research-turn:", outcome.message)
 
     def test_tech_lead_bot_handles_synthesis_marker(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -711,7 +711,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
         self.assertIn("tech-lead 종합", outcome.message)
 
     def test_unknown_session_returns_none(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -725,7 +725,7 @@ class HandleResearchTurnMessageTests(unittest.TestCase):
     def test_team_turn_marker_does_not_trigger_research_handler(self) -> None:
         """Existing team-turn protocol must keep working untouched."""
 
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -749,7 +749,7 @@ class MemberBotsSummaryAndPersistenceTests(unittest.TestCase):
     responder can describe the live setup."""
 
     def _session_factory(self):
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
@@ -784,7 +784,7 @@ class MemberBotsSummaryAndPersistenceTests(unittest.TestCase):
         gateway-mode only and confuses operators when each member bot
         is responsible for the role comment."""
 
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -823,7 +823,7 @@ class MemberBotsSummaryAndPersistenceTests(unittest.TestCase):
         self.assertIsNone(report.kickoff_error)
 
     def test_kickoff_failure_in_member_bots_mode_surfaces_reason(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             make_default_research_loop,
         )
 
@@ -866,13 +866,13 @@ class MemberBotsSummaryAndPersistenceTests(unittest.TestCase):
 
         isolate_cache_for_test(self)
 
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             load_session,
             save_session,
         )
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             persist_research_forum_status,
             EngineeringResearchLoopReport,
         )
@@ -921,13 +921,13 @@ class MemberBotsSummaryAndPersistenceTests(unittest.TestCase):
 
         isolate_cache_for_test(self)
 
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             load_session,
             save_session,
         )
-        from yule_orchestrator.discord.engineering_channel_router import (
+        from yule_engineering.discord.engineering_channel_router import (
             persist_research_forum_status,
             EngineeringResearchLoopReport,
         )
@@ -970,7 +970,7 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
     """
 
     def setUp(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             reset_handled_turns_for_tests,
         )
 
@@ -978,7 +978,7 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
         self.addCleanup(reset_handled_turns_for_tests)
 
     def _session(self):
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
         )
@@ -1004,7 +1004,7 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
         )
 
     def test_open_call_take_includes_runtime_preface_and_role_policy(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
@@ -1051,12 +1051,12 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
 
             return _NoopResult()
 
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
         with patch(
-            "yule_orchestrator.agents.runtime.run_runtime_loop",
+            "yule_engineering.agents.runtime.run_runtime_loop",
             side_effect=_capture,
         ):
             outcome = handle_research_turn_message(
@@ -1082,12 +1082,12 @@ class RoleRuntimePrefaceTests(unittest.TestCase):
 
         from unittest.mock import patch
 
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 
         with patch(
-            "yule_orchestrator.agents.runtime.run_runtime_loop",
+            "yule_engineering.agents.runtime.run_runtime_loop",
             side_effect=RuntimeError("runtime down"),
         ):
             outcome = handle_research_turn_message(
@@ -1115,7 +1115,7 @@ class RecordRoleTurnEventTests(unittest.TestCase):
 
         isolate_cache_for_test(self)
 
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             WorkflowSession,
             WorkflowState,
             save_session,
@@ -1135,12 +1135,12 @@ class RecordRoleTurnEventTests(unittest.TestCase):
         save_session(self.session)
 
     def _reload(self):
-        from yule_orchestrator.agents.workflow_state import load_session
+        from yule_engineering.agents.workflow_state import load_session
 
         return load_session("sess-evt")
 
     def test_posted_event_lands_in_role_turns(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             ROLE_TURN_KIND_OPEN,
             ROLE_TURN_STATUS_POSTED,
             record_role_turn_event,
@@ -1162,7 +1162,7 @@ class RecordRoleTurnEventTests(unittest.TestCase):
         self.assertNotIn("error", event)
 
     def test_error_event_records_reason(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             ROLE_TURN_KIND_TURN,
             ROLE_TURN_STATUS_ERROR,
             record_role_turn_event,
@@ -1181,7 +1181,7 @@ class RecordRoleTurnEventTests(unittest.TestCase):
         self.assertEqual(role_turns["qa-engineer"]["error"], "Discord 5xx")
 
     def test_record_failure_is_silent(self) -> None:
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             record_role_turn_event,
         )
 
@@ -1198,7 +1198,7 @@ class RecordRoleTurnEventTests(unittest.TestCase):
         """We keep history-light: latest event per role wins so the
         diagnostic surface stays compact."""
 
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             record_role_turn_event,
         )
 

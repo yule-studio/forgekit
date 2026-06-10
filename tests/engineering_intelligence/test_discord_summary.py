@@ -9,12 +9,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.discord_summary import (
+from yule_engineering.agents.engineering_intelligence.discord_summary import (
     render_daily_role_summary,
     render_multi_role_summary,
     share_boundary_breakdown,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     Importance,
     KnowledgeShareScope,

@@ -33,12 +33,12 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.authorization import proposal_from_dict
-from yule_orchestrator.agents.coding.job import (
+from yule_engineering.agents.coding.authorization import proposal_from_dict
+from yule_engineering.agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     DispatchMarkerCheck,
     JOB_TYPE_CODING_EXECUTE,
     MARKER_STATE_MISSING,
@@ -53,12 +53,12 @@ from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
     iter_ready_coding_jobs,
     validate_coding_dispatch_marker,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecutorWorker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"
@@ -240,7 +240,7 @@ class ValidateMarkerSSoTTests(unittest.TestCase):
         dispatch 가 이미 결과까지 도달한 상태. producer 가 새 row 만들면
         안 되며, caller 는 그대로 skip."""
 
-        from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+        from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
             MARKER_STATE_TERMINAL,
         )
 
@@ -263,7 +263,7 @@ class ValidateMarkerSSoTTests(unittest.TestCase):
         producer 가 새 row 를 만들면 attempt 카운터가 reset 되어
         max_attempts / backoff 가 무력화되는 infinite loop 의 원인."""
 
-        from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+        from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
             MARKER_STATE_PENDING_RETRY,
         )
 
@@ -397,7 +397,7 @@ class DispatchSelfHealTests(unittest.TestCase):
         store = self._store(session)
 
         with self.assertLogs(
-            "yule_orchestrator.agents.job_queue.coding_execute_dispatcher",
+            "yule_engineering.agents.job_queue.coding_execute_dispatcher",
             level="WARNING",
         ) as cm:
             dispatched = dispatch_ready_coding_jobs(

@@ -1,10 +1,10 @@
 """Ollama provider placeholder.
 
 Real call site (do NOT import from here):
-    src/yule_orchestrator/planning/ollama.py
+    apps/engineering-agent/src/yule_engineering/planning/ollama.py
         ``generate_ollama_text`` / ``generate_human_briefing`` — HTTP POST to the
         local Ollama ``/api/generate`` endpoint.
-    src/yule_orchestrator/planning/ollama_config.py
+    apps/engineering-agent/src/yule_engineering/planning/ollama_config.py
         ``OllamaPlanningConfig`` / ``OllamaConversationConfig`` — env-driven config.
 
 This stub documents the seam; ``build_ollama_provider`` returns a callable that
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from .base import Provider, _stub_provider
 
-_RUNNER_REFERENCE = "src/yule_orchestrator/planning/ollama.py (generate_ollama_text)"
+_RUNNER_REFERENCE = "apps/engineering-agent/src/yule_engineering/planning/ollama.py (generate_ollama_text)"
 
 
 def build_ollama_provider() -> Provider:

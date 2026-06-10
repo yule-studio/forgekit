@@ -25,12 +25,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.runtime import (
+from yule_engineering.agents.runtime import (
     COVERAGE_HIGH,
     COVERAGE_LOW,
     RuntimeRecallResult,
 )
-from yule_orchestrator.discord.engineering_channel_router import (
+from yule_engineering.discord.engineering_channel_router import (
     EngineeringRouteContext,
     _attach_recall_coverage,
     _optional_bool_env,

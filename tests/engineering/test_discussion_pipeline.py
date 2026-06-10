@@ -17,8 +17,8 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.authorization import reset_role_profile_cache
-from yule_orchestrator.agents.discussion import (
+from yule_engineering.agents.coding.authorization import reset_role_profile_cache
+from yule_engineering.agents.discussion import (
     ContextPackBuilder,
     DiscussionMode,
     GithubIssueRef,

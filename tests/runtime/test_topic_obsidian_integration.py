@@ -53,15 +53,15 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_reply import (
+from yule_engineering.agents.job_queue.approval_reply import (
     handle_approval_reply,
 )
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
+from yule_engineering.agents.job_queue.forum_obsidian_handoff import (
     RESPONSE_TOPIC_ALREADY_SAVED,
     RESPONSE_TOPIC_PENDING_APPROVAL,
     SKIPPED_DUPLICATE_APPROVAL,
@@ -70,8 +70,8 @@ from yule_orchestrator.agents.job_queue.forum_obsidian_handoff import (
     render_handoff_response,
     route_forum_obsidian_save_request,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     JOB_TYPE_OBSIDIAN_WRITE,
     NOTE_KIND_KNOWLEDGE,
     NOTE_KIND_KNOWLEDGE_NOTE,
@@ -82,15 +82,15 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
     ObsidianWriterWorker,
     default_render_fn,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.lifecycle.research_topic import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.lifecycle.research_topic import (
     STATUS_SAVED,
     build_ledger_record,
     transition_topic_ledger,
     write_topic_ledger,
 )
-from yule_orchestrator.agents.obsidian.note_kinds import (
+from yule_engineering.agents.obsidian.note_kinds import (
     FOLDER_AGENT_OPS,
     FOLDER_BLOG_DRAFTS,
     FOLDER_DECISIONS,
@@ -104,7 +104,7 @@ from yule_orchestrator.agents.obsidian.note_kinds import (
     folder_for_canonical_kind,
     requires_approval,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
     save_session,
@@ -172,7 +172,7 @@ def _build_forum_e2e_bundle(
     write_calls: List[Tuple[Any, Path, ObsidianWriteRequest]] = []
 
     if real_writer:
-        from yule_orchestrator.agents.obsidian.writer import (
+        from yule_engineering.agents.obsidian.writer import (
             write_note as _real_write,
         )
 
@@ -540,7 +540,7 @@ class TopicDedupRegressionTests(_IntegrationFixture):
         # session.extra to short-circuit on the next save request.
         # Re-load the persisted session so we pick up any extra writes
         # the writer worker may have stamped.
-        from yule_orchestrator.agents.workflow_state import load_session
+        from yule_engineering.agents.workflow_state import load_session
 
         latest = load_session(session.session_id)
         assert latest is not None
@@ -555,7 +555,7 @@ class TopicDedupRegressionTests(_IntegrationFixture):
         new_extra = write_topic_ledger(latest.extra, record)
         from dataclasses import replace as _replace
 
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             update_session as _update,
         )
 
@@ -597,7 +597,7 @@ class TopicDedupRegressionTests(_IntegrationFixture):
         )
 
         # Force ledger to STATUS_SAVED so we hit the guard branch.
-        from yule_orchestrator.agents.workflow_state import (
+        from yule_engineering.agents.workflow_state import (
             load_session,
             update_session as _update,
         )

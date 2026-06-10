@@ -12,17 +12,17 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from yule_orchestrator.cli.daily import run_daily_warmup_command
+from yule_engineering.cli.daily import run_daily_warmup_command
 
 
 class DailyWarmupTestCase(unittest.TestCase):
-    @patch("yule_orchestrator.cli.daily.save_runtime_metric_run")
-    @patch("yule_orchestrator.cli.daily.save_daily_plan_snapshot")
-    @patch("yule_orchestrator.cli.daily.build_daily_plan")
-    @patch("yule_orchestrator.cli.daily.build_planning_inputs")
-    @patch("yule_orchestrator.cli.daily.load_reminder_items")
-    @patch("yule_orchestrator.cli.daily.list_open_issues")
-    @patch("yule_orchestrator.cli.daily.list_naver_calendar_items")
+    @patch("yule_engineering.cli.daily.save_runtime_metric_run")
+    @patch("yule_engineering.cli.daily.save_daily_plan_snapshot")
+    @patch("yule_engineering.cli.daily.build_daily_plan")
+    @patch("yule_engineering.cli.daily.build_planning_inputs")
+    @patch("yule_engineering.cli.daily.load_reminder_items")
+    @patch("yule_engineering.cli.daily.list_open_issues")
+    @patch("yule_engineering.cli.daily.list_naver_calendar_items")
     def test_daily_warmup_syncs_sources_and_saves_snapshot(
         self,
         list_naver_calendar_items_mock,
@@ -91,13 +91,13 @@ class DailyWarmupTestCase(unittest.TestCase):
         self.assertIn('"action": "daily_warmup"', stdout.getvalue())
         self.assertIn('"snapshot-key"', stdout.getvalue())
 
-    @patch("yule_orchestrator.cli.daily.save_runtime_metric_run")
-    @patch("yule_orchestrator.cli.daily.save_daily_plan_snapshot")
-    @patch("yule_orchestrator.cli.daily.build_daily_plan")
-    @patch("yule_orchestrator.cli.daily.build_planning_inputs")
-    @patch("yule_orchestrator.cli.daily.load_reminder_items")
-    @patch("yule_orchestrator.cli.daily.list_open_issues")
-    @patch("yule_orchestrator.cli.daily.list_naver_calendar_items")
+    @patch("yule_engineering.cli.daily.save_runtime_metric_run")
+    @patch("yule_engineering.cli.daily.save_daily_plan_snapshot")
+    @patch("yule_engineering.cli.daily.build_daily_plan")
+    @patch("yule_engineering.cli.daily.build_planning_inputs")
+    @patch("yule_engineering.cli.daily.load_reminder_items")
+    @patch("yule_engineering.cli.daily.list_open_issues")
+    @patch("yule_engineering.cli.daily.list_naver_calendar_items")
     def test_daily_warmup_passes_fetch_failures_into_planning_inputs(
         self,
         list_naver_calendar_items_mock,

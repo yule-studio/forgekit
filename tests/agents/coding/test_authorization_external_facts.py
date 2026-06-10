@@ -24,7 +24,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.coding.authorization import (
+from yule_engineering.agents.coding.authorization import (
     EXTERNAL_FACT_HUMAN_REQUIRED,
     TECH_DECISION_AUTONOMOUS,
     _DEFAULT_SAFETY_RULES,
@@ -32,7 +32,7 @@ from yule_orchestrator.agents.coding.authorization import (
     recommend_authorization,
     reset_role_profile_cache,
 )
-from yule_orchestrator.agents.operator_action import OperatorActionType
+from yule_engineering.agents.operator_action import OperatorActionType
 
 
 class TechAutonomousVsExternalFactBoundaryTests(unittest.TestCase):

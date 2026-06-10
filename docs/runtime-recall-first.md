@@ -10,7 +10,7 @@
 
 ## 2. 새 의사결정 순서
 
-`src/yule_orchestrator/agents/runtime/loop.py` 에 이미 정의된 7-stage:
+`apps/engineering-agent/src/yule_engineering/agents/runtime/loop.py` 에 이미 정의된 7-stage:
 
 ```
 Observe → Understand → Recall → Research → Decide → Act → Record

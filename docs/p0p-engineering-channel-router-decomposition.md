@@ -146,7 +146,7 @@ __all__ = (
 
 ## 4. 변경 외부 surface 0
 
-`from yule_orchestrator.discord.engineering_channel_router import X` 형태의 외부 import 전부 무회귀. `bot.py` / `commands.py` / `supervisor.py` / 테스트 fixture 모두 그대로 동작.
+`from yule_engineering.discord.engineering_channel_router import X` 형태의 외부 import 전부 무회귀. `bot.py` / `commands.py` / `supervisor.py` / 테스트 fixture 모두 그대로 동작.
 
 ## 5. 회귀 보호
 
@@ -166,7 +166,7 @@ __all__ = (
 3. **session.extra 키 추가** — `session_persistence.py` 한 곳.
 4. **research loop guard 변경** — `research_loop.py` 한 곳 (`_research_loop_blocked_by_command_only` 정책).
 5. **work report payload 수정** — `reporting.py` + `session_persistence._work_report_to_dict`.
-6. **import 경로** — `from yule_orchestrator.discord.engineering_channel_router import X` 그대로 유지. 내부 모듈 직접 import (`from yule_orchestrator.discord.engineering_channel_router.research_loop import _run_research_loop_hook`) 도 지원.
+6. **import 경로** — `from yule_engineering.discord.engineering_channel_router import X` 그대로 유지. 내부 모듈 직접 import (`from yule_engineering.discord.engineering_channel_router.research_loop import _run_research_loop_hook`) 도 지원.
 
 ## 7. 추출 순서 (12 commit)
 

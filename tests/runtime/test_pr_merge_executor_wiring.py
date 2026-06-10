@@ -25,7 +25,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.runtime.coding_executor_runner import (
+from yule_engineering.runtime.coding_executor_runner import (
     ENV_GITHUB_APP_MERGE_OPT_IN,
     MERGE_EXEC_STAGE_CONFIG_ERROR,
     MERGE_EXEC_STAGE_EXECUTOR_BUILD_FAILED,
@@ -56,7 +56,7 @@ class EnvConstantOwnershipTests(unittest.TestCase):
         """다른 모듈에 같은 이름의 constant 가 동시에 정의되어 있으면
         SSoT 분기점이 모호해진다 — coding_executor_live 에는 없어야 함."""
 
-        from yule_orchestrator.agents.job_queue import coding_executor_live
+        from yule_engineering.agents.job_queue import coding_executor_live
 
         self.assertFalse(
             hasattr(coding_executor_live, "ENV_GITHUB_APP_MERGE_OPT_IN"),
@@ -127,10 +127,10 @@ class FourStageDiagnosticTests(unittest.TestCase):
             return fake_executor
 
         with mock.patch(
-            "yule_orchestrator.github_app.live_client.build_live_client_from_env",
+            "yule_engineering.github_app.live_client.build_live_client_from_env",
             fake_build_live_client_from_env,
         ), mock.patch(
-            "yule_orchestrator.github_app.pr_merge_executor.build_pr_merge_executor",
+            "yule_engineering.github_app.pr_merge_executor.build_pr_merge_executor",
             fake_build_pr_merge_executor,
         ):
             executor, stage = build_live_pr_merge_executor_with_stage(log=False)
@@ -144,7 +144,7 @@ class FourStageDiagnosticTests(unittest.TestCase):
             raise RuntimeError("network simulated failure")
 
         with mock.patch(
-            "yule_orchestrator.github_app.live_client.build_live_client_from_env",
+            "yule_engineering.github_app.live_client.build_live_client_from_env",
             fake_build_live_client_from_env,
         ):
             executor, stage = build_live_pr_merge_executor_with_stage(log=False)
@@ -163,10 +163,10 @@ class FourStageDiagnosticTests(unittest.TestCase):
             raise ValueError("executor wiring broken")
 
         with mock.patch(
-            "yule_orchestrator.github_app.live_client.build_live_client_from_env",
+            "yule_engineering.github_app.live_client.build_live_client_from_env",
             fake_build_live_client_from_env,
         ), mock.patch(
-            "yule_orchestrator.github_app.pr_merge_executor.build_pr_merge_executor",
+            "yule_engineering.github_app.pr_merge_executor.build_pr_merge_executor",
             fake_build_pr_merge_executor,
         ):
             executor, stage = build_live_pr_merge_executor_with_stage(log=False)
@@ -186,10 +186,10 @@ class BackwardsCompatShimTests(unittest.TestCase):
         try:
             fake_live_client = object()
             with mock.patch(
-                "yule_orchestrator.github_app.live_client.build_live_client_from_env",
+                "yule_engineering.github_app.live_client.build_live_client_from_env",
                 lambda env=None, *, http=None: fake_live_client,
             ), mock.patch(
-                "yule_orchestrator.github_app.pr_merge_executor.build_pr_merge_executor",
+                "yule_engineering.github_app.pr_merge_executor.build_pr_merge_executor",
                 lambda *, client, **_: (lambda d: {"merge_sha": "x"}),
             ):
                 executor = _maybe_build_live_pr_merge_executor()
@@ -223,7 +223,7 @@ class BotHelperParityTests(unittest.TestCase):
     def test_bot_helper_runs_under_same_env_contract(self) -> None:
         """runner helper 와 bot helper 가 동일 env 에서 동일 결과."""
 
-        from yule_orchestrator.discord.bot._legacy import (
+        from yule_engineering.discord.bot._legacy import (
             _build_pr_merge_executor_for_bot,
         )
 
@@ -233,10 +233,10 @@ class BotHelperParityTests(unittest.TestCase):
             fake_live_client = object()
             fake_executor = lambda d: {"merge_sha": "x"}
             with mock.patch(
-                "yule_orchestrator.github_app.live_client.build_live_client_from_env",
+                "yule_engineering.github_app.live_client.build_live_client_from_env",
                 lambda env=None, *, http=None: fake_live_client,
             ), mock.patch(
-                "yule_orchestrator.github_app.pr_merge_executor.build_pr_merge_executor",
+                "yule_engineering.github_app.pr_merge_executor.build_pr_merge_executor",
                 lambda *, client, **_: fake_executor,
             ):
                 bot_result = _build_pr_merge_executor_for_bot()

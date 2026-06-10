@@ -22,7 +22,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+from yule_engineering.agents.job_queue.pr_merge_continuation import (
     EXTRA_PR_MERGE_AUDIT,
     EXTRA_PR_MERGE_BASE_BRANCH,
     EXTRA_PR_MERGE_DECIDED_AT,
@@ -45,7 +45,7 @@ from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
     is_pending_continuation,
     resolve_work_mode,
 )
-from yule_orchestrator.agents.lifecycle.session_mode import (
+from yule_engineering.agents.lifecycle.session_mode import (
     EXTRA_WORK_MODE,
     WORK_MODE_APPROVAL,
     WORK_MODE_AUTONOMOUS,
@@ -350,7 +350,7 @@ class AdvanceStageTests(unittest.TestCase):
 class StageVocabularyTests(unittest.TestCase):
     def test_all_five_stages_exposed(self) -> None:
         # P1-Q — STAGE_AWAITING_DRAFT_APPROVAL 추가됨 (총 5 stage)
-        from yule_orchestrator.agents.job_queue.pr_merge_continuation import (
+        from yule_engineering.agents.job_queue.pr_merge_continuation import (
             STAGE_AWAITING_DRAFT_APPROVAL,
         )
 

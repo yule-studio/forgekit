@@ -27,7 +27,7 @@ autonomy_level: L0_AUTO_RECORD_OPTIONAL
 required_approval: false       # false | role-approver | human
 references:
   - docs/engineering.md
-  - src/yule_orchestrator/cli/engineer.py
+  - apps/engineering-agent/src/yule_engineering/cli/engineer.py
 related_skills:                # 호출 가능한 skill 들 (선언적 — runtime 자동 호출 X)
   - skills/research-collect.md
 related_hooks:
@@ -61,8 +61,8 @@ related_hooks:
 
 | surface | 등록 위치 | 기존 코드 | 본 markdown 책임 |
 | --- | --- | --- | --- |
-| `discord-slash` | `src/yule_orchestrator/discord/bot.py` 의 slash 등록 | 이미 존재 | command 의 *문서화 layer* |
-| `cli` | `src/yule_orchestrator/cli/<module>.py` | 이미 존재 | 동일 |
+| `discord-slash` | `apps/engineering-agent/src/yule_engineering/discord/bot.py` 의 slash 등록 | 이미 존재 | command 의 *문서화 layer* |
+| `cli` | `apps/engineering-agent/src/yule_engineering/cli/<module>.py` | 이미 존재 | 동일 |
 | `both` | 위 두 곳 | 이미 존재 | 동일 |
 
 본 PR 은 코드를 손대지 않는다. markdown 만 추가해 *어떤 entry 가 살아 있는지* 외부에서 읽을 수 있게 한다.

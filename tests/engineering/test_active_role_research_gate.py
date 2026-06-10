@@ -19,12 +19,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.discord.engineering_team_runtime import (
+from yule_engineering.discord.engineering_team_runtime import (
     DEFAULT_RESEARCH_ROLE_SEQUENCE,
     deliberation_research_role_sequence,
     handle_research_turn_message,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
 )

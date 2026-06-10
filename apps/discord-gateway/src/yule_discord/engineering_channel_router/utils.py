@@ -16,7 +16,7 @@ import os
 from dataclasses import replace
 from typing import Any, Optional
 
-from yule_orchestrator.agents.runtime import (
+from yule_engineering.agents.runtime import (
     RecallCoverage,
     RuntimeRecallResult,
     compute_recall_coverage,
@@ -115,7 +115,7 @@ def extract_user_links_from_message(
     if not text:
         return ()
     try:
-        from yule_orchestrator.agents.research.collector import extract_urls
+        from yule_engineering.agents.research.collector import extract_urls
     except Exception:  # noqa: BLE001
         return ()
     return tuple(extract_urls(text))

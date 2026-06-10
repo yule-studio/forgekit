@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.role_profiles import (
+from yule_engineering.agents.role_profiles import (
     PARTICIPATING_LEVELS,
     PARTICIPATION_EXCLUDED,
     PARTICIPATION_LEVELS,

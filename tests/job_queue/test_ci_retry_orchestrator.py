@@ -28,13 +28,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.ci_retry_orchestrator import (
+from yule_engineering.agents.job_queue.ci_retry_orchestrator import (
     CIRetryDecision,
     GithubAppCheckRunFetcher,
     SESSION_EXTRA_PROGRESS_KEY,
     orchestrate_ci_retry,
 )
-from yule_orchestrator.agents.job_queue.ci_status import (
+from yule_engineering.agents.job_queue.ci_status import (
     CI_FAILURE,
     CI_PENDING,
     CI_SUCCESS,
@@ -42,13 +42,13 @@ from yule_orchestrator.agents.job_queue.ci_status import (
     CIRetryPolicy,
     CIStatus,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------

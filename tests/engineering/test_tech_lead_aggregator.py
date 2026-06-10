@@ -16,10 +16,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.role_selection import (
+from yule_engineering.agents.lifecycle.role_selection import (
     recommend_active_roles,
 )
-from yule_orchestrator.agents.tech_lead_aggregator import (
+from yule_engineering.agents.tech_lead_aggregator import (
     AggregateResult,
     RoleAggregateNote,
     aggregate_role_outputs,

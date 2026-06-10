@@ -11,7 +11,7 @@
 
 본 컨벤션은 `yule-studio-agent` 내부 커밋뿐 아니라 **봇이 GitHub write 를 수행하는 모든 target repo** (예: `yule-studio/naver-search-clone`, 향후 engineering runtime 이 coding_execute / github_work_order / draft PR 을 만드는 모든 repo) 에 동일하게 적용된다. repo-local stricter policy 가 있으면 그것을 우선 적용하되, 기본은 본 SSoT 를 상속한다.
 
-코드 차원 SSoT — [`src/yule_orchestrator/agents/governance/repo_write_policy.py`](../../src/yule_orchestrator/agents/governance/repo_write_policy.py) 가 commit / issue title / PR title / issue anchor 4-종 hard guard 를 한 자리에 모은다. live path (GithubAppCommitter / GithubAppDraftPRCreator / GithubWriter.create_issue 등) 가 그 validator 를 호출하고 실패 시 raise.
+코드 차원 SSoT — [`apps/engineering-agent/src/yule_engineering/agents/governance/repo_write_policy.py`](../../apps/engineering-agent/src/yule_engineering/agents/governance/repo_write_policy.py) 가 commit / issue title / PR title / issue anchor 4-종 hard guard 를 한 자리에 모은다. live path (GithubAppCommitter / GithubAppDraftPRCreator / GithubWriter.create_issue 등) 가 그 validator 를 호출하고 실패 시 raise.
 
 ## Initial commit 특수 규칙
 

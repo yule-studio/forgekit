@@ -9,25 +9,25 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     Importance,
     SourceKind,
 )
-from yule_orchestrator.agents.engineering_intelligence.providers import (
+from yule_engineering.agents.engineering_intelligence.providers import (
     FakeKnowledgeProvider,
     ProviderTransport,
     StubLiveSourceFetcher,
     provider_spec_for,
 )
-from yule_orchestrator.agents.engineering_intelligence.provider_registry import (
+from yule_engineering.agents.engineering_intelligence.provider_registry import (
     KnowledgeProviderRegistration,
     KnowledgeProviderRegistry,
     ProviderAuthRequirement,
     ProviderAvailability,
     default_registry,
 )
-from yule_orchestrator.agents.engineering_intelligence.source_registry import (
+from yule_engineering.agents.engineering_intelligence.source_registry import (
     find_source,
 )
 

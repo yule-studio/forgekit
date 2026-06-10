@@ -26,7 +26,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.autonomy_lock import (
+from yule_engineering.agents.job_queue.autonomy_lock import (
     AutonomyLockRegistry,
     branch_scope,
     coding_job_scope,

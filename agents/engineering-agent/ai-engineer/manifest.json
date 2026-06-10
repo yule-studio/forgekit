@@ -32,7 +32,7 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_AI_ENGINEER_",
   "autonomy_level": "supervised",
   "risk_class": "MEDIUM",
-  "module_path": "yule_orchestrator.agents.engineering.ai_engineer.runner",
+  "module_path": "yule_engineering.agents.engineering.ai_engineer.runner",
   "discord_token_env": "ENGINEERING_AGENT_BOT_AI_ENGINEER_TOKEN",
   "instruction_entry": "agents/engineering-agent/ai-engineer/CLAUDE.md",
   "description": "LLM runner / model routing / prompt 정책, autonomous research collector, RAG와 memory, hallucination 방지와 source grounding, ResearchPack 품질, agent evaluation 기준을 책임지는 부서 멤버. 다른 역할이 자료를 모으고 합의하는 흐름이 잘 돌아가도록 LLM/AI 관점에서 설계와 개선을 자문한다.",
@@ -124,11 +124,11 @@
     "platform LLM provider 의존성 단일화"
   ],
   "write_scope_candidates": [
-    "src/yule_orchestrator/agents/runtime/**",
-    "src/yule_orchestrator/agents/research_collector*.py",
-    "src/yule_orchestrator/agents/research_pack*.py",
-    "src/yule_orchestrator/memory/**",
-    "src/yule_orchestrator/llm/**",
+    "apps/engineering-agent/src/yule_engineering/agents/runtime/**",
+    "apps/engineering-agent/src/yule_engineering/agents/research_collector*.py",
+    "apps/engineering-agent/src/yule_engineering/agents/research_pack*.py",
+    "apps/engineering-agent/src/yule_engineering/memory/**",
+    "apps/engineering-agent/src/yule_engineering/llm/**",
     "tests/agents/runtime/**",
     "tests/research/**",
     "tests/memory/**"

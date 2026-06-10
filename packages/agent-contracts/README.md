@@ -18,7 +18,7 @@ the Agent Town front-end.
 ## Dependency rule
 
 This package depends on the **standard library only**. It MUST NOT import
-`yule_orchestrator` (the app) or any `apps/*` code — the arrow always points the
+`yule_engineering` (the app) or any `apps/*` code — the arrow always points the
 other way (`app → contracts`). This keeps the contracts importable from any
 side (backend runtime, Discord gateway, Agent Town UI bindings) without dragging
 in app internals.
@@ -26,7 +26,7 @@ in app internals.
 ## Relationship to existing app types
 
 `AgentMessage` and friends were **relocated here** from
-`yule_orchestrator.agents.messaging.message`; that module is now a thin
+`yule_engineering.agents.messaging.message`; that module is now a thin
 compatibility shim re-exporting from `yule_agent_contracts.messages`, so existing
 imports keep working.
 

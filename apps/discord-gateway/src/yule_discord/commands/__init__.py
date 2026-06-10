@@ -8,14 +8,14 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Sequence
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     TaskType,
     WorkflowError,
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from yule_orchestrator.agents.review_loop import (
+from yule_engineering.agents.review_loop import (
     ReviewFeedback,
     ReviewSeverity,
     ReviewSource,
@@ -796,7 +796,7 @@ def _persist_intake_mode_and_backlog(
     )
 
     try:
-        from yule_orchestrator.agents.coding.coding_backlog_seed import seed_coding_backlog
+        from yule_engineering.agents.coding.coding_backlog_seed import seed_coding_backlog
 
         seed_coding_backlog(session_id=getattr(session, "session_id", None))
     except Exception:  # noqa: BLE001
@@ -824,7 +824,7 @@ def _ensure_coding_proposal_on_session(session: Any, prompt_text: str) -> None:
         return  # 이미 있음 — 덮어쓰지 않는다
 
     try:
-        from yule_orchestrator.agents.coding.authorization import recommend_authorization
+        from yule_engineering.agents.coding.authorization import recommend_authorization
         from ..engineering_channel_router.session_persistence import (
             _persist_coding_proposal,
         )
@@ -863,7 +863,7 @@ def _extract_repo_from_session(session: Any, prompt_text: str) -> Optional[str]:
     """
 
     try:
-        from yule_orchestrator.agents.git.github_url import parse_github_target
+        from yule_engineering.agents.git.github_url import parse_github_target
     except Exception:  # noqa: BLE001 - partial install
         return None
 
@@ -911,12 +911,12 @@ def _maybe_post_intake_approval_card(
 
     import asyncio as _asyncio
 
-    from yule_orchestrator.agents.job_queue import (
+    from yule_engineering.agents.job_queue import (
         ApprovalWorker,
         HeartbeatStore,
         JobQueue,
     )
-    from yule_orchestrator.agents.job_queue.approval_discord_poster import (
+    from yule_engineering.agents.job_queue.approval_discord_poster import (
         build_approval_channel_resolver,
         build_production_post_fn,
     )
@@ -936,7 +936,7 @@ def _maybe_post_intake_approval_card(
     if session_extra != (getattr(session, "extra", None) or {}):
         try:
             from dataclasses import replace as _replace
-            from yule_orchestrator.agents.workflow_state import update_session as _update
+            from yule_engineering.agents.workflow_state import update_session as _update
 
             session = _update(
                 _replace(session, extra=session_extra),

@@ -23,7 +23,7 @@
 ├── scripts/
 │   └── bootstrap
 └── src/
-    └── yule_orchestrator/
+    └── yule_engineering/
         ├── cli/                    # yule CLI (doctor, planning, engineer, discord, runtime, …)
         ├── core/                   # 공용 유틸 (timezone, dispatcher 등)
         ├── diagnostics/

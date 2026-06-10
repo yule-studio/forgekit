@@ -29,30 +29,30 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.autonomy_producer import (
+from yule_engineering.agents.job_queue.autonomy_producer import (
     DispatchOutcome,
 )
-from yule_orchestrator.agents.job_queue.discussion_followup import (
+from yule_engineering.agents.job_queue.discussion_followup import (
     DISCUSSION_FOLLOWUP_KIND_RESEARCH,
     DISCUSSION_FOLLOWUP_KIND_ROLE_TAKE,
     DiscussionFollowupDispatcher,
     dispatch_discussion_followup,
     stamp_followup_marker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.research_worker import ResearchWorker
-from yule_orchestrator.agents.job_queue.role_take_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.research_worker import ResearchWorker
+from yule_engineering.agents.job_queue.role_take_worker import (
     JOB_TYPE_ROLE_TAKE,
     KIND_TURN,
     RoleTakeWorker,
 )
-from yule_orchestrator.agents.job_queue.next_task_selector import (
+from yule_engineering.agents.job_queue.next_task_selector import (
     SOURCE_UNRESOLVED_DISCUSSION,
 )
-from yule_orchestrator.agents.job_queue.research_worker import (
+from yule_engineering.agents.job_queue.research_worker import (
     JOB_TYPE_RESEARCH_COLLECT,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +227,7 @@ class DiscussionFollowupDecisionPortTests(unittest.TestCase):
     def test_decision_port_skip_short_circuits(self) -> None:
         captured: List[Any] = []
 
-        from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+        from yule_engineering.agents.job_queue.claude_decision_seam import (
             DecisionResponse,
         )
 

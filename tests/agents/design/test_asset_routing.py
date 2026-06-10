@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.design.asset_routing import (
+from yule_engineering.agents.design.asset_routing import (
     APPLE_TOUCH_ICON_SIZE,
     FAVICON_RASTER_SIZES,
     SVG_RASTER_FALLBACK_BYTES,

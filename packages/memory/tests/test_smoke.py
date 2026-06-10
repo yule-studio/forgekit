@@ -1,6 +1,6 @@
 """Smoke tests for the extracted ``yule_memory`` package.
 
-Covers the three layers end to end without any ``yule_orchestrator``
+Covers the three layers end to end without any ``yule_engineering``
 import: model construction, indexing a temp Markdown doc, and searching
 it back out via the FTS5 index.
 """

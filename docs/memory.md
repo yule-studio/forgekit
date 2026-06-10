@@ -47,7 +47,7 @@ yule memory search "운영-리서치" --role engineering-agent/tech-lead --json
 원천을 해석해 linked curated note 를 새로 만드는 행위**다. 좋은 노트의
 기준은 "많이 썼는가" 가 아니라 "retrieval eval 에서 잘 꺼내지는가" 다.
 
-코드 SSoT: [`src/yule_orchestrator/agents/governance/runtime_policy.py`](../src/yule_orchestrator/agents/governance/runtime_policy.py).
+코드 SSoT: [`apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py`](../apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py).
 
 ### Inbox 규칙
 - `00-inbox` 는 raw 수집 / 임시 관찰 / source bookmark 용도.

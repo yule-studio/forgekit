@@ -35,9 +35,9 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"
@@ -191,7 +191,7 @@ class KeepaliveLoopIntegrationTests(unittest.TestCase):
     def test_keepalive_keeps_long_running_job_alive(self) -> None:
         """case 1: keepalive 동안 reap 안 됨."""
 
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _lease_keepalive_loop,
         )
 
@@ -267,7 +267,7 @@ class StartupRecoveryAndCanonicalScenarioTests(unittest.TestCase):
         """case 4: ``_recover_lease_expired_rows`` 가 lease_expired 행을
         모두 queued 로 되돌린다."""
 
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _recover_lease_expired_rows,
         )
 
@@ -356,7 +356,7 @@ class ShortCodingExecuteRegressionTests(unittest.TestCase):
     def test_keepalive_exits_cleanly_when_done_event_set_quickly(self) -> None:
         """짧은 job (e.g. 5ms) 도 keepalive 가 정상 종료."""
 
-        from yule_orchestrator.runtime.coding_executor_runner import (
+        from yule_engineering.runtime.coding_executor_runner import (
             _lease_keepalive_loop,
         )
 

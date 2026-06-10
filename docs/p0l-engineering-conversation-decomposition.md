@@ -8,7 +8,7 @@
 1. `engineering_conversation.py` 3005줄 — gateway 의 모든 conversation 책임 한 파일.
 2. 외부 import 28개 — public API 는 `build_engineering_conversation_response` / `detect_engineering_intent` / 12 intent 상수 / `EngineeringConversationResponse` / `format_status_diagnostic_response` / `READ_ONLY_INTENTS` / `split_task_branches`.
 3. 내부 helper 60+ 함수 — 책임이 entangled (intent detection 안에 task_type 가드, status response 안에 collection 렌더 호출 등).
-4. 분해는 `engineering_conversation/` 패키지 + `__init__.py` facade — Python import 시스템상 외부 `from yule_orchestrator.discord.engineering_conversation import X` 무회귀.
+4. 분해는 `engineering_conversation/` 패키지 + `__init__.py` facade — Python import 시스템상 외부 `from yule_engineering.discord.engineering_conversation import X` 무회귀.
 5. 6 모듈 분해: models / intent_detection / task_shaping / status_responses / research_bootstrap / response_formatters.
 6. 순환 import 위험 — models 는 leaf, 나머지가 models 의존. response_formatters 가 모든 surface 의 final stage 라 마지막.
 7. 기존 회귀 4657 PASS 무회귀 필수 — 매 commit 후 전체 pytest.
@@ -129,7 +129,7 @@ __all__ = (
 
 ## 4. 변경 외부 surface 0
 
-`from yule_orchestrator.discord.engineering_conversation import X` 형태의 28개 import 모두 무회귀 — Python 의 import 시스템이 `engineering_conversation.py` → `engineering_conversation/__init__.py` 전환을 transparent 하게 처리.
+`from yule_engineering.discord.engineering_conversation import X` 형태의 28개 import 모두 무회귀 — Python 의 import 시스템이 `engineering_conversation.py` → `engineering_conversation/__init__.py` 전환을 transparent 하게 처리.
 
 ## 5. 회귀 보호
 
@@ -143,7 +143,7 @@ __all__ = (
 3. **새 task_type 분류 규칙** — `task_shaping.py` 의 `_suggest_task_type` 만.
 4. **collector wiring 변경 (예: insufficiency 우회 정책)** — `research_bootstrap.py` 만.
 5. **응답 본문 텍스트 정정** — `response_formatters.py` 만.
-6. **import 경로** — `from yule_orchestrator.discord.engineering_conversation import X` 그대로 유지. 내부 모듈 직접 import (`from yule_orchestrator.discord.engineering_conversation.intent_detection import _is_status_diagnostic`) 도 지원.
+6. **import 경로** — `from yule_engineering.discord.engineering_conversation import X` 그대로 유지. 내부 모듈 직접 import (`from yule_engineering.discord.engineering_conversation.intent_detection import _is_status_diagnostic`) 도 지원.
 
 ## 7. 변경 이력
 

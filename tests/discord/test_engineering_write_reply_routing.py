@@ -36,26 +36,26 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_reply import (
+from yule_engineering.agents.job_queue.approval_reply import (
     find_replyable_approval,
 )
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     JOB_TYPE_GITHUB_WORK_ORDER,
     GitHubWorkOrderProposal,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     ObsidianWriterWorker,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.discord.approval.reply_router import (
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.discord.approval.reply_router import (
     RESPONSE_ENGINEERING_APPROVED,
     RESPONSE_ENGINEERING_APPROVED_DUPLICATE,
     RESPONSE_ENGINEERING_REJECTED,

@@ -6,7 +6,7 @@ token-budget tracker, a prompt-cache metadata layer, and a thin pluggable
 import agent internals — the real runners stay where they are and may register
 themselves with the gateway later. See README.md for the migration TODO list.
 
-Dependency rule: standard library only. MUST NOT import ``yule_orchestrator`` or
+Dependency rule: standard library only. MUST NOT import ``yule_engineering`` or
 any ``apps/*`` code — the arrow always points the other way (app -> gateway).
 """
 

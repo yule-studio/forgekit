@@ -30,7 +30,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Iterable, Optional, Sequence
 
-from yule_orchestrator.agents.job_queue.approval_reply import (
+from yule_engineering.agents.job_queue.approval_reply import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     ApprovalIntent,
     ApprovalReplyOutcome,
@@ -40,25 +40,25 @@ from yule_orchestrator.agents.job_queue.approval_reply import (
     handle_approval_reply,
     parse_approval_intent,
 )
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_ENGINEERING_WRITE,
     ApprovalRequest,
 )
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import ObsidianWriterWorker
-from yule_orchestrator.agents.job_queue.pr_approval import (
+from yule_engineering.agents.job_queue.obsidian_writer_worker import ObsidianWriterWorker
+from yule_engineering.agents.job_queue.pr_approval import (
     APPROVAL_KIND_PR_MERGE,
     PRMergeExecutor,
     PRMergeReplyIntent,
     PRMergeReplyResult,
     handle_pr_merge_approval_reply,
 )
-from yule_orchestrator.agents.job_queue.operator_action_reply import (
+from yule_engineering.agents.job_queue.operator_action_reply import (
     OperatorActionReplyOutcome,
     find_pending_operator_action_for_reply,
     handle_operator_action_reply,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.operator_action import OperatorActionType, OperatorSessionState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.operator_action import OperatorActionType, OperatorSessionState
 
 
 logger = logging.getLogger(__name__)

@@ -28,8 +28,8 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.stack_detector import detect_stacks
-from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+from yule_engineering.agents.coding.stack_detector import detect_stacks
+from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     REPAIR_OUTCOME_NO_ANCHOR,
     REPAIR_OUTCOME_NO_SESSION,
     REPAIR_OUTCOME_REPAIRED,
@@ -38,12 +38,12 @@ from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
     SessionRepairOutcome,
     repair_session_for_coding_dispatch,
 )
-from yule_orchestrator.agents.messaging.dispatcher import (
+from yule_engineering.agents.messaging.dispatcher import (
     Dispatcher,
     DispatchRequest,
     TaskType,
 )
-from yule_orchestrator.agents.messaging.registry import ParticipantsPool
+from yule_engineering.agents.messaging.registry import ParticipantsPool
 
 
 _LIVE_PROMPT_KOREAN = (
@@ -163,7 +163,7 @@ class IntakePersistsCodingProposalTests(unittest.TestCase):
     """``_ensure_coding_proposal_on_session`` 헬퍼는 idempotent + safe."""
 
     def test_stamps_coding_proposal_for_coding_intent_prompt(self) -> None:
-        from yule_orchestrator.discord.commands import (
+        from yule_engineering.discord.commands import (
             _ensure_coding_proposal_on_session,
         )
 
@@ -179,7 +179,7 @@ class IntakePersistsCodingProposalTests(unittest.TestCase):
         self.assertIn("review_roles", proposal)
 
     def test_idempotent_when_proposal_already_present(self) -> None:
-        from yule_orchestrator.discord.commands import (
+        from yule_engineering.discord.commands import (
             _ensure_coding_proposal_on_session,
         )
 

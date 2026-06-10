@@ -27,8 +27,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.exploration import repo_map as repo_map_mod
-from yule_orchestrator.agents.exploration.repo_map import (
+from yule_engineering.agents.exploration import repo_map as repo_map_mod
+from yule_engineering.agents.exploration.repo_map import (
     ALL_ROLE_IDS,
     RepoMap,
     RoleRepoProfile,
@@ -130,7 +130,7 @@ class ScoreShapeTests(unittest.TestCase):
         repo_map = build_repo_map(Path("/tmp/repo"))
         score = score_file_relevance(
             repo_map,
-            path="src/yule_orchestrator/agents/job_queue/store.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             role="backend-engineer",
         )
         self.assertIsInstance(score, float)
@@ -143,7 +143,7 @@ class ScoreShapeTests(unittest.TestCase):
             repo_map,
             role="backend-engineer",
             candidates=[
-                "src/yule_orchestrator/agents/job_queue/store.py",
+                "apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
                 "docs/not-mine.md",
             ],
         )
@@ -187,7 +187,7 @@ class UnknownRoleSafetyTests(unittest.TestCase):
         # Must not raise — repo-map is consumed by best-effort hint code.
         score = score_file_relevance(
             repo_map,
-            path="src/yule_orchestrator/agents/job_queue/store.py",
+            path="apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             role="phantom-role",
         )
         self.assertEqual(score, 0.0)
@@ -198,7 +198,7 @@ class UnknownRoleSafetyTests(unittest.TestCase):
             repo_map,
             role="phantom-role",
             candidates=[
-                "src/yule_orchestrator/agents/job_queue/store.py",
+                "apps/engineering-agent/src/yule_engineering/agents/job_queue/store.py",
             ],
         )
         self.assertEqual(ranked, ())
@@ -218,7 +218,7 @@ class ModuleReimportTests(unittest.TestCase):
         # CodeHintProvider) depends on. Listing them here makes a
         # rename a reviewer-visible event.
         mod = importlib.import_module(
-            "yule_orchestrator.agents.exploration.repo_map"
+            "yule_engineering.agents.exploration.repo_map"
         )
         for name in (
             "RepoMap",
@@ -239,7 +239,7 @@ class ModuleReimportTests(unittest.TestCase):
     def test_package_exposes_repo_map_surface(self) -> None:
         # The package __init__ re-exports the public surface so
         # consumers can do ``from agents.exploration import RepoMap``.
-        pkg = importlib.import_module("yule_orchestrator.agents.exploration")
+        pkg = importlib.import_module("yule_engineering.agents.exploration")
         for name in (
             "RepoMap",
             "RoleRepoProfile",

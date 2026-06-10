@@ -35,7 +35,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.claude_decision_seam import (
+from yule_engineering.agents.job_queue.claude_decision_seam import (
     ClaudeDecisionPort,
     DECISION_KIND_DISCUSSION_FOLLOWUP,
     DECISION_KIND_RETRY_GUARD,
@@ -142,7 +142,7 @@ class ComposeDecisionPortTests(unittest.TestCase):
         import logging
 
         seam_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_decision_seam"
+            "yule_engineering.agents.job_queue.claude_decision_seam"
         )
         previous = seam_logger.level
         seam_logger.setLevel(logging.CRITICAL)
@@ -352,7 +352,7 @@ class ExternalDecisionPortTests(unittest.TestCase):
         import logging
 
         seam_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_decision_seam"
+            "yule_engineering.agents.job_queue.claude_decision_seam"
         )
         previous = seam_logger.level
         seam_logger.setLevel(logging.CRITICAL)
@@ -374,7 +374,7 @@ class ExternalDecisionPortTests(unittest.TestCase):
         import logging
 
         seam_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_decision_seam"
+            "yule_engineering.agents.job_queue.claude_decision_seam"
         )
         previous = seam_logger.level
         seam_logger.setLevel(logging.CRITICAL)
@@ -511,7 +511,7 @@ class BuildDecisionPortFromEnvTests(unittest.TestCase):
         import logging
 
         seam_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_decision_seam"
+            "yule_engineering.agents.job_queue.claude_decision_seam"
         )
         previous = seam_logger.level
         seam_logger.setLevel(logging.CRITICAL)
@@ -585,7 +585,7 @@ class ConsultDecisionPortTests(unittest.TestCase):
         import logging
 
         seam_logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.claude_decision_seam"
+            "yule_engineering.agents.job_queue.claude_decision_seam"
         )
         previous = seam_logger.level
         seam_logger.setLevel(logging.CRITICAL)

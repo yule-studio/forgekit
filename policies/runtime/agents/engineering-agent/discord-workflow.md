@@ -1,6 +1,6 @@
 # Engineering Agent Discord Workflow (v0)
 
-이 문서는 Discord 안에서 engineering-agent에게 작업을 위임하는 **접수(intake) → 승인(approve) → 진행(progress) → 완료(complete)** 흐름의 정책 기준선이다. 코드 진실 소스는 `src/yule_orchestrator/agents/workflow.py` + `workflow_state.py`, CLI는 `yule engineer`, Discord 슬래시 커맨드는 `commands.py`의 `engineer_intake` / `engineer_approve` / `engineer_reject` / `engineer_progress` / `engineer_complete` / `engineer_show` / `engineer_review`(+ `engineer_review_reply`).
+이 문서는 Discord 안에서 engineering-agent에게 작업을 위임하는 **접수(intake) → 승인(approve) → 진행(progress) → 완료(complete)** 흐름의 정책 기준선이다. 코드 진실 소스는 `apps/engineering-agent/src/yule_engineering/agents/workflow.py` + `workflow_state.py`, CLI는 `yule engineer`, Discord 슬래시 커맨드는 `commands.py`의 `engineer_intake` / `engineer_approve` / `engineer_reject` / `engineer_progress` / `engineer_complete` / `engineer_show` / `engineer_review`(+ `engineer_review_reply`).
 
 ## 1. 접수 채널 규칙
 

@@ -23,17 +23,17 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue import (
+from yule_engineering.agents.job_queue import (
     JOB_TYPE_ROLE_TAKE,
     KIND_OPEN,
     JobQueue,
     JobState,
 )
-from yule_orchestrator.agents.workflow_state import (
+from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
 )
-from yule_orchestrator.discord.engineering_team_runtime import (
+from yule_engineering.discord.engineering_team_runtime import (
     handle_research_turn_message,
 )
 
@@ -66,7 +66,7 @@ class _Fixture(unittest.TestCase):
 
         # Reset M4's in-process dedup ring so prior tests in the same
         # process can't shadow our (role, session, kind) triple.
-        from yule_orchestrator.discord import engineering_team_runtime as etr
+        from yule_engineering.discord import engineering_team_runtime as etr
 
         etr._HANDLED_TURNS.clear()
         etr._HANDLED_TURNS_SET.clear()
@@ -185,7 +185,7 @@ class OpenCallExceptionFailsRetryableTests(_Fixture):
         # P0-Q: package facade re-exports the symbol but the call site
         # lives inside ``_legacy.py`` — patch the legacy module so the
         # local binding is what gets replaced.
-        from yule_orchestrator.discord.engineering_team_runtime import (
+        from yule_engineering.discord.engineering_team_runtime import (
             _legacy as etr,
         )
 

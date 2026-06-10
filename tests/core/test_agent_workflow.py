@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     TaskType,
     WorkflowError,
@@ -20,7 +20,7 @@ from yule_orchestrator.agents import (
     build_participants_pool,
     extract_urls,
 )
-from yule_orchestrator.agents.workflow_state import find_latest_open_session
+from yule_engineering.agents.workflow_state import find_latest_open_session
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

@@ -11,13 +11,13 @@ try:
     import _bootstrap  # noqa: F401
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
-from yule_orchestrator.storage import (
+from yule_engineering.storage import (
     cleanup_json_cache,
     list_json_cache_entries,
     load_json_cache,
     save_json_cache,
 )
-from yule_orchestrator.storage.local_cache import _reset_cleanup_schedule_for_tests
+from yule_engineering.storage.local_cache import _reset_cleanup_schedule_for_tests
 
 
 class LocalCacheTestCase(unittest.TestCase):

@@ -4,7 +4,7 @@
 inside an agent and need to be observed elsewhere (the gateway, sibling agents,
 the Agent Town front-end): a job completed, a seat got blocked, a lifecycle
 stage advanced. The heavyweight in-process counterpart is
-``yule_orchestrator.agents.job_queue.completion_hook.JobCompletionEvent``; this
+``yule_engineering.agents.job_queue.completion_hook.JobCompletionEvent``; this
 contract is the stable wire/observation shape it can project onto.
 """
 

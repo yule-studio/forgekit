@@ -10,12 +10,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.digest.dispatcher import (
+from yule_engineering.agents.digest.dispatcher import (
     ENV_DEPT_CHANNELS,
     ENV_RESEARCH_FORUM,
     build_dispatch_plan,
 )
-from yule_orchestrator.agents.digest.formatter import format_card
+from yule_engineering.agents.digest.formatter import format_card
 
 
 def _make_card(**overrides):

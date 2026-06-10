@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.obsidian.vault_auto_push import (
+from yule_engineering.agents.obsidian.vault_auto_push import (
     AutoPushVerdict,
     DEFAULT_AUTO_BRANCH,
     ENV_AUTOPUSH_ENABLED,

@@ -9,18 +9,18 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     DispatchRequest,
     TaskType,
     build_participants_pool,
 )
-from yule_orchestrator.agents.messaging.dispatcher import (
+from yule_engineering.agents.messaging.dispatcher import (
     ROLE_DEFAULT_WEIGHTS,
     TASK_REFERENCE_SOURCES,
     render_plan_summary,
 )
-from yule_orchestrator.agents.runners import (
+from yule_engineering.agents.runners import (
     AgentRequest,
     AgentResponse,
     AgentRunner,

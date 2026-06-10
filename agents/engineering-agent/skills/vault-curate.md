@@ -23,7 +23,7 @@ side_effects:
   - vault git commit/push (승인 게이트)
 references:
   - docs/memory.md
-  - src/yule_orchestrator/agents/obsidian/knowledge_writer.py
+  - apps/engineering-agent/src/yule_engineering/agents/obsidian/knowledge_writer.py
   - agents/engineering-agent/skills/compact-to-vault.md
 related_hooks: []
 ---
@@ -82,7 +82,7 @@ source_note (00-inbox)
 ### Quick Mode
 
 ```python
-from yule_orchestrator.agents.obsidian.knowledge_writer import build_knowledge_note
+from yule_engineering.agents.obsidian.knowledge_writer import build_knowledge_note
 note = build_knowledge_note(...)   # 필수 frontmatter + 5섹션
 # orphan/eval 검사 통과 후 commit
 ```

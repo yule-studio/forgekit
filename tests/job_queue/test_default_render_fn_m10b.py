@@ -21,7 +21,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     NOTE_KIND_AGENT_OPS,
     NOTE_KIND_BLOG_DRAFT,
     NOTE_KIND_FAILURE_POSTMORTEM,
@@ -31,7 +31,7 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
     ObsidianWriteRequest,
     default_render_fn,
 )
-from yule_orchestrator.agents.obsidian.research_log_writer import (
+from yule_engineering.agents.obsidian.research_log_writer import (
     render_research_log_note,
 )
 
@@ -144,7 +144,7 @@ class ResearchLogRenderTests(unittest.TestCase):
 
 class AgentOpsRenderTests(unittest.TestCase):
     def test_renders_audit_entries_into_log(self) -> None:
-        from yule_orchestrator.agents.lifecycle.agent_ops_log import (
+        from yule_engineering.agents.lifecycle.agent_ops_log import (
             AgentOpsEntry,
         )
 

@@ -15,7 +15,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.services import (
+from yule_engineering.runtime.services import (
     ENGINEERING_PROFILE,
     ENV_CODING_EXECUTOR_AUTOSPAWN,
     PROFILES,

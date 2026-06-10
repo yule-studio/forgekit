@@ -23,7 +23,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.harness.context_compaction import (
+from yule_engineering.agents.harness.context_compaction import (
     CompactionTurn,
     build_compaction_summary,
     compaction_enabled,
@@ -32,7 +32,7 @@ from yule_orchestrator.agents.harness.context_compaction import (
     render_compaction_note,
     write_compaction_note,
 )
-from yule_orchestrator.agents.obsidian.filename_convention import validate_filename
+from yule_engineering.agents.obsidian.filename_convention import validate_filename
 
 
 def _turns() -> list[CompactionTurn]:

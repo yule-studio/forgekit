@@ -1,7 +1,7 @@
 """Gemini provider placeholder.
 
 Real call site (do NOT import from here):
-    src/yule_orchestrator/agents/runners/gemini.py
+    apps/engineering-agent/src/yule_engineering/agents/runners/gemini.py
         ``GeminiRunner`` — wraps Google's ``gemini`` CLI (long-context / advise).
 
 This stub documents the seam; ``build_gemini_provider`` returns a callable that
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from .base import Provider, _stub_provider
 
-_RUNNER_REFERENCE = "src/yule_orchestrator/agents/runners/gemini.py (GeminiRunner)"
+_RUNNER_REFERENCE = "apps/engineering-agent/src/yule_engineering/agents/runners/gemini.py (GeminiRunner)"
 
 
 def build_gemini_provider() -> Provider:

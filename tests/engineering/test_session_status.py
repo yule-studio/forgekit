@@ -1,6 +1,6 @@
 """Phase E tests — session-state diagnostic helper.
 
-These exercise :mod:`yule_orchestrator.agents.lifecycle.session_status` so the
+These exercise :mod:`yule_engineering.agents.lifecycle.session_status` so the
 detect/report/propose rules stay pinned. Each test maps to one of the
 operator-facing complaints from Phase E:
 
@@ -26,7 +26,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.session_status import (
+from yule_engineering.agents.lifecycle.session_status import (
     FORUM_PUBLISH_FAILED,
     OBSIDIAN_PENDING_APPROVAL,
     OBSIDIAN_PROPOSAL_MISSING,
@@ -42,7 +42,7 @@ from yule_orchestrator.agents.lifecycle.session_status import (
     render_diagnostic_summary,
     render_member_bot_summary,
 )
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
 
 
 def _session(**overrides: Any) -> WorkflowSession:

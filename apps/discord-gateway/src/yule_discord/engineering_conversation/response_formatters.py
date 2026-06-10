@@ -6,7 +6,7 @@ Aliases this module to the relocated submodule so that
 **same** module object (identity preserved).
 """
 
-from yule_orchestrator.agents.engineering_conversation import response_formatters as _m
+from yule_engineering.agents.engineering_conversation import response_formatters as _m
 import sys
 
 sys.modules[__name__] = _m

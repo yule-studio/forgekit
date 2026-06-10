@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.safety.risk_classifier import (
+from yule_engineering.agents.safety.risk_classifier import (
     RiskClass,
     RiskSignal,
     ToolCallContext,

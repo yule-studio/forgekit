@@ -34,20 +34,20 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     JOB_TYPE_GITHUB_WORK_ORDER,
     dispatch_github_work_order,
 )
-from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+from yule_engineering.agents.job_queue.github_work_order_executor import (
     GitHubWorkOrderWorker,
     SESSION_EXTRA_GITHUB_ISSUE_KEY,
     repair_stranded_coding_sessions,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.job_queue.work_order_coding_continuation import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     CONTINUATION_NOOP_NO_PROPOSAL,
     SESSION_EXTRA_CODING_JOB_KEY,
     SESSION_EXTRA_CODING_PROPOSAL_KEY,

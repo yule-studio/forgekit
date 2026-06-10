@@ -30,13 +30,13 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.github_workos.audit import OUTCOME_OK
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.github_workos.audit import OUTCOME_OK
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     dispatch_github_work_order,
     JOB_TYPE_GITHUB_WORK_ORDER,
 )
-from yule_orchestrator.agents.job_queue.github_work_order_executor import (
+from yule_engineering.agents.job_queue.github_work_order_executor import (
     CREATED_VIA_AUTO_CREATE,
     CREATED_VIA_EXISTING_ANCHOR,
     GitHubWorkOrderWorker,
@@ -44,14 +44,14 @@ from yule_orchestrator.agents.job_queue.github_work_order_executor import (
     SESSION_EXTRA_GITHUB_ISSUE_KEY,
     run_until_shutdown,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.runtime.services import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.runtime.services import (
     ENGINEERING_PROFILE,
     ServiceKind,
 )
-from yule_orchestrator.runtime.status import (
+from yule_engineering.runtime.status import (
     _KIND_TO_JOB_TYPE,
     build_runtime_status,
 )

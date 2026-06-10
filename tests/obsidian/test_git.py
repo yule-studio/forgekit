@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.obsidian.git import (
+from yule_engineering.agents.obsidian.git import (
     ObsidianGitError,
     commit_single_file,
     find_git_repo_root,

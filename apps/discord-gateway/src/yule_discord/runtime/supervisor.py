@@ -338,7 +338,7 @@ def _run_engineering_gateway_in_subprocess(
     repo_root_str: str,
     gateway_token_env_key: str,
 ) -> None:  # pragma: no cover - subprocess only
-    from yule_orchestrator.runtime.gateway_env import build_gateway_env_overrides
+    from yule_engineering.runtime.gateway_env import build_gateway_env_overrides
     from ..bot import run_discord_bot
 
     gateway_token = os.environ.get(gateway_token_env_key, "").strip()

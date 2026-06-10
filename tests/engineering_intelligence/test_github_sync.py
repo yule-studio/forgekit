@@ -9,11 +9,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.engineering_intelligence.github_sync import (
+from yule_engineering.agents.engineering_intelligence.github_sync import (
     build_pending_audit,
     build_pending_git_sync_plan,
 )
-from yule_orchestrator.agents.engineering_intelligence.models import (
+from yule_engineering.agents.engineering_intelligence.models import (
     EngineeringKnowledgeItem,
     Importance,
     SourceKind,

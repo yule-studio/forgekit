@@ -22,7 +22,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.runtime.circuit_breaker import (
+from yule_engineering.runtime.circuit_breaker import (
     CircuitBreakerPersistence,
     CircuitBreakerPolicy,
     CircuitBreakerRegistry,

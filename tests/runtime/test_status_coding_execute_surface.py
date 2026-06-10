@@ -31,20 +31,20 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents import (
+from yule_engineering.agents import (
     Dispatcher,
     WorkflowOrchestrator,
     build_participants_pool,
 )
-from yule_orchestrator.agents.coding.authorization import LIFECYCLE_MODE_IMPLEMENTATION
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.coding.authorization import LIFECYCLE_MODE_IMPLEMENTATION
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     SESSION_EXTRA_DISPATCH_KEY,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatRecord, HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.workflow_state import load_session, update_session
-from yule_orchestrator.runtime.services import ServiceKind
-from yule_orchestrator.runtime.status import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatRecord, HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.workflow_state import load_session, update_session
+from yule_engineering.runtime.services import ServiceKind
+from yule_engineering.runtime.status import (
     _KIND_TO_JOB_TYPE,
     CodingDispatchSummary,
     build_runtime_status,
@@ -198,7 +198,7 @@ class CodingExecutorServiceStatusJobTypeTests(_RuntimeStatusFixture):
         # Stamp a fresh heartbeat for the coding-executor service id so
         # build_runtime_status sees it as ALIVE — same posture as the
         # operator reported (executor up, dispatch missing).
-        from yule_orchestrator.runtime.services import list_services
+        from yule_engineering.runtime.services import list_services
 
         services = list_services()
         coding_specs = [s for s in services if s.kind == ServiceKind.CODING_EXECUTOR]

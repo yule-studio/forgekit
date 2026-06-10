@@ -20,19 +20,19 @@ a vector store.
 
 `yule_memory` depends on **stdlib + sqlite3 only** — no third-party
 runtime deps (`dependencies = []`). It MUST NOT import
-`yule_orchestrator` runtime, Discord, or agent internals, and MUST NOT
+`yule_engineering` runtime, Discord, or agent internals, and MUST NOT
 add LLM calls, Discord sends, or agent execution logic. This keeps the
 memory index reusable and independently testable.
 
 Role-aware retrieval (`fetch_role_context`) that depends on agent
-internals deliberately stays in `yule_orchestrator.memory.retrieval`,
+internals deliberately stays in `yule_engineering.memory.retrieval`,
 NOT here.
 
 ## Compatibility
 
-`yule_orchestrator.memory.{__init__,models,indexer,search}` are thin
+`yule_engineering.memory.{__init__,models,indexer,search}` are thin
 shims that re-export from this package, so existing
-`from yule_orchestrator.memory import ...` imports keep resolving to the
+`from yule_engineering.memory import ...` imports keep resolving to the
 identical objects.
 
 ## Public API

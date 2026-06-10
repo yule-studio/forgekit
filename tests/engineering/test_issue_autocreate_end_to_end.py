@@ -30,21 +30,21 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.git.repo_contract import discover_repo_contract
-from yule_orchestrator.agents.github_workos.audit import (
+from yule_engineering.agents.git.repo_contract import discover_repo_contract
+from yule_engineering.agents.github_workos.audit import (
     ACTION_GITHUB_ISSUE_CREATE,
     OUTCOME_OK,
 )
-from yule_orchestrator.agents.github_workos.github_writer import (
+from yule_engineering.agents.github_workos.github_writer import (
     GithubWriter,
     make_default_policy_gate,
 )
-from yule_orchestrator.agents.github_workos.issue_auto_create import (
+from yule_engineering.agents.github_workos.issue_auto_create import (
     AUDIT_EXISTING_ISSUE_REUSED,
     AUDIT_TEMPLATE_USED,
     build_issue_auto_create_plan,
 )
-from yule_orchestrator.agents.job_queue.github_work_order import (
+from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrder,
     GitHubWorkOrderProposal,
 )

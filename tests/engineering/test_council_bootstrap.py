@@ -1,9 +1,9 @@
 """Role council C2 wiring tests.
 
 Verifies the **bootstrap** layer in
-``src/yule_orchestrator/agents/council_bootstrap.py`` plus the router
+``apps/engineering-agent/src/yule_engineering/agents/council_bootstrap.py`` plus the router
 hook in
-``src/yule_orchestrator/discord/engineering_channel_router/council_flow.py``.
+``apps/engineering-agent/src/yule_engineering/discord/engineering_channel_router/council_flow.py``.
 
 Eight requirements (from the C2 brief), each pinned by a test below:
 
@@ -25,7 +25,7 @@ from typing import Any
 
 import unittest
 
-from yule_orchestrator.agents.council import (
+from yule_engineering.agents.council import (
     CouncilConsensusStatus,
     DEFAULT_COUNCIL_ROUND_CAP,
     PeerReviewNote,
@@ -40,7 +40,7 @@ from yule_orchestrator.agents.council import (
     role_councils_from_extra,
     role_councils_to_extra,
 )
-from yule_orchestrator.agents.council_bootstrap import (
+from yule_engineering.agents.council_bootstrap import (
     ROLE_WORK_ORDERS_EXTRA_KEY,
     TASK_BRIEF_EXTRA_KEY,
     already_bootstrapped,
@@ -53,13 +53,13 @@ from yule_orchestrator.agents.council_bootstrap import (
     required_outputs_for_role,
     synthesis_gate,
 )
-from yule_orchestrator.agents.deliberation import (
+from yule_engineering.agents.deliberation import (
     BackendEngineerTake,
     QaEngineerTake,
     role_take_to_role_draft,
     role_takes_to_role_drafts,
 )
-from yule_orchestrator.agents.lifecycle.council_substage import (
+from yule_engineering.agents.lifecycle.council_substage import (
     LIFECYCLE_SUBSTAGE_EXTRA_KEY,
     ROLE_COUNCILS_EXTRA_KEY,
     SUBSTAGE_COUNCIL_ESCALATED,
@@ -438,7 +438,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_runs_when_active_roles_present(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+        from yule_engineering.discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 
@@ -453,7 +453,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_no_op_when_session_is_none(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+        from yule_engineering.discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 
@@ -461,7 +461,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_falls_back_to_tech_lead_when_no_active_roles(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+        from yule_engineering.discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 
@@ -475,7 +475,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_skips_when_already_bootstrapped(self) -> None:
-        from yule_orchestrator.discord.engineering_channel_router.council_flow import (
+        from yule_engineering.discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 

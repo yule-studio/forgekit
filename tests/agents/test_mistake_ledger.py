@@ -26,10 +26,10 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.completion_hook import (
+from yule_engineering.agents.job_queue.completion_hook import (
     JobCompletionEvent,
 )
-from yule_orchestrator.agents.lifecycle.mistake_ledger import (
+from yule_engineering.agents.lifecycle.mistake_ledger import (
     SESSION_EXTRA_KEY,
     SEVERITY_HIGH,
     SEVERITY_LOW,

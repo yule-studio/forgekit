@@ -4,16 +4,16 @@
 > 좁은 책임 범위를 가지며, 공통 로직은 향후 `packages/*` 로 추출한다.
 > 본 브랜치(`refactor/apps-layout`)는 **scaffold/문서 전용** 이며 실제 코드
 > 이전은 후속 작업이다. 현재 코드는 여전히
-> `src/yule_orchestrator/**` 에 있다.
+> `apps/engineering-agent/src/yule_engineering/**` 에 있다.
 
 ## 1. 앱 목록
 
 | 앱 | 책임 한 줄 | 현재 코드 위치 |
 | --- | --- | --- |
-| [`engineering-agent`](engineering-agent/README.md) | 개발 작업 intake / 코드 작업 계획 / role deliberation / GitHub 연동 | `src/yule_orchestrator/agents/**`, `discord/engineering_channel_router/**` |
-| [`planning-agent`](planning-agent/README.md) | 일정·계획·브리핑, calendar 기반 작업 정리 | `src/yule_orchestrator/planning/**` |
-| [`discord-gateway`](discord-gateway/README.md) | Discord 메시지 수신/전송, agent runtime I/O 채널 연결 | `src/yule_orchestrator/discord/**` |
-| [`memory-worker`](memory-worker/README.md) | memory reindex / retrieval eval / vault sync / housekeeping | `src/yule_orchestrator/memory/**`, `cli/memory.py` |
+| [`engineering-agent`](engineering-agent/README.md) | 개발 작업 intake / 코드 작업 계획 / role deliberation / GitHub 연동 | `apps/engineering-agent/src/yule_engineering/agents/**`, `discord/engineering_channel_router/**` |
+| [`planning-agent`](planning-agent/README.md) | 일정·계획·브리핑, calendar 기반 작업 정리 | `apps/engineering-agent/src/yule_engineering/planning/**` |
+| [`discord-gateway`](discord-gateway/README.md) | Discord 메시지 수신/전송, agent runtime I/O 채널 연결 | `apps/engineering-agent/src/yule_engineering/discord/**` |
+| [`memory-worker`](memory-worker/README.md) | memory reindex / retrieval eval / vault sync / housekeeping | `apps/engineering-agent/src/yule_engineering/memory/**`, `cli/memory.py` |
 | [`loadtest-runner`](loadtest-runner/README.md) | runtime/memory/agent backend 부하 테스트 (MOCK 대상) | (신규, 코드 이전 없음) |
 
 ## 2. 의존 방향 규칙 (hard rail)

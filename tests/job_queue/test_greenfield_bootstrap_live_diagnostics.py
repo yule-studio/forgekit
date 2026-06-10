@@ -29,18 +29,18 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.greenfield_bootstrap import (
+from yule_engineering.agents.coding.greenfield_bootstrap import (
     MODE_GREENFIELD_FULL_STACK,
     _looks_greenfield,
     detect_bootstrap_mode,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     ENV_GREENFIELD_BOOTSTRAP_ENABLED,
     GreenfieldBootstrapEditor,
     RecordOnlyCodeEditor,
     detect_live_executor_availability,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
 )
@@ -280,7 +280,7 @@ class LoggingSurfaceTests(unittest.TestCase):
         를 한 줄 노출. silent delegate 가 절대 silent 가 아니게."""
 
         logger = logging.getLogger(
-            "yule_orchestrator.agents.job_queue.coding_executor_live"
+            "yule_engineering.agents.job_queue.coding_executor_live"
         )
         stream = io.StringIO()
         handler = logging.StreamHandler(stream)

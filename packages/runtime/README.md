@@ -1,7 +1,7 @@
 # yule-runtime
 
 Cleanly-movable **runtime primitives** extracted from
-`yule_orchestrator.runtime`. The package holds the low-coupling building
+`yule_engineering.runtime`. The package holds the low-coupling building
 blocks that the always-on engineering orchestrator stands on, without
 dragging in agent / discord / memory internals.
 
@@ -19,48 +19,48 @@ Python package: `yule_runtime`.
 
 `yule_runtime` must **NOT** import:
 
-- specific agent internals (`yule_orchestrator.agents.*`)
-- discord internals (`yule_orchestrator.discord.*`)
-- memory internals (`yule_orchestrator.memory.*`)
+- specific agent internals (`yule_engineering.agents.*`)
+- discord internals (`yule_engineering.discord.*`)
+- memory internals (`yule_engineering.memory.*`)
 
 It depends only on the Python standard library and on its own sibling
 modules. Any module that violates this rule **stays** in
-`yule_orchestrator.runtime` (see the TODO list below). This keeps the
+`yule_engineering.runtime` (see the TODO list below). This keeps the
 package importable in isolation and prevents the runtime layer from
 re-coupling to the orchestrator's domain layers.
 
 ## Compatibility shims
 
 Each moved module is replaced at its old path
-(`src/yule_orchestrator/runtime/<name>.py`) by a thin shim that aliases
+(`apps/engineering-agent/src/yule_engineering/runtime/<name>.py`) by a thin shim that aliases
 `sys.modules[old] = yule_runtime.<name>`. The shim and the real module
 are therefore the **same module object**, so:
 
-- every existing `from yule_orchestrator.runtime.X import ...` keeps
+- every existing `from yule_engineering.runtime.X import ...` keeps
   resolving to identical objects, and
 - tests that monkeypatch module globals (e.g. `services.PROFILES`) still
   mutate the object the live code reads from.
 
 Shim paths and preserved public names:
 
-- `yule_orchestrator/runtime/circuit_breaker.py` →
+- `yule_engineering/runtime/circuit_breaker.py` →
   `yule_runtime.circuit_breaker`
   (`CircuitBreakerPolicy`, `CircuitBreakerState`, `CircuitSnapshot`,
   `CircuitBreakerRegistry`, `CircuitBreakerPersistence`,
   `PersistedCircuitRow`, `load_persisted_circuit_snapshots`,
   `DEFAULT_CIRCUIT_WINDOW_SECONDS`, `DEFAULT_CIRCUIT_MAX_RESTARTS`)
-- `yule_orchestrator/runtime/services.py` → `yule_runtime.services`
+- `yule_engineering/runtime/services.py` → `yule_runtime.services`
   (`ServiceKind`, `ServiceSpec`, `PROFILES`, `ENGINEERING_PROFILE`,
   `list_services`, `resolve_service`, `build_engineering_profile`,
   `is_coding_executor_autospawn_enabled`,
   `ENV_CODING_EXECUTOR_AUTOSPAWN`)
-- `yule_orchestrator/runtime/subprocess_supervisor.py` →
+- `yule_engineering/runtime/subprocess_supervisor.py` →
   `yule_runtime.subprocess_supervisor` (supervisor restart loop +
   `run_runtime_up` and friends)
 
 ## NOT moved (deliberately left — coupling)
 
-These runtime modules stay in `yule_orchestrator.runtime` because they
+These runtime modules stay in `yule_engineering.runtime` because they
 import agent / discord / memory internals or are too large + tangled to
 move safely under this conservative refactor:
 

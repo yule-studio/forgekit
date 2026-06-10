@@ -19,7 +19,7 @@ Rails pinned (D-73-10 cost-budget gate + #88 PasteGuard fail-closed):
      lands in a separate PR with cost-budget review.
 
   3. ``LiveCodeEditor`` consults
-     :func:`yule_orchestrator.agents.security.paste_guard.guard_outbound`
+     :func:`yule_engineering.agents.security.paste_guard.guard_outbound`
      on every call. A blocked verdict raises BlockedLiveEditorError.
 
   4. ``coding_executor_worker.is_protected_branch`` continues to flag
@@ -41,7 +41,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     BlockedLiveEditorError,
     ENV_LIVE_EDITOR_ENABLED,
     ENV_LIVE_EDITOR_PROVIDER,
@@ -52,7 +52,7 @@ from yule_orchestrator.agents.job_queue.coding_executor_live import (
     RecordOnlyCodeEditor,
     build_live_editor_from_env,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     WorktreeContext,
     is_protected_branch,
@@ -113,7 +113,7 @@ class LiveEditorGovernanceTests(unittest.TestCase):
 
     # 3 — PasteGuard preflight is mandatory.
     def test_paste_guard_blocked_verdict_refuses_call(self) -> None:
-        from yule_orchestrator.agents.security import paste_guard as pg_mod
+        from yule_engineering.agents.security import paste_guard as pg_mod
 
         original = pg_mod.guard_outbound
 

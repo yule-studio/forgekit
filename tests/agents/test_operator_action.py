@@ -30,7 +30,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     ApprovalRequest,
     OPERATOR_ACTION_KINDS,
     APPROVAL_KIND_INFO_REQUEST,
@@ -39,7 +39,7 @@ from yule_orchestrator.agents.job_queue.approval_worker import (
     APPROVAL_KIND_DECISION_REQUEST,
     render_approval_request,
 )
-from yule_orchestrator.agents.operator_action import (
+from yule_engineering.agents.operator_action import (
     OperatorActionRequest,
     OperatorActionType,
     OperatorSessionState,

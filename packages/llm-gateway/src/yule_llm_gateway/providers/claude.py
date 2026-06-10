@@ -1,7 +1,7 @@
 """Claude provider placeholder.
 
 Real call site (do NOT import from here):
-    src/yule_orchestrator/agents/runners/claude_code.py
+    apps/engineering-agent/src/yule_engineering/agents/runners/claude_code.py
         ``ClaudeCodeRunner`` — wraps the local ``claude`` CLI.
 
 This stub documents the seam; ``build_claude_provider`` returns a callable that
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from .base import Provider, _stub_provider
 
-_RUNNER_REFERENCE = "src/yule_orchestrator/agents/runners/claude_code.py (ClaudeCodeRunner)"
+_RUNNER_REFERENCE = "apps/engineering-agent/src/yule_engineering/agents/runners/claude_code.py (ClaudeCodeRunner)"
 
 
 def build_claude_provider() -> Provider:

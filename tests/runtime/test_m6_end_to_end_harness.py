@@ -46,11 +46,11 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.approval_reply import (
+from yule_engineering.agents.job_queue.approval_reply import (
     ApprovalIntent,
     handle_approval_reply,
 )
-from yule_orchestrator.agents.job_queue.approval_worker import (
+from yule_engineering.agents.job_queue.approval_worker import (
     APPROVAL_KIND_OBSIDIAN_WRITE,
     JOB_TYPE_APPROVAL_POST,
     SERVICE_ID_APPROVAL_WORKER,
@@ -59,8 +59,8 @@ from yule_orchestrator.agents.job_queue.approval_worker import (
     ApprovalRequest,
     ApprovalWorker,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     JOB_TYPE_OBSIDIAN_WRITE,
     NOTE_KIND_KNOWLEDGE,
     SERVICE_ID_OBSIDIAN_WRITER,
@@ -69,12 +69,12 @@ from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
     ObsidianWriteRequest,
     ObsidianWriterWorker,
 )
-from yule_orchestrator.agents.job_queue.research_worker import (
+from yule_engineering.agents.job_queue.research_worker import (
     JOB_TYPE_RESEARCH_COLLECT,
     SERVICE_ID_RESEARCH_WORKER,
     ResearchWorker,
 )
-from yule_orchestrator.agents.job_queue.role_take_worker import (
+from yule_engineering.agents.job_queue.role_take_worker import (
     JOB_TYPE_ROLE_TAKE,
     KIND_OPEN,
     KIND_SYNTHESIS,
@@ -82,8 +82,8 @@ from yule_orchestrator.agents.job_queue.role_take_worker import (
     RoleTakeWorker,
     service_id_for_role,
 )
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 def _run(coro):
@@ -591,7 +591,7 @@ class ChannelMismatchRegressionTests(_HarnessFixture):
     def test_message_outside_approval_channel_does_not_route(self) -> None:
         # Importing here keeps the heavy adapter out of the module
         # load path for the queue-only tests above.
-        from yule_orchestrator.discord.approval.reply_router import (
+        from yule_engineering.discord.approval.reply_router import (
             route_approval_channel_message,
         )
 

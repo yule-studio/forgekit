@@ -9,18 +9,18 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.autonomy_policy import (
+from yule_engineering.agents.lifecycle.autonomy_policy import (
     ACTION_FAILURE_POSTMORTEM_CREATE,
     ACTION_RUNTIME_CODE_CHANGE,
     ACTION_SELF_IMPROVEMENT_PROPOSAL,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement import (
+from yule_engineering.agents.lifecycle.self_improvement import (
     SIGNAL_DUPLICATE_TOPIC_APPROVAL,
     SIGNAL_FAILED_RETRYABLE_PILEUP,
     SIGNAL_REPEATED_USER_COMPLAINT,
     SIGNAL_STALE_HEARTBEAT,
 )
-from yule_orchestrator.agents.lifecycle.self_improvement_seed_detectors import (
+from yule_engineering.agents.lifecycle.self_improvement_seed_detectors import (
     SIGNAL_APPROVAL_NO_MATCHING_REPLY,
     SIGNAL_CODING_CONTINUATION_STALLED,
     SIGNAL_ENGINEERING_WRITE_REPLY_MISMATCH,
@@ -28,7 +28,7 @@ from yule_orchestrator.agents.lifecycle.self_improvement_seed_detectors import (
     SIGNAL_QA_TEST_MISCLASSIFICATION,
     SIGNAL_SUPERVISOR_WATCH_UNKNOWN,
 )
-from yule_orchestrator.agents.lifecycle.tech_lead_triage import (
+from yule_engineering.agents.lifecycle.tech_lead_triage import (
     PROBLEM_KIND_APPROVAL_FLOW,
     PROBLEM_KIND_CLASSIFICATION,
     PROBLEM_KIND_MEMORY_VAULT,

@@ -18,7 +18,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.research.collector import (
+from yule_engineering.agents.research.collector import (
     CollectionMode,
     CollectorConfig,
     CollectorQuery,
@@ -26,7 +26,7 @@ from yule_orchestrator.agents.research.collector import (
     ResearchCollector,
     auto_collect_or_request_more_input,
 )
-from yule_orchestrator.agents.research.pack import (
+from yule_engineering.agents.research.pack import (
     ResearchSource,
     SourceType,
 )
@@ -203,7 +203,7 @@ class SufficiencyLoopTests(unittest.TestCase):
     def test_calls_score_research_sufficiency(self) -> None:
         """Wiring guard: the loop must consult score_research_sufficiency."""
 
-        from yule_orchestrator.agents.research import sufficiency as research_sufficiency
+        from yule_engineering.agents.research import sufficiency as research_sufficiency
 
         collector = _RecordingCollector(
             default=(_result_source(url="https://x", title="x"),)

@@ -12,7 +12,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.lifecycle.self_improvement_seed_detectors import (
+from yule_engineering.agents.lifecycle.self_improvement_seed_detectors import (
     ObservationContext,
     SIGNAL_APPROVAL_NO_MATCHING_REPLY,
     SIGNAL_CODING_CONTINUATION_STALLED,

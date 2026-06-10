@@ -26,13 +26,13 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.git.repo_contract import RepoContract
-from yule_orchestrator.agents.github_workos.issue_auto_create import (
+from yule_engineering.agents.git.repo_contract import RepoContract
+from yule_engineering.agents.github_workos.issue_auto_create import (
     AUDIT_TEMPLATE_FALLBACK,
     build_default_issue_body,
     build_issue_auto_create_plan,
 )
-from yule_orchestrator.agents.github_workos.issue_quality import (
+from yule_engineering.agents.github_workos.issue_quality import (
     INTENT_FEATURE,
     INTENT_FULL_STACK_MVP,
     LABEL_AUTO_CREATED,
@@ -51,7 +51,7 @@ from yule_orchestrator.agents.github_workos.issue_quality import (
     resolve_template_source,
     synthesize_korean_title,
 )
-from yule_orchestrator.agents.github_workos.issue_repair import (
+from yule_engineering.agents.github_workos.issue_repair import (
     IssueRepairOutcome,
     repair_existing_issue,
     repair_outcome_to_audit,

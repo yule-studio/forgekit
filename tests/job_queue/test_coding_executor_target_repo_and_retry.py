@@ -33,12 +33,12 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.coding.authorization import proposal_from_dict
-from yule_orchestrator.agents.coding.job import (
+from yule_engineering.agents.coding.authorization import proposal_from_dict
+from yule_engineering.agents.coding.job import (
     STATUS_READY,
     build_coding_job_from_proposal,
 )
-from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
+from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
     JOB_TYPE_CODING_EXECUTE,
     MARKER_STATE_PENDING_RETRY,
     MARKER_STATE_TERMINAL,
@@ -46,22 +46,22 @@ from yule_orchestrator.agents.job_queue.coding_execute_dispatcher import (
     dispatch_ready_coding_jobs,
     validate_coding_dispatch_marker,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_live import (
+from yule_engineering.agents.job_queue.coding_executor_live import (
     LocalGitWorktreeProvisioner,
     TargetRepoUnavailableError,
     WorktreeProvisionError,
     _default_repo_root_resolver,
 )
-from yule_orchestrator.agents.job_queue.coding_executor_worker import (
+from yule_engineering.agents.job_queue.coding_executor_worker import (
     CodingExecuteRequest,
     CodingExecutorWorker,
     JOB_TYPE_CODING_EXECUTE as _JOB_TYPE,
     REASON_TARGET_REPO_MISSING,
     REASON_WORKTREE_FAILED,
 )
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.state_machine import JobState
-from yule_orchestrator.agents.job_queue.store import JobQueue
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.state_machine import JobState
+from yule_engineering.agents.job_queue.store import JobQueue
 
 
 _REPO = "yule-studio/naver-search-clone"
@@ -370,7 +370,7 @@ class WorktreePhaseReasonTests(unittest.TestCase):
 
         # Synthetic runner that simulates a base sha success then
         # worktree add failure (generic, non-branch-exists).
-        from yule_orchestrator.agents.job_queue.coding_executor_live import (
+        from yule_engineering.agents.job_queue.coding_executor_live import (
             _SubprocessError,
         )
 
@@ -421,7 +421,7 @@ class BranchAlreadyExistsIdempotencyTests(unittest.TestCase):
         """'branch already exists' 류 에러는 ``git worktree add <path>
         <branch>`` (no ``-b``) 로 자동 재시도 — 영원히 같은 에러 반복 안 함."""
 
-        from yule_orchestrator.agents.job_queue.coding_executor_live import (
+        from yule_engineering.agents.job_queue.coding_executor_live import (
             _SubprocessError,
         )
 
@@ -493,7 +493,7 @@ class BranchAlreadyExistsIdempotencyTests(unittest.TestCase):
 
 class TaskLogObsidianRenderTests(unittest.TestCase):
     def test_task_log_render_uses_body_metadata(self) -> None:
-        from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+        from yule_engineering.agents.job_queue.obsidian_writer_worker import (
             NOTE_KIND_TASK_LOG,
             ObsidianWriteRequest,
             default_render_fn,

@@ -28,17 +28,17 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.deliberation import TechLeadOpening
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.obsidian_writer_worker import (
+from yule_engineering.agents.deliberation import TechLeadOpening
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.obsidian_writer_worker import (
     NOTE_KIND_KNOWLEDGE,
     SKIPPED_APPROVAL_REQUIRED,
     ObsidianWriteRequest,
     ObsidianWriterWorker,
 )
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_orchestrator.runtime.fallback import (
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
+from yule_engineering.runtime.fallback import (
     FALLBACK_AUTHORITY_DEGRADED_SYNTHESIS,
     FALLBACK_AUTHORITY_DETERMINISTIC_TEMPLATE,
     REASON_HUMAN_APPROVAL_REQUIRED,
@@ -213,7 +213,7 @@ class PersistFallbackAuditTests(unittest.TestCase):
         )
 
     def test_caps_audit_history_at_max_entries(self) -> None:
-        from yule_orchestrator.runtime.fallback import (
+        from yule_engineering.runtime.fallback import (
             MAX_FALLBACK_AUDIT_ENTRIES,
         )
 

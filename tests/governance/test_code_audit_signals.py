@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.governance.code_audit import (
+from yule_engineering.agents.governance.code_audit import (
     FileSizeAudit,
     FileSizeRow,
     MissingWiringReport,
@@ -22,7 +22,7 @@ from yule_orchestrator.agents.governance.code_audit import (
     VERDICT_SPLIT_NOW,
     VERDICT_SPLIT_PENDING,
 )
-from yule_orchestrator.agents.governance.code_audit_signals import (
+from yule_engineering.agents.governance.code_audit_signals import (
     GOVERNANCE_LEDGER_ROLE,
     SIGNAL_ARCHITECTURE_LARGE_FILE,
     SIGNAL_ARCHITECTURE_MIXED_RESPONSIBILITIES,
@@ -31,7 +31,7 @@ from yule_orchestrator.agents.governance.code_audit_signals import (
     audit_to_signals,
     record_governance_mistakes,
 )
-from yule_orchestrator.agents.learning.mistake_ledger import (
+from yule_engineering.agents.learning.mistake_ledger import (
     BlockerLevel,
     MistakeLedger,
 )
@@ -48,7 +48,7 @@ class AuditToSignalsTests(unittest.TestCase):
             rows=(),
             violations=(
                 FileSizeRow(
-                    path="src/yule_orchestrator/foo.py",
+                    path="apps/engineering-agent/src/yule_engineering/foo.py",
                     loc=1500,
                     verdict=VERDICT_SPLIT_NOW,
                     reason="1500 LOC + 4 responsibilities",
@@ -71,7 +71,7 @@ class AuditToSignalsTests(unittest.TestCase):
         self.assertEqual(sig.evidence["total_count"], 1)
         self.assertEqual(
             sig.evidence["violations"][0]["path"],
-            "src/yule_orchestrator/foo.py",
+            "apps/engineering-agent/src/yule_engineering/foo.py",
         )
 
     def test_emits_mixed_responsibilities_when_pending_files_have_3_plus(self) -> None:
@@ -79,7 +79,7 @@ class AuditToSignalsTests(unittest.TestCase):
             rows=(),
             split_pending=(
                 FileSizeRow(
-                    path="src/yule_orchestrator/big.py",
+                    path="apps/engineering-agent/src/yule_engineering/big.py",
                     loc=1200,
                     verdict=VERDICT_SPLIT_PENDING,
                     reason="deadline 2099-01-01",
@@ -150,7 +150,7 @@ class AuditToSignalsTests(unittest.TestCase):
             rows=(),
             violations=(
                 FileSizeRow(
-                    path="src/yule_orchestrator/foo.py",
+                    path="apps/engineering-agent/src/yule_engineering/foo.py",
                     loc=1500,
                     verdict=VERDICT_SPLIT_NOW,
                     reason="...",
@@ -180,7 +180,7 @@ class RecordGovernanceMistakesTests(unittest.TestCase):
             rows=(),
             violations=(
                 FileSizeRow(
-                    path="src/yule_orchestrator/foo.py",
+                    path="apps/engineering-agent/src/yule_engineering/foo.py",
                     loc=1500,
                     verdict=VERDICT_SPLIT_NOW,
                     reason="...",
@@ -195,7 +195,7 @@ class RecordGovernanceMistakesTests(unittest.TestCase):
         record = records[0]
         self.assertEqual(record.role, GOVERNANCE_LEDGER_ROLE)
         self.assertEqual(record.pattern, SIGNAL_ARCHITECTURE_LARGE_FILE)
-        self.assertEqual(record.signature, "src/yule_orchestrator/foo.py")
+        self.assertEqual(record.signature, "apps/engineering-agent/src/yule_engineering/foo.py")
         self.assertEqual(record.blocker_level, BlockerLevel.WARNING)
 
     def test_escalates_on_repeat(self) -> None:
@@ -204,7 +204,7 @@ class RecordGovernanceMistakesTests(unittest.TestCase):
             rows=(),
             violations=(
                 FileSizeRow(
-                    path="src/yule_orchestrator/foo.py",
+                    path="apps/engineering-agent/src/yule_engineering/foo.py",
                     loc=1500,
                     verdict=VERDICT_SPLIT_NOW,
                     reason="...",

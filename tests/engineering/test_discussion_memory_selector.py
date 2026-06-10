@@ -1,4 +1,4 @@
-"""Tests for ``yule_orchestrator.agents.discussion.memory_selector``."""
+"""Tests for ``yule_engineering.agents.discussion.memory_selector``."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 
-from yule_orchestrator.agents.discussion import (
+from yule_engineering.agents.discussion import (
     ObsidianNoteRef,
     RelevantMemorySelector,
     score_memory_candidate,

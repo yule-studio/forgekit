@@ -31,15 +31,15 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_orchestrator.agents.job_queue.heartbeat import HeartbeatStore
-from yule_orchestrator.agents.job_queue.store import JobQueue
-from yule_orchestrator.runtime import services as svc_module
-from yule_orchestrator.runtime.services import (
+from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+from yule_engineering.agents.job_queue.store import JobQueue
+from yule_engineering.runtime import services as svc_module
+from yule_engineering.runtime.services import (
     ENGINEERING_PROFILE,
     ServiceKind,
     ServiceSpec,
 )
-from yule_orchestrator.runtime.status import (
+from yule_engineering.runtime.status import (
     HEALTH_ALIVE,
     HEALTH_STALE,
     HEALTH_UNKNOWN,

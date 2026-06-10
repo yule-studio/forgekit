@@ -2,7 +2,7 @@
 
 Covers the public API of both nested sub-packages (``calendar`` +
 ``github``), a no-network model round-trip, and old-path shim identity
-(the ``yule_orchestrator.integrations`` modules must be the *same*
+(the ``yule_engineering.integrations`` modules must be the *same*
 objects as ``yule_integrations``). No CalDAV / ``gh`` calls are made.
 """
 
@@ -60,10 +60,10 @@ def test_old_path_shim_identity() -> None:
     import yule_integrations.github.cache as new_gh_cache
     import yule_integrations.github.issues as new_gh_issues
 
-    import yule_orchestrator.integrations.calendar as old_calendar
-    import yule_orchestrator.integrations.calendar.models as old_models
-    import yule_orchestrator.integrations.github.cache as old_gh_cache
-    import yule_orchestrator.integrations.github.issues as old_gh_issues
+    import yule_engineering.integrations.calendar as old_calendar
+    import yule_engineering.integrations.calendar.models as old_models
+    import yule_engineering.integrations.github.cache as old_gh_cache
+    import yule_engineering.integrations.github.issues as old_gh_issues
 
     assert old_models is new_models
     assert old_gh_cache is new_gh_cache
