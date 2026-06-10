@@ -96,11 +96,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "synthesis, open_research",
     },
-    "apps/engineering-agent/src/yule_engineering/agents/job_queue/forum_obsidian_handoff.py": {
-        "deadline": "2026-06-21",
-        "owner": "codwithyc",
-        "axes": "intake, routing, persistence",
-    },
     "apps/discord-gateway/src/yule_discord/commands/__init__.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
@@ -120,11 +115,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
         "axes": "router, formatting",
-    },
-    "apps/engineering-agent/src/yule_engineering/cli/github_workos.py": {
-        "deadline": "2026-06-14",
-        "owner": "codwithyc",
-        "axes": "subcommand per module",
     },
     "apps/engineering-agent/src/yule_engineering/agents/job_queue/obsidian_writer_worker.py": {
         "deadline": "2026-06-14",
