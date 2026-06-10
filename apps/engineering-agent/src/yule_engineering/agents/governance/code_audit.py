@@ -86,11 +86,6 @@ FILE_SIZE_ALLOWLIST: Mapping[str, str] = {
 SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
     # ``runtime/run_service.py`` 는 본 PR 에서 heartbeats, discord_runner,
     # work_order_executor_runner 로 추출 완료 (1387 → 980 LOC, split_now 해소).
-    "apps/engineering-agent/src/yule_engineering/runtime/status.py": {
-        "deadline": "2026-06-21",
-        "owner": "codwithyc",
-        "axes": "builder, renderer, operator_actions, journal",
-    },
     "apps/discord-gateway/src/yule_discord/commands/__init__.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
