@@ -30,104 +30,41 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     Mapping,
     Optional,
     Protocol,
-    Sequence,
     Tuple,
 )
 
-from ..governance.runtime_policy import (
-    BranchPolicyResult,
-    derive_standard_branch_name,
-    validate_branch_name,
-)
+from ..governance.runtime_policy import validate_branch_name
 from .heartbeat import HeartbeatStore
 from .state_machine import JobState
 from .store import Job, JobQueue
-from .pr_merge_continuation import (
-    EXTRA_PR_MERGE_AUDIT,
-    EXTRA_PR_MERGE_STAGE,
-    PostPRAction,
-    decide_post_pr_action,
-)
 from .work_order_coding_continuation import (
     PROGRESS_CODING_BLOCKED,
     PROGRESS_CODING_IN_PROGRESS,
     PROGRESS_DRAFT_PR_OPENED,
-    stamp_progress_marker,
 )
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-
-JOB_TYPE_CODING_EXECUTE: str = "coding_execute"
-SERVICE_ID_CODING_EXECUTOR: str = "eng-coding-executor"
-
-
-# Outcome reasons surfaced via :class:`CodingExecuteOutcome`.
-SKIPPED_DUPLICATE: str = "duplicate_in_flight"
-SKIPPED_CLAIMED: str = "claimed_by_other_worker"
-SKIPPED_VAULT_UNAVAILABLE: str = "worktree_root_unavailable"
-
-REASON_PROTECTED_BRANCH: str = "protected_branch_blocked"
-REASON_BRANCH_POLICY_VIOLATION: str = "branch_policy_violation"
-REASON_FORCE_PUSH_BLOCKED: str = "force_push_blocked"
-REASON_DRY_RUN: str = "dry_run"
-REASON_TEST_FAILED: str = "test_failed"
-REASON_PUSH_FAILED: str = "push_failed"
-REASON_PR_FAILED: str = "draft_pr_failed"
-REASON_EDIT_FAILED: str = "edit_failed"
-REASON_COMMIT_FAILED: str = "commit_failed"
-REASON_NOT_IMPLEMENTED: str = "executor_not_wired_yet"
-REASON_INVALID_REQUEST: str = "invalid_request"
-# P1-B — worktree / target repo specific failures (generic subprocess
-# exit 255 대신 operator 가 즉시 이해 가능한 token 으로 분기).
-REASON_TARGET_REPO_MISSING: str = "target_repo_checkout_missing"
-REASON_WORKTREE_FAILED: str = "worktree_provision_failed"
-# P1-G — repo 가 detectable stack 이 하나도 없어 ``test_failed`` 가
-# 의미 없음. record-only editor + greenfield 조합 이면 sub-reason 에
-# editor capability 정보까지 포함 (e.g.
-# ``bootstrap_required:empty_or_greenfield_repo+editor_record_only_insufficient``).
-REASON_BOOTSTRAP_REQUIRED: str = "bootstrap_required"
-# P1-M F — non-greenfield + record-only editor + ``YULE_CODING_EXECUTOR_
-# PLANNING_ONLY_PR_FORBIDDEN=1`` 일 때. planning-only PR 가 production 까지
-# 반복되는 회귀를 차단하기 위한 honest blocker.
-REASON_NON_GREENFIELD_REAL_EDIT_UNAVAILABLE: str = (
-    "non_greenfield_real_edit_unavailable"
+# Reason classification (constants + branch/test/error classifiers) and
+# progress stamping were split into sibling modules (#73 follow-up).
+# ``import *`` re-exports the reason module's public ``__all__`` so existing
+# importers (``from .coding_executor_worker import REASON_TEST_FAILED`` etc.)
+# keep working unchanged; the private helpers used internally are imported
+# explicitly below.
+from .coding_executor_reason import *  # noqa: F401,F403
+from .coding_executor_reason import (
+    _PROTECTED_BRANCH_NAMES,
+    _short,
+    _tests_passed,
+    suggest_branch as _suggest_branch_fn,
 )
-
-
-_PROTECTED_BRANCH_NAMES: frozenset[str] = frozenset(
-    {"main", "master", "develop", "dev", "prod", "release"}
+from .coding_executor_progress import (
+    stamp_pr_merge_continuation as _stamp_pr_merge_continuation_fn,
+    stamp_progress as _stamp_progress_fn,
 )
-
-
-def is_protected_branch(name: str) -> bool:
-    """Return True for canonically protected branches.
-
-    Mirrors the more conservative subset of
-    :func:`agents.github_workos.branching.is_protected_branch` — the
-    full check includes regex-shaped runtime-managed branches and is
-    deferred to that module when the executor wires through G3.
-    """
-
-    if not name:
-        return True
-    candidate = str(name).strip().lower()
-    if candidate in _PROTECTED_BRANCH_NAMES:
-        return True
-    if candidate.startswith("release/") or candidate.startswith("hotfix/"):
-        return True
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -909,34 +846,9 @@ class CodingExecutorWorker:
     # ------------------------------------------------------------------
 
     def _suggest_branch(self, request: CodingExecuteRequest) -> str:
-        """Return a branch name when caller didn't pass a hint.
+        """Thin delegator — see :func:`coding_executor_reason.suggest_branch`."""
 
-        Default convention: ``agent/<role>/issue-<n>-coding-execute`` —
-        기존 G3 호환. issue 가 있으면 추가로 :func:`derive_standard_branch_name`
-        의 표준 prefix (`feat/`) 로 안전 fallback 도 제공 (request 의
-        metadata['use_standard_prefix'] 가 True 일 때).
-        """
-
-        metadata = request.metadata or {}
-        use_standard = False
-        if isinstance(metadata, Mapping):
-            use_standard = bool(metadata.get("use_standard_prefix"))
-
-        if use_standard and request.issue_number is not None:
-            short = (
-                request.executor_role.split("-", 1)[0]
-                if request.executor_role
-                else "work"
-            )
-            return derive_standard_branch_name(
-                kind="feat",
-                short_purpose=short,
-                issue_number=int(request.issue_number),
-            )
-        if request.issue_number is not None:
-            return f"agent/{request.executor_role}/issue-{int(request.issue_number)}-coding-execute"
-        ts = int((time.time())) % 10_000
-        return f"agent/{request.executor_role}/coding-execute-{ts}"
+        return _suggest_branch_fn(request)
 
     def _stamp_progress(
         self,
@@ -945,43 +857,11 @@ class CodingExecutorWorker:
         marker: str,
         detail: Optional[Mapping[str, Any]] = None,
     ) -> None:
-        """Persist a progress marker on ``session.extra`` — best-effort.
+        """Thin delegator — see :func:`coding_executor_progress.stamp_progress`."""
 
-        Uses :func:`agents.job_queue.work_order_coding_continuation.stamp_progress_marker`
-        which is the SSoT for the 5 progress markers (issue_created /
-        coding_dispatch_queued / coding_in_progress / draft_pr_opened /
-        coding_blocked). Storage failure is swallowed so the executor
-        pipeline never breaks on a session cache hiccup — the queue row
-        result still carries the same audit so #봇-상태 can recover.
-        """
-
-        if not session_id:
-            return
-        try:
-            from ..workflow_state import load_session as _load
-            from ..workflow_state import update_session as _update
-            from dataclasses import replace as _replace
-        except Exception:  # noqa: BLE001 - partial install
-            return
-        try:
-            session = _load(session_id)
-        except Exception:  # noqa: BLE001
-            return
-        if session is None:
-            return
-        try:
-            existing_extra = getattr(session, "extra", None) or {}
-            if not isinstance(existing_extra, Mapping):
-                existing_extra = {}
-            new_extra = stamp_progress_marker(
-                session_extra=existing_extra,
-                marker=marker,
-                detail=dict(detail or {}),
-            )
-            updated = _replace(session, extra=dict(new_extra))
-            _update(updated, now=datetime.now(tz=timezone.utc))
-        except Exception:  # noqa: BLE001
-            pass
+        _stamp_progress_fn(
+            session_id=session_id, marker=marker, detail=detail
+        )
 
     def _stamp_pr_merge_continuation(
         self,
@@ -995,82 +875,18 @@ class CodingExecutorWorker:
         base_branch: str,
         dry_run: bool,
     ) -> None:
-        """P1-L — draft PR 직후 work_mode 분기 stage 를 session.extra 에 stamp.
+        """Thin delegator — see
+        :func:`coding_executor_progress.stamp_pr_merge_continuation`."""
 
-        세션이 없거나 PR 메타가 부족하면 silent skip (caller flow 영향 X).
-        autonomous_merge 분기는 background 머지 루프가 pick, approval_required
-        분기는 background producer 가 approval card 를 올릴 신호.
-        """
-
-        if not session_id or dry_run:
-            return
-        try:
-            from ..workflow_state import load_session as _load
-            from ..workflow_state import update_session as _update
-            from dataclasses import replace as _replace
-        except Exception:  # noqa: BLE001
-            return
-        try:
-            session = _load(session_id)
-        except Exception:  # noqa: BLE001
-            return
-        if session is None:
-            return
-
-        existing_extra = getattr(session, "extra", None) or {}
-        if not isinstance(existing_extra, Mapping):
-            existing_extra = {}
-
-        decision = decide_post_pr_action(
+        _stamp_pr_merge_continuation_fn(
             session_id=session_id,
-            session_extra=existing_extra,
+            job_id=job_id,
             repo_full_name=repo_full_name,
             pr_number=pr_number,
             pr_url=pr_url,
             head_sha=head_sha,
             base_branch=base_branch,
             dry_run=dry_run,
-        )
-        if decision.action == PostPRAction.SKIP:
-            return
-
-        merged_extra = dict(existing_extra)
-        for key, value in decision.extra_updates.items():
-            merged_extra[key] = value
-        audit_entry = {
-            "stage": merged_extra.get(EXTRA_PR_MERGE_STAGE),
-            "action": decision.action.value,
-            "reason": decision.reason,
-            "job_id": job_id,
-            "pr_number": pr_number,
-            "pr_url": pr_url,
-            "head_sha": head_sha,
-            "at": datetime.now(tz=timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%S+00:00"
-            ),
-        }
-        existing_audit = list(merged_extra.get(EXTRA_PR_MERGE_AUDIT) or ())
-        existing_audit.append(audit_entry)
-        merged_extra[EXTRA_PR_MERGE_AUDIT] = existing_audit
-
-        try:
-            updated = _replace(session, extra=merged_extra)
-            _update(updated, now=datetime.now(tz=timezone.utc))
-        except Exception:  # noqa: BLE001
-            return
-
-        # Operator-visible 줄. progress marker 도 한 줄 같이 찍어서 #봇-상태
-        # 가 stage 변화를 timeline 위에서 본다.
-        self._stamp_progress(
-            session_id=session_id,
-            marker="pr_merge_pending",
-            detail={
-                "job_id": job_id,
-                "pr_number": pr_number,
-                "pr_url": pr_url,
-                "work_mode_action": decision.action.value,
-                "reason": decision.reason,
-            },
         )
 
     def _fail(
@@ -1137,29 +953,6 @@ class CodingExecutorWorker:
             pr_url=pr_url,
             test_summary=test_summary,
         )
-
-
-def _tests_passed(summary: Mapping[str, Any]) -> bool:
-    if not isinstance(summary, Mapping):
-        return False
-    if summary.get("dry_run"):
-        return True
-    status = str(summary.get("status") or "").lower()
-    if status in {"ok", "passed", "success"}:
-        return True
-    if status in {"failed", "fail", "error"}:
-        return False
-    # Unknown status — fall back to failures count if present.
-    if "failures" in summary:
-        return summary.get("failures") in (0, "0", "")
-    if "failed" in summary:
-        return summary.get("failed") in (0, "0", "")
-    return False
-
-
-def _short(exc: BaseException) -> str:
-    text = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
-    return f"{type(exc).__name__}: {text}"[:200]
 
 
 __all__ = (
