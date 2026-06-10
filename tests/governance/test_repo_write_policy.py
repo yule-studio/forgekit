@@ -267,8 +267,12 @@ class LiveWiringExistsTests(unittest.TestCase):
     def test_pr_creator_source_references_validators(self) -> None:
         from pathlib import Path
 
+        # P0-185: the draft-PR creator (``GithubAppDraftPRCreator``) was
+        # split out of ``coding_executor_live`` into the sibling push
+        # module during the live-runner/formatting responsibility split.
+        # The governance wiring guard follows the code to its new home.
         src = Path(
-            "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live.py"
+            "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live_push.py"
         ).read_text(encoding="utf-8")
         self.assertIn("enforce_pr_title", src)
         self.assertIn("enforce_issue_anchor", src)
