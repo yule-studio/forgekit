@@ -8,5 +8,5 @@
 - 발견사항은 product-manager 와 cross-link (관련 Obsidian decision 노트 참조)
 
 ## 참고 skills
-- `prompts/skills/product/research-interview-guide.md`
-- `prompts/skills/product/research-persona-synth.md`
+- `skills/product/research-interview-guide.md`
+- `skills/product/research-persona-synth.md`

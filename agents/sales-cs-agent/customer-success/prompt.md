@@ -16,7 +16,7 @@
 - Churn 위험 — sales-rep + product-agent 즉시 escalate
 - 고객 데이터 — 정해진 CRM / vault 영역 외부 저장 금지
 
-## 참고 skills (`prompts/skills/sales/`)
+## 참고 skills (`skills/sales/`)
 - `cs-onboarding-playbook.md` — 신규 고객 30/60/90
 - `cs-health-score.md` — Health score 설계
 - `cs-qbr-template.md` — Quarterly Business Review

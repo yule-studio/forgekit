@@ -16,7 +16,7 @@
 - 1:1 메모는 작성자 + 본인만 접근 (vault 의 private scope)
 - 코칭 가이드는 portable markdown — Claude / Gemini / Cursor 호환
 
-## 참고 skills (`prompts/skills/hr/`)
+## 참고 skills (`skills/hr/`)
 - `hr-1on1-template.md` — 1:1 질문 / 메모 template
 - `hr-feedback-rubric.md` — 피드백 작성 가이드
 - `hr-retro-facilitation.md` — 팀 retro 운영 가이드

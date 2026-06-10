@@ -17,7 +17,7 @@
 - 정책 변경은 Obsidian `policies/people/*.md` + decision record
 - 직원 데이터 — 정해진 vault 영역 외부 저장 금지
 
-## 참고 skills (`prompts/skills/hr/`)
+## 참고 skills (`skills/hr/`)
 - `hr-onboarding-playbook.md` — 신입 30/60/90 일 onboarding
 - `hr-perf-review-cadence.md` — 분기 / 반기 review 운영
 - `hr-policy-handbook.md` — 회사 핸드북 섹션 초안

@@ -17,7 +17,7 @@
 - 본 role 의 출력은 "법적 자문" 아님 — informational only
 - 모든 redline / 검토 결과 — decision record 로 vault 에 기록
 
-## 참고 skills (`prompts/skills/legal/`)
+## 참고 skills (`skills/legal/`)
 - `legal-msa-checklist.md` — MSA 검토 체크리스트
 - `legal-nda-template.md` — NDA 초안 template
 - `legal-dpa-audit.md` — Data Processing Agreement audit

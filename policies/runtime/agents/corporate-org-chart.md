@@ -68,7 +68,7 @@
 1. `agents/<dept>/manifest.json` 작성 (AgentManifest schema 준수)
 2. `agents/<dept>/<role>/manifest.json` 추가
 3. 본 doc 의 매트릭스에 row 추가
-4. (옵션) `prompts/skills/<domain>/` 에 skill `.md` 추가
+4. (옵션) `skills/<domain>/` 에 skill `.md` 추가
 5. governance test (`test_corporate_structure_governance.py`) 가 자동 검증
 
 ## 운영 정책

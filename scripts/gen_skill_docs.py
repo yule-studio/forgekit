@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """F14 skill prompt codegen — gstack `gen-skill-docs.ts` 패턴.
 
-`prompts/skills/*.md.tmpl` + PreambleCache → 최종 합성된 prompt markdown.
+`skills/*.md.tmpl` + PreambleCache → 최종 합성된 prompt markdown.
 CI / manual run 으로 prompt drift 감지 가능.
 
 사용:
@@ -18,13 +18,13 @@ from typing import Mapping, Optional
 
 # repo root 경로 — scripts/ 의 부모
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT / "src"))
+sys.path.insert(0, str(_REPO_ROOT / "apps" / "engineering-agent" / "src"))
 
 from yule_engineering.agents.preamble import PreambleBuilder  # noqa: E402
 
 
-SKILL_TEMPLATES_DIR = _REPO_ROOT / "prompts" / "skills"
-SKILL_OUTPUT_DIR = _REPO_ROOT / "prompts" / "skills" / "generated"
+SKILL_TEMPLATES_DIR = _REPO_ROOT / "skills"
+SKILL_OUTPUT_DIR = _REPO_ROOT / "skills" / "generated"
 
 # 토큰 ceiling — gstack 의 160KB 가드 차용. agent prompt 가 이보다 크면 경고.
 TOKEN_CEILING_BYTES = 160 * 1024  # 160KB
