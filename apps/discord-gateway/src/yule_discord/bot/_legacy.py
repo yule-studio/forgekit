@@ -64,7 +64,7 @@ from yule_engineering.agents.research.loop import (
 )
 from yule_engineering.agents.research.collector import resolve_forum_comment_mode
 from yule_engineering.agents.deliberation import synthesis_to_dict
-from yule_engineering.agents.research.pack import pack_to_dict
+from yule_engineering.agents.research.pack_render import pack_to_dict
 from yule_engineering.agents.research.persistence import persist_research_artifacts
 from yule_engineering.agents.research.profiles import format_research_hints_block
 from ..engineering_team_runtime import kickoff_directive

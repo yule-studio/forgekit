@@ -15,7 +15,7 @@ from ..agents.obsidian.writer import (
     resolve_vault_root,
     write_note,
 )
-from ..agents.research.pack import pack_from_dict
+from ..agents.research.pack_render import pack_from_dict
 from ..agents.workflow_state import load_session
 
 
