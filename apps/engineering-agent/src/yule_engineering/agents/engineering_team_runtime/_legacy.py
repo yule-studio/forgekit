@@ -1770,7 +1770,7 @@ def _load_pack_from_session_extra(session: WorkflowSession) -> Any:
     if not isinstance(raw, dict) or not raw:
         return None
     try:
-        from yule_engineering.agents.research.pack import pack_from_dict
+        from yule_engineering.agents.research.pack_render import pack_from_dict
     except Exception:  # noqa: BLE001
         return None
     try:

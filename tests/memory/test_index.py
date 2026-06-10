@@ -21,8 +21,8 @@ except ModuleNotFoundError:
 from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchSource,
-    pack_to_dict,
 )
+from yule_engineering.agents.research.pack_render import pack_to_dict
 from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
 from yule_memory import (
     MEMORY_DB_ENV,

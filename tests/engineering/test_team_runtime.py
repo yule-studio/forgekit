@@ -14,8 +14,8 @@ from yule_engineering.agents.research.pack import (
     ResearchPack,
     ResearchSource,
     SourceType,
-    pack_to_dict,
 )
+from yule_engineering.agents.research.pack_render import pack_to_dict
 from yule_discord.engineering_team_runtime import (
     PLAYED_ROLES_KEY,
     TEAM_CONVERSATION_KEY,

@@ -55,8 +55,10 @@ from .pack import (
     ResearchSource,
     SourceType,
     extract_urls,  # re-exported so callers don't need to know research_pack
-    make_research_request,
     pack_from_request,
+)
+from .pack_build import (
+    make_research_request,
     source_from_user_message,
 )
 
