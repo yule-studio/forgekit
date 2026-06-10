@@ -96,11 +96,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "synthesis, open_research",
     },
-    "apps/engineering-agent/src/yule_engineering/agents/job_queue/forum_obsidian_handoff.py": {
-        "deadline": "2026-06-21",
-        "owner": "codwithyc",
-        "axes": "intake, routing, persistence",
-    },
     "apps/engineering-agent/src/yule_engineering/agents/obsidian/export.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
