@@ -11,6 +11,15 @@
     "test_priority_review",
     "quality_bar_enforcement"
   ],
+  "council_role": {
+    "default_seats": ["owner", "challenger", "reviewer"],
+    "owner_focus": "acceptance criteria / 회귀 시나리오 / failure-edge case 1차 draft",
+    "challenger_focus": "happy path 편향 / 권한·동시성 누락 / 재현 불가 결함 / 자동화 빠진 수동 케이스",
+    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "backend_handoff", "frontend_handoff"],
+    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "verifies_approval_conditions": true,
+    "design_doc": "../../../docs/engineering-role-council-runtime.md"
+  },
   "plugins_required": [
     "paste-guard",
     "hookify",

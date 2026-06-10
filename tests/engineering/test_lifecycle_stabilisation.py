@@ -131,16 +131,21 @@ class ScenarioA_ResearchLifecycleHappyPathTests(unittest.TestCase):
         # 1. thread_id 저장 (Phase 1 stab)
         self.assertEqual(session.thread_id, 2024)
         # 2. active_research_roles 정확 (5 user-explicit + tech-lead always)
+        # C4 cleanup: storage is canonical (`engineering-agent/<short>`).
+        # Normalise the assertion view to short form for backward-compat
+        # with the legacy expectations.
         active = session.extra.get("active_research_roles") or []
-        self.assertIn("tech-lead", active)
-        self.assertIn("ai-engineer", active)
-        self.assertIn("backend-engineer", active)
-        self.assertIn("qa-engineer", active)
-        self.assertIn("devops-engineer", active)
+        active_short = {role.rsplit("/", 1)[-1] for role in active}
+        self.assertIn("tech-lead", active_short)
+        self.assertIn("ai-engineer", active_short)
+        self.assertIn("backend-engineer", active_short)
+        self.assertIn("qa-engineer", active_short)
+        self.assertIn("devops-engineer", active_short)
         # 3. excluded roles
         excluded = session.extra.get("excluded_research_roles") or []
-        self.assertIn("frontend-engineer", excluded)
-        self.assertIn("product-designer", excluded)
+        excluded_short = {role.rsplit("/", 1)[-1] for role in excluded}
+        self.assertIn("frontend-engineer", excluded_short)
+        self.assertIn("product-designer", excluded_short)
         # 4. work_report 영속화 (status 가 lifecycle 조건 따라 결정)
         self.assertIn("work_report", session.extra)
         wr = session.extra["work_report"]

@@ -19,6 +19,18 @@ from datetime import datetime
 from enum import Enum
 from typing import Mapping, Optional, Sequence
 
+# Re-export council types so review-loop callers can branch on the
+# execution_review decision without depending on agents.council directly.
+# Source of truth: docs/engineering-role-council-runtime.md §6 +
+# agents/council.py.
+from .council import (  # noqa: F401 — re-export
+    ExecutionReviewDecision,
+    ExecutionReview,
+    CIBucketStatus,
+    RoleCouncilRecheck,
+    RoleCouncilRecheckStatus,
+)
+
 
 class ReviewSource(str, Enum):
     GITHUB_PR_REVIEW = "github_pr_review"

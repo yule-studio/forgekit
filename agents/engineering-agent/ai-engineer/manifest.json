@@ -14,6 +14,14 @@
     "evaluation_design",
     "cost_latency_management"
   ],
+  "council_role": {
+    "default_seats": ["owner", "challenger", "reviewer"],
+    "owner_focus": "LLM runner / RAG / memory / prompt 정책 1차 draft + ResearchPack 품질",
+    "challenger_focus": "hallucination / source grounding 누락 / cost·latency 폭증 / evaluation 미정의 / single-provider lock-in",
+    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "backend_handoff"],
+    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "design_doc": "../../../docs/engineering-role-council-runtime.md"
+  },
   "plugins_required": [
     "paste-guard",
     "hookify",

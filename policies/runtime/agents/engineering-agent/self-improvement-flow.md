@@ -116,8 +116,28 @@ retrospective note 는 [memory-policy §4](./memory-policy.md#4-재사용성-hin
 2. **`yule engineer retrospective` CLI** — §3.2. 우선순위 P2.
 3. **memory retrieval boost wiring** — kind=retrospective + canonical/reusable 표식 boost 적용 (memory-policy §4 와 동시 진행). 우선순위 P1.
 
+## 7-bis. RetrospectiveCandidate (council runtime cross-link)
+
+[`docs/engineering-role-council-runtime.md`](../../../../docs/engineering-role-council-runtime.md)
+§6.4 가 `RetrospectiveCandidate` 를 정의한다. 본 self-improvement 정책의
+"§3.1 회고 후보 알림" 의 코드 SSoT 가 된다.
+
+규칙:
+
+- `RetrospectiveCandidate.status = pending` 로만 stamp 된다. 본문 (8 섹션)
+  은 운영자가 명시 명령 (§3.2 후속 milestone `yule engineer retrospective`)
+  으로 promote 했을 때만 작성된다. agent 본문 자율 작성 금지 (§1 / §6).
+- `ExecutionReview.decision = accept_and_close` 든 `reopen_for_rework`
+  든 retrospective candidate 는 동일하게 stamp 된다 — 회고는 "성공 / 실패"
+  와 무관한 **자산**.
+- `RetrospectiveCandidate.source` 는 council 의 어디서 후보가 잡혔는지
+  지정한다 (`council_disagreement` / `ci_failure` / `ok_with_followups` /
+  `postmortem`). retrieval boost (§4.1) 가 source 별로 다를 수 있다 —
+  후속 milestone.
+
 ## 8. 변경 이력
 
 | 일자 | 변경 |
 | --- | --- |
 | 2026-05-08 | 초기 작성 — issue #59 의 Hermes 흡수 결정 D-5 구현물. retrospective note contract / 회고 trigger / 다음 input path / 자율 consolidation 금지 정리 |
+| 2026-05-29 | §7-bis 추가 — engineering-role-council-runtime §6.4 와 cross-link. RetrospectiveCandidate 가 본 정책의 회고 후보 알림 SSoT |

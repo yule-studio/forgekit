@@ -372,6 +372,17 @@ def diagnose_session(session: Optional[Any]) -> SessionStatusReport:
         coding_job_status=coding_job_status,
         coding_executor_role=coding_executor_role,
     )
+    # C3 — append council-specific signals so the operator can see why a
+    # session has not advanced to synthesis. Import inline so this 854-
+    # line module does not pull council deps when the path is unused.
+    try:
+        from .council_status_signals import collect_council_signals
+
+        council_signals = collect_council_signals(extra, intake_completed=True)
+        if council_signals:
+            signals = (*signals, *council_signals)
+    except Exception:  # noqa: BLE001 — best-effort, never block diagnose
+        pass
 
     return SessionStatusReport(
         session_id=_coerce_str(getattr(session, "session_id", None)),

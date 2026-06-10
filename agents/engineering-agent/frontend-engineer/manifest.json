@@ -12,6 +12,14 @@
     "accessibility_review",
     "ui_test_planning"
   ],
+  "council_role": {
+    "default_seats": ["owner", "challenger", "reviewer"],
+    "owner_focus": "component / state / api integration / loading-error-empty 상태 1차 draft",
+    "challenger_focus": "디자인 토큰 우회 / 접근성 회귀 / 권한별 화면 누락 / hydration·번들 비용 / API 가정 오류",
+    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "design_handoff"],
+    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "design_doc": "../../../docs/engineering-role-council-runtime.md"
+  },
   "plugins_required": [
     "paste-guard",
     "hookify",

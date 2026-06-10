@@ -54,6 +54,9 @@
 | `tests/obsidian/` | export path / writer / approval / git / knowledge_writer / work-report kind |
 | `tests/discord/` | bot.py / dispatcher / member_bot 등 Discord 진입부 |
 | `tests/memory/` | retrieval / indexer / search |
+| `tests/agents/` | harness 브리지 (`agents/harness/`: slash-command grant 로더 / compact→vault / 투영 drift-guard, #185) 외 다수 |
+
+> **`agents/harness/` 패키지 (#185)** — 레지스트리 SSoT(`agents/<agent>/{skills,commands,hooks}` + `agents/grants/slash-command-grants.json`)를 Claude Code/Codex harness 아티팩트로 잇는 bridge. `slash_command_grants.py`(grant 로더+검증), `context_compaction.py`(compact→vault 결정형 코어). harness 디렉터리(`.claude/`·`.agents/`·`*-plugin/`)는 `scripts/sync_harness_skills.py` 생성물 — 손 편집 금지. 상세 `docs/agent-slash-commands.md`.
 
 새 테스트는 책임이 가장 좁게 떨어지는 디렉터리에 두세요. lifecycle test (multi-module orchestration) 은 `tests/engineering/test_*_lifecycle.py` 로 명명합니다 (예: `test_work_report_lifecycle.py`).
 

@@ -167,6 +167,32 @@ PR 리뷰 코멘트, GitHub Copilot 코멘트, 외부 에이전트 의견을 다
 
 회신 메시지가 thread에 게시되고 session.progress_notes에 회차 메모가 누적된다.
 
+## Execution Review 와의 관계 (council runtime cross-link)
+
+[`docs/engineering-role-council-runtime.md`](../../../../docs/engineering-role-council-runtime.md)
+§6 이 새 lifecycle stage `execution_review` 를 정의한다. 본 review-loop
+은 그 stage 의 **한 분기**로 위치한다.
+
+```
+execution_review
+├── decision: accept_and_close          ← retrospective candidate 만 stamp
+├── decision: accept_with_followups     ← 새 후속 task brief
+├── decision: reopen_for_rework         ← 같은 council 새 round (round_index +1)
+└── decision: reroute_to_review_loop    ← 본 문서의 record_review_feedback
+```
+
+규칙:
+
+- review-loop 은 **PR 외부 origin** 도 받는다. CI failure / production
+  incident / external auditor 의견 모두 `ReviewSource.EXTERNAL_AGENT` 로
+  들어올 수 있다.
+- `decision = reopen_for_rework` 의 경우 review-loop 을 거치지 않고
+  `role_councils[role]` 에 새 `round_index` 의 결과를 누적한다. 단일
+  executor 원칙은 그대로 — primary_role 한 명만 실행.
+- 본 문서의 `record_review_feedback` 입력 stage 는 이제 `execution_review`
+  substage `review_feedback_routed` 안에서 호출된다. `WorkflowState`
+  자체는 그대로 — `review_cycle` 증가는 같음.
+
 ## 후속 마일스톤
 
 - 피드백 자동 수집: GitHub PR review API / Copilot 코멘트 fetch → ReviewFeedback 변환기 (webhook 또는 polling).

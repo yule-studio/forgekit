@@ -53,6 +53,13 @@ class RequestedAction(str, Enum):
     INVESTIGATE = "investigate"
     HANDOFF = "handoff"
     ACKNOWLEDGE = "acknowledge"
+    # Council-internal verbs — same-role peer review fan-in / cross-role
+    # synthesis fan-out / technical signoff. operator approval (#승인-대기)
+    # 와 분리된다. (engineering role council runtime, docs/engineering-
+    # role-council-runtime.md)
+    PEER_REVIEW = "peer_review"
+    COUNCIL_SYNTHESIS = "council_synthesis"
+    TECH_LEAD_SIGNOFF = "tech_lead_signoff"
 
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -72,6 +79,9 @@ REQUEST_ACTIONS = frozenset(
         RequestedAction.INVESTIGATE,
         RequestedAction.HANDOFF,
         RequestedAction.ACKNOWLEDGE,
+        RequestedAction.PEER_REVIEW,
+        RequestedAction.COUNCIL_SYNTHESIS,
+        RequestedAction.TECH_LEAD_SIGNOFF,
     }
 )
 

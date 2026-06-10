@@ -12,6 +12,15 @@
     "ci_cd_pipeline_authoring",
     "runtime_topology_planning"
   ],
+  "council_role": {
+    "default_seats": ["owner", "challenger", "reviewer"],
+    "owner_focus": "CI/CD / 배포 / env / secret / 관측성 / rollback 1차 draft",
+    "challenger_focus": "deploy 직후 30분 모니터 누락 / secret rotation 사각 / rollback window 부재 / capacity·DLQ 미정의 / supply-chain",
+    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "backend_handoff"],
+    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "secret_and_deploy_actions_stay_operator_approval": true,
+    "design_doc": "../../../docs/engineering-role-council-runtime.md"
+  },
   "plugins_required": [
     "paste-guard",
     "hookify",
