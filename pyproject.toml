@@ -39,4 +39,6 @@ where = [
     "packages/vcs/src",
     "packages/security/src",
     "packages/learning/src",
+    "packages/agent-memory/src",
+    "packages/agent-runtime/src",
 ]
