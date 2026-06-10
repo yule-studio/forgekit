@@ -823,7 +823,7 @@ def _render_role_runtime_preface(
     """
 
     try:
-        from yule_engineering.agents.runtime import (
+        from yule_agent_runtime import (
             RuntimeInput,
             role_policy_for,
             run_runtime_loop,

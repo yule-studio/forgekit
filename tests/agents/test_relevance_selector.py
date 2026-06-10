@@ -21,12 +21,12 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.memory import (
+from yule_agent_memory import (
     MemoryShard,
     RequestContext,
     ShardKind,
 )
-from yule_engineering.agents.memory.relevance_selector import RelevanceSelector
+from yule_agent_memory.relevance_selector import RelevanceSelector
 
 
 def _shard(

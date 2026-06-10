@@ -18,8 +18,8 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.memory import MemoryShard, ShardKind
-from yule_engineering.agents.memory.topic_index import TopicIndex
+from yule_agent_memory import MemoryShard, ShardKind
+from yule_agent_memory.topic_index import TopicIndex
 
 
 def _shard(

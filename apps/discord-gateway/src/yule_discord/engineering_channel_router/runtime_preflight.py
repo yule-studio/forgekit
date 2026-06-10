@@ -45,7 +45,7 @@ from yule_engineering.agents.routing import (
     ACTION_JOIN,
     EngineeringRoutingDecision,
 )
-from yule_engineering.agents.runtime import (
+from yule_agent_runtime import (
     ACTION_APPEND_CONTEXT as RUNTIME_ACTION_APPEND_CONTEXT,
     ACTION_ASK_CLARIFICATION as RUNTIME_ACTION_ASK_CLARIFICATION,
     ACTION_JOIN_SESSION as RUNTIME_ACTION_JOIN_SESSION,
@@ -385,7 +385,7 @@ def _observation_for_runtime(input_: RuntimeInput):
     runtime loop's default observe (keeps the router's import surface
     small)."""
 
-    from yule_engineering.agents.runtime.models import RuntimeObservation
+    from yule_agent_runtime.models import RuntimeObservation
 
     text = input_.message_text or ""
     return RuntimeObservation(

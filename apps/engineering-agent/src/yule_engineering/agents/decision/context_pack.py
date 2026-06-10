@@ -31,7 +31,7 @@ from typing import (
     Tuple,
 )
 
-from ..memory import MemoryPack
+from yule_agent_memory import MemoryPack
 
 
 # ---------------------------------------------------------------------------

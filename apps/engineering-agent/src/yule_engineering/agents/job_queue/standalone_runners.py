@@ -755,7 +755,7 @@ def _build_role_runner_input(
 
 def _safe_role_profile(role: str) -> Mapping[str, Any]:
     try:
-        from ..runtime.policies import role_policy_for
+        from yule_agent_runtime.policies import role_policy_for
     except Exception:  # noqa: BLE001 - partial install fallback
         return {"role": role}
     try:

@@ -9,7 +9,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.agents.runtime.policies import (
+from yule_agent_runtime.policies import (
     RolePolicy,
     all_role_policies,
     role_policy_for,
