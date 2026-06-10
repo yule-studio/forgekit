@@ -61,7 +61,7 @@ class RecordRoleResearchResultTests(_SessionFixture):
     gateway diagnostic can describe each role's pass after the fact."""
 
     def test_ok_result_persists_full_payload(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             ROLE_RESEARCH_STATUS_OK,
             record_role_research_result,
         )
@@ -90,7 +90,7 @@ class RecordRoleResearchResultTests(_SessionFixture):
         self.assertIn("Ingress NGINX 운영 가이드", findings)
 
     def test_failed_result_records_error(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             ROLE_RESEARCH_STATUS_FAILED,
             record_role_research_result,
         )
@@ -114,7 +114,7 @@ class RecordRoleResearchResultTests(_SessionFixture):
         self.assertEqual(record["source_count"], 0)
 
     def test_repeated_result_overwrites_per_role(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             record_role_research_result,
         )
 
@@ -144,7 +144,7 @@ class RecordRoleResearchResultTests(_SessionFixture):
     def test_unknown_session_is_silent(self) -> None:
         # Recorder must never raise — observability must not block the
         # forum post when the session isn't in the cache yet.
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             record_role_research_result,
         )
 
@@ -162,7 +162,7 @@ class AppendRoleActivityEventTests(_SessionFixture):
     status diagnostic consumes — one structured event per turn."""
 
     def test_event_appended_with_timestamp_and_fields(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             ROLE_ACTIVITY_RESEARCH_COMPLETED,
             append_role_activity_event,
         )
@@ -185,7 +185,7 @@ class AppendRoleActivityEventTests(_SessionFixture):
         self.assertIn("timestamp", event)
 
     def test_log_appends_in_order(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             append_role_activity_event,
         )
 
@@ -210,7 +210,7 @@ class RoleResearchFindingsBlockTests(unittest.TestCase):
     """
 
     def test_block_uses_live_record_when_provided(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             _render_role_research_findings_block,
         )
 
@@ -234,7 +234,7 @@ class RoleResearchFindingsBlockTests(unittest.TestCase):
         self.assertIn("Ingress NGINX 운영 가이드", block)
 
     def test_block_falls_back_to_session_extra(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             _render_role_research_findings_block,
         )
 
@@ -258,7 +258,7 @@ class RoleResearchFindingsBlockTests(unittest.TestCase):
         self.assertIn("brave", block)
 
     def test_empty_record_renders_no_new_sources_message(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             _render_role_research_findings_block,
         )
 
@@ -271,7 +271,7 @@ class RoleResearchFindingsBlockTests(unittest.TestCase):
         self.assertIn("새 출처 없음", block or "")
 
     def test_failed_record_surfaces_error(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             _render_role_research_findings_block,
         )
 
@@ -290,7 +290,7 @@ class RoleResearchFindingsBlockTests(unittest.TestCase):
         self.assertIn("tavily timeout", block or "")
 
     def test_no_record_returns_none(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             _render_role_research_findings_block,
         )
 
@@ -323,7 +323,7 @@ class CollectRoleResearchPackPersistsObservabilityTests(_SessionFixture):
     """
 
     def test_collection_persists_record_and_log(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             _collect_role_research_pack,
         )
 

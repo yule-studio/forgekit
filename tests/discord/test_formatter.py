@@ -8,12 +8,12 @@ except ModuleNotFoundError:
 from datetime import date, datetime
 import unittest
 
-from yule_engineering.discord.ui.formatter import (
+from yule_discord.ui.formatter import (
     format_checkpoints_message,
     format_plan_today_message,
     split_discord_message,
 )
-from yule_engineering.planning.models import (
+from yule_planning.models import (
     DailyPlan,
     DailyPlanEnvelope,
     DailyPlanSummary,
@@ -177,7 +177,7 @@ class DiscordFormatterTestCase(unittest.TestCase):
         self.assertTrue(all(len(chunk) <= 200 for chunk in chunks))
 
     def test_format_plan_today_message_preserves_morning_briefing_paragraphs(self) -> None:
-        from yule_engineering.discord.ui.formatter import format_plan_today_message
+        from yule_discord.ui.formatter import format_plan_today_message
         envelope = DailyPlanEnvelope(
             inputs=PlanningInputs(
                 plan_date=date(2026, 4, 22),
@@ -231,7 +231,7 @@ class DiscordFormatterTestCase(unittest.TestCase):
         self.assertIn("첫 문단의 둘째 문장입니다.\n\n둘째 문단의 첫 문장입니다.", message)
 
     def test_format_plan_today_message_with_slot_title_prepends_header(self) -> None:
-        from yule_engineering.discord.ui.formatter import format_plan_today_message
+        from yule_discord.ui.formatter import format_plan_today_message
         envelope = DailyPlanEnvelope(
             inputs=PlanningInputs(
                 plan_date=date(2026, 4, 22),
@@ -277,7 +277,7 @@ class DiscordFormatterTestCase(unittest.TestCase):
         self.assertTrue(message.startswith("**[업무 시작 브리핑]**"))
 
     def test_format_plan_today_message_groups_time_blocks_by_work_boundary(self) -> None:
-        from yule_engineering.discord.ui.formatter import format_plan_today_message
+        from yule_discord.ui.formatter import format_plan_today_message
 
         fixed_schedule = [
             PlanningTimeBlock(
@@ -393,7 +393,7 @@ class DiscordFormatterTestCase(unittest.TestCase):
         self.assertLess(post_work_index, evening_index)
 
     def test_format_plan_today_message_shows_all_blocks_when_no_work_event(self) -> None:
-        from yule_engineering.discord.ui.formatter import format_plan_today_message
+        from yule_discord.ui.formatter import format_plan_today_message
 
         time_block_briefings = [
             PlanningBlockBriefing(

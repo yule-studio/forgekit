@@ -591,7 +591,7 @@ class ChannelMismatchRegressionTests(_HarnessFixture):
     def test_message_outside_approval_channel_does_not_route(self) -> None:
         # Importing here keeps the heavy adapter out of the module
         # load path for the queue-only tests above.
-        from yule_engineering.discord.approval.reply_router import (
+        from yule_discord.approval.reply_router import (
             route_approval_channel_message,
         )
 

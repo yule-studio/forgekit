@@ -34,8 +34,8 @@ except ModuleNotFoundError:
 from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
 from yule_engineering.agents.job_queue.state_machine import JobState
 from yule_engineering.agents.job_queue.store import JobQueue
-from yule_engineering.runtime import services as svc_module
-from yule_engineering.runtime.services import (
+from yule_runtime import services as svc_module
+from yule_runtime.services import (
     ServiceKind,
     ServiceSpec,
 )

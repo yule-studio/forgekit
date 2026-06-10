@@ -43,7 +43,7 @@ from yule_engineering.agents.job_queue.coding_execute_dispatcher import (
 from yule_engineering.agents.job_queue.heartbeat import HeartbeatRecord, HeartbeatStore
 from yule_engineering.agents.job_queue.store import JobQueue
 from yule_engineering.agents.workflow_state import load_session, update_session
-from yule_engineering.runtime.services import ServiceKind
+from yule_runtime.services import ServiceKind
 from yule_engineering.runtime.status import (
     _KIND_TO_JOB_TYPE,
     CodingDispatchSummary,
@@ -198,7 +198,7 @@ class CodingExecutorServiceStatusJobTypeTests(_RuntimeStatusFixture):
         # Stamp a fresh heartbeat for the coding-executor service id so
         # build_runtime_status sees it as ALIVE — same posture as the
         # operator reported (executor up, dispatch missing).
-        from yule_engineering.runtime.services import list_services
+        from yule_runtime.services import list_services
 
         services = list_services()
         coding_specs = [s for s in services if s.kind == ServiceKind.CODING_EXECUTOR]

@@ -13,7 +13,7 @@ from yule_engineering.agents.messaging.dispatcher import (
     TASK_ROLE_SEQUENCE,
     TaskType,
 )
-from yule_engineering.discord.engineering_conversation import (
+from yule_discord.engineering_conversation import (
     _suggest_task_type,
 )
 

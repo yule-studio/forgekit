@@ -24,7 +24,7 @@ except ModuleNotFoundError:
 
 from yule_engineering.agents.job_queue import HeartbeatStore, JobQueue
 from yule_engineering.runtime.run_service import _build_process_job
-from yule_engineering.runtime.services import resolve_service
+from yule_runtime.services import resolve_service
 
 
 class _Fixture(unittest.TestCase):

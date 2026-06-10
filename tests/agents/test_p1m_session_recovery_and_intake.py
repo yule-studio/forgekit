@@ -289,7 +289,7 @@ class ProductionWiringTests(unittest.TestCase):
     def test_pr_merge_reply_routing_helper_exists(self) -> None:
         """approval reply router 가 pr_merge 분기를 갖고 있는지."""
 
-        from yule_engineering.discord.approval.reply_router import (
+        from yule_discord.approval.reply_router import (
             _try_handle_pr_merge_reply,
         )
 

@@ -21,15 +21,15 @@ from yule_engineering.agents.workflow_state import (
     load_session,
     update_session,
 )
-from yule_engineering.integrations.calendar import list_naver_calendar_items
-from yule_engineering.integrations.calendar.models import build_fallback_item_uid
-from yule_engineering.integrations.github.issues import list_open_issues
-from yule_engineering.integrations.github.pulls import list_open_pull_requests
+from yule_integrations.calendar import list_naver_calendar_items
+from yule_integrations.calendar.models import build_fallback_item_uid
+from yule_integrations.github.issues import list_open_issues
+from yule_integrations.github.pulls import list_open_pull_requests
 from yule_engineering.observability import RuntimeStepMetric, save_runtime_metric_run
-from yule_engineering.planning import build_daily_plan, collect_planning_inputs, load_reminder_items, save_daily_plan_snapshot
-from yule_engineering.planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
-from yule_engineering.planning.models import PlanningCheckpoint, PlanningScheduledBriefing
-from yule_engineering.storage import load_json_cache, save_json_cache
+from yule_planning import build_daily_plan, collect_planning_inputs, load_reminder_items, save_daily_plan_snapshot
+from yule_planning.day_profile import DayProfile, DayProfileBriefingSlot, load_day_profile
+from yule_planning.models import PlanningCheckpoint, PlanningScheduledBriefing
+from yule_storage import load_json_cache, save_json_cache
 from ..runtime.checkpoint_state import (
     filter_unresponded_checkpoints,
     save_checkpoint_pending_response,

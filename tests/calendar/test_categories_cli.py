@@ -8,7 +8,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 from yule_engineering.cli.calendar import _build_category_summary
-from yule_engineering.storage import CalendarStateRecord
+from yule_storage import CalendarStateRecord
 
 
 class CalendarCategoriesCliTestCase(unittest.TestCase):

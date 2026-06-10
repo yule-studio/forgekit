@@ -68,7 +68,7 @@ from yule_engineering.agents.workflow_state import (
     load_session,
     save_session,
 )
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringRouteContext,
     route_engineering_message,
 )

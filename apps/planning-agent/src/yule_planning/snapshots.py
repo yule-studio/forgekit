@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
-from yule_engineering.storage import load_json_cache, save_json_cache
+from yule_storage import load_json_cache, save_json_cache
 from .models import DailyPlanEnvelope
 
 DAILY_PLAN_SNAPSHOT_NAMESPACE = "planning-daily-plan-snapshots"

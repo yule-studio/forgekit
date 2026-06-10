@@ -11,7 +11,7 @@ from contextlib import redirect_stderr
 from pathlib import Path
 
 from yule_engineering.cli.discord_up import parse_agent_ids, run_discord_up_command
-from yule_engineering.discord.runtime.supervisor import (
+from yule_discord.runtime.supervisor import (
     BOT_RUNNER_ENGINEERING_GATEWAY,
     BOT_RUNNER_MEMBER,
     BOT_RUNNER_PLANNING,

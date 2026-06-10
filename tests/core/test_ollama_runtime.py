@@ -8,7 +8,7 @@ except ModuleNotFoundError:
 import unittest
 from unittest.mock import patch
 
-from yule_engineering.planning.ollama import (
+from yule_planning.ollama import (
     generate_ollama_text,
     validate_briefing_response,
     validate_conversation_response,
@@ -42,7 +42,7 @@ class OllamaResponseValidatorsTestCase(unittest.TestCase):
 class GenerateOllamaTextRetryTestCase(unittest.TestCase):
     def test_retries_when_validator_reports_violation_and_succeeds_on_retry(self) -> None:
         with patch(
-            "yule_engineering.planning.ollama._ollama_request_once"
+            "yule_planning.ollama._ollama_request_once"
         ) as request_mock:
             request_mock.side_effect = [
                 "잘못된 출력 2026-04-22T09:00:00+09:00",
@@ -64,7 +64,7 @@ class GenerateOllamaTextRetryTestCase(unittest.TestCase):
 
     def test_falls_back_to_secondary_model_when_primary_keeps_failing(self) -> None:
         with patch(
-            "yule_engineering.planning.ollama._ollama_request_once"
+            "yule_planning.ollama._ollama_request_once"
         ) as request_mock:
             request_mock.side_effect = [
                 "잘못된 출력 2026-04-22T09:00:00+09:00",
@@ -89,7 +89,7 @@ class GenerateOllamaTextRetryTestCase(unittest.TestCase):
 
     def test_raises_when_primary_and_fallback_both_fail_due_to_request_errors(self) -> None:
         with patch(
-            "yule_engineering.planning.ollama._ollama_request_once"
+            "yule_planning.ollama._ollama_request_once"
         ) as request_mock:
             request_mock.side_effect = ValueError("Ollama request request failed: boom")
 
@@ -106,7 +106,7 @@ class GenerateOllamaTextRetryTestCase(unittest.TestCase):
 
     def test_does_not_call_fallback_when_validator_passes_on_first_try(self) -> None:
         with patch(
-            "yule_engineering.planning.ollama._ollama_request_once"
+            "yule_planning.ollama._ollama_request_once"
         ) as request_mock:
             request_mock.return_value = "깨끗한 한국어 본문입니다."
 

@@ -19,7 +19,7 @@ from yule_engineering.agents.research.loop import (
     run_research_loop,
 )
 from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_engineering.discord.research_forum import (
+from yule_discord.research_forum import (
     PREFIX_DECISION,
     PREFIX_RESEARCH,
     PREFIX_REFERENCE,

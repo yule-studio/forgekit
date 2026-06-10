@@ -32,7 +32,7 @@ except ModuleNotFoundError:
 from yule_engineering.agents.job_queue.approval_worker import ApprovalWorker
 from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
 from yule_engineering.agents.job_queue.store import JobQueue
-from yule_engineering.discord.forum.message_adapter import (
+from yule_discord.forum.message_adapter import (
     RESPONSE_ROLE_ADDED,
     RESPONSE_ROLE_ALL_TEAM,
     RESPONSE_ROLE_CHANGE_NO_SESSION,
@@ -367,7 +367,7 @@ class KickoffRoutingSummaryTests(unittest.TestCase):
     def test_kickoff_message_includes_routing_summary_when_active_set(
         self,
     ) -> None:
-        from yule_engineering.discord.bot import (
+        from yule_discord.bot import (
             _format_engineering_kickoff_message,
         )
 
@@ -400,7 +400,7 @@ class KickoffRoutingSummaryTests(unittest.TestCase):
     def test_kickoff_message_skips_summary_when_no_role_selection(
         self,
     ) -> None:
-        from yule_engineering.discord.bot import (
+        from yule_discord.bot import (
             _format_engineering_kickoff_message,
         )
 

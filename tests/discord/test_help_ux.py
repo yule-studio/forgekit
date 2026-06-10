@@ -120,8 +120,8 @@ class HelpSlashCommandRegistrationTests(unittest.TestCase):
             for name in ("discord", "discord.ext", "discord.app_commands")
         }
         _install_fake_discord_modules()
-        sys.modules.pop("yule_engineering.discord.commands", None)
-        from yule_engineering.discord import commands as commands_module
+        sys.modules.pop("yule_discord.commands", None)
+        from yule_discord import commands as commands_module
 
         self.commands_module = commands_module
 
@@ -131,7 +131,7 @@ class HelpSlashCommandRegistrationTests(unittest.TestCase):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = previous
-        sys.modules.pop("yule_engineering.discord.commands", None)
+        sys.modules.pop("yule_discord.commands", None)
 
     def test_engineering_role_registers_help_and_engineer_help(self) -> None:
         bot = _CapturingBot()
@@ -195,8 +195,8 @@ class HelpSlashCommandRendersHelpBodyTests(unittest.TestCase):
             for name in ("discord", "discord.ext", "discord.app_commands")
         }
         _install_fake_discord_modules()
-        sys.modules.pop("yule_engineering.discord.commands", None)
-        from yule_engineering.discord import commands as commands_module
+        sys.modules.pop("yule_discord.commands", None)
+        from yule_discord import commands as commands_module
 
         self.commands_module = commands_module
 
@@ -206,10 +206,10 @@ class HelpSlashCommandRendersHelpBodyTests(unittest.TestCase):
                 sys.modules.pop(name, None)
             else:
                 sys.modules[name] = previous
-        sys.modules.pop("yule_engineering.discord.commands", None)
+        sys.modules.pop("yule_discord.commands", None)
 
     def test_help_handler_emits_canonical_help_body(self) -> None:
-        from yule_engineering.discord.engineering.help_surface import (
+        from yule_discord.engineering.help_surface import (
             render_engineer_help_message,
         )
 
@@ -254,7 +254,7 @@ class NaturalLanguageHelpIntentTests(unittest.TestCase):
     """Plain-language help asks resolve to ``GENERAL_ENGINEERING_HELP``."""
 
     def test_help_triggers_detect_general_help(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             GENERAL_ENGINEERING_HELP,
             detect_engineering_intent,
         )
@@ -280,10 +280,10 @@ class NaturalLanguageHelpIntentTests(unittest.TestCase):
                 self.assertEqual(intent.intent_id, GENERAL_ENGINEERING_HELP)
 
     def test_general_help_envelope_renders_canonical_body(self) -> None:
-        from yule_engineering.discord.engineering.help_surface import (
+        from yule_discord.engineering.help_surface import (
             render_engineer_help_message,
         )
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             GENERAL_ENGINEERING_HELP,
             build_engineering_conversation_response,
         )
@@ -306,7 +306,7 @@ class FreeConversationDoesNotForceIntakeTests(unittest.TestCase):
     """Status / help / clarification asks must never set ``ready_to_intake``."""
 
     def test_status_question_resolves_to_status_diagnostic(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             STATUS_DIAGNOSTIC,
             build_engineering_conversation_response,
         )
@@ -317,7 +317,7 @@ class FreeConversationDoesNotForceIntakeTests(unittest.TestCase):
         self.assertIsNone(envelope.intake_prompt)
 
     def test_help_question_never_creates_intake(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             build_engineering_conversation_response,
         )
 
@@ -332,7 +332,7 @@ class SubstantiveRequestStillReachesIntakeTests(unittest.TestCase):
     """Implementation requests must keep their existing TASK_INTAKE_CANDIDATE path."""
 
     def test_repo_implementation_request_resolves_to_intake_candidate(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             TASK_INTAKE_CANDIDATE,
             build_engineering_conversation_response,
         )
@@ -348,7 +348,7 @@ class SubstantiveRequestStillReachesIntakeTests(unittest.TestCase):
         )
 
     def test_explicit_confirmation_still_marks_ready_to_intake(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             CONFIRM_INTAKE,
             build_engineering_conversation_response,
         )
@@ -381,7 +381,7 @@ class ForcedIntakeCopyRegressionTests(unittest.TestCase):
     def test_legacy_bot_no_longer_emits_forced_intake_copy(self) -> None:
         import importlib
 
-        legacy = importlib.import_module("yule_engineering.discord.bot._legacy")
+        legacy = importlib.import_module("yule_discord.bot._legacy")
         source_path = legacy.__file__
         assert source_path  # mypy-style guard
         with open(source_path, encoding="utf-8") as handle:
@@ -391,10 +391,10 @@ class ForcedIntakeCopyRegressionTests(unittest.TestCase):
                 self.assertNotIn(phrase, text)
 
     def test_fallback_outcome_surfaces_help_body_and_softens_intake(self) -> None:
-        from yule_engineering.discord.engineering.help_surface import (
+        from yule_discord.engineering.help_surface import (
             render_engineer_help_short,
         )
-        from yule_engineering.discord.bot._legacy import (
+        from yule_discord.bot._legacy import (
             _build_help_or_intake_fallback,
         )
 
@@ -413,7 +413,7 @@ class ForcedIntakeCopyRegressionTests(unittest.TestCase):
 
 class RejectMessageMentionsConversationalOptionTests(unittest.TestCase):
     def test_reject_message_offers_conversation_and_help(self) -> None:
-        from yule_engineering.discord.commands import (
+        from yule_discord.commands import (
             _format_engineer_reject_message,
         )
 

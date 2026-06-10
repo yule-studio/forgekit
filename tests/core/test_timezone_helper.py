@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.core.timezone import (
+from yule_core.timezone import (
     YULE_TIMEZONE_ENV,
     local_tz,
     local_tz_name,
@@ -77,7 +77,7 @@ class DayProfileBriefingScheduleTimezoneTestCase(unittest.TestCase):
 
     def test_briefing_schedule_uses_yule_timezone(self) -> None:
         from datetime import date
-        from yule_engineering.planning.day_profile import load_day_profile
+        from yule_planning.day_profile import load_day_profile
 
         os.environ[YULE_TIMEZONE_ENV] = "Asia/Seoul"
         profile = load_day_profile()

@@ -1,6 +1,6 @@
 """F16 PR-2 — Discord adapter: enqueue a PR merge approval card.
 
-Mirrors :mod:`yule_engineering.discord.github_workos_adapter` (the
+Mirrors :mod:`yule_discord.github_workos_adapter` (the
 ENGINEERING_WRITE path) but for a different
 :data:`~yule_engineering.agents.job_queue.pr_approval.APPROVAL_KIND_PR_MERGE`.
 

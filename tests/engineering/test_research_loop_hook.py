@@ -22,11 +22,11 @@ from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 try:  # pragma: no cover - environment guard
-    from yule_engineering.discord import bot as bot_module
+    from yule_discord import bot as bot_module
 except Exception as exc:  # noqa: BLE001
     raise unittest.SkipTest(f"discord bot module unavailable: {exc}")
 
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringResearchLoopReport,
 )
 

@@ -9,7 +9,7 @@ import os
 import tempfile
 import unittest
 
-import yule_engineering.discord.commands as discord_commands
+import yule_discord.commands as discord_commands
 from yule_engineering.agents.review_loop import ReviewSeverity, ReviewSource
 
 

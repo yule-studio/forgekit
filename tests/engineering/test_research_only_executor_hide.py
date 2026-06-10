@@ -156,7 +156,7 @@ class ResearchOnlySessionExtraTests(unittest.TestCase):
         reset_role_profile_cache()
 
     def _persist(self, prompt: str) -> dict:
-        from yule_engineering.discord.engineering_channel_router import (
+        from yule_discord.engineering_channel_router import (
             _persist_lifecycle_mode,
         )
 

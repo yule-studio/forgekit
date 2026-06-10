@@ -58,7 +58,7 @@ from yule_engineering.agents.job_queue.coding_executor_worker import (
     WorktreeContext,
     is_protected_branch,
 )
-from yule_engineering.runtime.services import (
+from yule_runtime.services import (
     ENV_CODING_EXECUTOR_AUTOSPAWN,
     build_engineering_profile,
 )

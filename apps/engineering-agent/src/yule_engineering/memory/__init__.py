@@ -1,36 +1,5 @@
-"""Compatibility shim — memory layer now lives in ``yule_memory``.
+"""engineering-agent 잔류 메모리 모듈.
 
-The local-first memory index (SQLite/FTS5 indexer + search + models) was
-extracted into the standalone ``yule-memory`` package so it carries no
-runtime/agent/discord dependencies. This module re-exports the same
-public names so every existing
-``from yule_engineering.memory import ...`` keeps resolving to the
-identical objects.
-
-``retrieval`` stays in this package (not in ``yule_memory``) because it
-depends on ``..agents.deliberation`` — moving it would break the
-dependency rule that ``yule_memory`` must not import agent internals.
+검색/인덱스 코어는 ``yule_memory`` 패키지로 분리됐다. ``retrieval`` 은
+``agents.deliberation`` 에 의존하므로 본 앱 패키지에 남는다.
 """
-
-from yule_memory import (
-    MEMORY_DB_ENV,
-    MemoryDocument,
-    MemoryIndex,
-    MemorySearchResult,
-    open_memory_index,
-    reindex_paths,
-    reindex_workflow_sessions,
-    search,
-)
-
-
-__all__ = [
-    "MEMORY_DB_ENV",
-    "MemoryDocument",
-    "MemoryIndex",
-    "MemorySearchResult",
-    "open_memory_index",
-    "reindex_paths",
-    "reindex_workflow_sessions",
-    "search",
-]

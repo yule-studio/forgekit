@@ -20,7 +20,7 @@ P0-L (#138 followup) decomposition — 6 responsibility-aligned modules:
   * :mod:`.response_formatters` — :func:`build_engineering_conversation_response` main entry + generic surface formatters.
 
 This ``__init__.py`` is the **thin facade** — re-exports the public API so
-``from yule_engineering.discord.engineering_conversation import X`` keeps
+``from yule_discord.engineering_conversation import X`` keeps
 working for the 28 existing import sites without source changes.
 
 How this differs from ``discord/conversation.py`` (planning-agent):

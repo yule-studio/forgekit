@@ -77,13 +77,13 @@ class IntakeClassificationTests(_SmokeFixture):
         """session c5278a9043f2 의 prompt 가 task_type=full-stack-app 으로
         분류되고 executor=backend-engineer 가 선정되는지 확인."""
 
-        from yule_engineering.discord.commands import _run_engineer_intake
+        from yule_discord.commands import _run_engineer_intake
 
         # `_maybe_post_intake_approval_card` 의 production worker 빌드를
         # patch — 실제 Discord REST 호출 우회. enqueue 자체가 일어나는지만
         # 검증.
         with mock.patch(
-            "yule_engineering.discord.commands._maybe_post_intake_approval_card",
+            "yule_discord.commands._maybe_post_intake_approval_card",
             autospec=True,
         ) as patched:
             result = _run_engineer_intake(
@@ -120,10 +120,10 @@ class IntakeClassificationTests(_SmokeFixture):
     def test_explicit_task_type_still_overrides(self) -> None:
         """operator 가 명시한 task_type 은 stack_detector 를 무시."""
 
-        from yule_engineering.discord.commands import _run_engineer_intake
+        from yule_discord.commands import _run_engineer_intake
 
         with mock.patch(
-            "yule_engineering.discord.commands._maybe_post_intake_approval_card",
+            "yule_discord.commands._maybe_post_intake_approval_card",
             autospec=True,
         ):
             result = _run_engineer_intake(
@@ -138,10 +138,10 @@ class IntakeClassificationTests(_SmokeFixture):
     def test_write_requested_false_skips_approval_card(self) -> None:
         """write_requested=False 면 approval card 게시 시도하지 않음."""
 
-        from yule_engineering.discord.commands import _run_engineer_intake
+        from yule_discord.commands import _run_engineer_intake
 
         with mock.patch(
-            "yule_engineering.discord.commands._maybe_post_intake_approval_card",
+            "yule_discord.commands._maybe_post_intake_approval_card",
             autospec=True,
         ) as patched:
             _run_engineer_intake(
@@ -181,10 +181,10 @@ class IntakeApprovalCardEnqueueTests(_SmokeFixture):
             )
 
         with mock.patch(
-            "yule_engineering.discord.integrations.github_workos_adapter.enqueue_github_work_approval",
+            "yule_discord.integrations.github_workos_adapter.enqueue_github_work_approval",
             new=_stub_enqueue,
         ):
-            from yule_engineering.discord.commands import (
+            from yule_discord.commands import (
                 _maybe_post_intake_approval_card,
             )
 

@@ -32,7 +32,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,

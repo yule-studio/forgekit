@@ -19,9 +19,9 @@ try:
 except ModuleNotFoundError:
     Calendar = None  # type: ignore[assignment]
 
-from yule_engineering.integrations.calendar.models import CalendarQueryResult
-from yule_engineering.integrations.calendar.parsing import build_todo
-from yule_engineering.storage.calendar_state import list_calendar_state_records, sync_calendar_query_result
+from yule_integrations.calendar.models import CalendarQueryResult
+from yule_integrations.calendar.parsing import build_todo
+from yule_storage.calendar_state import list_calendar_state_records, sync_calendar_query_result
 
 
 @unittest.skipIf(

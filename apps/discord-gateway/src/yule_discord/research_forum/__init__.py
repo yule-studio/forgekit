@@ -5,7 +5,7 @@ The canonical package moved to
 ``agents → discord`` import cycle. This shim aliases the new package (and
 each of its submodules) under the old discord path so existing
 discord-side importers and tests
-(``from yule_engineering.discord.research_forum import X`` /
+(``from yule_discord.research_forum import X`` /
 ``from ..research_forum import X``) keep working with object identity
 preserved.
 """
@@ -23,7 +23,7 @@ from yule_engineering.agents.research.forum import (  # noqa: F401
 )
 
 # Alias each submodule under the old dotted path so
-# ``import yule_engineering.discord.research_forum.config`` (and
+# ``import yule_discord.research_forum.config`` (and
 # ``is``/reload/monkeypatch against it) resolve to the canonical objects.
 sys.modules[__name__ + ".config"] = _config
 sys.modules[__name__ + ".formatters"] = _formatters

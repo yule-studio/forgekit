@@ -32,7 +32,7 @@ from yule_engineering.agents.workflow_state import (
     WorkflowState,
     save_session,
 )
-from yule_engineering.discord.engineering_team_runtime import (
+from yule_discord.engineering_team_runtime import (
     handle_research_turn_message,
     reset_handled_turns_for_tests,
 )

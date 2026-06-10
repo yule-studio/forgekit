@@ -160,7 +160,7 @@ class SupervisorRendererTests(unittest.TestCase):
 
 class FormatStatusDiagnosticResponseTests(unittest.TestCase):
     def test_format_status_includes_coding_proposal_line(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             format_status_diagnostic_response,
         )
 
@@ -179,7 +179,7 @@ class FormatStatusDiagnosticResponseTests(unittest.TestCase):
         self.assertIn("qa-engineer", text)
 
     def test_format_status_includes_ready_coding_job_line(self) -> None:
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             format_status_diagnostic_response,
         )
 

@@ -28,7 +28,7 @@ import os
 from typing import Any, Mapping, Optional, Tuple
 
 from ..agents.job_queue import HeartbeatStore, JobQueue
-from .services import ServiceSpec
+from yule_runtime.services import ServiceSpec
 
 
 logger = logging.getLogger(__name__)

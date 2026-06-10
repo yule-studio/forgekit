@@ -47,7 +47,7 @@ from yule_engineering.agents.job_queue.github_work_order_executor import (
 from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
 from yule_engineering.agents.job_queue.state_machine import JobState
 from yule_engineering.agents.job_queue.store import JobQueue
-from yule_engineering.runtime.services import (
+from yule_runtime.services import (
     ENGINEERING_PROFILE,
     ServiceKind,
 )

@@ -22,7 +22,7 @@ owns one slice of the gateway orchestration:
                                     + clarification CREATE/JOIN drivers.
 
 This ``__init__.py`` is the **thin facade** — re-exports the public API
-so ``from yule_engineering.discord.engineering_channel_router import X``
+so ``from yule_discord.engineering_channel_router import X``
 keeps working for every external import site (bot.py, commands.py,
 supervisor.py, all test fixtures) without source changes.
 """

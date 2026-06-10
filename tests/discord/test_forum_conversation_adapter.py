@@ -29,7 +29,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.discord.forum.conversation_adapter import (
+from yule_discord.forum.conversation_adapter import (
     ForumFollowupResult,
     RESPONSE_NOTE_RECORDED,
     SKIPPED_HELPER_SUGGESTED_INTAKE,

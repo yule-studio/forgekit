@@ -26,12 +26,12 @@ from yule_engineering.agents.deliberation import (
 )
 from yule_engineering.agents.research.pack import ResearchPack
 from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_engineering.memory import (
+from yule_memory import (
     MEMORY_DB_ENV,
     open_memory_index,
     reindex_paths,
 )
-from yule_engineering.memory.models import (
+from yule_memory.models import (
     SOURCE_OBSIDIAN,
     SOURCE_POLICY,
 )
@@ -223,7 +223,7 @@ class DeliberationRetrievalIntegrationTests(unittest.TestCase):
             captured["ctx"] = ctx
             return None  # let deterministic fallback run
 
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             deliberation_role_turn,
         )
 
@@ -247,7 +247,7 @@ class DeliberationRetrievalIntegrationTests(unittest.TestCase):
             captured["ctx"] = ctx
             return None
 
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             deliberation_role_turn,
         )
 

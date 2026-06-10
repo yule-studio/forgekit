@@ -55,7 +55,7 @@ from ..agents.job_queue.approval_discord_poster import (
     _default_http_post,
     resolve_discord_bot_token,
 )
-from .circuit_breaker import CircuitSnapshot
+from yule_runtime.circuit_breaker import CircuitSnapshot
 from .fallback import FallbackAuditRecord
 from .status import (
     AUTONOMY_OUTCOME_ERROR,

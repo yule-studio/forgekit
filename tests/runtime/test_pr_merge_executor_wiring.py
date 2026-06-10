@@ -223,7 +223,7 @@ class BotHelperParityTests(unittest.TestCase):
     def test_bot_helper_runs_under_same_env_contract(self) -> None:
         """runner helper 와 bot helper 가 동일 env 에서 동일 결과."""
 
-        from yule_engineering.discord.bot._legacy import (
+        from yule_discord.bot._legacy import (
             _build_pr_merge_executor_for_bot,
         )
 

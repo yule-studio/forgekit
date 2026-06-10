@@ -147,7 +147,7 @@ def _load_circuit_snapshots_safe(
     """
 
     try:
-        from .circuit_breaker import (
+        from yule_runtime.circuit_breaker import (
             CircuitBreakerPersistence,
             load_persisted_circuit_snapshots,
         )

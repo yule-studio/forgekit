@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
-from ..core import ContextError, load_env_files
-from ..integrations.calendar import CalendarIntegrationError
-from ..integrations.github.issues import GitHubIssueError
+from yule_core import ContextError, load_env_files
+from yule_integrations.calendar import CalendarIntegrationError
+from yule_integrations.github.issues import GitHubIssueError
 from .calendar import (
     run_calendar_cache_cleanup_command,
     run_calendar_cache_inspect_command,
@@ -1226,7 +1226,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 emit_json=args.json,
             )
         if args.command == "runtime" and args.runtime_command == "up":
-            from ..runtime.subprocess_supervisor import (
+            from yule_runtime.subprocess_supervisor import (
                 build_dry_run_plan,
                 render_dry_run_plan,
                 run_runtime_up,

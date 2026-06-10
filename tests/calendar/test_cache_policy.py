@@ -7,8 +7,8 @@ try:
     import _bootstrap  # noqa: F401
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
-from yule_engineering.integrations.calendar.cache import build_calendar_cache_key, resolve_calendar_cache_ttl_seconds
-from yule_engineering.integrations.calendar.models import CalendarQueryResult, build_fallback_item_uid
+from yule_integrations.calendar.cache import build_calendar_cache_key, resolve_calendar_cache_ttl_seconds
+from yule_integrations.calendar.models import CalendarQueryResult, build_fallback_item_uid
 
 
 class CalendarCachePolicyTestCase(unittest.TestCase):

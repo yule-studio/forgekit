@@ -24,7 +24,7 @@ from yule_engineering.agents.research.pack import (
     pack_to_dict,
 )
 from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_engineering.memory import (
+from yule_memory import (
     MEMORY_DB_ENV,
     MemoryDocument,
     open_memory_index,
@@ -32,8 +32,8 @@ from yule_engineering.memory import (
     reindex_workflow_sessions,
     search,
 )
-from yule_engineering.memory.indexer import _document_from_workflow_session
-from yule_engineering.memory.models import (
+from yule_memory.indexer import _document_from_workflow_session
+from yule_memory.models import (
     SOURCE_OBSIDIAN,
     SOURCE_POLICY,
     SOURCE_WORKFLOW,

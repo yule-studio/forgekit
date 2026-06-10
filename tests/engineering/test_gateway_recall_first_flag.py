@@ -30,7 +30,7 @@ from yule_agent_runtime import (
     COVERAGE_LOW,
     RuntimeRecallResult,
 )
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringRouteContext,
     _attach_recall_coverage,
     _optional_bool_env,

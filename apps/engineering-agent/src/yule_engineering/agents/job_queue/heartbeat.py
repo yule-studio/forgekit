@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence, Tuple
 
-from ...storage._sqlite import SQLITE_WRITE_LOCK
+from yule_storage._sqlite import SQLITE_WRITE_LOCK
 
 
 DEFAULT_HEARTBEAT_INTERVAL_SECONDS: float = 30.0

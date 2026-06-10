@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Sequence
 
-from yule_engineering.planning.models import PlanningCheckpoint
-from yule_engineering.storage import (
+from yule_planning.models import PlanningCheckpoint
+from yule_storage import (
     TaskCompletionEvent,
     load_json_cache,
     record_task_completion_event,

@@ -4,10 +4,10 @@ import re
 from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence
 
-from yule_engineering.core.timezone import now_local
-from yule_engineering.planning.briefings import normalize_paragraph_spacing
-from yule_engineering.planning.models import DailyPlanEnvelope, PlanningCheckpoint, PlanningScheduledBriefing
-from yule_engineering.planning.snapshots import DailyPlanSnapshot
+from yule_core.timezone import now_local
+from yule_planning.briefings import normalize_paragraph_spacing
+from yule_planning.models import DailyPlanEnvelope, PlanningCheckpoint, PlanningScheduledBriefing
+from yule_planning.snapshots import DailyPlanSnapshot
 
 DISCORD_MESSAGE_LIMIT = 1900
 

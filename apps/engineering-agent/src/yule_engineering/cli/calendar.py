@@ -4,15 +4,15 @@ import json
 from datetime import date, datetime
 from typing import Optional
 
-from ..integrations.calendar import (
+from yule_integrations.calendar import (
     CalendarIntegrationError,
     CalendarQueryResult,
     list_naver_calendar_items,
     render_calendar_items,
 )
-from ..integrations.calendar.cache import CALENDAR_CACHE_NAMESPACE, list_calendar_cache_entries
-from ..integrations.calendar.errors import build_calendar_validation_error
-from ..storage import (
+from yule_integrations.calendar.cache import CALENDAR_CACHE_NAMESPACE, list_calendar_cache_entries
+from yule_integrations.calendar.errors import build_calendar_validation_error
+from yule_storage import (
     CalendarStateRecord,
     cleanup_calendar_state_records,
     cleanup_json_cache,

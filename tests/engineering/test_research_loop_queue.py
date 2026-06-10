@@ -23,7 +23,7 @@ from yule_engineering.agents.job_queue import (
     JobQueue,
     JobState,
 )
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringResearchLoopReport,
     _run_research_loop_hook,
 )

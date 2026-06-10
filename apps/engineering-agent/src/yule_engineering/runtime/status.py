@@ -44,7 +44,7 @@ from ..agents.job_queue.heartbeat import (
 )
 from ..agents.job_queue.state_machine import JobState
 from ..agents.job_queue.store import Job, JobQueue
-from .services import ServiceKind, ServiceSpec, list_services
+from yule_runtime.services import ServiceKind, ServiceSpec, list_services
 
 
 # Health labels surfaced in renderer output. String constants so the

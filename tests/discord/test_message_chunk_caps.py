@@ -26,8 +26,8 @@ from yule_engineering.agents.research.pack import (
     ResearchRequest,
     ResearchSource,
 )
-from yule_engineering.discord.ui.formatter import split_discord_message
-from yule_engineering.discord.research_forum import (
+from yule_discord.ui.formatter import split_discord_message
+from yule_discord.research_forum import (
     DISCORD_MESSAGE_REPLY_LIMIT,
     FORUM_STARTER_CONTENT_LIMIT,
     ResearchForumContext,
@@ -306,7 +306,7 @@ class FallbackAndStatusCapTests(unittest.TestCase):
     bypasses the chunker breaks loudly."""
 
     def test_long_fallback_markdown_chunks_under_1900(self) -> None:
-        from yule_engineering.discord.research_forum import (
+        from yule_discord.research_forum import (
             format_thread_markdown_fallback,
         )
 
@@ -341,7 +341,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
 
     def test_team_turn_long_post_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_engineering.discord.member.bot import _post_team_turn
+        from yule_discord.member.bot import _post_team_turn
 
         long_post = "라" * 5000
 
@@ -358,7 +358,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
                 captured.append(content)
 
         # Avoid touching the real session cache from the persistence helper.
-        from yule_engineering.discord.member import bot as member_bot_mod
+        from yule_discord.member import bot as member_bot_mod
 
         original_persist = member_bot_mod._mark_team_turn_persisted
         member_bot_mod._mark_team_turn_persisted = lambda *_a, **_kw: None
@@ -373,7 +373,7 @@ class MemberBotChannelSendCapTests(unittest.TestCase):
 
     def test_research_turn_long_post_is_chunked(self) -> None:
         from types import SimpleNamespace
-        from yule_engineering.discord.member.bot import _post_research_turn
+        from yule_discord.member.bot import _post_research_turn
 
         long_message = "z" * 4500
         outcome = SimpleNamespace(message=long_message)

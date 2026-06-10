@@ -3,8 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from ..core import apply_ca_bundle_fallback
-from ..discord.member.bots import (
+from yule_core import apply_ca_bundle_fallback
+from yule_discord.member.bots import (
     load_member_bot_config,
     render_startup_summary,
     select_profile_for_role,
@@ -44,7 +44,7 @@ def run_discord_member_command(
         print(f"info: {tls_bundle.detail} ({tls_bundle.cafile})", file=sys.stderr)
 
     try:
-        from ..discord.member.bot import run_member_bot
+        from yule_discord.member.bot import run_member_bot
     except ImportError as exc:
         raise ValueError(
             "discord.py is required to run member bots. "

@@ -45,7 +45,7 @@ class GatewayInstallHelperTests(unittest.TestCase):
         # Reset the global dispatcher between tests so failures
         # don't bleed across suites.
         try:
-            from yule_engineering.discord.engineering_team_runtime import (
+            from yule_discord.engineering_team_runtime import (
                 set_role_runner_dispatch,
             )
         except Exception:
@@ -54,7 +54,7 @@ class GatewayInstallHelperTests(unittest.TestCase):
         self.addCleanup(set_role_runner_dispatch, None)
 
     def test_empty_env_install_prints_deterministic_summary(self) -> None:
-        from yule_engineering.discord.bot import (
+        from yule_discord.bot import (
             _install_engineering_role_runner_dispatch_for_gateway,
         )
 
@@ -68,7 +68,7 @@ class GatewayInstallHelperTests(unittest.TestCase):
             output = buf.getvalue()
         self.assertIn("deterministic fallback only", output)
         # Dispatcher actually got registered — pull it back and call.
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             get_role_runner_dispatch,
         )
         from yule_engineering.agents.runners.role_runner import (
@@ -101,7 +101,7 @@ class GatewayInstallHelperTests(unittest.TestCase):
         self.assertTrue(out.used_fallback)
 
     def test_install_failure_does_not_propagate(self) -> None:
-        from yule_engineering.discord.bot import (
+        from yule_discord.bot import (
             _install_engineering_role_runner_dispatch_for_gateway,
         )
 
@@ -122,10 +122,10 @@ class GatewayInstallHelperTests(unittest.TestCase):
         self.assertNotIn("simulated bootstrap failure", output)
 
     def test_idempotent_double_install_uses_latest_env(self) -> None:
-        from yule_engineering.discord.bot import (
+        from yule_discord.bot import (
             _install_engineering_role_runner_dispatch_for_gateway,
         )
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             get_role_runner_dispatch,
         )
 
@@ -159,7 +159,7 @@ class RunServiceInstallHelperTests(unittest.TestCase):
 
     def setUp(self) -> None:
         try:
-            from yule_engineering.discord.engineering_team_runtime import (
+            from yule_discord.engineering_team_runtime import (
                 set_role_runner_dispatch,
             )
         except Exception:
@@ -179,7 +179,7 @@ class RunServiceInstallHelperTests(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("deterministic fallback only", output)
         # Dispatcher is registered — set_role_runner_dispatch fired.
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             get_role_runner_dispatch,
         )
         self.assertIsNotNone(get_role_runner_dispatch())

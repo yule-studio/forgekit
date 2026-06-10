@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime
 from typing import Optional, Sequence
 
-from ..planning import (
+from yule_planning import (
     build_daily_plan,
     collect_planning_inputs,
     load_reminder_items,

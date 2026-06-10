@@ -37,7 +37,7 @@ except ModuleNotFoundError:
 from yule_engineering.agents.job_queue.approval_discord_poster import (
     PostResponse,
 )
-from yule_engineering.runtime.circuit_breaker import (
+from yule_runtime.circuit_breaker import (
     CircuitBreakerPolicy,
     CircuitBreakerRegistry,
 )

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Mapping, Optional, Sequence
 from uuid import uuid4
 
-from ..storage import save_json_cache
+from yule_storage import save_json_cache
 
 RUNTIME_METRIC_NAMESPACE = "runtime-metrics"
 RUNTIME_METRIC_PROVIDER = "yule-orchestrator"

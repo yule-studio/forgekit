@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence
 
 from ..agents.deliberation import RetrievedMemory, assign_citation_ids
-from .models import (
+from yule_memory.models import (
     NOTE_KIND_DECISION,
     NOTE_KIND_REFERENCE,
     NOTE_KIND_RESEARCH,
@@ -22,7 +22,7 @@ from .models import (
     SOURCE_POLICY,
     SOURCE_WORKFLOW,
 )
-from .search import search
+from yule_memory.search import search
 
 
 _log = logging.getLogger(__name__)

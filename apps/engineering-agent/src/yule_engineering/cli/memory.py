@@ -16,13 +16,13 @@ from typing import List, Optional, Sequence
 
 from ..agents.obsidian.writer import ENV_VAULT_PATH, resolve_vault_root
 from ..agents.workflow_state import list_sessions
-from ..memory import (
+from yule_memory import (
     open_memory_index,
     reindex_paths,
     reindex_workflow_sessions,
     search as memory_search,
 )
-from ..memory.models import (
+from yule_memory.models import (
     SOURCE_OBSIDIAN,
     SOURCE_POLICY,
     SOURCE_WORKFLOW,

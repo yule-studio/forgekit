@@ -30,7 +30,7 @@ from yule_engineering.agents.job_queue.pr_approval import (
     PRMergeProposal,
 )
 from yule_engineering.agents.job_queue.store import JobQueue
-from yule_engineering.discord.integrations.pr_merge_adapter import (
+from yule_discord.integrations.pr_merge_adapter import (
     PRMergeApprovalOutcome,
     SKIPPED_DUPLICATE_PR_MERGE_CARD,
     SKIPPED_NO_PROPOSAL,

@@ -13,13 +13,13 @@ from unittest.mock import patch
 # CI 환경(UTC) 에서도 KST 기준 테스트가 동작하도록 강제.
 os.environ.setdefault("YULE_TIMEZONE", "Asia/Seoul")
 
-from yule_engineering.integrations.calendar.models import CalendarEvent, CalendarTodo
-from yule_engineering.integrations.github.issues import GitHubIssue
-from yule_engineering.planning import ReminderItem
-from yule_engineering.planning.briefings import normalize_paragraph_spacing
-from yule_engineering.planning.ollama import _build_prompt
-from yule_engineering.planning.models import PlanningInputs, PlanningSourceStatus
-from yule_engineering.planning.planner import build_daily_plan, select_due_checkpoints
+from yule_integrations.calendar.models import CalendarEvent, CalendarTodo
+from yule_integrations.github.issues import GitHubIssue
+from yule_planning import ReminderItem
+from yule_planning.briefings import normalize_paragraph_spacing
+from yule_planning.ollama import _build_prompt
+from yule_planning.models import PlanningInputs, PlanningSourceStatus
+from yule_planning.planner import build_daily_plan, select_due_checkpoints
 
 
 class PlanningPlannerTestCase(unittest.TestCase):
@@ -107,7 +107,7 @@ class PlanningPlannerTestCase(unittest.TestCase):
         self.assertEqual(plan.morning_briefing_source, "rules")
         self.assertEqual(plan.discord_briefing_source, "rules")
 
-    @patch("yule_engineering.planning.planner.generate_human_briefing")
+    @patch("yule_planning.planner.generate_human_briefing")
     def test_build_daily_plan_can_use_ollama_from_environment(self, generate_human_briefing_mock) -> None:
         generate_human_briefing_mock.return_value = "Ollama가 정리한 아침 브리핑입니다."
         inputs = PlanningInputs(
@@ -519,7 +519,7 @@ class PlanningPlannerTestCase(unittest.TestCase):
         self.assertEqual(normalized, "첫 문장입니다.\n\n두 번째 문장입니다.")
 
     def test_day_profile_briefing_schedule_has_four_slots(self) -> None:
-        from yule_engineering.planning.day_profile import DayProfile
+        from yule_planning.day_profile import DayProfile
         from datetime import time as dt_time
 
         profile = DayProfile(
@@ -541,7 +541,7 @@ class PlanningPlannerTestCase(unittest.TestCase):
         self.assertEqual(send_times, ["05:30", "09:00", "13:00", "18:00"])
 
     def test_load_work_mode_enabled_defaults_to_true(self) -> None:
-        from yule_engineering.planning.day_profile import load_work_mode_enabled
+        from yule_planning.day_profile import load_work_mode_enabled
 
         with patch.dict("os.environ", {}, clear=False):
             os_environ_pop = "YULE_WORK_MODE_ENABLED"
@@ -558,13 +558,13 @@ class PlanningPlannerTestCase(unittest.TestCase):
 
     @patch.dict("os.environ", {"YULE_WORK_MODE_ENABLED": "false"}, clear=False)
     def test_load_work_mode_enabled_recognizes_false_values(self) -> None:
-        from yule_engineering.planning.day_profile import load_work_mode_enabled
+        from yule_planning.day_profile import load_work_mode_enabled
 
         self.assertFalse(load_work_mode_enabled())
 
     @patch.dict("os.environ", {"YULE_WORK_MODE_ENABLED": "off"}, clear=False)
     def test_load_work_mode_enabled_treats_off_as_disabled(self) -> None:
-        from yule_engineering.planning.day_profile import load_work_mode_enabled
+        from yule_planning.day_profile import load_work_mode_enabled
 
         self.assertFalse(load_work_mode_enabled())
 
@@ -796,7 +796,7 @@ class PlanningPlannerTestCase(unittest.TestCase):
             )
 
     def test_flexible_category_todo_is_excluded_from_focus_blocks(self) -> None:
-        from yule_engineering.planning.category_policy import (
+        from yule_planning.category_policy import (
             reset_naver_category_policy_cache,
         )
 
@@ -852,7 +852,7 @@ class PlanningPlannerTestCase(unittest.TestCase):
             reset_naver_category_policy_cache()
 
     def test_build_issue_candidate_boosts_foundation_keywords(self) -> None:
-        from yule_engineering.planning.tasks import _build_issue_candidate
+        from yule_planning.tasks import _build_issue_candidate
 
         foundation_issue = GitHubIssue(
             number=1,
@@ -879,8 +879,8 @@ class PlanningPlannerTestCase(unittest.TestCase):
         self.assertGreater(foundation.priority_score, surface.priority_score)
 
     def test_build_pull_request_candidate_marks_ready_higher_than_draft(self) -> None:
-        from yule_engineering.integrations.github.pulls import GitHubPullRequest
-        from yule_engineering.planning.tasks import _build_pull_request_candidate
+        from yule_integrations.github.pulls import GitHubPullRequest
+        from yule_planning.tasks import _build_pull_request_candidate
 
         ready_pr = GitHubPullRequest(
             number=1,
@@ -911,9 +911,9 @@ class PlanningPlannerTestCase(unittest.TestCase):
         self.assertIn("draft PR", draft_candidate.reasons)
 
     def test_build_task_candidates_includes_pull_requests(self) -> None:
-        from yule_engineering.integrations.github.pulls import GitHubPullRequest
-        from yule_engineering.planning.inputs import build_planning_inputs
-        from yule_engineering.planning.tasks import build_task_candidates
+        from yule_integrations.github.pulls import GitHubPullRequest
+        from yule_planning.inputs import build_planning_inputs
+        from yule_planning.tasks import build_task_candidates
 
         inputs = build_planning_inputs(
             plan_date=date(2026, 4, 29),
@@ -936,10 +936,10 @@ class PlanningPlannerTestCase(unittest.TestCase):
         self.assertIn("pr:acme/app#42", task_ids)
 
     def test_build_issue_candidate_applies_label_policy(self) -> None:
-        from yule_engineering.planning.github_label_policy import (
+        from yule_planning.github_label_policy import (
             reset_github_label_policy_cache,
         )
-        from yule_engineering.planning.tasks import _build_issue_candidate
+        from yule_planning.tasks import _build_issue_candidate
 
         try:
             with patch.dict(
