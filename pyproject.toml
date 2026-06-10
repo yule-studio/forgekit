@@ -36,4 +36,5 @@ where = [
     "packages/storage/src",
     "packages/integrations/src",
     "apps/discord-gateway/src",
+    "packages/vcs/src",
 ]
