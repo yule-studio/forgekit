@@ -47,7 +47,7 @@
 
 📋 무엇이 바뀌나
 - agents/{hr,finance,sales-cs,legal}/ 6 부서 + 19 역할 manifest land
-- prompts/skills/pm/ 14 PM skill 카탈로그
+- skills/pm/ 14 PM skill 카탈로그
 - governance test 18/18 PASS
 
 🎯 영향 범위: docs / agents / tests / prompts

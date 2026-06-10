@@ -3,12 +3,13 @@
 > 이슈 #185 의 사람용 SSoT. 에이전트(부서/역할)가 슬래시 명령어를 쓰고, 스킬·플러그인을
 > 직접 저작하는 구조를 설명한다. 코드/데이터 SSoT 는
 > [`agents/grants/slash-command-grants.json`](../agents/grants/slash-command-grants.json) +
-> 레지스트리 markdown(`agents/<agent>/{skills,commands,hooks}/*.md`).
+> 레지스트리 markdown(스킬은 최상위 `skills/<id>.md` SSoT, command/hook 은 `agents/<agent>/{commands,hooks}/*.md`).
 
 ## 1. 한눈에 — Bridge 구조
 
 ```
-[SSoT]  agents/<agent>/{skills,commands,hooks}/*.md   (ECC v0 markdown, 런타임 비의존)
+[SSoT]  skills/<id>.md  (스킬 단일 SSoT, cross-agent)
+        agents/<agent>/{commands,hooks}/*.md   (ECC v0 markdown, 런타임 비의존)
           + agents/grants/slash-command-grants.json   (agent ↔ 명령어/스킬 grant)
                               │
                    scripts/sync_harness_skills.py      (단방향 생성)
@@ -78,20 +79,20 @@
     (날짜 prefix 금지, F8/#99 컨벤션). **working tree 만 작성, git commit/push 는 별도 L3 게이트.**
 - 정책 근거: [`context-compression.md`](../policies/runtime/agents/engineering-agent/context-compression.md)
   (모델별 비율 threshold, 보호 영역, 절대 금지 영역).
-- 스킬 spec: [`compact-to-vault.md`](../agents/engineering-agent/skills/compact-to-vault.md).
+- 스킬 spec: [`compact-to-vault.md`](../skills/compact-to-vault.md).
 - 자동 트리거는 `YULE_COMPACT_TO_VAULT_ENABLED`(기본 off) 뒤에서만. live `/compact` 토큰 캡처는 후속 PR.
 
 ## 5. 에이전트가 스킬/플러그인을 직접 저작하는 절차
 
 harness 디렉터리는 생성물이므로 직접 만들지 않는다. 항상 **SSoT → 생성** 경로:
 
-1. 레지스트리에 spec 1개 저작 — `agents/<agent>/<layer>/<id>.md` (layer = skill|command|hook, v0 frontmatter).
+1. 레지스트리에 spec 1개 저작 — 스킬은 `skills/<id>.md`(단일 SSoT), command/hook 은 `agents/<agent>/<layer>/<id>.md` (v0 frontmatter).
 2. grant 선언 — `slash-command-grants.json` 의 `custom_skills` 등록 + `grants` 에 부서/autonomy 추가.
 3. 인벤토리 표 갱신 — 해당 layer README 행 추가.
 4. 생성기 재실행 — `python3 scripts/sync_harness_skills.py`.
 5. 회귀 0 확인 — `test_slash_command_grants` + `test_harness_projection`.
 
-이 절차를 캡슐화한 메타 스킬: [`skill-author.md`](../agents/engineering-agent/skills/skill-author.md).
+이 절차를 캡슐화한 메타 스킬: [`skill-author.md`](../skills/skill-author.md).
 
 ## 6. 생성기 사용법
 
@@ -149,5 +150,5 @@ approval_policy = "untrusted"          # 파괴적 작업 전 승인 — 본 레
 
 - 결정 근거 / ECC: [`ecc-foundation.md`](../policies/runtime/agents/engineering-agent/ecc-foundation.md) (A.3 개정)
 - compact 정책: [`context-compression.md`](../policies/runtime/agents/engineering-agent/context-compression.md)
-- 레지스트리 가이드: [`skills/README.md`](../agents/engineering-agent/skills/README.md) · [`commands/README.md`](../agents/engineering-agent/commands/README.md) · [`hooks/README.md`](../agents/engineering-agent/hooks/README.md)
+- 레지스트리 가이드: [`skills/README.md`](../skills/README.md) · [`commands/README.md`](../agents/engineering-agent/commands/README.md) · [`hooks/README.md`](../agents/engineering-agent/hooks/README.md)
 - 자율/승인: [`autonomy-policy.md`](autonomy-policy.md) · [`approval-matrix.md`](approval-matrix.md)
