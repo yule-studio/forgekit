@@ -111,11 +111,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "builder, renderer",
     },
-    "apps/engineering-agent/src/yule_engineering/cli/main.py": {
-        "deadline": "2026-06-07",
-        "owner": "codwithyc",
-        "axes": "subcommand per module",
-    },
     "apps/engineering-agent/src/yule_engineering/agents/obsidian/export.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
