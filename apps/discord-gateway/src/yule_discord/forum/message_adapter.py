@@ -192,9 +192,11 @@ async def route_forum_message(
 
     from yule_engineering.agents.lifecycle.role_selection import (
         ROLE_TECH_LEAD,
+        get_effective_active_roles,
+    )
+    from yule_engineering.agents.lifecycle.role_change import (
         apply_role_change,
         append_role_change_audit,
-        get_effective_active_roles,
         parse_role_change_request,
     )
 

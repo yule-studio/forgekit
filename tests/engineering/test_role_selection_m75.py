@@ -30,13 +30,15 @@ from yule_engineering.agents.lifecycle.role_selection import (
     ROLE_TECH_LEAD,
     SOURCE_USER_ALL_TEAM,
     SOURCE_USER_EXPLICIT,
+    format_routing_summary,
+    get_effective_active_roles,
+    recommend_active_roles,
+)
+from yule_engineering.agents.lifecycle.role_change import (
     RoleChangeRequest,
     apply_role_change,
     append_role_change_audit,
-    format_routing_summary,
-    get_effective_active_roles,
     parse_role_change_request,
-    recommend_active_roles,
 )
 
 
