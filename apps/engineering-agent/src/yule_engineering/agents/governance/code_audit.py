@@ -91,11 +91,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "command group split",
     },
-    "apps/discord-gateway/src/yule_discord/engineering_channel_router/main.py": {
-        "deadline": "2026-06-14",
-        "owner": "codwithyc",
-        "axes": "router, formatting",
-    },
 }
 
 
