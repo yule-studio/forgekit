@@ -96,11 +96,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "owner": "codwithyc",
         "axes": "command group split",
     },
-    "apps/engineering-agent/src/yule_engineering/agents/engineering_conversation/research_bootstrap.py": {
-        "deadline": "2026-06-14",
-        "owner": "codwithyc",
-        "axes": "bootstrap, runtime, formatting",
-    },
     "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live.py": {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
@@ -110,11 +105,6 @@ SPLIT_NOW_PENDING: Mapping[str, Dict[str, str]] = {
         "deadline": "2026-06-14",
         "owner": "codwithyc",
         "axes": "router, formatting",
-    },
-    "apps/engineering-agent/src/yule_engineering/agents/job_queue/obsidian_writer_worker.py": {
-        "deadline": "2026-06-14",
-        "owner": "codwithyc",
-        "axes": "worker loop, persistence, formatting",
     },
     "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_worker.py": {
         "deadline": "2026-06-14",
