@@ -18,16 +18,16 @@ from yule_engineering.agents.research.pack import (
     classify_attachment,
     dedup_urls,
     extract_urls,
-    make_finding,
-    make_research_request,
     merge_packs,
     normalize_attachment_metadata,
     pack_from_discord_message,
     pack_from_request,
-    pack_to_dict,
-    pack_to_markdown,
     pack_with_extra_source,
     pack_with_finding,
+)
+from yule_engineering.agents.research.pack_build import (
+    make_finding,
+    make_research_request,
     source_from_code_context,
     source_from_community_signal,
     source_from_design_reference,
@@ -39,6 +39,10 @@ from yule_engineering.agents.research.pack import (
     source_from_url,
     source_from_user_message,
     source_from_web_result,
+)
+from yule_engineering.agents.research.pack_render import (
+    pack_to_dict,
+    pack_to_markdown,
 )
 
 

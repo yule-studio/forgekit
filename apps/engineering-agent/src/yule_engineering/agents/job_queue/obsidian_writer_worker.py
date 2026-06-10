@@ -758,7 +758,7 @@ def default_render_fn(request: ObsidianWriteRequest) -> Any:
     # primitives are needed (the obsidian export chain pulls a fair
     # amount of code in).
     from ..obsidian.export import render_research_note
-    from ..research.pack import pack_from_dict
+    from ..research.pack_render import pack_from_dict
     from ..workflow_state import load_session
 
     session = load_session(request.session_id)

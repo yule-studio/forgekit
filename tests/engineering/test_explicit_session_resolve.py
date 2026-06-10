@@ -43,7 +43,7 @@ from yule_engineering.agents.obsidian.approval import (
     store_pending_proposal,
 )
 from yule_engineering.agents.research.pack import ResearchPack, ResearchSource
-from yule_engineering.agents.research.pack import pack_to_dict
+from yule_engineering.agents.research.pack_render import pack_to_dict
 from yule_engineering.agents.workflow_state import (
     WorkflowSession,
     WorkflowState,
