@@ -130,6 +130,19 @@ from .reporting import (  # noqa: E402,F401 — local bindings
     _emit_work_report_preview,
     _format_clarification_message,
 )
+# P0-P step 12: router-facing message text (formatting axis) extracted
+# to .router_messages so main.py stays routing/dispatch-only.
+from .router_messages import (  # noqa: E402,F401 — re-export for back-compat
+    BOT_ECHO_CLARIFICATION,
+    CLARIFICATION_CANONICAL_MISSING,
+    DEFENSIVE_INTAKE_NON_ACTIONABLE,
+    DRIVE_CLARIFICATION_NON_ACTIONABLE,
+    ENGINEERING_THREAD_NOT_FOUND,
+    NON_ACTIONABLE_ROUTING_CLARIFICATION,
+    format_intake_failure,
+    format_kickoff_failure,
+    format_kickoff_failure_short,
+)
 # P0-P step 3: dataclasses + type aliases extracted to .models.
 from .models import (  # noqa: E402,F401 — re-export for back-compat
     ConversationFn,
@@ -345,11 +358,7 @@ async def route_engineering_message(
             # routing-command phrase as ``session.prompt``.
             await send_chunks(
                 message.channel,
-                (
-                    "직전 clarification 캐시에서 원문 task 본문을 찾지 못했어요.\n"
-                    "진행할 업무 원문을 다시 알려주세요. \"새 작업으로 진행\"은 "
-                    "routing 명령이라 작업 본문으로 사용할 수 없어요."
-                ),
+                CLARIFICATION_CANONICAL_MISSING,
             )
             _clear_clarification_context(message)
             return EngineeringRouteResult(handled=True)
@@ -480,19 +489,9 @@ async def route_engineering_message(
         and routing_thread_id is None
     ):
         if is_bot_echo_phrase(routing_input):
-            clarification = (
-                "방금 받은 메시지가 gateway가 보낸 안내문 문구와 똑같아서 "
-                "새 작업으로 등록하지 않았어요.\n"
-                "진행할 업무 원문을 다시 알려주세요. 짧은 확인 문구는 "
-                "작업 본문으로 사용할 수 없어요."
-            )
+            clarification = BOT_ECHO_CLARIFICATION
         else:
-            clarification = (
-                "진행할 업무 원문을 다시 알려주세요. \"이대로 진행\" / "
-                "\"새 작업으로 진행\" 같은 확인 문구는 작업 본문으로 "
-                "사용할 수 없어요.\n"
-                "기존 작업을 이어가려면 `기존 세션 <id>`로 답해 주세요."
-            )
+            clarification = NON_ACTIONABLE_ROUTING_CLARIFICATION
         await send_chunks(message.channel, clarification)
         return EngineeringRouteResult(
             handled=True,
@@ -555,11 +554,7 @@ async def route_engineering_message(
         # Fell through (continuation failed to find the matched thread) →
         # treat as an explicit clarification; never silently create a new
         # session when the user signalled they wanted to continue.
-        not_found_message = (
-            "열려 있는 engineering-agent thread를 찾지 못해서 새 작업 세션은 만들지 않았습니다.\n"
-            "이어갈 thread 안에서 다시 말해주시거나, 새 작업으로 시작하려면 `새 작업으로 진행`이라고 답해 주세요."
-        )
-        await send_chunks(message.channel, not_found_message)
+        await send_chunks(message.channel, ENGINEERING_THREAD_NOT_FOUND)
         return EngineeringRouteResult(
             handled=True,
             conversation_message=outcome.content or None,
@@ -596,11 +591,7 @@ async def route_engineering_message(
         )
         if legacy_result is not None:
             return legacy_result
-        not_found_message = (
-            "열려 있는 engineering-agent thread를 찾지 못해서 새 작업 세션은 만들지 않았습니다.\n"
-            "이어갈 thread 안에서 다시 말해주시거나, 새 작업으로 시작하려면 `새 작업으로 진행`이라고 답해 주세요."
-        )
-        await send_chunks(message.channel, not_found_message)
+        await send_chunks(message.channel, ENGINEERING_THREAD_NOT_FOUND)
         return EngineeringRouteResult(
             handled=True,
             conversation_message=outcome.content or None,
@@ -615,12 +606,7 @@ async def route_engineering_message(
     # a bot-echo paste-back. The CREATE branch is the last writer of
     # session.prompt, so this is the final firewall.
     if is_non_actionable_prompt(intake_prompt):
-        clarification = (
-            "진행할 업무 원문을 다시 알려주세요. \"이대로 진행\" / "
-            "\"새 작업으로 진행\" 같은 확인 문구나 gateway 안내문은 "
-            "작업 본문으로 사용할 수 없어요."
-        )
-        await send_chunks(message.channel, clarification)
+        await send_chunks(message.channel, DEFENSIVE_INTAKE_NON_ACTIONABLE)
         return EngineeringRouteResult(
             handled=True,
             conversation_message=outcome.content or None,
@@ -636,8 +622,7 @@ async def route_engineering_message(
         )
         intake = await _maybe_await(intake)
     except Exception as exc:  # noqa: BLE001 - surface error to user, do not crash bot
-        error_text = f"⚠️ engineer intake 실패: {exc}"
-        await send_chunks(message.channel, error_text)
+        await send_chunks(message.channel, format_intake_failure(exc))
         return EngineeringRouteResult(
             handled=True,
             conversation_message=outcome.content or None,
@@ -685,7 +670,7 @@ async def route_engineering_message(
         kickoff_error = str(exc)
         await send_chunks(
             message.channel,
-            f"⚠️ thread kickoff 실패: {exc}\n세션 `{session_id or '?'}` 은 이미 생성되어 있습니다.",
+            format_kickoff_failure(exc, session_id=session_id),
         )
     else:
         if kickoff is not None:
@@ -784,13 +769,7 @@ async def _drive_clarification_create_new_work(
     """
 
     if is_non_actionable_prompt(canonical_prompt):
-        clarification = (
-            "방금 받은 메시지는 routing 명령(`새 작업으로 진행`) 이라 "
-            "session.prompt 로 쓸 수 없고, 직전 clarification 캐시에서도 "
-            "원문 task 본문을 찾지 못했어요. 진행할 업무 원문을 다시 "
-            "알려주세요."
-        )
-        await send_chunks(message.channel, clarification)
+        await send_chunks(message.channel, DRIVE_CLARIFICATION_NON_ACTIONABLE)
         return EngineeringRouteResult(handled=True)
 
     try:
@@ -802,7 +781,7 @@ async def _drive_clarification_create_new_work(
         )
         intake = await _maybe_await(intake)
     except Exception as exc:  # noqa: BLE001 - surface error to user, do not crash bot
-        await send_chunks(message.channel, f"⚠️ engineer intake 실패: {exc}")
+        await send_chunks(message.channel, format_intake_failure(exc))
         return EngineeringRouteResult(handled=True, error=str(exc))
 
     intake_message = getattr(intake, "message", None)
@@ -838,7 +817,7 @@ async def _drive_clarification_create_new_work(
         )
     except Exception as exc:  # noqa: BLE001
         kickoff_error = str(exc)
-        await send_chunks(message.channel, f"⚠️ thread kickoff 실패: {exc}")
+        await send_chunks(message.channel, format_kickoff_failure_short(exc))
         kickoff = None
     if kickoff is not None:
         kickoff_message = getattr(kickoff, "message", None)
@@ -986,26 +965,6 @@ from .obsidian_gate import (  # noqa: E402,F401 — re-export for back-compat
     _run_obsidian_preview_branch,
     _find_session_with_pending_proposal,
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # P0-P step 10: work_report preview + clarification display + outcome coercion
 # extracted to .reporting.
 from .reporting import (  # noqa: E402,F401 — re-export for back-compat
@@ -1014,57 +973,3 @@ from .reporting import (  # noqa: E402,F401 — re-export for back-compat
     _coerce_research_loop_report,
     _coerce_outcome,
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
