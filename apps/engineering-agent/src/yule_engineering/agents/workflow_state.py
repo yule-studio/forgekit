@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Mapping, Optional, Sequence
 
-from ..storage import list_json_cache_entries, load_json_cache, save_json_cache
+from yule_storage import list_json_cache_entries, load_json_cache, save_json_cache
 
 
 WORKFLOW_NAMESPACE = "engineering-agent-workflow"

@@ -82,7 +82,7 @@ class _Fixture(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         """Enqueue a PR_MERGE approval card so the handler can find it."""
 
-        from yule_engineering.discord.integrations.pr_merge_adapter import (
+        from yule_discord.integrations.pr_merge_adapter import (
             enqueue_pr_merge_approval,
         )
         from types import SimpleNamespace

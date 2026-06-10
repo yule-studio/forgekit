@@ -3,9 +3,9 @@
 The same content is rendered by:
 
 - the ``/help`` and ``/engineer_help`` slash commands
-  (:mod:`yule_engineering.discord.commands`),
+  (:mod:`yule_discord.commands`),
 - the natural-language ``GENERAL_ENGINEERING_HELP`` intent inside
-  :mod:`yule_engineering.discord.engineering_conversation`,
+  :mod:`yule_discord.engineering_conversation`,
 - the legacy fallback string in ``bot/_legacy`` when the
   ``engineering_conversation`` module is not importable.
 

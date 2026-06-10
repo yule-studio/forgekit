@@ -7,19 +7,19 @@ import json
 import time
 from typing import Any, Callable, Optional, Sequence, TypeVar
 
-from ..integrations.calendar import list_naver_calendar_items
-from ..integrations.calendar.models import CalendarQueryResult
-from ..integrations.github.issues import list_open_issues
-from ..integrations.github.issues import GitHubIssue
+from yule_integrations.calendar import list_naver_calendar_items
+from yule_integrations.calendar.models import CalendarQueryResult
+from yule_integrations.github.issues import list_open_issues
+from yule_integrations.github.issues import GitHubIssue
 from ..observability import RuntimeStepMetric, save_runtime_metric_run
-from ..planning import (
+from yule_planning import (
     build_daily_plan,
     build_planning_inputs,
     load_reminder_items,
     PlanningSourceStatus,
     save_daily_plan_snapshot,
 )
-from ..storage import local_cache_database_path
+from yule_storage import local_cache_database_path
 
 T = TypeVar("T")
 

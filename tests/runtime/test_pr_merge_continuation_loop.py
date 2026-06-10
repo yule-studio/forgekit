@@ -139,7 +139,7 @@ class StartupSweepTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         import os
-        from yule_engineering import storage as _storage
+        import yule_storage as _storage
 
         self._old_root = getattr(_storage, "_CACHE_ROOT_OVERRIDE", None)
         os.environ["YULE_AGENT_CACHE_DIR"] = self._tmp.name
@@ -318,7 +318,7 @@ class LiveExecutorWiringTests(unittest.TestCase):
     def test_builder_returns_none_when_env_unset(self) -> None:
         import os
 
-        from yule_engineering.discord.bot._legacy import (
+        from yule_discord.bot._legacy import (
             _build_pr_merge_executor_for_bot,
         )
 
@@ -333,7 +333,7 @@ class LiveExecutorWiringTests(unittest.TestCase):
     def test_runner_helper_matches_bot_helper(self) -> None:
         """runner 와 bot wiring 이 동일 env contract 를 쓰는지 보장."""
 
-        from yule_engineering.discord.bot import _legacy as bot_legacy
+        from yule_discord.bot import _legacy as bot_legacy
         from yule_engineering.runtime import (
             coding_executor_runner as runner,
         )

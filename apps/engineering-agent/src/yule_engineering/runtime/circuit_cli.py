@@ -23,11 +23,11 @@ import sys
 from pathlib import Path
 from typing import Any, Optional
 
-from .circuit_breaker import (
+from yule_runtime.circuit_breaker import (
     CircuitBreakerPersistence,
     CircuitBreakerRegistry,
 )
-from .services import resolve_service
+from yule_runtime.services import resolve_service
 
 
 # Exit codes — match the rest of the runtime CLI surface.

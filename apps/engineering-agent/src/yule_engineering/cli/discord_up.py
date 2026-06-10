@@ -1,6 +1,6 @@
 """``yule discord up`` CLI entry point — dev / single-host launcher.
 
-Composes :mod:`yule_engineering.discord.runtime.supervisor` with stdout output.
+Composes :mod:`yule_discord.runtime.supervisor` with stdout output.
 The supervisor builds the launch inventory and spawns the bots; this
 module just handles CLI args, prints the summary, and surfaces a
 non-zero exit code when nothing actually started.
@@ -19,8 +19,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Sequence
 
-from ..core import apply_ca_bundle_fallback
-from ..discord.runtime.supervisor import (
+from yule_core import apply_ca_bundle_fallback
+from yule_discord.runtime.supervisor import (
     ENGINEERING_AGENT_FAMILY,
     SupervisorInventory,
     build_inventory,

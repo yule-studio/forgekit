@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from ..core.context_loader import load_agent_context, render_context
+from yule_core.context_loader import load_agent_context, render_context
 
 
 def run_context_command(repo_root: Path, agent_id: str, output: Optional[str]) -> int:

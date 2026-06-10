@@ -40,7 +40,7 @@ from yule_engineering.agents.job_queue.github_work_order import (
     GitHubWorkOrderProposal,
     dispatch_github_work_order,
 )
-from yule_engineering.discord.integrations.github_workos_adapter import (
+from yule_discord.integrations.github_workos_adapter import (
     _minimal_repo_contract_from_repo,
     build_github_work_order_proposal,
     handle_github_work_approval_reply,

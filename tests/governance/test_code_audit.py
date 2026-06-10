@@ -114,7 +114,7 @@ class AuditOrchestratorFileSizesTests(unittest.TestCase):
         multi_resp_extra = (
             "def route_engineering_message(msg):\n    return None\n"
             "def render_runtime_status(s):\n    save_session(s)\n"
-            "from yule_engineering.discord.bot import build_engineering_gateway_bot\n"
+            "from yule_discord.bot import build_engineering_gateway_bot\n"
         )
         _write(
             base / "huge_multi.py",

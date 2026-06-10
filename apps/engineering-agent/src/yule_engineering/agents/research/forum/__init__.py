@@ -10,7 +10,7 @@ responsibility-aligned modules per the audit at
   * :mod:`.posting`     — Discord async create/post layer + outcomes.
 
 This ``__init__.py`` is the thin facade — re-exports the public API so
-``from yule_engineering.discord.research_forum import X`` keeps
+``from yule_discord.research_forum import X`` keeps
 working for every external import site (bot.py + tests) without source
 changes.
 """

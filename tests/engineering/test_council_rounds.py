@@ -60,7 +60,7 @@ from yule_engineering.agents.lifecycle.council_substage import (
     SUBSTAGE_COUNCIL_READY_FOR_SYNTHESIS,
     SUBSTAGE_COUNCIL_ROUND_COMPLETE,
 )
-from yule_engineering.discord.engineering_channel_router.council_flow import (
+from yule_discord.engineering_channel_router.council_flow import (
     advance_council_for_role,
     maybe_bootstrap_council,
 )

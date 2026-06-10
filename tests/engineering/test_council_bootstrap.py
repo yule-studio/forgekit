@@ -438,7 +438,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_runs_when_active_roles_present(self) -> None:
-        from yule_engineering.discord.engineering_channel_router.council_flow import (
+        from yule_discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 
@@ -453,7 +453,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_no_op_when_session_is_none(self) -> None:
-        from yule_engineering.discord.engineering_channel_router.council_flow import (
+        from yule_discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 
@@ -461,7 +461,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_falls_back_to_tech_lead_when_no_active_roles(self) -> None:
-        from yule_engineering.discord.engineering_channel_router.council_flow import (
+        from yule_discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 
@@ -475,7 +475,7 @@ class CouncilBootstrapTests(unittest.TestCase):
 
 
     def test_router_glue_skips_when_already_bootstrapped(self) -> None:
-        from yule_engineering.discord.engineering_channel_router.council_flow import (
+        from yule_discord.engineering_channel_router.council_flow import (
             maybe_bootstrap_council,
         )
 

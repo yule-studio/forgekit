@@ -26,7 +26,7 @@ from typing import Optional
 
 from ..agents.job_queue import HeartbeatStore
 from .heartbeats import heartbeat_loop, record_graceful_disable
-from .services import ServiceSpec
+from yule_runtime.services import ServiceSpec
 
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ async def run_discord_gateway(
     killed it).
     """
 
-    from ..discord.bot import (
+    from yule_discord.bot import (
         build_engineering_gateway_bot,
         run_engineering_gateway_until_shutdown,
     )
@@ -155,8 +155,8 @@ async def run_discord_member_bot(
         )
         return EXIT_UNKNOWN_SERVICE
 
-    from ..discord.member.bot import run_member_bot_until_shutdown
-    from ..discord.member.bots import (
+    from yule_discord.member.bot import run_member_bot_until_shutdown
+    from yule_discord.member.bots import (
         env_key_for,
         looks_like_real_discord_token,
         MemberBotProfile,

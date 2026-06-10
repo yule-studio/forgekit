@@ -17,7 +17,7 @@ from yule_engineering.agents.research.pack import (
     ResearchSource,
     pack_from_discord_message,
 )
-from yule_engineering.discord.research_forum import (
+from yule_discord.research_forum import (
     ALL_PREFIXES,
     DISCORD_MESSAGE_CONTENT_LIMIT,
     DISCORD_MESSAGE_REPLY_LIMIT,
@@ -513,7 +513,7 @@ class CreateResearchPostCollectionTestCase(unittest.TestCase):
             PROVIDER_MOCK,
             auto_collect_or_request_more_input,
         )
-        from yule_engineering.discord.research_forum import (
+        from yule_discord.research_forum import (
             ResearchForumContext,
             create_research_post,
         )
@@ -554,7 +554,7 @@ class CreateResearchPostCollectionTestCase(unittest.TestCase):
         self.assertIn("1차 자료 정리", captured.get("content", ""))
 
 
-from yule_engineering.discord.research_forum import derive_research_topic  # noqa: E402
+from yule_discord.research_forum import derive_research_topic  # noqa: E402
 
 
 class DeriveResearchTopicTests(unittest.TestCase):

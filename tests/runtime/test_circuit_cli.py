@@ -17,7 +17,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 from yule_engineering.cli.main import main as cli_main
-from yule_engineering.runtime.circuit_breaker import (
+from yule_runtime.circuit_breaker import (
     CircuitBreakerPersistence,
 )
 

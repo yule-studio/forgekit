@@ -80,7 +80,7 @@ from .heartbeats import (
     heartbeat_loop as _heartbeat_loop_impl,
     record_graceful_disable as _record_graceful_disable_impl,
 )
-from .services import ServiceKind, ServiceSpec, resolve_service
+from yule_runtime.services import ServiceKind, ServiceSpec, resolve_service
 from .work_order_executor_runner import (
     maybe_build_live_github_client as _maybe_build_live_github_client_impl,
     run_github_work_order_executor as _run_github_work_order_executor_impl,
@@ -587,7 +587,7 @@ def _build_supervisor_status_post(
     async def _post_once() -> None:
         # Lazy imports keep the supervisor branch importable when
         # status posting is off (no Discord deps loaded).
-        from .circuit_breaker import load_persisted_circuit_snapshots
+        from yule_runtime.circuit_breaker import load_persisted_circuit_snapshots
         from .status import build_runtime_status, render_runtime_status_compact
         from .status_poster import (
             collect_recent_completion_funnel,

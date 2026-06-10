@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence
 
-from yule_engineering.integrations.calendar import CalendarIntegrationError, list_naver_calendar_items
-from yule_engineering.integrations.calendar.models import CalendarEvent, CalendarQueryResult, CalendarTodo
-from yule_engineering.integrations.github.issues import GitHubIssue, GitHubIssueError, list_open_issues
-from yule_engineering.integrations.github.pulls import GitHubPullRequest, list_open_pull_requests
-from yule_engineering.storage import list_calendar_state_records
+from yule_integrations.calendar import CalendarIntegrationError, list_naver_calendar_items
+from yule_integrations.calendar.models import CalendarEvent, CalendarQueryResult, CalendarTodo
+from yule_integrations.github.issues import GitHubIssue, GitHubIssueError, list_open_issues
+from yule_integrations.github.pulls import GitHubPullRequest, list_open_pull_requests
+from yule_storage import list_calendar_state_records
 from .models import PlanningInputs, PlanningSourceStatus, ReminderItem
 
 
@@ -244,7 +244,7 @@ def build_planning_inputs(
     github_pull_requests: Optional[Sequence[GitHubPullRequest]] = None,
     reminders: Optional[Sequence[ReminderItem]] = None,
 ) -> PlanningInputs:
-    from yule_engineering.core import local_tz_name
+    from yule_core import local_tz_name
 
     resolved_timezone = timezone or local_tz_name()
     return PlanningInputs(

@@ -46,7 +46,7 @@ from yule_engineering.agents.research.pack import (
     pack_from_discord_message,
 )
 from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_engineering.discord.engineering_team_runtime import (
+from yule_discord.engineering_team_runtime import (
     DeliberationLoopResult,
     DeliberationTurnRecord,
     deliberation_role_sequence,
@@ -1463,11 +1463,11 @@ class SynthesizeThreadPipesMemoryTestCase(unittest.TestCase):
             return TechLeadSynthesis(consensus="stub", todos=())
 
         with patch(
-            "yule_engineering.discord.engineering_team_runtime._legacy."
+            "yule_discord.engineering_team_runtime._legacy."
             "_retrieve_memory_for_role",
             side_effect=stub_retrieve,
         ), patch(
-            "yule_engineering.discord.engineering_team_runtime._legacy.synthesize",
+            "yule_discord.engineering_team_runtime._legacy.synthesize",
             side_effect=fake_synthesize,
         ):
             synthesize_thread(session, role_takes=())

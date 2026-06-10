@@ -45,7 +45,7 @@ def _ensure_fake_discord_module() -> None:
 
 _ensure_fake_discord_module()
 
-from yule_engineering.discord.bot import (  # noqa: E402
+from yule_discord.bot import (  # noqa: E402
     run_engineering_gateway_until_shutdown,
 )
 

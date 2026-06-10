@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple
 
-from ...storage._sqlite import SQLITE_WRITE_LOCK
+from yule_storage._sqlite import SQLITE_WRITE_LOCK
 from .state_machine import JobState, validate_transition
 
 

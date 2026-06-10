@@ -55,7 +55,7 @@ from yule_engineering.agents.job_queue.obsidian_writer_worker import (
 )
 from yule_engineering.agents.job_queue.state_machine import JobState
 from yule_engineering.agents.job_queue.store import JobQueue
-from yule_engineering.discord.approval.reply_router import (
+from yule_discord.approval.reply_router import (
     RESPONSE_ENGINEERING_APPROVED,
     RESPONSE_ENGINEERING_APPROVED_DUPLICATE,
     RESPONSE_ENGINEERING_REJECTED,

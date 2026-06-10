@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.planning.models import (
+from yule_planning.models import (
     DailyPlan,
     DailyPlanEnvelope,
     DailyPlanSummary,
@@ -18,7 +18,7 @@ from yule_engineering.planning.models import (
     PlanningScheduledBriefing,
     PlanningTaskCandidate,
 )
-from yule_engineering.planning.snapshots import load_daily_plan_snapshot, save_daily_plan_snapshot
+from yule_planning.snapshots import load_daily_plan_snapshot, save_daily_plan_snapshot
 
 
 class PlanningSnapshotsTestCase(unittest.TestCase):

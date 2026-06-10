@@ -14,7 +14,7 @@ from unittest.mock import patch
 # CI 환경(UTC) 에서도 KST 기준 테스트가 동작하도록 강제. local 머신에 영향 없음.
 os.environ.setdefault("YULE_TIMEZONE", "Asia/Seoul")
 
-from yule_engineering.discord.bot import (
+from yule_discord.bot import (
     _collect_due_daily_preparation_steps,
     _daily_preparation_schedule_for,
     _next_daily_preparation_runs,
@@ -22,8 +22,8 @@ from yule_engineering.discord.bot import (
     _resolve_messageable_channel,
     _startup_messages,
 )
-from yule_engineering.discord.config import DiscordBotConfig
-from yule_engineering.planning.day_profile import DayProfile
+from yule_discord.config import DiscordBotConfig
+from yule_planning.day_profile import DayProfile
 
 
 class DiscordScheduleTestCase(unittest.TestCase):

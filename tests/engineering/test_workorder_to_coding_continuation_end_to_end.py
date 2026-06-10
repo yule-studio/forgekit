@@ -55,7 +55,7 @@ from yule_engineering.agents.job_queue.work_order_coding_continuation import (
     SESSION_EXTRA_CODING_JOB_KEY,
     SESSION_EXTRA_PROGRESS_KEY,
 )
-from yule_engineering.discord.integrations.github_workos_adapter import (
+from yule_discord.integrations.github_workos_adapter import (
     enqueue_github_work_approval,
     handle_github_work_approval_reply,
 )

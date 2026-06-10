@@ -4,7 +4,7 @@ import re
 from datetime import date, datetime
 from typing import Optional, Sequence
 
-from yule_engineering.integrations.calendar.models import build_fallback_item_uid
+from yule_integrations.calendar.models import build_fallback_item_uid
 from .day_profile import DayProfile
 from .models import (
     DailyPlanEnvelope,

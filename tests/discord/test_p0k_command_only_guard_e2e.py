@@ -25,19 +25,19 @@ from yule_engineering.agents.routing import (
     is_command_only_prompt,
     is_non_actionable_prompt,
 )
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     _research_loop_blocked_by_command_only,
 )
-from yule_engineering.discord.engineering_conversation import (
+from yule_discord.engineering_conversation import (
     APPROVAL_ACTION,
     CONFIRM_INTAKE,
     TASK_INTAKE_CANDIDATE,
     build_engineering_conversation_response,
 )
-from yule_engineering.discord.forum.message_adapter import (
+from yule_discord.forum.message_adapter import (
     _resolve_session_for_forum_thread,
 )
-from yule_engineering.discord.research_forum import (
+from yule_discord.research_forum import (
     derive_research_topic,
 )
 
@@ -476,7 +476,7 @@ class P0N5MessageActionConsistencyAuditTests(unittest.TestCase):
         # READ_ONLY_INTENTS is the canonical hard-blocklist. Every
         # intent in it must produce ``is_status_query=True`` envelopes
         # so the router's preflight short-circuit fires.
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             READ_ONLY_INTENTS,
         )
 

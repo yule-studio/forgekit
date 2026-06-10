@@ -31,7 +31,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringRouteContext,
     _can_save_to_obsidian,
     _extract_session_id_from_router_text,

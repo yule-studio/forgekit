@@ -10,7 +10,7 @@ from datetime import time
 import unittest
 from unittest.mock import patch
 
-from yule_engineering.discord.config import DiscordBotConfig
+from yule_discord.config import DiscordBotConfig
 
 
 class DiscordConfigTestCase(unittest.TestCase):

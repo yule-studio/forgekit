@@ -11,7 +11,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.storage import (
+from yule_storage import (
     TaskCompletionEvent,
     compute_user_pattern_signals,
     query_task_completion_stats,

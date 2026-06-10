@@ -38,17 +38,17 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
     EngineeringThreadKickoff,
     route_engineering_message,
 )
-from yule_engineering.discord.engineering_conversation import (
+from yule_discord.engineering_conversation import (
     format_status_diagnostic_response,
 )
-from yule_engineering.discord.engineering_team_runtime import (
+from yule_discord.engineering_team_runtime import (
     handle_research_turn_message,
 )
 from yule_engineering.agents.workflow_state import (

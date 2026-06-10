@@ -79,7 +79,7 @@ class RuntimePrefaceIncludesOutputTemplateTests(unittest.TestCase):
     role bot's take follows the template."""
 
     def setUp(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             reset_handled_turns_for_tests,
         )
 
@@ -105,7 +105,7 @@ class RuntimePrefaceIncludesOutputTemplateTests(unittest.TestCase):
         )
 
     def test_devops_open_call_preface_lists_output_sections(self) -> None:
-        from yule_engineering.discord.engineering_team_runtime import (
+        from yule_discord.engineering_team_runtime import (
             handle_research_turn_message,
         )
 

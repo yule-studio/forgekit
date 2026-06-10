@@ -163,7 +163,7 @@ class IntakePersistsCodingProposalTests(unittest.TestCase):
     """``_ensure_coding_proposal_on_session`` 헬퍼는 idempotent + safe."""
 
     def test_stamps_coding_proposal_for_coding_intent_prompt(self) -> None:
-        from yule_engineering.discord.commands import (
+        from yule_discord.commands import (
             _ensure_coding_proposal_on_session,
         )
 
@@ -179,7 +179,7 @@ class IntakePersistsCodingProposalTests(unittest.TestCase):
         self.assertIn("review_roles", proposal)
 
     def test_idempotent_when_proposal_already_present(self) -> None:
-        from yule_engineering.discord.commands import (
+        from yule_discord.commands import (
             _ensure_coding_proposal_on_session,
         )
 

@@ -45,7 +45,7 @@ from yule_engineering.runtime.run_service import (
     _pick_filters_for,
     build_coding_executor_bundle,
 )
-from yule_engineering.runtime.services import resolve_service
+from yule_runtime.services import resolve_service
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional, Sequence
 
-from ...core.context_loader import ContextError, load_agent_context
+from yule_core.context_loader import ContextError, load_agent_context
 from ..runners.base import AgentRunner, RunnerHooks
 from ..runners.claude_code import ClaudeCodeRunner
 from ..runners.codex import CodexRunner

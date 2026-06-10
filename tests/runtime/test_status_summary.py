@@ -14,7 +14,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.runtime.circuit_breaker import (
+from yule_runtime.circuit_breaker import (
     CircuitBreakerPolicy,
     CircuitBreakerRegistry,
 )

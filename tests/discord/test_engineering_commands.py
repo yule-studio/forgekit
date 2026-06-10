@@ -19,7 +19,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-import yule_engineering.discord.commands as discord_commands
+import yule_discord.commands as discord_commands
 from yule_engineering.agents import WorkflowError
 
 

@@ -97,11 +97,11 @@ class MemoryReindexPicksUpDocTests(unittest.TestCase):
     so retrieval / search hit it without extra wiring."""
 
     def test_role_profiles_doc_indexed_as_policy(self) -> None:
-        from yule_engineering.memory import (
+        from yule_memory import (
             open_memory_index,
             reindex_paths,
         )
-        from yule_engineering.memory.models import SOURCE_POLICY
+        from yule_memory.models import SOURCE_POLICY
 
         with tempfile.TemporaryDirectory() as tmp:
             db_path = Path(tmp) / "memory.sqlite3"

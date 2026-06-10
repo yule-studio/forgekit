@@ -12,12 +12,12 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from yule_engineering.integrations.calendar.cache import load_calendar_cache
-from yule_engineering.integrations.github.cache import (
+from yule_integrations.calendar.cache import load_calendar_cache
+from yule_integrations.github.cache import (
     load_cached_issue_payload,
     save_issue_payload,
 )
-from yule_engineering.integrations.github.issues import (
+from yule_integrations.github.issues import (
     GitHubIssue,
     GitHubViewerContext,
     list_open_issues,
@@ -65,7 +65,7 @@ class GitHubIssueCacheTestCase(unittest.TestCase):
 
         self.assertEqual(payload, [issue])
 
-    @patch("yule_engineering.integrations.github.cache.load_json_cache")
+    @patch("yule_integrations.github.cache.load_json_cache")
     def test_issue_cache_load_does_not_touch_access_time(self, load_json_cache_mock) -> None:
         load_json_cache_mock.return_value = None
 
@@ -73,7 +73,7 @@ class GitHubIssueCacheTestCase(unittest.TestCase):
 
         self.assertFalse(load_json_cache_mock.call_args.kwargs["touch"])
 
-    @patch("yule_engineering.integrations.calendar.cache.load_json_cache")
+    @patch("yule_integrations.calendar.cache.load_json_cache")
     def test_calendar_cache_load_does_not_touch_access_time(self, load_json_cache_mock) -> None:
         load_json_cache_mock.return_value = None
 
@@ -91,17 +91,17 @@ class GitHubIssueCacheTestCase(unittest.TestCase):
             scope="org:yule-studio",
         )
 
-        with patch("yule_engineering.integrations.github.issues.shutil.which", return_value="/opt/homebrew/bin/gh"), patch(
-            "yule_engineering.integrations.github.issues._load_viewer_context",
+        with patch("yule_integrations.github.issues.shutil.which", return_value="/opt/homebrew/bin/gh"), patch(
+            "yule_integrations.github.issues._load_viewer_context",
             return_value=GitHubViewerContext(viewer_login="codwithyc", org_logins=("yule-studio",)),
         ), patch(
-            "yule_engineering.integrations.github.issues._load_issue_cache",
+            "yule_integrations.github.issues._load_issue_cache",
             return_value=[cached_issue],
         ), patch(
-            "yule_engineering.integrations.github.issues._load_stale_issue_cache",
+            "yule_integrations.github.issues._load_stale_issue_cache",
             return_value=None,
         ), patch(
-            "yule_engineering.integrations.github.issues.subprocess.run"
+            "yule_integrations.github.issues.subprocess.run"
         ) as run_mock:
             issues = list_open_issues(limit=20)
 
@@ -117,20 +117,20 @@ class GitHubIssueCacheTestCase(unittest.TestCase):
             stderr="",
         )
 
-        with patch("yule_engineering.integrations.github.issues.shutil.which", return_value="/opt/homebrew/bin/gh"), patch(
-            "yule_engineering.integrations.github.issues._load_viewer_context",
+        with patch("yule_integrations.github.issues.shutil.which", return_value="/opt/homebrew/bin/gh"), patch(
+            "yule_integrations.github.issues._load_viewer_context",
             return_value=GitHubViewerContext(viewer_login="codwithyc", org_logins=("yule-studio",)),
         ), patch(
-            "yule_engineering.integrations.github.issues._load_issue_cache",
+            "yule_integrations.github.issues._load_issue_cache",
             return_value=None,
         ), patch(
-            "yule_engineering.integrations.github.issues._load_stale_issue_cache",
+            "yule_integrations.github.issues._load_stale_issue_cache",
             return_value=None,
         ), patch(
-            "yule_engineering.integrations.github.issues.subprocess.run",
+            "yule_integrations.github.issues.subprocess.run",
             return_value=remote_payload,
         ) as run_mock, patch(
-            "yule_engineering.integrations.github.issues.save_issue_payload"
+            "yule_integrations.github.issues.save_issue_payload"
         ) as save_mock:
             issues = list_open_issues(limit=20)
 

@@ -362,7 +362,7 @@ class RetrievedMemory:
 
     Kept here so deliberation/team-runtime can depend on agents.* without
     pulling in the FTS5 layer transitively. The retrieval helper translates
-    :class:`yule_engineering.memory.MemorySearchResult` to this shape.
+    :class:`yule_memory.MemorySearchResult` to this shape.
 
     ``citation_id`` is a short, stable label like ``m1`` that the
     deliberation layer assigns so both deterministic fallbacks and a

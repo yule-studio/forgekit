@@ -81,7 +81,7 @@ class DoctorDiscordTLSTestCase(unittest.TestCase):
 
 
 def _bundle(source: str, cafile: str | None, detail: str, exists: bool = True):
-    from yule_engineering.core.tls import TLSCABundle
+    from yule_core.tls import TLSCABundle
 
     return TLSCABundle(
         cafile=cafile,

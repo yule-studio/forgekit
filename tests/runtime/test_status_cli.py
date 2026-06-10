@@ -158,7 +158,7 @@ class CircuitOpenSurfaceTests(_CliFixture):
     def test_status_text_render_marks_circuit_open_service(self) -> None:
         # Land an open circuit row directly in the persistence DB
         # (the same SQLite the CLI auto-loads via YULE_CACHE_DB_PATH).
-        from yule_engineering.runtime.circuit_breaker import (
+        from yule_runtime.circuit_breaker import (
             CircuitBreakerPersistence,
         )
 
@@ -186,7 +186,7 @@ class CircuitOpenSurfaceTests(_CliFixture):
         self.assertIn("yule runtime circuit reset", text)
 
     def test_status_json_carries_circuit_open_health(self) -> None:
-        from yule_engineering.runtime.circuit_breaker import (
+        from yule_runtime.circuit_breaker import (
             CircuitBreakerPersistence,
         )
 

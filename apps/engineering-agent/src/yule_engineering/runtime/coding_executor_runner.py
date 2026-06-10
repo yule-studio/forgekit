@@ -35,7 +35,7 @@ from ..agents.job_queue import (
 )
 from ..agents.job_queue.coding_executor_worker import CodingExecuteOutcome
 from ..agents.job_queue.worker_loop import run_worker_loop
-from .services import ServiceSpec
+from yule_runtime.services import ServiceSpec
 
 
 logger = logging.getLogger(__name__)
@@ -623,7 +623,7 @@ def _maybe_build_approval_enqueuer():
         )
         from ..agents.job_queue.heartbeat import HeartbeatStore
         from ..agents.job_queue.store import JobQueue
-        from ..discord.integrations.pr_merge_adapter import (
+        from yule_discord.integrations.pr_merge_adapter import (
             enqueue_pr_merge_approval,
         )
     except Exception:  # noqa: BLE001

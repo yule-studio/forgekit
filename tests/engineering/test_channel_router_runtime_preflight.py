@@ -32,7 +32,7 @@ from tests._helpers import (
     run as _run,
 )
 
-from yule_engineering.discord.engineering_channel_router import (
+from yule_discord.engineering_channel_router import (
     EngineeringConversationOutcome,
     EngineeringResearchLoopReport,
     EngineeringRouteContext,
@@ -441,7 +441,7 @@ class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
         # The clarification cache is module-level state. Reset it so
         # tests don't leak candidates across each other when run in
         # the discovery order.
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         router._GATEWAY_CLARIFICATION_CONTEXT.clear()
 
@@ -482,7 +482,7 @@ class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
         first_result = self._trigger_clarification(first, sessions)
         self.assertTrue(first_result.handled)
         # Cache populated.
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
         cached = router._GATEWAY_CLARIFICATION_CONTEXT.get((111, 4242))
         self.assertIsNotNone(cached)
         # New schema: dict with "candidates" tuple + "canonical_prompt".
@@ -569,7 +569,7 @@ class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
         으로 진행" / "이걸로" land on it without conversation_fn /
         auto_collect running."""
 
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         scope_key = (333, 8000)
         router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = (
@@ -619,7 +619,7 @@ class ClarificationFollowUpSelectionTests(_PreflightRouteHarness):
         "conversation_fn must not run" guard isn't tripped by the
         legacy fallthrough that follows in the live router."""
 
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         candidates = (
             {"session_id": "a", "title": "A", "score": 0.4,
@@ -840,7 +840,7 @@ class ClarificationCanonicalPromptHandoffTests(unittest.TestCase):
             intake_channel_id=111, intake_channel_name="업무-접수"
         )
         self.send_chunks = AsyncMock()
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         router._GATEWAY_CLARIFICATION_CONTEXT.clear()
 
@@ -851,7 +851,7 @@ class ClarificationCanonicalPromptHandoffTests(unittest.TestCase):
         scope_key: tuple,
         candidates: tuple = (),
     ) -> None:
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
             "candidates": candidates,
@@ -1020,7 +1020,7 @@ class ClarificationCanonicalPromptHandoffTests(unittest.TestCase):
             intake_fn=intake_fn,
             kickoff_fn=kickoff_fn,
         )
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
 
@@ -1029,7 +1029,7 @@ class ClarificationCanonicalPromptHandoffTests(unittest.TestCase):
         # older entry from before the Phase B fix. The router must
         # NOT spawn a session whose prompt is the routing-command
         # phrase ("새 작업으로 진행").
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         scope_key = (111, 7474)
         router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
@@ -1158,12 +1158,12 @@ class P0MClarificationCreatePrecedenceTests(unittest.TestCase):
             intake_channel_id=111, intake_channel_name="업무-접수"
         )
         self.send_chunks = AsyncMock()
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         router._GATEWAY_CLARIFICATION_CONTEXT.clear()
 
     def _seed_canonical(self, *, canonical_prompt: str, scope_key: tuple) -> None:
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
             "candidates": (
@@ -1283,7 +1283,7 @@ class P0MClarificationCreatePrecedenceTests(unittest.TestCase):
         self.assertNotIn("승인 반영했습니다", sent)
         # 3) Cache cleared so a follow-up turn doesn't reuse the same
         #    canonical against an unrelated reply.
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         self.assertNotIn(scope_key, router._GATEWAY_CLARIFICATION_CONTEXT)
 
@@ -1291,7 +1291,7 @@ class P0MClarificationCreatePrecedenceTests(unittest.TestCase):
         # Cache present but canonical_prompt key is missing (older
         # entry). The router must refuse with a clear error instead of
         # falling through to APPROVAL_ACTION ack.
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         scope_key = (111, 9191)
         router._GATEWAY_CLARIFICATION_CONTEXT[scope_key] = {
@@ -1348,7 +1348,7 @@ class P0N4ClarificationCacheTTLTests(unittest.TestCase):
     ``session.prompt`` on a much later turn."""
 
     def setUp(self) -> None:
-        from yule_engineering.discord.engineering import (
+        from yule_discord.engineering import (
             clarification as clarification_module,
         )
 
@@ -1445,7 +1445,7 @@ class CanonicalPromptVsCommandOnlyAppendTests(unittest.TestCase):
             intake_channel_id=111, intake_channel_name="업무-접수"
         )
         self.send_chunks = AsyncMock()
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         router._GATEWAY_CLARIFICATION_CONTEXT.clear()
 
@@ -1471,7 +1471,7 @@ class CanonicalPromptVsCommandOnlyAppendTests(unittest.TestCase):
         return session
 
     def test_explicit_session_id_reply_appends_canonical(self) -> None:
-        from yule_engineering.discord import engineering_channel_router as router
+        from yule_discord import engineering_channel_router as router
 
         # Both decide_routing's explicit-session branch and the runtime
         # preflight's recall need an actual cached session so the

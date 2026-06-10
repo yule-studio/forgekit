@@ -530,7 +530,7 @@ class ProducerRepoExtractTests(unittest.TestCase):
     def test_extract_repo_from_session_references(self) -> None:
         from types import SimpleNamespace
 
-        from yule_engineering.discord.commands import (
+        from yule_discord.commands import (
             _extract_repo_from_session,
         )
 
@@ -548,7 +548,7 @@ class ProducerRepoExtractTests(unittest.TestCase):
     def test_extract_repo_from_prompt_text(self) -> None:
         from types import SimpleNamespace
 
-        from yule_engineering.discord.commands import (
+        from yule_discord.commands import (
             _extract_repo_from_session,
         )
 
@@ -565,7 +565,7 @@ class ProducerRepoExtractTests(unittest.TestCase):
     def test_extract_repo_none_when_no_github_url(self) -> None:
         from types import SimpleNamespace
 
-        from yule_engineering.discord.commands import (
+        from yule_discord.commands import (
             _extract_repo_from_session,
         )
 

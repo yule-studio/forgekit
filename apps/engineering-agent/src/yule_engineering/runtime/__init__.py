@@ -7,7 +7,7 @@ A-M6.0 wiring: ``runtime.services`` defines the service inventory,
 ``yule runtime up`` runs in dev / single-host environments.
 """
 
-from .services import (
+from yule_runtime.services import (
     ENGINEERING_PROFILE,
     PROFILES,
     ServiceKind,

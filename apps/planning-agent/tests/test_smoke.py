@@ -1,7 +1,7 @@
 """Smoke tests for the relocated ``yule_planning`` app package.
 
 Verifies the package imports standalone and that the old
-``yule_engineering.planning`` path still resolves to the SAME objects via the
+``yule_planning`` path still resolves to the SAME objects via the
 compatibility shims.
 """
 
@@ -24,8 +24,8 @@ def test_public_surface_present() -> None:
 
 
 def test_legacy_path_aliases_same_objects() -> None:
-    from yule_engineering.planning import build_daily_plan, DailyPlan
-    from yule_engineering.planning import models, planner
+    from yule_planning import build_daily_plan, DailyPlan
+    from yule_planning import models, planner
 
     assert build_daily_plan is yule_planning.build_daily_plan
     assert DailyPlan is yule_planning.DailyPlan

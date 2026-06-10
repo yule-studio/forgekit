@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
-from yule_engineering.discord.ui.typing_indicator import safe_typing, typing_context
+from yule_discord.ui.typing_indicator import safe_typing, typing_context
 
 
 def _run(coro):
@@ -123,7 +123,7 @@ class MemberBotTypingIntegrationTests(unittest.TestCase):
         # Mimic the structure of member_bot.on_message: typing first,
         # then channel.send. The integration confirms the typing CM
         # actually wraps the send call.
-        from yule_engineering.discord.ui.typing_indicator import typing_context
+        from yule_discord.ui.typing_indicator import typing_context
 
         channel = _FakeChannelWithTyping()
         order: list[str] = []
@@ -151,7 +151,7 @@ class MemberBotTypingIntegrationTests(unittest.TestCase):
         wrap holds for the tech-lead-flavoured payload too so the bot
         account shows 입력 중... while synthesis is delivered."""
 
-        from yule_engineering.discord.ui.typing_indicator import typing_context
+        from yule_discord.ui.typing_indicator import typing_context
 
         channel = _FakeChannelWithTyping()
         events: list[str] = []

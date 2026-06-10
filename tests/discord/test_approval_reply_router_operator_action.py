@@ -47,7 +47,7 @@ from yule_engineering.agents.operator_action import (
     operator_action_to_approval_payload,
     stamp_pending_request,
 )
-from yule_engineering.discord.approval.reply_router import (
+from yule_discord.approval.reply_router import (
     RESPONSE_APPROVED,
     RESPONSE_OPERATOR_ACCESS_OK,
     RESPONSE_OPERATOR_DECISION_OK,

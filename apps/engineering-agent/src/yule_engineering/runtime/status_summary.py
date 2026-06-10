@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping, Optional, Sequence
 
-from .circuit_breaker import CircuitSnapshot
+from yule_runtime.circuit_breaker import CircuitSnapshot
 from .fallback import FallbackAuditRecord
 from .status import (
     HEALTH_STALE,

@@ -20,7 +20,7 @@ except ModuleNotFoundError:
     from tests import _bootstrap  # noqa: F401
 
 from yule_engineering.agents.workflow_state import WorkflowSession, WorkflowState
-from yule_engineering.discord.engineering_conversation import (
+from yule_discord.engineering_conversation import (
     STATUS_DIAGNOSTIC,
     build_engineering_conversation_response,
     detect_engineering_intent,
@@ -120,7 +120,7 @@ class StatusDiagnosticIntentDetectionTests(unittest.TestCase):
     def test_force_new_work_phrase_is_not_status_diagnostic(self) -> None:
         # "새 작업으로 진행" is the explicit override into a fresh
         # session — must remain a confirmation, not a status query.
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             CONFIRM_INTAKE,
         )
 
@@ -130,7 +130,7 @@ class StatusDiagnosticIntentDetectionTests(unittest.TestCase):
     def test_typical_intake_request_remains_intake(self) -> None:
         # Typical fresh ask should still flow to the intake-candidate
         # branch — not get hijacked by a generic phrase like "어떻게".
-        from yule_engineering.discord.engineering_conversation import (
+        from yule_discord.engineering_conversation import (
             TASK_INTAKE_CANDIDATE,
         )
 
@@ -374,7 +374,7 @@ class RouterStatusQueryShortCircuitTests(unittest.TestCase):
     the "1차 자료를 모아볼게요" template the user is complaining about."""
 
     def test_status_outcome_short_circuits_router(self) -> None:
-        from yule_engineering.discord.engineering_channel_router import (
+        from yule_discord.engineering_channel_router import (
             EngineeringConversationOutcome,
             EngineeringRouteContext,
             route_engineering_message,

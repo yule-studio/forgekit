@@ -22,7 +22,7 @@ except ModuleNotFoundError:
 from yule_engineering.agents.lifecycle.session_status import (
     diagnose_session,
 )
-from yule_engineering.discord.engineering_conversation import (
+from yule_discord.engineering_conversation import (
     format_status_diagnostic_response,
 )
 

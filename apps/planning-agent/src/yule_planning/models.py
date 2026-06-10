@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional, Sequence
 
-from yule_engineering.integrations.calendar.models import CalendarEvent, CalendarTodo
-from yule_engineering.integrations.github.issues import GitHubIssue
+from yule_integrations.calendar.models import CalendarEvent, CalendarTodo
+from yule_integrations.github.issues import GitHubIssue
 
 
 @dataclass(frozen=True)
@@ -102,7 +102,7 @@ class PlanningInputs:
 
     @classmethod
     def from_dict(cls, payload: dict) -> "PlanningInputs":
-        from yule_engineering.integrations.github.pulls import GitHubPullRequest as _GitHubPullRequest
+        from yule_integrations.github.pulls import GitHubPullRequest as _GitHubPullRequest
 
         return cls(
             plan_date=date.fromisoformat(str(payload["plan_date"])),

@@ -455,7 +455,7 @@ class CouncilApprovalTests(unittest.TestCase):
         # _persist_role_selection lives in the router's session_persistence
         # module. We invoke it directly with a stub session to verify the
         # canonicalisation hook lands.
-        from yule_engineering.discord.engineering_channel_router.session_persistence import (
+        from yule_discord.engineering_channel_router.session_persistence import (
             _persist_role_selection,
         )
 
@@ -584,7 +584,7 @@ class CouncilApprovalTests(unittest.TestCase):
 
 
     def test_router_glue_full_pipeline_stamps_packet_and_surface(self) -> None:
-        from yule_engineering.discord.engineering_channel_router.council_flow import (
+        from yule_discord.engineering_channel_router.council_flow import (
             apply_signoff_to_session,
             draft_approval_packet_for_session,
             maybe_bootstrap_council,
@@ -617,7 +617,7 @@ class CouncilApprovalTests(unittest.TestCase):
 
 
     def test_router_draft_packet_stamps_bootstrap_error_when_signoff_missing(self) -> None:
-        from yule_engineering.discord.engineering_channel_router.council_flow import (
+        from yule_discord.engineering_channel_router.council_flow import (
             draft_approval_packet_for_session,
             maybe_bootstrap_council,
         )
