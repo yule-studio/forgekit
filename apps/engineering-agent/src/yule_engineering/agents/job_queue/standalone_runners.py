@@ -759,6 +759,15 @@ def _build_role_runner_input(
         "effective_role": payload.get("effective_role") if payload else None,
     }
 
+    # Conservative capability inference (LLM-minimization Phase C): only stamp a
+    # capability_class when the (role, task) signal is unambiguous. Anything
+    # unclear is left unset so behaviour is unchanged.
+    inferred = _infer_capability_class(
+        role=role, kind=kind, task_type=metadata.get("task_type")
+    )
+    if inferred:
+        metadata["capability_class"] = inferred
+
     # Token-efficiency hot path (opt-in): fold long previous_decisions and carry
     # source_context as references. Protected region (recent K + decision /
     # synthesis) is preserved by token_budget.compact_decisions.
@@ -779,6 +788,24 @@ def _build_role_runner_input(
         previous_decisions=previous_decisions,
         metadata=metadata,
     )
+
+
+def _infer_capability_class(
+    *, role: str, kind: str, task_type: Optional[str]
+) -> Optional[str]:
+    """Conservative role/task → capability_class. None when unclear.
+
+    Only the unambiguous cases are inferred (LLM-minimization Phase C); the rest
+    keep the current behaviour (no capability → llm_required default).
+    """
+
+    short = (role or "").split("/", 1)[-1].strip().lower()
+    tt = (task_type or "").strip().lower()
+    if short == "security-engineer":
+        return "security_gate"
+    if short == "qa-engineer" and ("test" in tt or "qa" in tt):
+        return "verification"
+    return None
 
 
 def _slim_runner_input(

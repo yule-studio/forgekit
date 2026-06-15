@@ -168,6 +168,7 @@ def dispatch_receipt(
     token_efficiency = md.get("token_efficiency")
     if not isinstance(token_efficiency, dict):
         token_efficiency = None
+    optimization = _optimization_block(input_, output, agent_id=agent_id)
     return build_execution_receipt(
         loaded_context,
         table,
@@ -178,7 +179,44 @@ def dispatch_receipt(
         cleanup=cleanup,
         security=security,
         token_efficiency=token_efficiency,
+        optimization=optimization,
     )
+
+
+# Providers that are not a live LLM call.
+_NON_LLM_PROVIDERS = frozenset({"deterministic", "grant-gate"})
+
+
+def _optimization_block(input_: Any, output: Any, *, agent_id: str = DEFAULT_AGENT_ID) -> dict:
+    """Compute the LLM-minimization decision proof for the receipt.
+
+    Captures capability_class / resolution_mode / llm_allowed / llm_used /
+    selected_provider / bypassed_live_llm / bypass_reason / routing_reason — so
+    the receipt explains *why* a run did or didn't use an LLM.
+    """
+
+    from ..runners.capability_routing import capability_from_input
+    from .llm_minimization import RESOLUTION_RULE_FIRST, resolve_from_metadata
+
+    md = getattr(input_, "metadata", None) or {}
+    cc = capability_from_input(input_)
+    decision = resolve_from_metadata(md if isinstance(md, dict) else {}, cc)
+    provider = getattr(output, "provider", None)
+    llm_used = provider not in _NON_LLM_PROVIDERS and provider is not None
+    bypassed = (
+        decision.resolution_mode == RESOLUTION_RULE_FIRST
+        and provider == "deterministic"
+    )
+    return {
+        "capability_class": decision.capability_class,
+        "resolution_mode": decision.resolution_mode,
+        "llm_allowed": decision.llm_allowed,
+        "llm_used": llm_used,
+        "selected_provider": provider,
+        "bypassed_live_llm": bypassed,
+        "bypass_reason": f"rule_first:{decision.capability_class or '-'}" if bypassed else None,
+        "routing_reason": decision.why,
+    }
 
 
 __all__ = (

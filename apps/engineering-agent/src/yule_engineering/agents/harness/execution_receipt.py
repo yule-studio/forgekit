@@ -61,6 +61,10 @@ class ExecutionReceipt:
     security_status: str = "not_evaluated"
     security: Optional[Any] = None  # SecurityReviewDecision (duck-typed)
     token_efficiency: Optional[Mapping[str, Any]] = None  # saved tokens on the input hot path
+    # LLM-minimization decision: capability_class / resolution_mode / llm_allowed
+    # / llm_used / selected_provider / bypassed_live_llm / bypass_reason /
+    # routing_reason. Turns the receipt from audit-only into optimization proof.
+    optimization: Optional[Mapping[str, Any]] = None
 
     @property
     def blocked_or_missing(self) -> Tuple[GrantDecision, ...]:
@@ -100,6 +104,7 @@ class ExecutionReceipt:
             "cleanup": self.cleanup.to_dict() if self.cleanup else None,
             "security": self.security.to_dict() if self.security is not None else None,
             "token_efficiency": dict(self.token_efficiency) if self.token_efficiency else None,
+            "optimization": dict(self.optimization) if self.optimization else None,
         }
 
     def render(self) -> str:
@@ -159,6 +164,22 @@ class ExecutionReceipt:
                 lines.append(f"- {k}: {v}")
             lines.append("")
 
+        if self.optimization:
+            o = self.optimization
+            lines.append("## LLM minimization")
+            lines.append(
+                f"- capability={o.get('capability_class') or '-'} "
+                f"resolution={o.get('resolution_mode')} llm_allowed={o.get('llm_allowed')}"
+            )
+            lines.append(
+                f"- selected_provider={o.get('selected_provider')} "
+                f"llm_used={o.get('llm_used')} bypassed_live_llm={o.get('bypassed_live_llm')}"
+            )
+            if o.get("bypass_reason"):
+                lines.append(f"- bypass_reason: {o.get('bypass_reason')}")
+            lines.append(f"- routing_reason: {o.get('routing_reason')}")
+            lines.append("")
+
         lines.append(f"## Security review: {self.security_status}")
         if self.security is not None:
             lines.append(f"- {self.security.surface()}")
@@ -186,6 +207,7 @@ def build_execution_receipt(
     cleanup: Optional[CleanupReceipt] = None,
     security: Optional[Any] = None,
     token_efficiency: Optional[Mapping[str, Any]] = None,
+    optimization: Optional[Mapping[str, Any]] = None,
 ) -> ExecutionReceipt:
     """Assemble an :class:`ExecutionReceipt` from the run's enforcement surfaces.
 
@@ -261,6 +283,7 @@ def build_execution_receipt(
         security_status=security_status,
         security=security,
         token_efficiency=token_efficiency,
+        optimization=optimization,
     )
 
 
