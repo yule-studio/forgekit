@@ -3,6 +3,10 @@
 > 짝 문서 [`plugin-taxonomy.md`](plugin-taxonomy.md) 가 *개념 분리*를 정의한다.
 > 본 문서는 *배치* 를 정의한다: 어떤 capability 를 공통으로 두고, 어떤 것을
 > Claude/Codex/Gemini 로 투영하며, Ollama 를 어디에 backend 로 꽂는가.
+>
+> 한 단계 위 레버 — capability 를 **아예 live LLM 으로 보낼지 말지**(rule_first /
+> llm_optional / llm_required)는 [`llm-minimization-policy.md`](llm-minimization-policy.md)
+> 가 SSoT. 본 매트릭스는 "LLM 을 쓴다면 어느 provider" 의 배치만 정의한다.
 
 ## 1. 원칙
 
