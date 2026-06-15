@@ -19,6 +19,9 @@
 ## Core Safety Rules
 - **secret / 자격 정보 / 개인 키 / 로컬 runtime state 절대 커밋 금지.**
 - **파괴적 명령 / 프로덕션 배포 / 민감 자격 접근 전 사람 승인 필수.**
+- **git write 는 `git -C <검증된 repo>` + 명시 pathspec 만.** HOME/모호 경로·broad
+  `git add .` 금지 — hard rail SSoT 는 [`docs/git-write-safety.md`](docs/git-write-safety.md)
+  (코드 `agents/governance/git_path_safety.py`).
 - 자동 결정의 자율 등급 / 승인 매트릭스는 [`docs/autonomy-policy.md`](docs/autonomy-policy.md),
   [`docs/approval-matrix.md`](docs/approval-matrix.md) 가 SSoT.
 

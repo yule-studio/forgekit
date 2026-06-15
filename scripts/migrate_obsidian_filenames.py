@@ -202,12 +202,23 @@ def discover_all_markdown(notes_root: Path) -> List[Path]:
     return sorted(notes_root.rglob("*.md"))
 
 
+def _safe_git_runner():
+    """Lazy-load the repo-local git safety guardrail (run_safe_git)."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    src = repo_root / "apps" / "engineering-agent" / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    from yule_engineering.agents.governance.git_path_safety import run_safe_git
+
+    return run_safe_git
+
+
 def git_mv(source: Path, target: Path, *, repo_root: Path) -> None:
-    subprocess.run(
-        ["git", "mv", str(source), str(target)],
-        cwd=str(repo_root),
-        check=True,
-    )
+    # Routed through the safety guardrail: `git -C <validated repo> mv ...`,
+    # HOME / ambiguous-path refused.
+    run_safe_git = _safe_git_runner()
+    run_safe_git(repo_root, ["mv", str(source), str(target)], check=True)
 
 
 def current_branch(repo_root: Path) -> str:

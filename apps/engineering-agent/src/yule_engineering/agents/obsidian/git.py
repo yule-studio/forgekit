@@ -91,7 +91,16 @@ def commit_single_file(
     if not message.strip():
         raise ObsidianGitError("git commit message must not be empty.")
 
-    repo_root_resolved = repo_root.resolve()
+    # Defense-in-depth: refuse HOME / ambiguous / non-repo write targets.
+    from ..governance.git_path_safety import (
+        UnsafeGitPathError,
+        assert_safe_git_repo_path,
+    )
+
+    try:
+        repo_root_resolved = assert_safe_git_repo_path(repo_root)
+    except UnsafeGitPathError as exc:
+        raise ObsidianGitError(f"unsafe git repo root: {exc}") from exc
     target_resolved = target_path.resolve()
 
     try:
