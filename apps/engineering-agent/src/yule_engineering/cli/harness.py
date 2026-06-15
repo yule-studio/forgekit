@@ -330,21 +330,69 @@ def run_harness_insights_command(
     repo_root: Path,
     *,
     runs_dir: Optional[str],
+    receipts: Optional[str] = None,
+    session: Optional[str] = None,
+    agent_id: str = "engineering-agent",
     json_output: bool,
 ) -> int:
-    """Print cumulative token-efficiency insights across benchmark runs."""
+    """Print cumulative token-efficiency insights + (optional) LLM-usage roll-up.
 
-    from ..agents.harness.insights import render_markdown, scan_token_efficiency_evidence
+    Token savings come from the benchmark ``delta.json`` evidence; the LLM
+    minimization usage (rule-resolved / llm-used / live-LLM-avoided) comes from
+    execution receipts (``--receipts <json>`` file or a live ``--session``).
+    """
+
+    from ..agents.harness.insights import (
+        aggregate_receipts,
+        render_markdown,
+        render_usage_markdown,
+        scan_token_efficiency_evidence,
+    )
 
     target = Path(runs_dir) if runs_dir else (repo_root / "runs" / "token-efficiency")
     insights = scan_token_efficiency_evidence(target)
+
+    receipt_dicts = _load_receipt_dicts(repo_root, agent_id, receipts=receipts, session=session)
+    usage = aggregate_receipts(receipt_dicts) if receipt_dicts is not None else None
+
     if json_output:
-        print(json.dumps(insights.to_dict(), ensure_ascii=False, indent=2))
-    else:
-        print(render_markdown(insights))
-        if insights.runs == 0:
-            print(f"(no delta.json under {target} — run `yule harness bench` first)", file=sys.stderr)
+        out = {"token_efficiency": insights.to_dict()}
+        if usage is not None:
+            out["llm_usage"] = usage
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+        return 0
+
+    print(render_markdown(insights))
+    if insights.runs == 0:
+        print(f"(no delta.json under {target} — run `yule harness bench` first)", file=sys.stderr)
+    if usage is not None:
+        print()
+        print(render_usage_markdown(usage))
     return 0
+
+
+def _load_receipt_dicts(repo_root, agent_id, *, receipts, session):
+    """Load execution-receipt dicts from a JSON file or a live session, or None."""
+
+    if receipts:
+        try:
+            data = json.loads(Path(receipts).read_text(encoding="utf-8"))
+            return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
+        except (OSError, ValueError) as exc:
+            print(f"warning: could not read --receipts: {exc}", file=sys.stderr)
+            return []
+    if session:
+        from ..agents import Dispatcher, WorkflowOrchestrator, build_participants_pool
+
+        pool = build_participants_pool(repo_root, agent_id)
+        sess = WorkflowOrchestrator(Dispatcher(pool)).get(session)
+        if sess is None:
+            print(f"warning: session {session} not found", file=sys.stderr)
+            return []
+        extra = getattr(sess, "extra", None) or {}
+        bucket = extra.get("execution_receipts") if isinstance(extra, dict) else None
+        return [d for d in bucket if isinstance(d, dict)] if isinstance(bucket, list) else []
+    return None
 
 
 def _default_cleanup_root(repo_root: Path) -> Path:

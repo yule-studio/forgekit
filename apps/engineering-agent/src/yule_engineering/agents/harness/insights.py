@@ -107,29 +107,88 @@ def scan_token_efficiency_evidence(runs_dir: Path) -> TokenEfficiencyInsights:
 
 
 def aggregate_receipts(receipts: Sequence[Mapping[str, Any]]) -> dict:
-    """Roll up ``token_efficiency`` blocks from execution-receipt dicts.
+    """Roll up token_efficiency + LLM-minimization usage from receipt dicts.
 
-    Sums ``previous_decisions_saved`` / ``source_context_saved`` and counts how
-    many runs applied compaction.
+    Beyond token savings, counts *how many LLM calls were avoided* — the core
+    "LLM minimization" metric: rule-resolved runs, llm-used runs, bypassed runs,
+    resolution_mode distribution, and provider usage.
     """
 
     prev_saved = src_saved = applied = with_eff = 0
+    total_runs = 0
+    rule_resolved = llm_used = llm_bypassed = with_opt = 0
+    mode_dist: dict[str, int] = {}
+    provider_usage: dict[str, int] = {}
+
     for r in receipts:
-        te = r.get("token_efficiency") if isinstance(r, Mapping) else None
-        if not isinstance(te, Mapping):
+        if not isinstance(r, Mapping):
             continue
-        with_eff += 1
-        prev_saved += int(te.get("previous_decisions_saved", 0) or 0)
-        src_saved += int(te.get("source_context_saved", 0) or 0)
-        if te.get("compaction_applied"):
-            applied += 1
+        total_runs += 1
+        te = r.get("token_efficiency")
+        if isinstance(te, Mapping):
+            with_eff += 1
+            prev_saved += int(te.get("previous_decisions_saved", 0) or 0)
+            src_saved += int(te.get("source_context_saved", 0) or 0)
+            if te.get("compaction_applied"):
+                applied += 1
+        opt = r.get("optimization")
+        if isinstance(opt, Mapping):
+            with_opt += 1
+            mode = str(opt.get("resolution_mode") or "unknown")
+            mode_dist[mode] = mode_dist.get(mode, 0) + 1
+            if mode == "rule_first":
+                rule_resolved += 1
+            if opt.get("llm_used"):
+                llm_used += 1
+            if opt.get("bypassed_live_llm"):
+                llm_bypassed += 1
+            prov = opt.get("selected_provider")
+            if prov:
+                provider_usage[str(prov)] = provider_usage.get(str(prov), 0) + 1
+
+    llm_avoid_rate = round(llm_bypassed / with_opt * 100.0, 1) if with_opt else 0.0
+    rule_first_rate = round(rule_resolved / with_opt * 100.0, 1) if with_opt else 0.0
     return {
+        "total_runs": total_runs,
+        # token savings
         "receipts_with_token_efficiency": with_eff,
         "previous_decisions_saved": prev_saved,
         "source_context_saved": src_saved,
         "compaction_applied_runs": applied,
         "total_saved": prev_saved + src_saved,
+        # LLM minimization usage
+        "receipts_with_optimization": with_opt,
+        "rule_resolved_runs": rule_resolved,
+        "llm_used_runs": llm_used,
+        "llm_bypassed_runs": llm_bypassed,
+        "rule_first_resolution_rate_pct": rule_first_rate,
+        "live_llm_avoided_rate_pct": llm_avoid_rate,
+        "resolution_mode_distribution": mode_dist,
+        "provider_usage": provider_usage,
     }
+
+
+def render_usage_markdown(usage: Mapping[str, Any]) -> str:
+    lines = [
+        "# LLM minimization usage",
+        "",
+        f"- runs with optimization data: {usage.get('receipts_with_optimization', 0)}",
+        f"- **live LLM avoided: {usage.get('llm_bypassed_runs', 0)} runs "
+        f"({usage.get('live_llm_avoided_rate_pct', 0)}%)**",
+        f"- rule-first resolved: {usage.get('rule_resolved_runs', 0)} "
+        f"({usage.get('rule_first_resolution_rate_pct', 0)}%)",
+        f"- llm used: {usage.get('llm_used_runs', 0)} runs",
+        f"- token saved (input hot path): {usage.get('total_saved', 0)}",
+        "",
+        "## resolution_mode distribution",
+    ]
+    for mode, n in sorted((usage.get("resolution_mode_distribution") or {}).items()):
+        lines.append(f"- {mode}: {n}")
+    lines.append("")
+    lines.append("## provider usage")
+    for prov, n in sorted((usage.get("provider_usage") or {}).items()):
+        lines.append(f"- {prov}: {n}")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def render_markdown(insights: TokenEfficiencyInsights) -> str:
@@ -161,4 +220,5 @@ __all__ = (
     "scan_token_efficiency_evidence",
     "aggregate_receipts",
     "render_markdown",
+    "render_usage_markdown",
 )

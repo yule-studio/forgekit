@@ -442,6 +442,8 @@ def _dispatch_harness_command(repo_root: Path, args) -> int:
         return run_harness_insights_command(
             repo_root,
             runs_dir=args.runs_dir,
+            receipts=args.receipts,
+            session=args.session,
             json_output=args.json_output,
         )
     if args.harness_command == "cleanup":

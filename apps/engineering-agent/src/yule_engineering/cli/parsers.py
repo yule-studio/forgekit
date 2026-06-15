@@ -909,6 +909,12 @@ def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
     insights_parser.add_argument(
         "--runs-dir", help="Dir of run folders. Defaults to runs/token-efficiency."
     )
+    insights_parser.add_argument(
+        "--receipts", help="JSON file (array of execution-receipt dicts) for LLM-usage roll-up."
+    )
+    insights_parser.add_argument(
+        "--session", help="Live session id; reads session.extra['execution_receipts']."
+    )
     insights_parser.add_argument("--json", dest="json_output", action="store_true")
 
     cleanup_parser = harness_subparsers.add_parser(

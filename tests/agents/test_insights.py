@@ -84,6 +84,26 @@ class ReceiptAggregateTests(unittest.TestCase):
         self.assertEqual(agg["compaction_applied_runs"], 1)
         self.assertEqual(agg["total_saved"], 150)
 
+    def test_llm_usage_rollup(self) -> None:
+        from yule_engineering.agents.harness.insights import render_usage_markdown
+
+        receipts = [
+            {"optimization": {"resolution_mode": "rule_first", "llm_used": False, "bypassed_live_llm": True, "selected_provider": "deterministic"}},
+            {"optimization": {"resolution_mode": "rule_first", "llm_used": False, "bypassed_live_llm": True, "selected_provider": "deterministic"}},
+            {"optimization": {"resolution_mode": "llm_required", "llm_used": True, "bypassed_live_llm": False, "selected_provider": "claude"}},
+        ]
+        agg = aggregate_receipts(receipts)
+        self.assertEqual(agg["receipts_with_optimization"], 3)
+        self.assertEqual(agg["rule_resolved_runs"], 2)
+        self.assertEqual(agg["llm_used_runs"], 1)
+        self.assertEqual(agg["llm_bypassed_runs"], 2)
+        self.assertEqual(agg["resolution_mode_distribution"], {"rule_first": 2, "llm_required": 1})
+        self.assertEqual(agg["provider_usage"], {"deterministic": 2, "claude": 1})
+        self.assertAlmostEqual(agg["live_llm_avoided_rate_pct"], round(2 / 3 * 100, 1))
+        md = render_usage_markdown(agg)
+        self.assertIn("live LLM avoided", md)
+        self.assertIn("resolution_mode distribution", md)
+
 
 if __name__ == "__main__":
     unittest.main()
