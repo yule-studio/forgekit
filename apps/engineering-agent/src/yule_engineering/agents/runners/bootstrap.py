@@ -539,15 +539,21 @@ def build_role_runner_dispatch_from_env(
             gate = None
 
     # Capability-aware routing (opt-in): reorder backends per task capability
-    # class. Default off → fixed priority order unchanged.
+    # class. Rule-first LLM minimization (when enabled) supersedes it — rule_first
+    # tasks route to the deterministic/rule path first (live LLM skipped). Both
+    # default off → fixed priority order unchanged.
     provider_router = None
     try:
         from .capability_routing import (
             build_capability_provider_router,
+            build_resolution_provider_router,
             capability_routing_enabled,
+            llm_minimization_enabled,
         )
 
-        if capability_routing_enabled(env):
+        if llm_minimization_enabled(env):
+            provider_router = build_resolution_provider_router()
+        elif capability_routing_enabled(env):
             provider_router = build_capability_provider_router()
     except Exception:  # noqa: BLE001 - routing must not break bootstrap
         provider_router = None

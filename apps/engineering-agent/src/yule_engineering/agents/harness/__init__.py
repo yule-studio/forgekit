@@ -104,6 +104,11 @@ from .insights import (
     aggregate_receipts,
     scan_token_efficiency_evidence,
 )
+from .llm_minimization import (
+    ResolutionDecision,
+    resolve as resolve_llm_minimization,
+    resolve_from_metadata as resolve_llm_minimization_from_metadata,
+)
 from . import token_benchmark
 from .hot_path import (
     build_capability_block_gate,
@@ -188,4 +193,8 @@ __all__ = (
     "TokenEfficiencyInsights",
     "aggregate_receipts",
     "scan_token_efficiency_evidence",
+    # rule-first LLM minimization
+    "ResolutionDecision",
+    "resolve_llm_minimization",
+    "resolve_llm_minimization_from_metadata",
 )

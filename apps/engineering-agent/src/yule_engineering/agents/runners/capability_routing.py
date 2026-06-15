@@ -151,13 +151,77 @@ def build_capability_provider_router():
     return _router
 
 
+# ---------------------------------------------------------------------------
+# Rule-first LLM minimization (layered on top of capability routing)
+# ---------------------------------------------------------------------------
+
+# Opt-in flag for resolution-aware routing (rule_first → skip live LLM). Supersedes
+# capability routing when on; both default off.
+ENV_LLM_MINIMIZATION = "YULE_LLM_MINIMIZATION_ENABLED"
+
+
+def llm_minimization_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    import os
+
+    env_map = env if env is not None else os.environ
+    return (env_map.get(ENV_LLM_MINIMIZATION) or "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def order_providers_for_resolution(
+    capability_class: Optional[str], available: Sequence[str], *, resolution_mode: str
+) -> list[str]:
+    """Order backends by capability preference, then apply the resolution mode.
+
+    * ``rule_first``  → pin ``deterministic`` FIRST so the rule/deterministic
+      path resolves and live providers are skipped (deterministic still produces
+      a take; live is only reached if it somehow doesn't).
+    * ``llm_optional`` / ``llm_required`` → capability preference order
+      (cheap-first / strong-first), ``deterministic`` last.
+    """
+
+    base = order_providers(capability_class, available)
+    from .role_runner import PROVIDER_DETERMINISTIC as _DET  # local id
+
+    if resolution_mode == "rule_first" and _DET in base:
+        return [_DET] + [p for p in base if p != _DET]
+    return base
+
+
+def build_resolution_provider_router():
+    """Return a ``ProviderRouter`` that applies rule-first LLM minimization.
+
+    Resolves the input's capability class → resolution mode (lazy-importing the
+    policy) and orders providers accordingly. rule_first inputs route to the
+    deterministic/rule path first (live LLM skipped); others keep capability
+    ordering. No capability / unknown → llm_required default (unchanged order).
+    """
+
+    def _router(input_: object, available: Sequence[str]) -> Sequence[str]:
+        from ..harness.llm_minimization import resolve_from_metadata
+
+        cc = capability_from_input(input_)
+        md = getattr(input_, "metadata", None) or {}
+        decision = resolve_from_metadata(md if isinstance(md, Mapping) else {}, cc)
+        return order_providers_for_resolution(
+            cc, available, resolution_mode=decision.resolution_mode
+        )
+
+    return _router
+
+
 __all__ = (
     "CAPABILITY_BACKEND_PREFERENCE",
     "TASK_TYPE_TO_CAPABILITY",
     "ENV_CAPABILITY_ROUTING",
+    "ENV_LLM_MINIMIZATION",
     "capability_for",
     "order_providers",
+    "order_providers_for_resolution",
     "capability_from_input",
     "capability_routing_enabled",
+    "llm_minimization_enabled",
     "build_capability_provider_router",
+    "build_resolution_provider_router",
 )
