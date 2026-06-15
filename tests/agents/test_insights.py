@@ -104,6 +104,32 @@ class ReceiptAggregateTests(unittest.TestCase):
         self.assertIn("live LLM avoided", md)
         self.assertIn("resolution_mode distribution", md)
 
+    def test_provider_runtime_rollup(self) -> None:
+        from yule_engineering.agents.harness.insights import render_usage_markdown
+
+        receipts = [
+            {"provider_runtime": {
+                "selected_provider": "claude", "live": True, "used_fallback": False,
+                "elapsed_ms": 1000.0, "total_tokens": 150,
+                "cost": {"total_cost_usd": 0.005}, "fallback_from": []}},
+            {"provider_runtime": {
+                "selected_provider": "deterministic", "live": False, "used_fallback": True,
+                "elapsed_ms": 200.0, "total_tokens": 10,
+                "cost": {"total_cost_usd": 0.0},
+                "fallback_from": [{"provider": "claude", "failure_class": "submit_error"}]}},
+        ]
+        agg = aggregate_receipts(receipts)
+        self.assertEqual(agg["receipts_with_provider_runtime"], 2)
+        self.assertEqual(agg["live_provider_runs"], 1)
+        self.assertEqual(agg["provider_fallback_runs"], 1)
+        self.assertEqual(agg["provider_fallback_rate_pct"], 50.0)
+        self.assertAlmostEqual(agg["total_cost_usd"], 0.005)
+        self.assertEqual(agg["avg_latency_ms"], 600.0)
+        self.assertEqual(agg["provider_failure_distribution"], {"submit_error": 1})
+        md = render_usage_markdown(agg)
+        self.assertIn("provider runtime", md)
+        self.assertIn("fallback rate", md)
+
 
 if __name__ == "__main__":
     unittest.main()
