@@ -99,6 +99,11 @@ from .policy_bundle import (
     build_selected_policy_bundle,
     select_policy_documents,
 )
+from .insights import (
+    TokenEfficiencyInsights,
+    aggregate_receipts,
+    scan_token_efficiency_evidence,
+)
 from . import token_benchmark
 from .hot_path import (
     build_capability_block_gate,
@@ -179,4 +184,8 @@ __all__ = (
     "SelectedPolicyBundle",
     "build_selected_policy_bundle",
     "select_policy_documents",
+    # token-efficiency insights
+    "TokenEfficiencyInsights",
+    "aggregate_receipts",
+    "scan_token_efficiency_evidence",
 )

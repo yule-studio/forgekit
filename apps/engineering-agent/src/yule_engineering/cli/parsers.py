@@ -902,6 +902,15 @@ def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     bench_parser.add_argument("--json", dest="json_output", action="store_true")
 
+    insights_parser = harness_subparsers.add_parser(
+        "insights",
+        help="Cumulative token-efficiency insights across benchmark runs.",
+    )
+    insights_parser.add_argument(
+        "--runs-dir", help="Dir of run folders. Defaults to runs/token-efficiency."
+    )
+    insights_parser.add_argument("--json", dest="json_output", action="store_true")
+
     cleanup_parser = harness_subparsers.add_parser(
         "cleanup",
         help="Allowlist cleanup of transient artifacts. Dry-run unless --execute --yes.",
@@ -1088,6 +1097,11 @@ def add_memory_parser(subparsers: argparse._SubParsersAction) -> None:
     memory_search_parser.add_argument(
         "--task-type",
         help="Filter by task_type.",
+    )
+    memory_search_parser.add_argument(
+        "--boost",
+        action="store_true",
+        help="Re-rank by reuse boost (canonical/reusable/decision) and show boost_score + why.",
     )
     memory_search_parser.add_argument(
         "--json",

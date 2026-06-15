@@ -110,6 +110,7 @@ def run_memory_search_command(
     note_kind: Optional[str],
     task_type: Optional[str],
     json_output: bool,
+    boost: bool = False,
 ) -> int:
     if not query.strip():
         print("error: search query must not be empty", file=sys.stderr)
@@ -125,6 +126,20 @@ def run_memory_search_command(
         repo_root=repo_root,
     )
 
+    # Optional reuse-boost visibility (memory-policy section 4): re-rank by boost
+    # and surface boost_score + why_retrieved per hit.
+    boost_info: dict = {}
+    if boost:
+        from yule_engineering.agents.harness.retrieval_boost import boost_for
+
+        scored = []
+        for r in results:
+            b, reasons = boost_for(r.document)
+            boost_info[r.document.doc_id] = {"boost_score": b, "why_retrieved": list(reasons)}
+            scored.append((r.score - b, r))  # bm25 lower is better → subtract boost
+        scored.sort(key=lambda t: t[0])
+        results = [r for _eff, r in scored]
+
     if json_output:
         payload = [
             {
@@ -138,6 +153,7 @@ def run_memory_search_command(
                 "tags": list(r.document.tags),
                 "score": r.score,
                 "snippet": r.snippet,
+                **({"boost": boost_info.get(r.document.doc_id)} if boost else {}),
             }
             for r in results
         ]
@@ -162,7 +178,14 @@ def run_memory_search_command(
         if doc.tags:
             meta_bits.append(f"tags={','.join(doc.tags)}")
         meta_bits.append(f"score={hit.score:.3f}")
+        if boost:
+            bi = boost_info.get(hit.document.doc_id) or {}
+            meta_bits.append(f"boost=+{bi.get('boost_score', 0)}")
         print("  " + " · ".join(meta_bits))
+        if boost:
+            why = (boost_info.get(hit.document.doc_id) or {}).get("why_retrieved") or []
+            if why:
+                print(f"  why: {', '.join(why)}")
         if hit.snippet:
             print(f"  > {hit.snippet}")
         print()

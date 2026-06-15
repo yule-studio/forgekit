@@ -36,6 +36,7 @@ from .harness import (
     run_harness_bench_command,
     run_harness_cleanup_command,
     run_harness_compact_command,
+    run_harness_insights_command,
     run_harness_receipt_command,
     run_harness_security_command,
 )
@@ -335,6 +336,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
                 note_kind=args.note_kind,
                 task_type=args.task_type,
                 json_output=args.json,
+                boost=getattr(args, "boost", False),
             )
         if args.command == "obsidian" and args.obsidian_command == "sync":
             return run_obsidian_sync_command(
@@ -434,6 +436,12 @@ def _dispatch_harness_command(repo_root: Path, args) -> int:
             slug=args.slug,
             date=args.date,
             out=args.out,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "insights":
+        return run_harness_insights_command(
+            repo_root,
+            runs_dir=args.runs_dir,
             json_output=args.json_output,
         )
     if args.harness_command == "cleanup":

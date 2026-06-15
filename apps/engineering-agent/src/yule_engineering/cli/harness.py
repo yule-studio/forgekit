@@ -326,6 +326,27 @@ synthesis/audit는 손대지 않았고(보존), 모든 live 결선은 flag-gated
 """
 
 
+def run_harness_insights_command(
+    repo_root: Path,
+    *,
+    runs_dir: Optional[str],
+    json_output: bool,
+) -> int:
+    """Print cumulative token-efficiency insights across benchmark runs."""
+
+    from ..agents.harness.insights import render_markdown, scan_token_efficiency_evidence
+
+    target = Path(runs_dir) if runs_dir else (repo_root / "runs" / "token-efficiency")
+    insights = scan_token_efficiency_evidence(target)
+    if json_output:
+        print(json.dumps(insights.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        print(render_markdown(insights))
+        if insights.runs == 0:
+            print(f"(no delta.json under {target} — run `yule harness bench` first)", file=sys.stderr)
+    return 0
+
+
 def _default_cleanup_root(repo_root: Path) -> Path:
     """Default scan root: the local cache dir if present, else repo root.
 
@@ -346,4 +367,5 @@ __all__ = (
     "run_harness_cleanup_command",
     "run_harness_security_command",
     "run_harness_bench_command",
+    "run_harness_insights_command",
 )
