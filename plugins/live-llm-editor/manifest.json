@@ -19,5 +19,6 @@
   "autonomy_level": "supervised",
   "paste_guard_required": true,
   "risk_class": "HIGH",
-  "module_path": "yule_engineering.agents.job_queue.coding_executor_live"
+  "module_path": "yule_engineering.agents.job_queue.coding_executor_live",
+  "capability_class": "execution"
 }

@@ -14,5 +14,6 @@
   "autonomy_level": "supervised",
   "paste_guard_required": false,
   "risk_class": "HIGH",
-  "module_path": "yule_engineering.agents.safety.tool_call_gate"
+  "module_path": "yule_engineering.agents.safety.tool_call_gate",
+  "capability_class": "enforcement"
 }

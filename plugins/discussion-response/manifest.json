@@ -13,5 +13,6 @@
   "autonomy_level": "advisory",
   "paste_guard_required": true,
   "risk_class": "MEDIUM",
-  "module_path": "yule_engineering.agents.conversation.discussion_response"
+  "module_path": "yule_engineering.agents.conversation.discussion_response",
+  "capability_class": "delivery"
 }

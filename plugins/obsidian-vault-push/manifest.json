@@ -16,5 +16,6 @@
   "autonomy_level": "supervised",
   "paste_guard_required": true,
   "risk_class": "MEDIUM",
-  "module_path": "yule_engineering.agents.obsidian.vault_auto_push"
+  "module_path": "yule_engineering.agents.obsidian.vault_auto_push",
+  "capability_class": "delivery"
 }

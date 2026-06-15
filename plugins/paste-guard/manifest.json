@@ -14,5 +14,6 @@
   "autonomy_level": "supervised",
   "paste_guard_required": false,
   "risk_class": "HIGH",
-  "module_path": "yule_security.paste_guard"
+  "module_path": "yule_security.paste_guard",
+  "capability_class": "security_gate"
 }

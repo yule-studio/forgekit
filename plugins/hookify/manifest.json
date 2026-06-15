@@ -17,5 +17,6 @@
   "autonomy_level": "advisory",
   "paste_guard_required": true,
   "risk_class": "MEDIUM",
-  "module_path": "yule_learning.mistake_ledger"
+  "module_path": "yule_learning.mistake_ledger",
+  "capability_class": "memory"
 }

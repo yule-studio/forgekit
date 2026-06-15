@@ -28,7 +28,11 @@ except ModuleNotFoundError:
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-_PLUGIN_KINDS = {"guard", "learning", "delivery", "exploration"}
+_PLUGIN_KINDS = {"guard", "learning", "delivery", "exploration", "observability"}
+_CAPABILITY_CLASSES = {
+    "security_gate", "enforcement", "verification", "memory", "exploration",
+    "delivery", "execution", "research", "compaction",
+}
 _HOOK_TOKENS = {
     "PREFLIGHT", "COMPLETION", "POSTMORTEM",
     "OUTBOUND_LLM", "OUTBOUND_DISCORD", "OUTBOUND_GITHUB", "OUTBOUND_VAULT",
@@ -58,6 +62,14 @@ class RuntimePluginTaxonomyTests(unittest.TestCase):
                 for hook in man["hooks_provided"]:
                     self.assertIn(hook, _HOOK_TOKENS, hook)
         self.assertGreaterEqual(seen, 5, "expected several runtime plugins")
+
+    def test_every_plugin_declares_valid_capability_class(self) -> None:
+        # capability_class lets the provider matrix be derived from data, not prose
+        for path, man in self._manifests():
+            with self.subTest(plugin=path.parent.name):
+                cc = man.get("capability_class")
+                self.assertTrue(cc, f"{path.parent.name} missing capability_class")
+                self.assertIn(cc, _CAPABILITY_CLASSES, cc)
 
     def test_runtime_plugins_are_vendor_neutral(self) -> None:
         # a runtime plugin must not pin itself to a single LLM provider
