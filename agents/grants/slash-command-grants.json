@@ -174,6 +174,17 @@
         {"skill": "skill-author", "autonomy": "L2"}
       ],
       "notes": "tech-lead 가 부서의 skill/command/hook 저작 owner. skill-author 는 tech-lead 강조."
+    },
+    "engineering-agent/security-engineer": {
+      "add_builtin": [
+        {"command": "/security-review", "autonomy": "L1"},
+        {"command": "/diff", "autonomy": "L0"}
+      ],
+      "add_skills": [
+        {"skill": "compact-to-vault", "autonomy": "L2"},
+        {"skill": "vault-curate", "autonomy": "L3"}
+      ],
+      "notes": "cross-cutting 보안 리뷰 게이트. /security-review 를 강조 부여하고, 검토 세션은 compact-to-vault 로 적립한다. 진입 조건/계약 SSoT 는 docs/security-review.md."
     }
   }
 }

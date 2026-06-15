@@ -12,6 +12,10 @@
     "qa-engineer",
     "devops-engineer"
   ],
+  "cross_cutting_reviewers": [
+    "security-engineer"
+  ],
+  "cross_cutting_reviewers_note": "members 는 7-role deliberation council seat(role_profiles_data SSoT). cross_cutting_reviewers 는 council seat 가 아니라 특정 변경 유형에서 끼어드는 리뷰 게이트 — security-engineer 의 진입 조건/계약 SSoT 는 docs/security-review.md.",
   "execution_mode": "autonomous_member_team_with_approval_gates",
   "default_executor": "claude",
   "instruction_entry": "agents/engineering-agent/CLAUDE.md",
