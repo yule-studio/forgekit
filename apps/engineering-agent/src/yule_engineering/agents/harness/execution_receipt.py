@@ -19,7 +19,7 @@ contents. It is pure-Python and deterministic.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, List, Mapping, Optional, Sequence, Tuple
 
 from yule_core.context_loader import (
     LABEL_AGENT,
@@ -60,6 +60,7 @@ class ExecutionReceipt:
     cleanup: Optional[CleanupReceipt] = None
     security_status: str = "not_evaluated"
     security: Optional[Any] = None  # SecurityReviewDecision (duck-typed)
+    token_efficiency: Optional[Mapping[str, Any]] = None  # saved tokens on the input hot path
 
     @property
     def blocked_or_missing(self) -> Tuple[GrantDecision, ...]:
@@ -98,6 +99,7 @@ class ExecutionReceipt:
             "compaction": self.compaction.to_dict() if self.compaction else None,
             "cleanup": self.cleanup.to_dict() if self.cleanup else None,
             "security": self.security.to_dict() if self.security is not None else None,
+            "token_efficiency": dict(self.token_efficiency) if self.token_efficiency else None,
         }
 
     def render(self) -> str:
@@ -151,6 +153,12 @@ class ExecutionReceipt:
             )
         lines.append("")
 
+        if self.token_efficiency:
+            lines.append("## Token efficiency")
+            for k, v in self.token_efficiency.items():
+                lines.append(f"- {k}: {v}")
+            lines.append("")
+
         lines.append(f"## Security review: {self.security_status}")
         if self.security is not None:
             lines.append(f"- {self.security.surface()}")
@@ -177,6 +185,7 @@ def build_execution_receipt(
     compaction: Optional[CompactionReceipt] = None,
     cleanup: Optional[CleanupReceipt] = None,
     security: Optional[Any] = None,
+    token_efficiency: Optional[Mapping[str, Any]] = None,
 ) -> ExecutionReceipt:
     """Assemble an :class:`ExecutionReceipt` from the run's enforcement surfaces.
 
@@ -251,6 +260,7 @@ def build_execution_receipt(
         cleanup=cleanup,
         security_status=security_status,
         security=security,
+        token_efficiency=token_efficiency,
     )
 
 

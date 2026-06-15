@@ -214,6 +214,62 @@ def render_context(loaded_context: LoadedContext) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+def render_context_digest(loaded_context: LoadedContext, *, max_chars: int = 280) -> str:
+    """Render a *pointer + summary* view instead of full document bodies.
+
+    Full :func:`render_context` ships every doc/policy verbatim — heavy for any
+    runner-fed or diagnostic surface. This digest keeps one heading + first
+    paragraph + path per document, so a reader knows what each layer covers
+    without carrying the whole body. Token efficiency = carry pointers, not text.
+    """
+
+    repo_root = loaded_context.manifest_path.parents[2]
+    role_line = (
+        f"Active Role: {loaded_context.role_id}"
+        if loaded_context.role_id
+        else "Active Role: (none)"
+    )
+    lines: List[str] = [
+        f"# Context digest: {loaded_context.agent_id}",
+        "",
+        role_line,
+        f"Documents: {len(loaded_context.documents)} (digest mode)",
+        "",
+    ]
+    for document in loaded_context.documents:
+        path = _display_path(document.path, repo_root)
+        lines.append(f"- [{document.label}] {path}")
+        summary = _digest_one(document.content, max_chars=max_chars)
+        if summary:
+            lines.append(f"  {summary}")
+    if loaded_context.warnings:
+        lines.append("")
+        lines.append("Warnings: " + "; ".join(loaded_context.warnings))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _digest_one(full_text: str, *, max_chars: int) -> str:
+    raw_lines = (full_text or "").splitlines()
+    heading = ""
+    for line in raw_lines:
+        s = line.strip()
+        if s.startswith("#"):
+            heading = s.lstrip("#").strip()
+            break
+    para = ""
+    for line in raw_lines:
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith(("-", "|", ">", "```")):
+            continue
+        para = s
+        break
+    parts = [p for p in (heading, para) if p]
+    out = " — ".join(parts) if parts else (full_text or "").strip()[:max_chars]
+    if len(out) > max_chars:
+        out = out[:max_chars].rstrip() + "…"
+    return out
+
+
 def _load_manifest(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise ContextError(f"Agent manifest not found: {path}")

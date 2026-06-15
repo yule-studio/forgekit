@@ -891,6 +891,17 @@ def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
     security_parser.add_argument("--change-summary", help="Change summary text.")
     security_parser.add_argument("--json", dest="json_output", action="store_true")
 
+    bench_parser = harness_subparsers.add_parser(
+        "bench",
+        help="Run the token-efficiency benchmark and write the evidence package.",
+    )
+    bench_parser.add_argument("--slug", default="token-efficiency-core", help="Run slug.")
+    bench_parser.add_argument("--date", help="Date stamp (YYYY-MM-DD). Defaults to today (UTC).")
+    bench_parser.add_argument(
+        "--out", help="Output dir. Defaults to runs/token-efficiency/<date>-<slug>."
+    )
+    bench_parser.add_argument("--json", dest="json_output", action="store_true")
+
     cleanup_parser = harness_subparsers.add_parser(
         "cleanup",
         help="Allowlist cleanup of transient artifacts. Dry-run unless --execute --yes.",

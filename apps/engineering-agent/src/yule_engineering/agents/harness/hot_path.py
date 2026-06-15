@@ -165,6 +165,9 @@ def dispatch_receipt(
     change = md.get(CHANGE_METADATA_KEY)
     if isinstance(change, dict):
         security = assess_security_review(change)
+    token_efficiency = md.get("token_efficiency")
+    if not isinstance(token_efficiency, dict):
+        token_efficiency = None
     return build_execution_receipt(
         loaded_context,
         table,
@@ -174,6 +177,7 @@ def dispatch_receipt(
         compaction=compaction,
         cleanup=cleanup,
         security=security,
+        token_efficiency=token_efficiency,
     )
 
 

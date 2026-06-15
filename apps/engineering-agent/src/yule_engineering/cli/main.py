@@ -33,6 +33,7 @@ from .engineer import (
 )
 from ..agents.workflow import WorkflowError
 from .harness import (
+    run_harness_bench_command,
     run_harness_cleanup_command,
     run_harness_compact_command,
     run_harness_receipt_command,
@@ -425,6 +426,14 @@ def _dispatch_harness_command(repo_root: Path, args) -> int:
             repo_root,
             paths=args.change_path,
             summary=args.change_summary,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "bench":
+        return run_harness_bench_command(
+            repo_root,
+            slug=args.slug,
+            date=args.date,
+            out=args.out,
             json_output=args.json_output,
         )
     if args.harness_command == "cleanup":

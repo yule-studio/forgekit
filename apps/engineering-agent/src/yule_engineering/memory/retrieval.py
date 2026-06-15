@@ -10,8 +10,23 @@ the deterministic fallback path.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional, Sequence
+
+# Opt-in: re-rank fetched hits by the memory-policy section 4 reuse boost
+# (canonical / reusable / decision / retrospective) before returning. Default
+# off keeps the existing slot-priority order byte-for-byte.
+ENV_RETRIEVAL_BOOST = "YULE_RETRIEVAL_BOOST_ENABLED"
+
+
+def _retrieval_boost_enabled() -> bool:
+    return (os.environ.get(ENV_RETRIEVAL_BOOST) or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 from ..agents.deliberation import RetrievedMemory, assign_citation_ids
 from yule_memory.models import (
@@ -100,12 +115,17 @@ def fetch_role_context(
     short = _short_role(role)
     priority = _ROLE_SOURCE_PRIORITY.get(short, _DEFAULT_PRIORITY)
 
+    boost_enabled = _retrieval_boost_enabled()
     seen_ids: set[str] = set()
     merged: List[RetrievedMemory] = []
+    raw_pool: List[object] = []  # MemorySearchResult, for the boost re-rank
+    # When boosting, collect a wider candidate pool so a high-boost hit from a
+    # lower-priority slot can still surface into the top *limit*.
+    pool_target = max(limit * 3, limit) if boost_enabled else limit
     per_slot = max(1, limit)
 
     for source_kind, note_kind in priority:
-        if len(merged) >= limit:
+        if len(merged) >= pool_target:
             break
         try:
             hits = search(
@@ -124,13 +144,44 @@ def fetch_role_context(
             if doc_id in seen_ids:
                 continue
             seen_ids.add(doc_id)
+            raw_pool.append(hit)
             merged.append(_to_retrieved_memory(hit))
-            if len(merged) >= limit:
+            if len(merged) >= pool_target:
                 break
+
+    if boost_enabled and raw_pool:
+        ordered = _apply_boost(raw_pool, limit=limit)
+    else:
+        ordered = merged[:limit]
     # Stamp citation IDs at the boundary so callers (deterministic
     # fallbacks + future LLM runners) get the same labels regardless of
     # which entry point produced the list.
-    return list(assign_citation_ids(tuple(merged[:limit])))
+    return list(assign_citation_ids(tuple(ordered)))
+
+
+def _apply_boost(raw_pool: Sequence[object], *, limit: int) -> List[RetrievedMemory]:
+    """Re-rank raw hits by the reuse boost and return the top *limit*.
+
+    Never raises: any failure falls back to the unboosted slot order so
+    retrieval stays best-effort.
+    """
+
+    try:
+        from ..agents.harness.retrieval_boost import rerank
+    except Exception:  # noqa: BLE001
+        return [_to_retrieved_memory(h) for h in raw_pool[:limit]]
+    try:
+        boosted = rerank(raw_pool)[:limit]
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("retrieval boost re-rank failed: %s", exc)
+        return [_to_retrieved_memory(h) for h in raw_pool[:limit]]
+    by_path = {h.document.path: h for h in raw_pool}
+    out: List[RetrievedMemory] = []
+    for b in boosted:
+        hit = by_path.get(b.path)
+        if hit is not None:
+            out.append(_to_retrieved_memory(hit))
+    return out
 
 
 def _to_retrieved_memory(hit) -> RetrievedMemory:

@@ -64,10 +64,14 @@
 > - `cleanup.py` — allowlist 기반 transient artifact 정리(dry-run/execute, PRESERVE 우선, sqlite sidecar·secret·env·lock 보존).
 > - `execution_receipt.py` — run 단위 실행 증명(loaded docs/policies/agent/role/grants/runner/compaction/cleanup/security status).
 > - `security_gate.py` — 변경 metadata 기반 security review 필요 판정(cross-cutting auto-dispatch, pure).
-> - `hot_path.py` — dispatch 결선 seam: capability block gate + per-run receipt + security 판정 결합.
+> - `hot_path.py` — dispatch 결선 seam: capability block gate + per-run receipt + security 판정 + token_efficiency 결합.
+> - `token_budget.py` — 토큰 효율 코어: 일관 추정기(chars/4) + policy digest bundle + previous_decisions compaction(protected 보존) + source reference-mode.
+> - `retrieval_boost.py` — memory-policy 4절 재사용 boost 재정렬(canonical/reusable/decision/retrospective) + reference-mode(why_retrieved/boost_score).
+> - `token_benchmark.py` — deterministic baseline/after 시나리오 + delta(JSON/MD) evidence. `runs/token-efficiency/<date>-<slug>/`.
 >
 > 결선: `agents/runners/role_runner.py`(`pre_dispatch_gate` 훅 + `STATUS_BLOCKED`) → `agents/runners/bootstrap.py`(`YULE_GRANT_ENFORCEMENT_ENABLED` flag 로 gate+receipt 주입). live Claude/`/compact` 는 `agents/runners/claude_code.py`(`YULE_CLAUDE_LIVE_ENABLED`, compact_boundary 캡처+graceful fallback).
-> harness 디렉터리(`.claude/`·`.agents/`·`*-plugin/`)는 `scripts/sync_harness_skills.py` 생성물 — 손 편집 금지. CLI 표면은 `cli/harness.py`(`yule harness {receipt,compact,cleanup,security-review}`). 상세 `docs/agent-slash-commands.md` · `docs/security-review.md`.
+> 토큰 효율 결선: `agents/job_queue/standalone_runners.py`(`YULE_RUNNER_INPUT_COMPACTION_ENABLED` flag 로 role-runner 입력 compaction) · `memory/retrieval.py`(`YULE_RETRIEVAL_BOOST_ENABLED` flag 로 boost 재정렬) · `packages/memory/indexer.py`(canonical/reusable/status → extra 투영). 모든 flag 기본 off. 측정 SSoT 는 `token_benchmark` + `runs/token-efficiency/`.
+> harness 디렉터리(`.claude/`·`.agents/`·`*-plugin/`)는 `scripts/sync_harness_skills.py` 생성물 — 손 편집 금지. CLI 표면은 `cli/harness.py`(`yule harness {receipt,compact,cleanup,security-review,bench}`). 상세 `docs/agent-slash-commands.md` · `docs/security-review.md`.
 
 새 테스트는 책임이 가장 좁게 떨어지는 디렉터리에 두세요. lifecycle test (multi-module orchestration) 은 `tests/engineering/test_*_lifecycle.py` 로 명명합니다 (예: `test_work_report_lifecycle.py`).
 

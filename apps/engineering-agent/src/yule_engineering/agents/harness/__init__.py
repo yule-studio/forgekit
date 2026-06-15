@@ -74,6 +74,14 @@ from .security_gate import (
     assess_security_review,
     security_review_required,
 )
+from .token_budget import (
+    build_policy_bundle,
+    compact_decisions,
+    estimate_tokens,
+    reference_sources,
+)
+from .retrieval_boost import boost_for, rerank, to_references
+from . import token_benchmark
 from .hot_path import (
     build_capability_block_gate,
     dispatch_receipt,
@@ -129,4 +137,13 @@ __all__ = (
     "SecurityReviewDecision",
     "assess_security_review",
     "security_review_required",
+    # token-efficiency core
+    "estimate_tokens",
+    "build_policy_bundle",
+    "compact_decisions",
+    "reference_sources",
+    "boost_for",
+    "rerank",
+    "to_references",
+    "token_benchmark",
 )

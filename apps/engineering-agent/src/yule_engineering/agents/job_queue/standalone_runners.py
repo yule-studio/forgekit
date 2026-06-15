@@ -38,11 +38,29 @@ gateway side until M6.2.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import replace as _dc_replace
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
 
 logger = logging.getLogger(__name__)
+
+# Opt-in: compact long previous_decisions + reference-mode source_context on the
+# role-runner input assembly hot path. Default off so existing behaviour is
+# byte-for-byte unchanged; protected regions (recent K + decision/synthesis) are
+# never folded (token_budget.compact_decisions).
+ENV_RUNNER_INPUT_COMPACTION = "YULE_RUNNER_INPUT_COMPACTION_ENABLED"
+_RUNNER_INPUT_COMPACTION_THRESHOLD = 1200
+_RUNNER_INPUT_KEEP_RECENT = 4
+
+
+def _runner_input_compaction_enabled() -> bool:
+    return (os.environ.get(ENV_RUNNER_INPUT_COMPACTION) or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 # Tests inject these to avoid touching the workflow store / collector.
@@ -741,6 +759,16 @@ def _build_role_runner_input(
         "effective_role": payload.get("effective_role") if payload else None,
     }
 
+    # Token-efficiency hot path (opt-in): fold long previous_decisions and carry
+    # source_context as references. Protected region (recent K + decision /
+    # synthesis) is preserved by token_budget.compact_decisions.
+    if _runner_input_compaction_enabled():
+        source_context, previous_decisions, eff = _slim_runner_input(
+            source_context, previous_decisions
+        )
+        if eff:
+            metadata["token_efficiency"] = eff
+
     return RoleRunnerInput(
         role=role,
         session_id=session_id,
@@ -751,6 +779,46 @@ def _build_role_runner_input(
         previous_decisions=previous_decisions,
         metadata=metadata,
     )
+
+
+def _slim_runner_input(
+    source_context: Mapping[str, Any],
+    previous_decisions: tuple,
+) -> tuple:
+    """Apply deterministic slimming; never raises. Returns (src, prev, metrics).
+
+    metrics carries previous_decisions_saved / source_context_saved /
+    compaction_applied so the dispatch receipt + benchmark can show evidence.
+    """
+
+    try:
+        from ..harness.token_budget import compact_decisions, reference_sources
+    except Exception:  # noqa: BLE001 - slimming is best-effort
+        return source_context, previous_decisions, {}
+
+    metrics: dict = {}
+    try:
+        comp = compact_decisions(
+            list(previous_decisions),
+            threshold_tokens=_RUNNER_INPUT_COMPACTION_THRESHOLD,
+            keep_recent=_RUNNER_INPUT_KEEP_RECENT,
+        )
+        previous_decisions = tuple(comp.decisions)
+        metrics["previous_decisions_saved"] = comp.saved_tokens
+        metrics["compaction_applied"] = comp.applied
+        metrics["folded_decisions"] = comp.folded_count
+    except Exception:  # noqa: BLE001
+        logger.warning("runner input compaction failed; using full decisions", exc_info=True)
+
+    try:
+        ref = reference_sources(source_context or {})
+        if ref.saved_tokens > 0:
+            source_context = ref.slim
+            metrics["source_context_saved"] = ref.saved_tokens
+    except Exception:  # noqa: BLE001
+        logger.warning("runner source reference-mode failed; using full source", exc_info=True)
+
+    return source_context, previous_decisions, metrics
 
 
 def _safe_role_profile(role: str) -> Mapping[str, Any]:
