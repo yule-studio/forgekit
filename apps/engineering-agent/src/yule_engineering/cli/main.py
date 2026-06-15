@@ -34,6 +34,7 @@ from .engineer import (
 from ..agents.workflow import WorkflowError
 from .harness import (
     run_harness_bench_command,
+    run_harness_eval_command,
     run_harness_cleanup_command,
     run_harness_compact_command,
     run_harness_insights_command,
@@ -433,6 +434,14 @@ def _dispatch_harness_command(repo_root: Path, args) -> int:
         )
     if args.harness_command == "bench":
         return run_harness_bench_command(
+            repo_root,
+            slug=args.slug,
+            date=args.date,
+            out=args.out,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "eval":
+        return run_harness_eval_command(
             repo_root,
             slug=args.slug,
             date=args.date,

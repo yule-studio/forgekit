@@ -240,6 +240,45 @@ def run_harness_worktree_hygiene_command(
     return 0
 
 
+def run_harness_eval_command(
+    repo_root: Path,
+    *,
+    slug: str,
+    date: Optional[str],
+    out: Optional[str],
+    json_output: bool,
+) -> int:
+    """Run the fixed-task-set eval gate across variants; write evidence.
+
+    Writes ``comparison.json`` / ``comparison.md`` + per-variant JSON under
+    ``runs/evals/<date>-<slug>/`` so the gate is reproducible from CI/operator.
+    """
+
+    from ..agents.harness import eval_harness as ev
+
+    stamp = date or _today_iso()
+    out_dir = Path(out) if out else (repo_root / "runs" / "evals" / f"{stamp}-{slug}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    comparison = ev.compare_variants()
+    (out_dir / "comparison.json").write_text(
+        json.dumps(comparison, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    md = ev.render_comparison_markdown(comparison)
+    (out_dir / "comparison.md").write_text(md, encoding="utf-8")
+    for variant, report in comparison.get("variants", {}).items():
+        (out_dir / f"{variant}.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    if json_output:
+        print(json.dumps(comparison, ensure_ascii=False, indent=2))
+        return 0
+    print(md)
+    print(f"(evidence: {out_dir})")
+    return 0
+
+
 def run_harness_bench_command(
     repo_root: Path,
     *,

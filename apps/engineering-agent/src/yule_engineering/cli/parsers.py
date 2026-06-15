@@ -902,6 +902,15 @@ def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     bench_parser.add_argument("--json", dest="json_output", action="store_true")
 
+    eval_parser = harness_subparsers.add_parser(
+        "eval",
+        help="Run the fixed-task-set eval gate across variants (success/tokens/cost/latency/rule-first).",
+    )
+    eval_parser.add_argument("--slug", default="routing-eval", help="Run slug.")
+    eval_parser.add_argument("--date", help="Date stamp (YYYY-MM-DD). Defaults to today (UTC).")
+    eval_parser.add_argument("--out", help="Output dir. Defaults to runs/evals/<date>-<slug>.")
+    eval_parser.add_argument("--json", dest="json_output", action="store_true")
+
     insights_parser = harness_subparsers.add_parser(
         "insights",
         help="Cumulative token-efficiency insights across benchmark runs.",
