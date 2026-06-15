@@ -39,6 +39,7 @@ from .harness import (
     run_harness_insights_command,
     run_harness_receipt_command,
     run_harness_security_command,
+    run_harness_worktree_hygiene_command,
 )
 from .doctor import run_doctor_command
 from .github import run_github_issues_command
@@ -450,6 +451,14 @@ def _dispatch_harness_command(repo_root: Path, args) -> int:
         return run_harness_cleanup_command(
             repo_root,
             root=args.root,
+            execute=args.execute,
+            yes=args.yes,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "worktree-hygiene":
+        return run_harness_worktree_hygiene_command(
+            repo_root,
+            stale_hours=args.stale_hours,
             execute=args.execute,
             yes=args.yes,
             json_output=args.json_output,

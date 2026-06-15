@@ -174,6 +174,72 @@ def run_harness_cleanup_command(
     return 0
 
 
+def run_harness_worktree_hygiene_command(
+    repo_root: Path,
+    *,
+    stale_hours: float,
+    execute: bool,
+    yes: bool,
+    json_output: bool,
+) -> int:
+    """Detect stale worktree dirs under allowlisted roots + report disk usage.
+
+    Dry-run by default — removal happens only with ``--execute --yes`` and only
+    for direct children of an allowlisted worktree root (never HOME / repo /
+    ``.git`` / a root itself).
+    """
+
+    from ..agents.governance import worktree_hygiene as wh
+
+    roots = wh.allowlisted_roots(repo_root)
+    stale_seconds = int(max(0.0, stale_hours) * 3600)
+    detected: List[wh.StaleWorktreeDir] = []
+    for root in roots:
+        detected.extend(wh.detect_stale_worktree_dirs(root, stale_after_seconds=stale_seconds))
+
+    do_execute = bool(execute and yes)
+    plan = wh.plan_worktree_cleanup(
+        detected, repo_root=repo_root, allow_roots=roots, apply=do_execute
+    )
+    usage = wh.summarize_disk_usage(repo_root)
+
+    if json_output:
+        payload = {
+            "roots": [str(r) for r in roots],
+            "stale_hours": stale_hours,
+            "executed": plan.applied,
+            "stale": [
+                {"path": str(d.path), "age_seconds": d.age_seconds, "reason": d.reason}
+                for d in detected
+            ],
+            "would_remove": [str(p) for p in plan.would_remove],
+            "removed": [str(p) for p in plan.removed],
+            "refused": [{"path": str(p), "reason": why} for p, why in plan.refused],
+            "disk_usage": [
+                {"label": e.label, "path": str(e.path), "exists": e.exists,
+                 "bytes": e.bytes, "entries": e.entries}
+                for e in usage
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+
+    print("worktree roots (allowlist):")
+    for r in roots:
+        print(f"  - {r}")
+    print(f"stale (>{stale_hours}h): {len(detected)}")
+    for d in detected:
+        print(f"  - {d.path} ({d.reason}, age={int(d.age_seconds)}s)")
+    print(plan.render())
+    if not plan.applied and plan.would_remove:
+        print("(dry-run — re-run with --execute --yes to remove)")
+    print()
+    print(wh.render_disk_usage(usage))
+    if execute and not yes:
+        print("warning: --execute requires --yes; nothing removed.", file=sys.stderr)
+    return 0
+
+
 def run_harness_bench_command(
     repo_root: Path,
     *,

@@ -936,6 +936,28 @@ def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
     )
     cleanup_parser.add_argument("--json", dest="json_output", action="store_true")
 
+    worktree_parser = harness_subparsers.add_parser(
+        "worktree-hygiene",
+        help="Stale-worktree detection + disk view. Dry-run unless --execute --yes.",
+    )
+    worktree_parser.add_argument(
+        "--stale-hours",
+        type=float,
+        default=24.0,
+        help="A worktree dir older than this (hours) is stale. Default 24.",
+    )
+    worktree_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Remove stale worktree dirs (allowlisted roots only). Requires --yes.",
+    )
+    worktree_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm removal. Without it --execute is refused.",
+    )
+    worktree_parser.add_argument("--json", dest="json_output", action="store_true")
+
 
 def add_obsidian_parser(subparsers: argparse._SubParsersAction) -> None:
     obsidian_parser = subparsers.add_parser(
