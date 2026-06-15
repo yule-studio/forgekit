@@ -31,14 +31,26 @@
 3. `supports_providers` ⊆ {`claude`,`codex`,`gemini`} — **Ollama 제외**. Ollama 는
    MCP host 가 아니라 local inference backend 이기 때문([matrix §4](../../docs/provider-capability-matrix.md)).
 
-## projection (후속)
+## projection (✅ 생성기 구현됨)
 
-provider별 연결 파일 생성은 후속:
-- Claude: `.mcp.json` / `.claude` MCP 설정
-- Codex: `~/.codex/config.toml` 의 `[mcp_servers.<id>]`
-- Gemini: Gemini MCP 설정
+`scripts/sync_mcp_projection.py` 가 SSoT 를 provider별 연결 config 로 투영한다
+(`supports_providers` 에 포함된 provider 만, **secret 값 없이 env 참조만**):
 
-생성기는 `scripts/sync_harness_skills.py` 와 같은 SSoT→projection 패턴을 따른다(미구현).
+```bash
+python3 scripts/sync_mcp_projection.py          # 생성/갱신
+python3 scripts/sync_mcp_projection.py --check    # drift 시 exit 1 (CI/테스트)
+```
+
+| 생성물 | provider | 형식 |
+| --- | --- | --- |
+| `.mcp.json` | Claude Code | native project MCP (`mcpServers`, `${ENV}` 헤더) |
+| `.codex-plugin/mcp.toml` | Codex | `[mcp_servers.<id>]` 스니펫(`url` + `bearer_token_env_var`) |
+| `.gemini-plugin/mcp.json` | Gemini | `mcpServers`(`httpUrl` + `${ENV}` 헤더) |
+
+- **HOME/global 미터치**: Codex/Gemini native config 는 HOME 에 있으므로 repo-tracked
+  *스니펫* 을 생성한다 — 운영자가 자기 CLI config 에 include. `~/.codex`·`~/.gemini` 직접
+  쓰지 않는다.
+- drift/secret 회귀: [`tests/governance/test_mcp_projection.py`](../../tests/governance/test_mcp_projection.py).
 
 ## 회귀
 [`tests/governance/test_mcp_registry.py`](../../tests/governance/test_mcp_registry.py).
