@@ -457,12 +457,19 @@ class _CandidateInvocation:
 PreDispatchGate = Callable[[Any, "RoleRunnerInput"], Optional["RoleRunnerOutput"]]
 
 
+#: Optional per-call reorder hook: ``(input_, [provider_id, ...]) -> [provider_id, ...]``.
+#: Returns the desired ordering of the available provider ids (lossless — every
+#: input id must appear in the output). Used for capability-aware routing.
+ProviderRouter = Callable[["RoleRunnerInput", Sequence[str]], Sequence[str]]
+
+
 def build_role_runner_dispatcher(
     *,
     candidates: Sequence[RoleRunner],
     audit_writer: Optional[AuditWriter] = None,
     active_role_predicate: Optional[Callable[[Any, str], bool]] = None,
     pre_dispatch_gate: Optional[PreDispatchGate] = None,
+    provider_router: Optional[ProviderRouter] = None,
 ) -> Callable[[Any, RoleRunnerInput], RoleRunnerOutput]:
     """Return a callable ``(session, input_) → RoleRunnerOutput``.
 
@@ -531,8 +538,25 @@ def build_role_runner_dispatcher(
                 )
                 return gate_output
 
+        # Capability-aware routing (optional): reorder candidates per call by
+        # the task's preferred backend order. Lossless + never raises — a buggy
+        # router degrades to the original priority order.
+        dispatch_candidates = candidates_with_terminal
+        if provider_router is not None:
+            try:
+                ordering = list(
+                    provider_router(input_, [r.provider for r in candidates_with_terminal])
+                )
+                dispatch_candidates = _reorder_candidates(candidates_with_terminal, ordering)
+            except Exception:  # noqa: BLE001 - routing must never break dispatch
+                logger.warning(
+                    "role-runner provider_router raised; using default order",
+                    exc_info=True,
+                )
+                dispatch_candidates = candidates_with_terminal
+
         attempts: list[_CandidateInvocation] = []
-        for runner in candidates_with_terminal:
+        for runner in dispatch_candidates:
             if not _safe_is_available(runner):
                 attempts.append(
                     _CandidateInvocation(
@@ -639,6 +663,34 @@ def build_role_runner_dispatcher(
     return _dispatch
 
 
+def _reorder_candidates(
+    candidates: Tuple[RoleRunner, ...], ordering: Sequence[str]
+) -> Tuple[RoleRunner, ...]:
+    """Reorder *candidates* by provider-id *ordering* (lossless).
+
+    Runners whose provider appears in *ordering* come first in that order;
+    runners not mentioned keep their original relative order at the end. Every
+    input runner appears exactly once in the output.
+    """
+
+    by_provider: dict[str, list[RoleRunner]] = {}
+    for runner in candidates:
+        by_provider.setdefault(runner.provider, []).append(runner)
+
+    out: list[RoleRunner] = []
+    used: set[int] = set()
+    for provider in ordering:
+        for runner in by_provider.get(provider, []):
+            if id(runner) not in used:
+                out.append(runner)
+                used.add(id(runner))
+    for runner in candidates:  # append anything not covered by ordering
+        if id(runner) not in used:
+            out.append(runner)
+            used.add(id(runner))
+    return tuple(out)
+
+
 def _ensure_terminal_fallback(
     candidates: Tuple[RoleRunner, ...],
 ) -> Tuple[RoleRunner, ...]:
@@ -687,6 +739,7 @@ __all__ = (
     "STATUS_OK",
     "STATUS_UNAVAILABLE",
     "PreDispatchGate",
+    "ProviderRouter",
     "build_audit_record",
     "build_role_runner_dispatcher",
     "claude_role_runner",
