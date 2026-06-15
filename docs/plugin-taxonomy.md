@@ -110,14 +110,17 @@ pre-tool hook). 그 매핑이 [capability matrix](provider-capability-matrix.md)
 남은 후속: research 외 Gemini 적합 skill 확대, GEMINI.md `@include` 자동화, custom command
 argument(`{{args}}`) 매핑.
 
-## 6. MCP 의 자리 (현재 공백)
+## 6. MCP 의 자리 (✅ SSoT 도입됨)
 
-MCP(외부 도구 서버: figma/drive/browser 등)는 현재 **SSoT 가 없다**(docs 에 개념만).
-plugin/hook/skill 과 섞지 말 것 — MCP 는 *backend 가 붙는 외부 도구 채널*이다.
+MCP(외부 도구 서버: figma/drive/browser 등)는 plugin/hook/skill 과 다른 개념 —
+*backend 가 붙는 외부 도구 채널*이다.
 
-제안(후속): `integrations/mcp/<id>.json`(서버 url/auth env/도구 목록) 을 vendor-neutral
-SSoT 로 두고, provider별 연결(Claude `.mcp`, Codex `mcp_servers`, Gemini MCP)은
-projection 으로 생성. 본 PR 범위 밖 — [matrix 문서](provider-capability-matrix.md) 후속 참조.
+- **SSoT**: `integrations/mcp/<id>.json`(transport/url|command/auth.env/tools/supports_providers).
+- **로더/검증**: `agents/harness/mcp_registry.py` (`load_mcp_servers` / `validate_mcp_server`).
+- 하드레일: secret **값** 금지(env 키 이름만), `supports_providers` 는 MCP 가능 harness
+  {claude,codex,gemini}만 — **Ollama 제외**(backend 라 MCP host 아님). 회귀 `test_mcp_registry`.
+- provider별 연결(Claude `.mcp` / Codex `mcp_servers` / Gemini MCP) **생성(projection)은 후속** —
+  `scripts/sync_harness_skills.py` 와 같은 SSoT→projection 패턴.
 
 ## 7. 승격 / provider-specific 판단 기준 (질문 4 답)
 

@@ -1,0 +1,19 @@
+{
+  "id": "figma",
+  "name": "Figma MCP",
+  "description": "Figma 디자인 파일 읽기/쓰기 + Code Connect 매핑을 위한 MCP 서버. 디자인→코드/코드→디자인 작업 도구 채널.",
+  "transport": "http",
+  "url": "https://mcp.figma.com/mcp",
+  "auth": {
+    "type": "bearer",
+    "env": "FIGMA_OAUTH_TOKEN"
+  },
+  "tools": [
+    "use_figma",
+    "create_new_file",
+    "generate_diagram"
+  ],
+  "supports_providers": ["claude", "codex", "gemini"],
+  "autonomy_level": "supervised",
+  "risk_class": "MEDIUM"
+}

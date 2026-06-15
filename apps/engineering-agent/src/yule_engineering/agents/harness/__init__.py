@@ -81,6 +81,12 @@ from .token_budget import (
     reference_sources,
 )
 from .retrieval_boost import boost_for, rerank, to_references
+from .mcp_registry import (
+    McpServer,
+    McpValidationError,
+    load_mcp_servers,
+    validate_mcp_server,
+)
 from . import token_benchmark
 from .hot_path import (
     build_capability_block_gate,
@@ -146,4 +152,9 @@ __all__ = (
     "rerank",
     "to_references",
     "token_benchmark",
+    # MCP server registry (vendor-neutral SSoT)
+    "McpServer",
+    "McpValidationError",
+    "load_mcp_servers",
+    "validate_mcp_server",
 )
