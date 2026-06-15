@@ -7,6 +7,10 @@
 > 한 단계 위 레버 — capability 를 **아예 live LLM 으로 보낼지 말지**(rule_first /
 > llm_optional / llm_required)는 [`llm-minimization-policy.md`](llm-minimization-policy.md)
 > 가 SSoT. 본 매트릭스는 "LLM 을 쓴다면 어느 provider" 의 배치만 정의한다.
+>
+> 런타임에서 *실제로 어느 provider 가 돌았고/실패했고/얼마 들었는지* 의 관측 표면(provider
+> runtime telemetry · cost proxy · operator dashboard)은
+> [`runtime-operator-surfaces.md`](runtime-operator-surfaces.md) 참조.
 
 ## 1. 원칙
 

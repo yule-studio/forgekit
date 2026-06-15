@@ -118,8 +118,15 @@ surface; *알 수 없거나 grant 자체가 금지된 능력*은 block.
 [`agents/harness/execution_receipt.py`](../apps/engineering-agent/src/yule_engineering/agents/harness/execution_receipt.py)
 가 `ExecutionReceipt` 로 묶는다. 필드: loaded docs / loaded policies / selected agent · role /
 granted skills · commands / blocked or missing / selected runner / warnings / compaction status /
-cleanup status / security status. CLI: `yule harness receipt [--role <r>] [--runner <id>] [--capability …]
+cleanup status / security status / **optimization**(LLM-minimization 결정) / **provider_runtime**
+(live/usage/cost/latency/fallback). CLI: `yule harness receipt [--role <r>] [--runner <id>] [--capability …]
 [--change-path …] [--change-summary …] [--json]`.
+
+**운영 표면 (운영 고도화 3 축).** `yule harness status` = provider runtime / self-improvement /
+eval / token 을 한 대시보드 + "what to do next" 로 접는다. `yule harness eval` = 고정 task-set
+정량 게이트(success/tokens/cost/latency/rule-first, variant 비교 → `runs/evals/`). `yule harness
+insights` = provider fallback rate / cost / latency / LLM-avoided roll-up. SSoT:
+[`runtime-operator-surfaces.md`](runtime-operator-surfaces.md).
 
 **매 run 결선.** enforcement opt-in(`YULE_GRANT_ENFORCEMENT_ENABLED`) 시 게이트웨이 dispatch 가
 끝날 때마다 `hot_path.dispatch_receipt` 가 receipt 를 만들어 `session.extra['execution_receipts']`
