@@ -35,6 +35,7 @@ from ..agents.workflow import WorkflowError
 from .harness import (
     run_harness_bench_command,
     run_harness_eval_command,
+    run_harness_status_command,
     run_harness_cleanup_command,
     run_harness_compact_command,
     run_harness_insights_command,
@@ -446,6 +447,13 @@ def _dispatch_harness_command(repo_root: Path, args) -> int:
             slug=args.slug,
             date=args.date,
             out=args.out,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "status":
+        return run_harness_status_command(
+            repo_root,
+            receipts=args.receipts,
+            session=args.session,
             json_output=args.json_output,
         )
     if args.harness_command == "insights":

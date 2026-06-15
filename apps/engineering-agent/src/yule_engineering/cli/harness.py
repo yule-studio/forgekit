@@ -15,7 +15,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Mapping, Optional, Sequence
 
 from yule_core.context_loader import load_agent_context
 
@@ -476,12 +476,101 @@ def run_harness_insights_command(
     return 0
 
 
+def run_harness_status_command(
+    repo_root: Path,
+    *,
+    receipts: Optional[str] = None,
+    session: Optional[str] = None,
+    agent_id: str = "engineering-agent",
+    json_output: bool = False,
+) -> int:
+    """Operator dashboard — folds provider/self-improvement/eval/token signals
+    into one view + a rule-derived "what to do next" list."""
+
+    from ..agents.harness.insights import (
+        aggregate_receipts,
+        scan_token_efficiency_evidence,
+    )
+    from ..agents.harness.operator_surface import (
+        compose_dashboard,
+        render_dashboard_markdown,
+    )
+
+    # provider / LLM-usage roll-up from receipts (optional)
+    receipt_dicts = _load_receipt_dicts(repo_root, agent_id, receipts=receipts, session=session)
+    usage = aggregate_receipts(receipt_dicts) if receipt_dicts else None
+
+    # latest eval comparison
+    eval_comparison = _load_latest_eval_comparison(repo_root)
+
+    # token-efficiency insights
+    token = scan_token_efficiency_evidence(repo_root / "runs" / "token-efficiency")
+
+    # self-improvement proposal counts (best-effort, durable from the ledger)
+    self_improvement = _load_self_improvement_counts()
+
+    dash = compose_dashboard(
+        usage=usage,
+        eval_comparison=eval_comparison,
+        self_improvement=self_improvement,
+        token_insights=token.to_dict(),
+    )
+    if json_output:
+        print(json.dumps(dash.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+    print(render_dashboard_markdown(dash))
+    return 0
+
+
+def _load_latest_eval_comparison(repo_root: Path):
+    """Read the newest ``runs/evals/*/comparison.json`` or None."""
+
+    evals = repo_root / "runs" / "evals"
+    if not evals.exists():
+        return None
+    candidates = sorted(evals.glob("*/comparison.json"))
+    if not candidates:
+        return None
+    try:
+        return json.loads(candidates[-1].read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _load_self_improvement_counts():
+    """Count self-improvement problems by status from the durable ledger."""
+
+    try:
+        from ..agents.lifecycle.problem_ledger import ProblemLedger, default_ledger_path
+
+        path = default_ledger_path()
+        if not Path(path).exists():
+            return None
+        ledger = ProblemLedger(ledger_path=Path(path))
+        problems = ledger.all()
+    except Exception:  # noqa: BLE001 - surface must never crash on a bad ledger
+        return None
+    waiting = sum(1 for p in problems if p.status.value == "waiting_operator")
+    blocked = sum(1 for p in problems if p.status.value == "blocked")
+    delegated = sum(1 for p in problems if p.approval_scope == "delegated_ok")
+    return {
+        "recent_ticks": 0,
+        "detected": len(problems),
+        "delegated": delegated,
+        "waiting_operator": waiting,
+        "blocked": blocked,
+    }
+
+
 def _load_receipt_dicts(repo_root, agent_id, *, receipts, session):
     """Load execution-receipt dicts from a JSON file or a live session, or None."""
 
     if receipts:
         try:
             data = json.loads(Path(receipts).read_text(encoding="utf-8"))
+            # accept a bare array OR a {"receipts": [...]} wrapper
+            if isinstance(data, Mapping):
+                data = data.get("receipts")
             return [d for d in data if isinstance(d, dict)] if isinstance(data, list) else []
         except (OSError, ValueError) as exc:
             print(f"warning: could not read --receipts: {exc}", file=sys.stderr)

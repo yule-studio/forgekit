@@ -911,6 +911,18 @@ def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
     eval_parser.add_argument("--out", help="Output dir. Defaults to runs/evals/<date>-<slug>.")
     eval_parser.add_argument("--json", dest="json_output", action="store_true")
 
+    status_parser = harness_subparsers.add_parser(
+        "status",
+        help="Operator dashboard: provider/self-improvement/eval/token + what-to-do-next.",
+    )
+    status_parser.add_argument(
+        "--receipts", help="JSON file (array of execution-receipt dicts) for provider roll-up."
+    )
+    status_parser.add_argument(
+        "--session", help="Live session id; reads session.extra['execution_receipts']."
+    )
+    status_parser.add_argument("--json", dest="json_output", action="store_true")
+
     insights_parser = harness_subparsers.add_parser(
         "insights",
         help="Cumulative token-efficiency insights across benchmark runs.",
