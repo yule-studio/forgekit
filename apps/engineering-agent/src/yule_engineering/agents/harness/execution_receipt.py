@@ -65,6 +65,10 @@ class ExecutionReceipt:
     # / llm_used / selected_provider / bypassed_live_llm / bypass_reason /
     # routing_reason. Turns the receipt from audit-only into optimization proof.
     optimization: Optional[Mapping[str, Any]] = None
+    # Provider-runtime telemetry: selected_provider / live / used_fallback /
+    # elapsed_ms / tokens / cost / fallback_from. "Why this provider ran, what
+    # it cost, and which providers it fell back from." (WT1 live hardening.)
+    provider_runtime: Optional[Mapping[str, Any]] = None
 
     @property
     def blocked_or_missing(self) -> Tuple[GrantDecision, ...]:
@@ -105,6 +109,7 @@ class ExecutionReceipt:
             "security": self.security.to_dict() if self.security is not None else None,
             "token_efficiency": dict(self.token_efficiency) if self.token_efficiency else None,
             "optimization": dict(self.optimization) if self.optimization else None,
+            "provider_runtime": dict(self.provider_runtime) if self.provider_runtime else None,
         }
 
     def render(self) -> str:
@@ -180,6 +185,27 @@ class ExecutionReceipt:
             lines.append(f"- routing_reason: {o.get('routing_reason')}")
             lines.append("")
 
+        if self.provider_runtime:
+            p = self.provider_runtime
+            cost = p.get("cost") or {}
+            lines.append("## Provider runtime")
+            lines.append(
+                f"- selected_provider={p.get('selected_provider')} "
+                f"live={p.get('live')} used_fallback={p.get('used_fallback')}"
+            )
+            lines.append(
+                f"- elapsed_ms={p.get('elapsed_ms')} "
+                f"tokens={p.get('total_tokens')} ({p.get('usage_basis')}) "
+                f"cost_usd={cost.get('total_cost_usd')} (basis={cost.get('basis')})"
+            )
+            fb = p.get("fallback_from") or []
+            if fb:
+                lines.append(
+                    "- fallback_from: "
+                    + ", ".join(f"{s.get('provider')}({s.get('failure_class')})" for s in fb)
+                )
+            lines.append("")
+
         lines.append(f"## Security review: {self.security_status}")
         if self.security is not None:
             lines.append(f"- {self.security.surface()}")
@@ -208,6 +234,7 @@ def build_execution_receipt(
     security: Optional[Any] = None,
     token_efficiency: Optional[Mapping[str, Any]] = None,
     optimization: Optional[Mapping[str, Any]] = None,
+    provider_runtime: Optional[Mapping[str, Any]] = None,
 ) -> ExecutionReceipt:
     """Assemble an :class:`ExecutionReceipt` from the run's enforcement surfaces.
 
@@ -284,6 +311,7 @@ def build_execution_receipt(
         security=security,
         token_efficiency=token_efficiency,
         optimization=optimization,
+        provider_runtime=provider_runtime,
     )
 
 

@@ -23,7 +23,7 @@ module *lazily* (inside functions) to avoid an import cycle.
 
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from ..runners.role_runner import (
     STATUS_BLOCKED,
@@ -149,12 +149,14 @@ def dispatch_receipt(
     agent_id: str = DEFAULT_AGENT_ID,
     compaction: Any = None,
     cleanup: Any = None,
+    attempts: Sequence[Mapping[str, Any]] = (),
 ) -> ExecutionReceipt:
     """Build the per-run execution receipt for a finished dispatch.
 
     ``selected_runner`` is the winning provider (or ``grant-gate`` on a block);
     requested capabilities flow through so blocked/advisory ones surface under
-    "blocked or missing".
+    "blocked or missing". *attempts* is the dispatcher's per-candidate trace —
+    when supplied it populates the provider-runtime ``fallback_from`` chain.
     """
 
     actor = actor_id_for(input_, agent_id=agent_id)
@@ -169,6 +171,7 @@ def dispatch_receipt(
     if not isinstance(token_efficiency, dict):
         token_efficiency = None
     optimization = _optimization_block(input_, output, agent_id=agent_id)
+    provider_runtime = _provider_runtime_block(input_, output, attempts=attempts)
     return build_execution_receipt(
         loaded_context,
         table,
@@ -180,7 +183,33 @@ def dispatch_receipt(
         security=security,
         token_efficiency=token_efficiency,
         optimization=optimization,
+        provider_runtime=provider_runtime,
     )
+
+
+def _provider_runtime_block(
+    input_: Any, output: Any, *, attempts: Sequence[Mapping[str, Any]] = ()
+) -> Optional[dict]:
+    """Build the provider-runtime telemetry block from a finished dispatch."""
+
+    from .provider_runtime import build_provider_runtime
+
+    provider = getattr(output, "provider", None)
+    if not provider:
+        return None
+    md = getattr(input_, "metadata", None) or {}
+    prompt_text = str(getattr(input_, "prompt", "") or md.get("prompt", "") or "")
+    output_text = str(getattr(output, "text", "") or "")
+    runtime = build_provider_runtime(
+        selected_provider=provider,
+        used_fallback=bool(getattr(output, "used_fallback", False)),
+        metrics=getattr(output, "metrics", None),
+        attempts=attempts,
+        prompt_text=prompt_text,
+        output_text=output_text,
+        model=md.get("model") if isinstance(md, dict) else None,
+    )
+    return runtime.to_dict()
 
 
 # Providers that are not a live LLM call.
