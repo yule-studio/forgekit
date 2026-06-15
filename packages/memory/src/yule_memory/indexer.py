@@ -256,10 +256,10 @@ def _document_from_markdown_file(
     created_at = _parse_iso_datetime(_frontmatter_value(frontmatter, "created_at"))
     relative = _relative_path(md_path, base_dir)
     doc_id = f"{source_kind}:{relative}"
-    # Project memory-policy section 4 reuse-boost markers into extra so the
-    # retrieval boost re-ranker can apply them faithfully (read-side only).
+    # Project memory-policy section 4 reuse-boost markers + topic (recall-policy
+    # section 4 topic-aware recall) into extra (read-side only).
     extra: dict = {}
-    for marker in ("canonical", "reusable", "status"):
+    for marker in ("canonical", "reusable", "status", "topic"):
         value = _frontmatter_value(frontmatter, marker)
         if value not in (None, ""):
             extra[marker] = str(value)

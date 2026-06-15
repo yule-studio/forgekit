@@ -12,12 +12,18 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 # Opt-in: re-rank fetched hits by the memory-policy section 4 reuse boost
 # (canonical / reusable / decision / retrospective) before returning. Default
 # off keeps the existing slot-priority order byte-for-byte.
 ENV_RETRIEVAL_BOOST = "YULE_RETRIEVAL_BOOST_ENABLED"
+# Opt-in: cache the fetched candidate pool keyed by (role, query, …) and the
+# index file mtime. Invalidates automatically on reindex (mtime changes).
+ENV_RETRIEVAL_CACHE = "YULE_RETRIEVAL_CACHE_ENABLED"
+
+# (cache_key) -> (index_mtime, results). Module-level; bounded by query variety.
+_POOL_CACHE: Dict[Tuple, Tuple[Optional[float], List]] = {}
 
 
 def _retrieval_boost_enabled() -> bool:
@@ -27,6 +33,33 @@ def _retrieval_boost_enabled() -> bool:
         "yes",
         "on",
     }
+
+
+def _retrieval_cache_enabled() -> bool:
+    return (os.environ.get(ENV_RETRIEVAL_CACHE) or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _index_mtime(repo_root: Optional[Path]) -> Optional[float]:
+    """Index db mtime for cache invalidation; None when unresolvable (→ no cache)."""
+
+    try:
+        from yule_memory.indexer import _resolve_db_path
+
+        db = _resolve_db_path(db_path=None, repo_root=repo_root)
+        return db.stat().st_mtime if db and db.exists() else None
+    except Exception:  # noqa: BLE001 - cache is best-effort
+        return None
+
+
+def clear_retrieval_cache() -> None:
+    """Drop the candidate-pool cache (tests / explicit invalidation)."""
+
+    _POOL_CACHE.clear()
 
 from ..agents.deliberation import RetrievedMemory, assign_citation_ids
 from yule_memory.models import (
@@ -116,6 +149,19 @@ def fetch_role_context(
     priority = _ROLE_SOURCE_PRIORITY.get(short, _DEFAULT_PRIORITY)
 
     boost_enabled = _retrieval_boost_enabled()
+
+    # Candidate-pool cache (opt-in): serve a memoized result while the index is
+    # unchanged. Invalidates automatically when the index mtime moves (reindex).
+    cache_on = _retrieval_cache_enabled()
+    cache_key: Optional[Tuple] = None
+    cache_mtime: Optional[float] = None
+    if cache_on:
+        cache_key = (short, query.strip(), task_type, limit, boost_enabled, str(repo_root or ""))
+        cache_mtime = _index_mtime(repo_root)
+        if cache_mtime is not None:
+            cached = _POOL_CACHE.get(cache_key)
+            if cached is not None and cached[0] == cache_mtime:
+                return list(cached[1])
     seen_ids: set[str] = set()
     merged: List[RetrievedMemory] = []
     raw_pool: List[object] = []  # MemorySearchResult, for the boost re-rank
@@ -156,7 +202,10 @@ def fetch_role_context(
     # Stamp citation IDs at the boundary so callers (deterministic
     # fallbacks + future LLM runners) get the same labels regardless of
     # which entry point produced the list.
-    return list(assign_citation_ids(tuple(ordered)))
+    result = list(assign_citation_ids(tuple(ordered)))
+    if cache_on and cache_key is not None and cache_mtime is not None:
+        _POOL_CACHE[cache_key] = (cache_mtime, list(result))
+    return result
 
 
 def _apply_boost(raw_pool: Sequence[object], *, limit: int) -> List[RetrievedMemory]:
@@ -182,6 +231,36 @@ def _apply_boost(raw_pool: Sequence[object], *, limit: int) -> List[RetrievedMem
         if hit is not None:
             out.append(_to_retrieved_memory(hit))
     return out
+
+
+def fetch_topic_context(
+    *,
+    topic: str,
+    query: Optional[str] = None,
+    limit: int = 5,
+    repo_root: Optional[Path] = None,
+) -> List[RetrievedMemory]:
+    """Topic-横단 recall (recall-policy section 4): notes sharing a ``topic``.
+
+    Matches the Obsidian frontmatter ``topic`` key (projected into the index
+    ``extra``). Searches broadly on *query* (defaults to *topic*) then keeps only
+    hits whose ``extra['topic']`` equals *topic*. Never raises — returns ``[]``
+    on any failure so it can't break a deliberation path.
+    """
+
+    topic_norm = (topic or "").strip()
+    if not topic_norm:
+        return []
+    q = (query or topic_norm).strip()
+    try:
+        hits = search(q, limit=max(limit * 5, limit), repo_root=repo_root)
+    except Exception as exc:  # noqa: BLE001 - topic recall is best-effort
+        _log.warning("topic recall search failed (topic=%s): %s", topic_norm, exc)
+        return []
+    matched = [
+        h for h in hits if str((getattr(h.document, "extra", {}) or {}).get("topic", "")) == topic_norm
+    ][:limit]
+    return list(assign_citation_ids(tuple(_to_retrieved_memory(h) for h in matched)))
 
 
 def _to_retrieved_memory(hit) -> RetrievedMemory:
