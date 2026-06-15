@@ -55,7 +55,8 @@ docs/
 | 테스트 작성 / 회귀 가이드 | `docs/testing.md` |
 | 성능 개선 / 고도화 opening criteria | `docs/engineering-company-runtime-master-plan.md` §"Post-test hardening" |
 | Troubleshooting / 실수 기록 / preflight | `docs/troubleshooting-mandatory.md` (mandatory capture · 8 섹션 스키마 · mistake ledger 자동 승격) |
-| 슬래시 명령어 / 스킬 / harness 플러그인 / compact→vault | `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json` SSoT) |
+| 슬래시 명령어 / 스킬 / harness 플러그인 / compact→vault / grant 강제 / execution receipt / cleanup | `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json` SSoT) |
+| 보안 검토 / cross-cutting security 게이트 / `/security-review` | `docs/security-review.md` (+ `agents/engineering-agent/security-engineer/` 역할 계약 SSoT) |
 | engineering-agent role council / tech-lead signoff / execution review | `docs/engineering-role-council-runtime.md` (+ council contract SSoT `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
 | 모노레포 구조 / packages·apps / compat shim / 코드 이전 | `docs/monorepo-structure.md` (달성 구조 · 의존 hard rail · shim 카탈로그 · 남은 로드맵 SSoT) |
 

@@ -98,6 +98,8 @@ Engineering Agent는 **엔지니어링 부서의 게이트웨이**다. 외부에
 | Discord member-bot / dispatcher | [`/docs/discord.md`](../../docs/discord.md), [`/docs/runtime-member-bot-dispatch-parity.md`](../../docs/runtime-member-bot-dispatch-parity.md) | bot.py / member_bot 진입부 |
 | Configuration / env / CI 알림 | [`/docs/configuration.md`](../../docs/configuration.md), [`/docs/ci-discord-notifications.md`](../../docs/ci-discord-notifications.md) | env 변수 / CI 알림 채널 |
 | Runtime governance (branch/PR/tag/curated/eval/hardening) | [`/docs/engineering-agent-governance.md`](../../docs/engineering-agent-governance.md), [`apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py`](../../apps/engineering-agent/src/yule_engineering/agents/governance/runtime_policy.py) | hard rail 코드 SSoT |
+| 보안 검토 / cross-cutting security 게이트 / `/security-review` | [`/docs/security-review.md`](../../docs/security-review.md), [`security-engineer/manifest.json`](security-engineer/manifest.json) | 언제 끼어드나 + 4 도메인 체크리스트. 7-role council seat 아님(cross_cutting_reviewers) |
+| Harness 강제 (grant enforcement / execution receipt / compact→vault / cleanup) | [`/docs/agent-slash-commands.md`](../../docs/agent-slash-commands.md), `agents/harness/{grant_enforcement,execution_receipt,compaction_protocol,cleanup}.py` | advisory/block 기준 + receipt 필드 SSoT |
 | Vault / 지식 / inbox / retrieval | [`/docs/memory.md`](../../docs/memory.md) | curated 승격 규칙 + retrieval eval |
 
 ## 코딩 작업 시 강제 규칙 (engineering-agent 특화)

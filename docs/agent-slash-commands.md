@@ -82,6 +82,63 @@
 - 스킬 spec: [`compact-to-vault.md`](../skills/compact-to-vault.md).
 - 자동 트리거는 `YULE_COMPACT_TO_VAULT_ENABLED`(기본 off) 뒤에서만. live `/compact` 토큰 캡처는 후속 PR.
 
+## 4b. grant 강제 (runtime enforcement)
+
+grant table 은 "X 가 Y 에 부여됐나" 의 SSoT 이고, 런타임 강제는
+[`agents/harness/grant_enforcement.py`](../apps/engineering-agent/src/yule_engineering/agents/harness/grant_enforcement.py)
+가 책임진다. actor(부서 또는 `<부서>/<role>`)가 슬래시 명령어/스킬을 쓰려 할 때 세 판정 중 하나를 낸다.
+
+| 상황 | 판정 |
+| --- | --- |
+| actor 에 grant 됨 | **ALLOW** |
+| 미부여, 카탈로그에 존재 + grantable built-in | **ADVISORY** (경고 surface, 게이트웨이/운영자가 grant 확장 결정) |
+| 미부여, 등록된 custom skill | **ADVISORY** |
+| 미부여, grantable=false built-in (운영자 대화형 전용) | **BLOCK** |
+| 카탈로그에 없는 명령어/스킬 | **BLOCK** |
+| grant table 에 없는 actor | **BLOCK** |
+
+advisory vs block 의 경계는 **코드에 고정**(`grant_enforcement.evaluate_command/skill`)되고
+[`tests/agents/test_grant_enforcement.py`](../tests/agents/test_grant_enforcement.py) 가 잠근다.
+원칙: *알려진(=카탈로그에 있고 부여 가능한) 능력의 미보유*는 over-block 하지 않고 advisory 로
+surface; *알 수 없거나 grant 자체가 금지된 능력*은 block.
+
+**hot-path 결선(실 dispatch).** role-runner dispatch 가 provider 를 부르기 직전,
+`role_runner.build_role_runner_dispatcher(pre_dispatch_gate=…)` 가 gate 를 실행한다 — BLOCK
+이면 provider 호출 없이 `STATUS_BLOCKED` take 를 반환(`agents/harness/hot_path.build_capability_block_gate`).
+게이트웨이 결선은 `bootstrap.build_role_runner_dispatch_from_env(grant_table=…, receipt_sink=…)`
+이며 `YULE_GRANT_ENFORCEMENT_ENABLED` 로 opt-in(기본 off, 미설정 시 기존 동작 그대로). capability 는
+`RoleRunnerInput.metadata['capabilities']` 로 선언한다. ADVISORY 는 차단하지 않고 receipt 에 남는다.
+회귀: [`tests/runners/test_role_runner_gate.py`](../tests/runners/test_role_runner_gate.py) ·
+[`tests/runners/test_runner_bootstrap_enforcement.py`](../tests/runners/test_runner_bootstrap_enforcement.py) ·
+[`tests/agents/test_hot_path.py`](../tests/agents/test_hot_path.py).
+
+## 4c. execution receipt (실행 증명)
+
+이번 run 이 무엇을 로드했고 무엇이 허용됐는지를
+[`agents/harness/execution_receipt.py`](../apps/engineering-agent/src/yule_engineering/agents/harness/execution_receipt.py)
+가 `ExecutionReceipt` 로 묶는다. 필드: loaded docs / loaded policies / selected agent · role /
+granted skills · commands / blocked or missing / selected runner / warnings / compaction status /
+cleanup status / security status. CLI: `yule harness receipt [--role <r>] [--runner <id>] [--capability …]
+[--change-path …] [--change-summary …] [--json]`.
+
+**매 run 결선.** enforcement opt-in(`YULE_GRANT_ENFORCEMENT_ENABLED`) 시 게이트웨이 dispatch 가
+끝날 때마다 `hot_path.dispatch_receipt` 가 receipt 를 만들어 `session.extra['execution_receipts']`
+(append-only, cap 50 — audit 는 트리밍하지 않음)에 적립한다.
+
+**live `/compact` 토큰.** `claude_code.ClaudeCodeRunner.compact()` 가 `--output-format stream-json`
+의 `compact_boundary` 이벤트에서 pre/post 토큰을 캡처한다(`YULE_CLAUDE_LIVE_ENABLED` opt-in). 파싱
+실패/비live 면 deterministic 추정치로 graceful fallback 하고 receipt 에 `token_source=estimate`
++ warning 을 남긴다. CLI: `yule harness compact --live …`.
+
+## 4d. cleanup (용량/잔여 artifact 안전 정리)
+
+[`agents/harness/cleanup.py`](../apps/engineering-agent/src/yule_engineering/agents/harness/cleanup.py)
+는 allowlist 기반으로만 정리한다. 분류: `DELETABLE`(transient/regeneratable) ·
+`PRESERVE`(audit/canonical — `*.sqlite3` 세션, agent_ops_audit, vault canonical, 원문
+prompt/decision/synthesis/approval, 소스/정책/테스트) · `APPROVAL_NEEDED`(generated-but-tracked
+harness 디렉터리, 대용량). **PRESERVE 가 항상 우선**, default 도 PRESERVE. dry-run 이 기본이며
+execute 는 `--execute --yes` 둘 다 필요. CLI: `yule harness cleanup [--root …] [--execute --yes] [--json]`.
+
 ## 5. 에이전트가 스킬/플러그인을 직접 저작하는 절차
 
 harness 디렉터리는 생성물이므로 직접 만들지 않는다. 항상 **SSoT → 생성** 경로:
@@ -143,8 +200,11 @@ approval_policy = "untrusted"          # 파괴적 작업 전 승인 — 본 레
 
 - 8개 부서 전체 custom 스킬 spec 확충(현재는 cross-cutting 위주).
 - live `/compact` wiring — `ClaudeCodeRunner` 구현(현재 stub) 후 port 주입 + `compact_boundary` 캡처.
-- grant 매트릭스 런타임 강제 — RoleRunner dispatch 시 미부여 슬래시 차단.
-- MCP 서버 표준 wiring(보안 검토) + Codex 멀티에이전트 연동.
+- ✅ grant 매트릭스 런타임 강제 — `grant_enforcement.py` (§4b) + **RoleRunner dispatch hot-path 결선**(`role_runner.pre_dispatch_gate` + `bootstrap`, `YULE_GRANT_ENFORCEMENT_ENABLED`).
+- ✅ execution receipt(§4c) — 매 run 결선(`session.extra['execution_receipts']`) · ✅ compact→vault 프로토콜 + `/clear` 가드 · ✅ cleanup(§4d, hardened).
+- ✅ live `/compact` 토큰 캡처 — `claude_code.ClaudeCodeRunner.{submit,compact}`(`YULE_CLAUDE_LIVE_ENABLED`, compact_boundary + graceful fallback).
+- ✅ security review cross-cutting 게이트 + **auto-dispatch 판정**(`security_gate.assess_security_review`) — `docs/security-review.md`.
+- 남은 후속: provider 별 live submit(codex/gemini) · MCP 서버 표준 wiring · Codex 멀티에이전트 연동 · 변경 metadata 를 dispatch 입력에 자동 채우는 producer 결선.
 
 ## 10. 관련 문서
 
