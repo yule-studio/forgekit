@@ -80,6 +80,13 @@ logger = logging.getLogger(__name__)
 ENV_PROVIDERS: str = "YULE_ROLE_RUNNER_PROVIDERS"
 # Optional Ollama endpoint override (only the URL — no token).
 ENV_OLLAMA_ENDPOINT: str = "YULE_ROLE_RUNNER_OLLAMA_ENDPOINT"
+# Opt-in to runtime grant enforcement + per-run execution receipts on the live
+# dispatch hot path. Default off so existing flows are unchanged; the gate +
+# receipt are always available to callers that pass a grant_table explicitly.
+ENV_GRANT_ENFORCEMENT: str = "YULE_GRANT_ENFORCEMENT_ENABLED"
+# Cap on per-session execution receipts kept in session.extra (audit append is
+# never trimmed; this only bounds the receipt observability bucket).
+_RECEIPT_BUCKET_CAP: int = 50
 
 
 _KNOWN_PROVIDERS: Tuple[str, ...] = (
@@ -474,10 +481,26 @@ def _utc_now_iso() -> str:
 # ---------------------------------------------------------------------------
 
 
+def grant_enforcement_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    """True if :data:`ENV_GRANT_ENFORCEMENT` opts into hot-path enforcement."""
+
+    env_map = env if env is not None else os.environ
+    return (env_map.get(ENV_GRANT_ENFORCEMENT) or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def build_role_runner_dispatch_from_env(
     env: Optional[Mapping[str, str]] = None,
     *,
     audit_writer: Optional[Callable[[Any, Mapping[str, Any]], None]] = None,
+    grant_table: Optional[Any] = None,
+    receipt_sink: Optional[Callable[[Any, Any], None]] = None,
+    repo_root: Optional[Any] = None,
+    agent_id: str = "engineering-agent",
 ) -> Tuple[Callable[[Any, RoleRunnerInput], RoleRunnerOutput], RunnerWiringTrace]:
     """Build a session-aware dispatch callable from *env*.
 
@@ -485,23 +508,39 @@ def build_role_runner_dispatch_from_env(
     :func:`agents.runtime.engineering_team_runtime.set_role_runner_dispatch`
     signature ``(session, input_) → RoleRunnerOutput``. Each invocation
     builds a fresh per-call dispatcher so the dispatcher's audit writer
-    can capture the session passed to *that* call — the dispatcher
-    itself takes a record-only writer, so we wrap session capture
-    around it.
+    can capture the session passed to *that* call.
 
-    *audit_writer* receives ``(session, record)`` and is responsible
-    for persisting the audit row. Defaults to
-    :func:`_build_session_audit_writer` which appends to
-    ``session.extra['agent_ops_audit']``. Tests inject a stub.
+    *audit_writer* receives ``(session, record)`` and persists the audit row.
+
+    Hot-path enforcement (opt-in): when *grant_table* is supplied, a
+    pre-dispatch grant gate blocks BLOCK-verdict capabilities declared on
+    ``input_.metadata['capabilities']`` before any provider is contacted. When
+    *receipt_sink* is also supplied, a per-run :class:`ExecutionReceipt` is
+    built (loaded docs/policies + agent/role + grants + selected runner) and
+    handed to the sink. Both default to off so existing flows are unchanged.
     """
 
     candidates, trace = build_role_runner_candidates(env)
     record_writer = audit_writer or _build_session_audit_writer()
 
-    # Build one dispatcher per call so the inner record-only writer
-    # can close over the current session. Dispatcher construction is
-    # cheap (just closures); avoiding it would require a contextvar
-    # which is harder to reason about during shutdown.
+    # Lazy harness import (avoids an import cycle: harness.hot_path imports
+    # runners.role_runner, and runners.__init__ imports this module).
+    gate = None
+    if grant_table is not None:
+        try:
+            from ..harness.hot_path import build_capability_block_gate
+
+            gate = build_capability_block_gate(grant_table, agent_id=agent_id)
+        except Exception:  # noqa: BLE001 - enforcement must not break bootstrap
+            logger.warning(
+                "grant gate construction failed; dispatch proceeds ungated",
+                exc_info=True,
+            )
+            gate = None
+
+    resolved_root = _resolve_repo_root(repo_root)
+    context_cache: dict = {}
+
     def _session_aware_dispatch(
         session: Any, input_: RoleRunnerInput
     ) -> RoleRunnerOutput:
@@ -517,10 +556,102 @@ def build_role_runner_dispatch_from_env(
         dispatch = build_role_runner_dispatcher(
             candidates=candidates,
             audit_writer=_record_only,
+            pre_dispatch_gate=gate,
         )
-        return dispatch(session, input_)
+        output = dispatch(session, input_)
+
+        if receipt_sink is not None and grant_table is not None:
+            _emit_dispatch_receipt(
+                session=session,
+                input_=input_,
+                output=output,
+                grant_table=grant_table,
+                repo_root=resolved_root,
+                agent_id=agent_id,
+                context_cache=context_cache,
+                receipt_sink=receipt_sink,
+            )
+        return output
 
     return _session_aware_dispatch, trace
+
+
+def _resolve_repo_root(repo_root: Optional[Any]) -> Optional[Any]:
+    from pathlib import Path
+
+    if repo_root is not None:
+        return Path(repo_root)
+    env_root = (os.environ.get("YULE_REPO_ROOT") or "").strip()
+    if env_root:
+        return Path(env_root)
+    return None
+
+
+def _emit_dispatch_receipt(
+    *,
+    session: Any,
+    input_: Any,
+    output: Any,
+    grant_table: Any,
+    repo_root: Optional[Any],
+    agent_id: str,
+    context_cache: dict,
+    receipt_sink: Callable[[Any, Any], None],
+) -> None:
+    """Best-effort: build + hand a per-run execution receipt to *receipt_sink*.
+
+    Any failure (no repo root, context load error, sink raises) degrades to a
+    debug log — a receipt must never break the dispatch hot path.
+    """
+
+    if repo_root is None:
+        return
+    try:
+        from ..harness.hot_path import actor_id_for, dispatch_receipt
+
+        role = (getattr(input_, "role", "") or "").split("/", 1)[-1].strip() or None
+        cache_key = role or ""
+        loaded = context_cache.get(cache_key)
+        if loaded is None:
+            from yule_core.context_loader import load_agent_context
+
+            loaded = load_agent_context(
+                repo_root=repo_root, agent_id=agent_id, role_id=role
+            )
+            context_cache[cache_key] = loaded
+        receipt = dispatch_receipt(
+            loaded, grant_table, input_, output, agent_id=agent_id
+        )
+        receipt_sink(session, receipt)
+    except Exception:  # noqa: BLE001 - receipt is observability only
+        logger.debug("dispatch receipt emission failed; dropping", exc_info=True)
+
+
+def _build_session_receipt_sink() -> Callable[[Any, Any], None]:
+    """Return ``write(session, receipt)`` that appends an execution receipt onto
+    ``session.extra['execution_receipts']`` (capped, JSON-safe). Append-only —
+    never trims audit; only bounds the receipt observability bucket.
+    """
+
+    def _write(session: Any, receipt: Any) -> None:
+        if session is None:
+            return
+        try:
+            payload = receipt.to_dict()
+        except Exception:  # noqa: BLE001
+            return
+        extra = getattr(session, "extra", None)
+        if not isinstance(extra, dict):
+            return
+        bucket = extra.get("execution_receipts")
+        if not isinstance(bucket, list):
+            bucket = []
+        bucket.append(payload)
+        if len(bucket) > _RECEIPT_BUCKET_CAP:
+            bucket = bucket[-_RECEIPT_BUCKET_CAP:]
+        extra["execution_receipts"] = bucket
+
+    return _write
 
 
 # ---------------------------------------------------------------------------
@@ -569,9 +700,32 @@ def install_engineering_role_runner_dispatch(
             )
         return None
 
+    # Opt-in hot-path enforcement: load the grant table + receipt sink only
+    # when YULE_GRANT_ENFORCEMENT_ENABLED is set, so default installs are
+    # byte-for-byte unchanged.
+    grant_table = None
+    receipt_sink = None
+    if grant_enforcement_enabled(env):
+        try:
+            from ..harness import load_grant_table
+
+            grant_table = load_grant_table()
+            receipt_sink = _build_session_receipt_sink()
+        except Exception as exc:  # noqa: BLE001 - enforcement must not crash boot
+            logger.warning(
+                "grant enforcement opt-in failed to load grant table; "
+                "dispatch proceeds ungated",
+                exc_info=True,
+            )
+            grant_table = None
+            receipt_sink = None
+
     try:
         dispatch, trace = build_role_runner_dispatch_from_env(
-            env=env, audit_writer=audit_writer
+            env=env,
+            audit_writer=audit_writer,
+            grant_table=grant_table,
+            receipt_sink=receipt_sink,
         )
         set_role_runner_dispatch(dispatch)
     except Exception as exc:  # noqa: BLE001
@@ -594,8 +748,10 @@ def install_engineering_role_runner_dispatch(
 
 
 __all__ = (
+    "ENV_GRANT_ENFORCEMENT",
     "ENV_OLLAMA_ENDPOINT",
     "ENV_PROVIDERS",
+    "grant_enforcement_enabled",
     "REASON_AVAILABILITY_RAISED",
     "REASON_CLI_NOT_FOUND",
     "REASON_CONSTRUCTOR_RAISED",

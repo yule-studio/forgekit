@@ -32,6 +32,12 @@ from .engineer import (
     run_engineer_show_command,
 )
 from ..agents.workflow import WorkflowError
+from .harness import (
+    run_harness_cleanup_command,
+    run_harness_compact_command,
+    run_harness_receipt_command,
+    run_harness_security_command,
+)
 from .doctor import run_doctor_command
 from .github import run_github_issues_command
 from .github_workos import (
@@ -56,6 +62,7 @@ from .parsers import (
     add_doctor_parser,
     add_engineer_parser,
     add_github_parser,
+    add_harness_parser,
     add_memory_parser,
     add_obsidian_parser,
     add_planning_parser,
@@ -88,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_runtime_parser(subparsers)
     add_run_service_parser(subparsers)
     add_engineer_parser(subparsers)
+    add_harness_parser(subparsers)
     add_obsidian_parser(subparsers)
     add_supervisor_parser(subparsers)
     add_memory_parser(subparsers)
@@ -300,6 +308,8 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
 
         if args.command == "engineer":
             return _dispatch_engineer_command(repo_root, args)
+        if args.command == "harness":
+            return _dispatch_harness_command(repo_root, args)
         if args.command == "supervisor" and args.supervisor_command == "run":
             return run_supervisor_run_once_command(
                 limit=args.limit,
@@ -383,3 +393,46 @@ def _dispatch_engineer_command(repo_root: Path, args) -> int:
     if args.engineer_command == "show":
         return run_engineer_show_command(repo_root, args.agent, args.session)
     raise ValueError(f"unknown engineer command: {args.engineer_command}")
+
+
+def _dispatch_harness_command(repo_root: Path, args) -> int:
+    if args.harness_command == "receipt":
+        return run_harness_receipt_command(
+            repo_root,
+            args.agent,
+            role=args.role,
+            runner=args.runner,
+            capabilities=args.capability,
+            change_paths=args.change_path,
+            change_summary=args.change_summary,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "compact":
+        return run_harness_compact_command(
+            repo_root,
+            args.agent,
+            session_id=args.session,
+            vault_path=args.vault_path,
+            project=args.project,
+            focus=args.focus,
+            issue=args.issue,
+            role=args.role,
+            live=args.live,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "security-review":
+        return run_harness_security_command(
+            repo_root,
+            paths=args.change_path,
+            summary=args.change_summary,
+            json_output=args.json_output,
+        )
+    if args.harness_command == "cleanup":
+        return run_harness_cleanup_command(
+            repo_root,
+            root=args.root,
+            execute=args.execute,
+            yes=args.yes,
+            json_output=args.json_output,
+        )
+    raise ValueError(f"unknown harness command: {args.harness_command}")

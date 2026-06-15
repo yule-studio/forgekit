@@ -15,9 +15,15 @@ Surfaces:
   * :mod:`slash_command_grants` — load + validate the per-department
     slash-command / skill grant table. Pure-Python, deterministic, no
     side effects on import.
-
-Out of scope (follow-up PRs): runtime enforcement of grants inside the
-RoleRunner dispatch; live ``/compact`` invocation wiring.
+  * :mod:`grant_enforcement` — runtime ALLOW/ADVISORY/BLOCK verdicts over the
+    grant table (item C).
+  * :mod:`context_compaction` — deterministic compact→vault core.
+  * :mod:`compaction_protocol` — checkpoints, compaction receipt, /clear guard
+    (item F).
+  * :mod:`cleanup` — allowlist-based artifact cleanup with dry-run/execute
+    (item G).
+  * :mod:`execution_receipt` — the per-run execution proof binding the above
+    (item D).
 """
 
 from __future__ import annotations
@@ -35,6 +41,45 @@ from .slash_command_grants import (
     default_grants_path,
     load_grant_table,
 )
+from .grant_enforcement import (
+    CapabilityKind,
+    GrantDecision,
+    GrantVerdict,
+    evaluate_capability,
+    evaluate_command,
+    evaluate_skill,
+)
+from .compaction_protocol import (
+    Checkpoint,
+    ClearBlockedError,
+    ClearDecision,
+    CompactionCandidate,
+    CompactionReceipt,
+    compaction_candidates,
+    evaluate_clear,
+    require_clear_allowed,
+    run_compaction_to_vault,
+)
+from .cleanup import (
+    CleanupEntry,
+    CleanupReceipt,
+    Classification,
+    classify,
+    run_cleanup,
+    scan,
+)
+from .execution_receipt import ExecutionReceipt, build_execution_receipt
+from .security_gate import (
+    SecurityReviewDecision,
+    assess_security_review,
+    security_review_required,
+)
+from .hot_path import (
+    build_capability_block_gate,
+    dispatch_receipt,
+    evaluate_input_capabilities,
+    requested_capabilities,
+)
 
 __all__ = (
     "BuiltinCommand",
@@ -48,4 +93,40 @@ __all__ = (
     "SkillGrant",
     "default_grants_path",
     "load_grant_table",
+    # grant enforcement (C)
+    "CapabilityKind",
+    "GrantDecision",
+    "GrantVerdict",
+    "evaluate_capability",
+    "evaluate_command",
+    "evaluate_skill",
+    # compaction protocol (F)
+    "Checkpoint",
+    "ClearBlockedError",
+    "ClearDecision",
+    "CompactionCandidate",
+    "CompactionReceipt",
+    "compaction_candidates",
+    "evaluate_clear",
+    "require_clear_allowed",
+    "run_compaction_to_vault",
+    # cleanup (G)
+    "CleanupEntry",
+    "CleanupReceipt",
+    "Classification",
+    "classify",
+    "run_cleanup",
+    "scan",
+    # execution receipt (D)
+    "ExecutionReceipt",
+    "build_execution_receipt",
+    # hot-path seam (gate + receipt wiring)
+    "build_capability_block_gate",
+    "dispatch_receipt",
+    "evaluate_input_capabilities",
+    "requested_capabilities",
+    # security auto-dispatch gate (C)
+    "SecurityReviewDecision",
+    "assess_security_review",
+    "security_review_required",
 )

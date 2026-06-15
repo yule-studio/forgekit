@@ -74,6 +74,9 @@ STATUS_FALLBACK: str = "fallback"
 STATUS_UNAVAILABLE: str = "unavailable"
 STATUS_ERROR: str = "error"
 STATUS_INACTIVE_ROLE: str = "inactive_role"
+# A pre-dispatch gate (grant enforcement) blocked this take before any
+# provider was contacted. Empty text; caller must surface the block reason.
+STATUS_BLOCKED: str = "blocked"
 
 
 # ---------------------------------------------------------------------------
@@ -451,11 +454,15 @@ class _CandidateInvocation:
     detail: Optional[str]
 
 
+PreDispatchGate = Callable[[Any, "RoleRunnerInput"], Optional["RoleRunnerOutput"]]
+
+
 def build_role_runner_dispatcher(
     *,
     candidates: Sequence[RoleRunner],
     audit_writer: Optional[AuditWriter] = None,
     active_role_predicate: Optional[Callable[[Any, str], bool]] = None,
+    pre_dispatch_gate: Optional[PreDispatchGate] = None,
 ) -> Callable[[Any, RoleRunnerInput], RoleRunnerOutput]:
     """Return a callable ``(session, input_) → RoleRunnerOutput``.
 
@@ -498,6 +505,31 @@ def build_role_runner_dispatcher(
                 ),
             )
             return output
+
+        # Pre-dispatch grant gate (hot-path enforcement). When supplied and it
+        # returns a non-None output, the take is BLOCKED before any provider is
+        # contacted. The gate must never raise; a raise degrades to "no block"
+        # so a buggy gate cannot wedge the dispatcher.
+        if pre_dispatch_gate is not None:
+            try:
+                gate_output = pre_dispatch_gate(session, input_)
+            except Exception:  # noqa: BLE001 - gate must never break dispatch
+                logger.warning(
+                    "role-runner pre_dispatch_gate raised; proceeding without block",
+                    exc_info=True,
+                )
+                gate_output = None
+            if gate_output is not None:
+                _safe_audit(
+                    writer,
+                    build_audit_record(
+                        session_id=input_.session_id,
+                        role=input_.role,
+                        output=gate_output,
+                        attempts=(),
+                    ),
+                )
+                return gate_output
 
         attempts: list[_CandidateInvocation] = []
         for runner in candidates_with_terminal:
@@ -648,11 +680,13 @@ __all__ = (
     "RoleRunner",
     "RoleRunnerInput",
     "RoleRunnerOutput",
+    "STATUS_BLOCKED",
     "STATUS_ERROR",
     "STATUS_FALLBACK",
     "STATUS_INACTIVE_ROLE",
     "STATUS_OK",
     "STATUS_UNAVAILABLE",
+    "PreDispatchGate",
     "build_audit_record",
     "build_role_runner_dispatcher",
     "claude_role_runner",

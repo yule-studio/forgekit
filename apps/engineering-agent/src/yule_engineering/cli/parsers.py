@@ -823,6 +823,94 @@ def add_engineer_parser(subparsers: argparse._SubParsersAction) -> None:
     engineer_show_parser.add_argument("--session", required=True, help="Session id.")
 
 
+def add_harness_parser(subparsers: argparse._SubParsersAction) -> None:
+    harness_parser = subparsers.add_parser(
+        "harness",
+        help="Harness enforcement surfaces: execution receipt, compact→vault, cleanup.",
+    )
+    harness_subparsers = harness_parser.add_subparsers(dest="harness_command", required=True)
+
+    receipt_parser = harness_subparsers.add_parser(
+        "receipt",
+        help="Print the execution receipt (loaded docs/policies, agent/role, grants, statuses).",
+    )
+    receipt_parser.add_argument(
+        "--agent", default="engineering-agent", help="Department agent id."
+    )
+    receipt_parser.add_argument("--role", help="Active role id (e.g. security-engineer).")
+    receipt_parser.add_argument("--runner", help="Selected runner id (e.g. claude).")
+    receipt_parser.add_argument(
+        "--capability",
+        action="append",
+        default=[],
+        help="Capability to evaluate against grants (repeatable). /cmd => command, else skill.",
+    )
+    receipt_parser.add_argument(
+        "--change-path",
+        action="append",
+        default=[],
+        help="Changed path to evaluate for security auto-dispatch (repeatable).",
+    )
+    receipt_parser.add_argument(
+        "--change-summary", help="Change summary for security auto-dispatch."
+    )
+    receipt_parser.add_argument("--json", dest="json_output", action="store_true")
+
+    compact_parser = harness_subparsers.add_parser(
+        "compact",
+        help="Run compact→vault for a session; writes a task-log note (no commit).",
+    )
+    compact_parser.add_argument("--agent", default="engineering-agent", help="Department agent id.")
+    compact_parser.add_argument("--role", help="Active role id (refines grant actor).")
+    compact_parser.add_argument("--session", required=True, help="Session id to compact.")
+    compact_parser.add_argument(
+        "--vault-path", required=True, help="Vault root to write the task-log note under."
+    )
+    compact_parser.add_argument(
+        "--project", default="yule-studio-agent", help="Project folder under 10-projects/."
+    )
+    compact_parser.add_argument("--focus", help="Optional compaction focus topic.")
+    compact_parser.add_argument("--issue", type=int, help="Optional issue number suffix.")
+    compact_parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Attempt live /compact token capture (graceful fallback to estimate).",
+    )
+    compact_parser.add_argument("--json", dest="json_output", action="store_true")
+
+    security_parser = harness_subparsers.add_parser(
+        "security-review",
+        help="Assess whether a change requires security-engineer review. Exit 2 when required.",
+    )
+    security_parser.add_argument(
+        "--change-path",
+        action="append",
+        default=[],
+        help="Changed path (repeatable).",
+    )
+    security_parser.add_argument("--change-summary", help="Change summary text.")
+    security_parser.add_argument("--json", dest="json_output", action="store_true")
+
+    cleanup_parser = harness_subparsers.add_parser(
+        "cleanup",
+        help="Allowlist cleanup of transient artifacts. Dry-run unless --execute --yes.",
+    )
+    cleanup_parser.add_argument(
+        "--root", help="Scan root. Defaults to .cache if present, else repo root."
+    )
+    cleanup_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually delete DELETABLE entries. Requires --yes.",
+    )
+    cleanup_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm destructive execute. Without it --execute is refused.",
+    )
+    cleanup_parser.add_argument("--json", dest="json_output", action="store_true")
+
+
 def add_obsidian_parser(subparsers: argparse._SubParsersAction) -> None:
     obsidian_parser = subparsers.add_parser(
         "obsidian",
