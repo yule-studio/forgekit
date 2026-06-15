@@ -87,6 +87,12 @@ from .mcp_registry import (
     load_mcp_servers,
     validate_mcp_server,
 )
+from .compact_canary import (
+    CompactCanaryReport,
+    canary_enabled,
+    default_compact_fn,
+    run_compact_canary,
+)
 from . import token_benchmark
 from .hot_path import (
     build_capability_block_gate,
@@ -157,4 +163,9 @@ __all__ = (
     "McpValidationError",
     "load_mcp_servers",
     "validate_mcp_server",
+    # live /compact canary
+    "CompactCanaryReport",
+    "canary_enabled",
+    "default_compact_fn",
+    "run_compact_canary",
 )

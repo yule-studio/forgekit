@@ -125,8 +125,10 @@ cleanup status / security status. CLI: `yule harness receipt [--role <r>] [--run
 끝날 때마다 `hot_path.dispatch_receipt` 가 receipt 를 만들어 `session.extra['execution_receipts']`
 (append-only, cap 50 — audit 는 트리밍하지 않음)에 적립한다.
 
-**live `/compact` 토큰.** `claude_code.ClaudeCodeRunner.compact()` 가 `--output-format stream-json`
-의 `compact_boundary` 이벤트에서 pre/post 토큰을 캡처한다(`YULE_CLAUDE_LIVE_ENABLED` opt-in). 파싱
+**live `/compact` canary.** `compact_canary.run_compact_canary` 가 deterministic 추정과
+live `compact_boundary`(`ClaudeCodeRunner.compact()`)를 같은 run 에서 측정해 **estimate vs live
+오차**를 보고한다(`YULE_COMPACT_LIVE_CANARY_ENABLED` 기본 off, CLI `--live` 강제). `--output-format
+stream-json` 의 `compact_boundary` 이벤트에서 pre/post 토큰을 캡처. 파싱
 실패/비live 면 deterministic 추정치로 graceful fallback 하고 receipt 에 `token_source=estimate`
 + warning 을 남긴다. CLI: `yule harness compact --live …`.
 

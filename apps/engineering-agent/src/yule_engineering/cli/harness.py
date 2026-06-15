@@ -94,18 +94,13 @@ def run_harness_compact_command(
     if session is None:
         raise ValueError(f"session {session_id} not found")
 
-    # Optional live /compact token capture (graceful fallback + warning).
-    compact_boundary = None
-    if live:
-        try:
-            from ..agents.runners.claude_code import ClaudeCodeRunner
-
-            compact_boundary = ClaudeCodeRunner().compact(focus=focus)
-        except Exception as exc:  # noqa: BLE001 - live capture is best-effort
-            print(f"warning: live /compact capture failed: {exc}", file=sys.stderr)
+    # Live /compact canary: deterministic estimate + (when --live) live
+    # compact_boundary capture, with estimate-vs-live drift. --live forces the
+    # canary on for this run; graceful fallback to estimate otherwise.
+    from ..agents.harness.compact_canary import default_compact_fn, run_compact_canary
 
     turns = from_workflow_session(session)
-    note, receipt = run_compaction_to_vault(
+    note, receipt, report = run_compact_canary(
         turns,
         session_id=session_id,
         vault_root=Path(vault_path),
@@ -113,19 +108,19 @@ def run_harness_compact_command(
         focus=focus,
         issue=issue,
         original_prompt=getattr(session, "prompt", None),
-        compact_boundary=compact_boundary,
+        compact_fn=default_compact_fn() if live else None,
+        enabled=True if live else None,
     )
     if json_output:
-        print(json.dumps(receipt.to_dict(), ensure_ascii=False, indent=2))
+        out = receipt.to_dict()
+        out["canary"] = report.to_dict()
+        print(json.dumps(out, ensure_ascii=False, indent=2))
     else:
         print(f"compaction status: {receipt.status}")
         if note is not None:
             print(f"task-log note: {note.relative_path} (committed={receipt.committed})")
-        print(
-            f"pre_tokens={receipt.pre_tokens} post_tokens={receipt.post_tokens} "
-            f"saved={receipt.saved_tokens} token_source={receipt.token_source}"
-        )
-        for w in receipt.warnings:
+        print(report.render().rstrip())
+        for w in report.warnings:
             print(f"warning: {w}", file=sys.stderr)
     return 0
 
