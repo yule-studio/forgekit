@@ -857,7 +857,10 @@ def _build_self_improvement_loop(*, queue, heartbeats):
 
     try:
         from ..agents.lifecycle.runtime_self_improvement_wiring import (
+            ENV_SUPERVISOR_SESSION_ID,
+            build_queue_executor_enqueue_fn,
             build_self_improvement_dispatcher,
+            enqueue_enabled,
             is_enabled,
             resolve_interval_seconds,
         )
@@ -872,10 +875,28 @@ def _build_self_improvement_loop(*, queue, heartbeats):
 
     interval = resolve_interval_seconds()
 
+    # Default: journal + ledger only. When the operator also opts into
+    # ENV_ENQUEUE_ENABLED, detected proposals become real coding_execute jobs
+    # (draft-PR only) on the queue — closing the proposal → queue surface.
+    executor_enqueue_fn = None
+    if enqueue_enabled():
+        try:
+            executor_enqueue_fn = build_queue_executor_enqueue_fn(job_queue=queue)
+        except Exception:  # noqa: BLE001 - never crash supervisor on wiring
+            logger.warning(
+                "self-improvement queue handoff construction failed; "
+                "loop will journal without queue dispatch",
+                exc_info=True,
+            )
+            executor_enqueue_fn = None
+    supervisor_session_id = (os.environ.get(ENV_SUPERVISOR_SESSION_ID) or "").strip() or None
+
     try:
         dispatcher = build_self_improvement_dispatcher(
             job_queue=queue,
             heartbeat_store=heartbeats,
+            executor_enqueue_fn=executor_enqueue_fn,
+            obsidian_supervisor_session_id=supervisor_session_id,
         )
     except Exception:  # noqa: BLE001 - never crash supervisor on wiring
         logger.warning(
@@ -887,9 +908,10 @@ def _build_self_improvement_loop(*, queue, heartbeats):
 
     logger.info(
         "self-improvement runtime loop enabled "
-        "(interval=%.1fs, ledger=%s)",
+        "(interval=%.1fs, ledger=%s, queue_handoff=%s)",
         interval,
         dispatcher.problem_ledger._path,  # type: ignore[attr-defined]
+        "on" if executor_enqueue_fn is not None else "off",
     )
 
     # Wrap dispatch_fn so each per-signal dispatch also updates the
