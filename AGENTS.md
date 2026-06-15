@@ -57,6 +57,8 @@ docs/
 | Troubleshooting / 실수 기록 / preflight | `docs/troubleshooting-mandatory.md` (mandatory capture · 8 섹션 스키마 · mistake ledger 자동 승격) |
 | 슬래시 명령어 / 스킬 / harness 플러그인 / compact→vault / grant 강제 / execution receipt / cleanup | `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json` SSoT) |
 | 보안 검토 / cross-cutting security 게이트 / `/security-review` | `docs/security-review.md` (+ `agents/engineering-agent/security-engineer/` 역할 계약 SSoT) |
+| plugin/hook/skill/MCP/backend 분리 / provider(Claude·Codex·Gemini·Ollama) 배치 | `docs/plugin-taxonomy.md` + `docs/provider-capability-matrix.md` (vendor-neutral SSoT→projection) |
+| git write 안전 (HOME/모호 경로·broad add 금지) | `docs/git-write-safety.md` (+ `agents/governance/git_path_safety.py`) |
 | engineering-agent role council / tech-lead signoff / execution review | `docs/engineering-role-council-runtime.md` (+ council contract SSoT `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
 | 모노레포 구조 / packages·apps / compat shim / 코드 이전 | `docs/monorepo-structure.md` (달성 구조 · 의존 hard rail · shim 카탈로그 · 남은 로드맵 SSoT) |
 

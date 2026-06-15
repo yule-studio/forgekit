@@ -52,6 +52,7 @@
 | 승인/운영 | + `docs/autonomy-policy.md` / `docs/approval-matrix.md` / `docs/operations.md` |
 | 슬래시 명령어/스킬/플러그인/compact→vault/grant 강제/execution receipt/cleanup | + `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json`) |
 | 보안 검토 / cross-cutting security 게이트 | + `docs/security-review.md` (+ `agents/engineering-agent/security-engineer/` 역할 계약 SSoT) |
+| plugin/hook/skill/MCP/backend 분리 / provider 배치 | + `docs/plugin-taxonomy.md` + `docs/provider-capability-matrix.md` |
 | engineering role council / tech-lead signoff / execution review | + `docs/engineering-role-council-runtime.md` (SSoT — same-role peer review 통과 후에만 cross-role synthesis, tech-lead = technical approval, gateway = operator approval surface. 코드 contract: `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
 | 모노레포 구조 / packages·apps 추가 / compat shim | + `docs/monorepo-structure.md` (현황·의존 규칙·shim 카탈로그·로드맵 SSoT) |
 

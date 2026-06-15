@@ -59,6 +59,18 @@ def _granted_departments(table: GrantTable, skill_id: str) -> List[Tuple[str, st
     return out
 
 
+# Projection target registry — the single place that maps a vendor-neutral
+# `harness` token (from a skill's grant spec) to its harness artifact layout.
+# Adding a new projection target (e.g. Gemini) is a registry entry + a generator
+# branch; see docs/provider-capability-matrix.md "Gemini projection". Unknown
+# targets are skipped explicitly rather than silently mislabeled.
+HARNESS_TARGETS: Dict[str, Dict[str, str]] = {
+    "claude": {"label": "Claude Code", "skills_dir": ".claude/skills", "plugin_dir": ".claude-plugin"},
+    "codex": {"label": "Codex", "skills_dir": ".agents/skills", "plugin_dir": ".codex-plugin"},
+    # "gemini": {"label": "Gemini CLI", "skills_dir": ".gemini/commands", "plugin_dir": ".gemini-plugin"},  # 후속
+}
+
+
 def _render_skill_md(
     table: GrantTable, skill_id: str, *, harness: str
 ) -> str:
@@ -67,7 +79,7 @@ def _render_skill_md(
     grant_lines = "\n".join(
         f"- `{dept}` (autonomy {autonomy})" for dept, autonomy in grants
     ) or "- (부여된 부서 없음)"
-    harness_label = "Claude Code" if harness == "claude" else "Codex"
+    harness_label = HARNESS_TARGETS[harness]["label"]
 
     frontmatter = "\n".join(
         [
@@ -108,7 +120,11 @@ def _render_skill_md(
 
 
 def _plugin_manifest(table: GrantTable, *, harness: str) -> str:
-    skills = sorted(table.custom_skills)
+    skills = sorted(
+        skill_id
+        for skill_id in table.custom_skills
+        if harness in table.custom_skills[skill_id].harness
+    )
     manifest = {
         "name": PLUGIN_NAME,
         "version": PLUGIN_VERSION,
@@ -116,25 +132,37 @@ def _plugin_manifest(table: GrantTable, *, harness: str) -> str:
         "author": {"name": "yule-studio-engineering-agent"},
         "harness": harness,
         "skills": skills,
-        "skills_path": ".claude/skills" if harness == "claude" else ".agents/skills",
+        "skills_path": HARNESS_TARGETS[harness]["skills_dir"],
         "ssot": "agents/grants/slash-command-grants.json",
     }
     return json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
 def build_artifacts(table: GrantTable) -> Dict[str, str]:
-    """Return {relative_path: content} for every generated artifact."""
+    """Return {relative_path: content} for every generated artifact.
+
+    Each skill is projected only to the harness targets it declares in its
+    grant spec (``harness``), and only to *registered* targets — an unknown
+    target is skipped rather than mislabeled. A plugin manifest is emitted per
+    target that has at least one skill.
+    """
 
     artifacts: Dict[str, str] = {}
+    targets_with_skills: set[str] = set()
     for skill_id in sorted(table.custom_skills):
-        artifacts[f".claude/skills/{skill_id}/SKILL.md"] = _render_skill_md(
-            table, skill_id, harness="claude"
+        for harness in table.custom_skills[skill_id].harness:
+            target = HARNESS_TARGETS.get(harness)
+            if target is None:
+                continue  # unknown projection target — skip explicitly
+            artifacts[f"{target['skills_dir']}/{skill_id}/SKILL.md"] = _render_skill_md(
+                table, skill_id, harness=harness
+            )
+            targets_with_skills.add(harness)
+    for harness in sorted(targets_with_skills):
+        target = HARNESS_TARGETS[harness]
+        artifacts[f"{target['plugin_dir']}/plugin.json"] = _plugin_manifest(
+            table, harness=harness
         )
-        artifacts[f".agents/skills/{skill_id}/SKILL.md"] = _render_skill_md(
-            table, skill_id, harness="codex"
-        )
-    artifacts[".claude-plugin/plugin.json"] = _plugin_manifest(table, harness="claude")
-    artifacts[".codex-plugin/plugin.json"] = _plugin_manifest(table, harness="codex")
     return artifacts
 
 

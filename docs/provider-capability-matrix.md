@@ -1,0 +1,122 @@
+# Provider capability matrix — vendor-neutral capability → provider 배치
+
+> 짝 문서 [`plugin-taxonomy.md`](plugin-taxonomy.md) 가 *개념 분리*를 정의한다.
+> 본 문서는 *배치* 를 정의한다: 어떤 capability 를 공통으로 두고, 어떤 것을
+> Claude/Codex/Gemini 로 투영하며, Ollama 를 어디에 backend 로 꽂는가.
+
+## 1. 원칙
+
+1. **capability 는 vendor-neutral SSoT 에 한 번 정의**한다(skill/hook/plugin).
+2. provider(Claude/Codex/Gemini)는 **projection target** 이다 — 같은 capability 를
+   각자의 native 표현으로 투영.
+3. **Ollama 는 backend slot** 이다 — plugin host 가 아니라 local inference/tool-calling
+   endpoint. classification/summarization/compression/fallback 추론에 배치.
+4. 배치는 "그 provider 의 native 생태계가 가장 강한 곳"을 따른다(아래 §3).
+
+## 2. capability × provider 매트릭스
+
+열 의미: **P**=primary(주 실행) · **prj**=projection(SSoT→투영) · **bk**=backend slot · **—**=해당 없음.
+
+| capability class | 성격 | Claude Code | Codex | Gemini | Ollama |
+| --- | --- | --- | --- | --- | --- |
+| security gate / outbound redaction | hook(guard) | **P** | prj | prj | — |
+| pre/post tool hook · approval gate | hook | **P** | prj | — | — |
+| compaction / context-compression | skill+hook | **P** | prj | prj(cache) | bk(compress) |
+| enforcement (grant/governance) | hook | **P** | prj | — | — |
+| verification / smoke / LSP preflight | hook+plugin | **P** | prj | — | — |
+| execution workflow (multi-step 작업 실행) | backend+tools | prj | **P** | — | — |
+| doc/browser/computer-use/Figma 조작 | MCP/tool | — | **P** | prj | — |
+| GitHub/Slack/Notion 연계 실행 | tool | prj | **P** | — | — |
+| research / large-context reading | backend | prj | — | **P** | bk(보조) |
+| cheap analysis / draft generation | backend | — | prj | **P** | bk |
+| classification / routing | backend | — | — | prj | **P(bk)** |
+| summarization | backend | prj | — | prj | **P(bk)** |
+| cheap compression | backend | — | — | — | **P(bk)** |
+| fallback reasoning (오프라인/저비용) | backend | — | — | — | **P(bk)** |
+
+> 같은 capability 가 여러 provider 에 보이는 건 정상이다 — SSoT 1개, projection N개.
+> **P** 는 "그 생태계가 가장 강해서 1차로 둔다"는 뜻이지 독점이 아니다.
+
+## 3. provider 별 역할 배분 (왜 이렇게 두는가)
+
+### Claude Code — 안전/감사/검증 평면
+강한 plugin/hook/MCP/LSP/monitor 생태계. → **security gate, pre/post tool hook,
+compaction, enforcement, verification** 의 primary. 이 레포의 harness 강제·execution
+receipt·compact→vault·security gate 가 이미 Claude 쪽에 결선돼 있다(가장 성숙).
+
+### Codex — 실행/도구 조작 평면
+GitHub·Slack·Notion·Browser·Computer Use·Figma·Documents 같은 **실제 작업 도구 연계**가
+강함. → **실행형 워크플로우, 문서/브라우저/도구 조작**의 primary. coding execute /
+github work order 류 실행 경로의 자연스러운 target.
+
+### Gemini — 리서치/대용량 분석 평면
+MCP·custom commands·GEMINI.md·token caching·trusted folders. → **research,
+large-context reading, cheap analysis, draft generation**. 현재 `GEMINI.md` 는 advisor
+계약만 있고 **projection 생성물이 없다**(공백 — [taxonomy §5 Gemini projection](plugin-taxonomy.md)).
+
+### Ollama — local inference backend
+plugin 플랫폼이 아니라 **local model backend / tool-calling endpoint**. →
+**classification, summarization, cheap compression, fallback reasoning** 배치.
+
+## 4. 왜 Ollama 는 plugin host 가 아니라 backend 인가 (질문 2 답)
+
+1. **plugin/hook/skill 은 절차이고, Ollama 는 엔진이다.** Claude Code/Codex/Gemini 는
+   각자 plugin/command/hook 을 *호스팅*하는 생태계를 가진다. Ollama 는 그런 호스팅
+   레이어가 없다 — `/v1/chat/completions` 류 추론 endpoint 일 뿐.
+2. **투영 대상이 아니다.** skill 을 `.ollama/...` 로 투영할 곳이 없다. harness projection
+   의 대상이 될 수 없으므로 `harness` 목록에 들어가지 않는다.
+3. **manifest 상 위치가 backend 다.** 이미 `participants` 에 `provider: local,
+   endpoint: http://localhost:11434` 로 backend 로 선언돼 있고 runner 는
+   `agents/runners/ollama.py`. 구조가 backend 임을 말한다.
+4. **역할이 추론이다.** classification/summarization/compression/fallback 은 "무엇을
+   실행하나(절차)"가 아니라 "무엇으로 추론하나(엔진)". → backend slot.
+
+결론: Ollama 를 plugin taxonomy 에 넣으면 개념이 섞인다. **backend slot** 으로 두고
+routing 정책(아래 §5)이 어떤 작업을 Ollama 로 보낼지 정한다.
+
+## 5. Ollama backend slot — routing 정책
+
+`agents/runners/role_runner.py` 의 dispatch 우선순위(claude → codex → ollama →
+deterministic)에 더해, **작업 성격 기반 backend 선호**를 둔다(제안):
+
+| 작업 | 선호 backend |
+| --- | --- |
+| classification / intent / routing | Ollama(저비용) → Gemini(보조) |
+| summarization / compression | Ollama → Gemini |
+| research / long-context | Gemini → Claude |
+| 실행형(도구 조작/배포) | Codex → Claude |
+| 안전/감사/검증/enforcement | Claude |
+| 모두 불가 시 | deterministic fallback |
+
+현재는 provider 우선순위만 env(`YULE_ROLE_RUNNER_PROVIDERS`)로 정해진다 — **작업성격
+→ backend 선호 매핑은 미구현**(후속: role_runner 에 capability-aware 선택).
+
+## 6. 무엇이 공통이고 무엇이 projection 인가 (질문 1 답)
+
+- **공통 capability(vendor-neutral SSoT)**: security gate / compaction / enforcement /
+  기억(claude-mem) / skill 절차 — backend 무관하게 항상 정의되는 것. `plugins/` +
+  `skills/` + grants 가 SSoT.
+- **provider-specific projection**: 그 capability 를 각 harness 의 native 형태로 투영한
+  생성물(`.claude-plugin`/`.codex-plugin`/후속 `.gemini`). 그리고 provider native 에만
+  존재하는 것(Codex computer-use, Gemini token cache, Claude pre-tool hook)은 SSoT 는
+  중립이되 `harness` 로 해당 provider 에만 투영.
+
+## 7. 현재 repo 의 공백 (질문 3 답)
+
+| 공백 | 근거 파일 | 다음 단계 기준 |
+| --- | --- | --- |
+| Gemini projection 생성물 없음 | `GEMINI.md`(계약만), `scripts/sync_harness_skills.py`(claude/codex만) | `HARNESS_TARGETS["gemini"]` + 생성 분기 |
+| MCP SSoT 없음 | docs 에 개념만, 코드 없음 | `integrations/mcp/<id>.json` 도입 |
+| capability→backend routing 미구현 | `agents/runners/role_runner.py`(provider 우선순위만) | capability-aware 선택 추가 |
+| runtime plugin 의 capability_class 미표기 | `plugins/*/manifest.json`(kind 만) | 선택적 `capability_class` 필드 |
+| `harness` 의미가 문서화 안 됨 | grants JSON | 본 문서 + taxonomy §5 로 고정(완료) |
+
+## 8. 질문 4 — 승격 vs provider-specific 분배
+[plugin-taxonomy §7](plugin-taxonomy.md) 표 참조. 요약:
+- 안전/감사/거버넌스/기억 = **공통 승격**(현재 대부분 이미 `plugins/`·`skills/`).
+- native 의존(computer-use/token-cache/pre-tool-hook) = **projection 유지**.
+- Ollama = **backend 분리**.
+
+## 9. 관련
+- [`plugin-taxonomy.md`](plugin-taxonomy.md) · [`agent-slash-commands.md`](agent-slash-commands.md) · `GEMINI.md`
+- backend/runner: `agents/runners/` · 거버넌스 회귀: `tests/governance/test_provider_capability_taxonomy.py`

@@ -206,6 +206,14 @@ approval_policy = "untrusted"          # 파괴적 작업 전 승인 — 본 레
 - ✅ security review cross-cutting 게이트 + **auto-dispatch 판정**(`security_gate.assess_security_review`) — `docs/security-review.md`.
 - 남은 후속: provider 별 live submit(codex/gemini) · MCP 서버 표준 wiring · Codex 멀티에이전트 연동 · 변경 metadata 를 dispatch 입력에 자동 채우는 producer 결선.
 
+## 9b. provider projection 확장 (Claude/Codex → Gemini)
+
+본 문서의 harness 브리지는 `harness` 필드(투영 대상 목록)로 Claude Code/Codex 에 투영한다.
+이 필드의 의미(=projection target, backend 이름이 아님)와 Gemini projection 추가 절차,
+plugin/hook/skill/MCP/backend 의 개념 분리는 [`plugin-taxonomy.md`](plugin-taxonomy.md) +
+[`provider-capability-matrix.md`](provider-capability-matrix.md) 가 SSoT. 생성기
+`scripts/sync_harness_skills.py` 의 `HARNESS_TARGETS` 레지스트리가 확장 지점이다.
+
 ## 10. 관련 문서
 
 - 결정 근거 / ECC: [`ecc-foundation.md`](../policies/runtime/agents/engineering-agent/ecc-foundation.md) (A.3 개정)
