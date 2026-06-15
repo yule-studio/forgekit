@@ -152,6 +152,9 @@ class LoadMemberBotConfigTestCase(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            # AGENTS.md is the required entrypoint loaded first (context-loading
+            # policy / AGENTS.md §1), ahead of root CLAUDE.md.
+            (root / "AGENTS.md").write_text("# stub entrypoint", encoding="utf-8")
             (root / "CLAUDE.md").write_text("# stub root", encoding="utf-8")
             agent_dir = root / "agents" / "fake-agent"
             agent_dir.mkdir(parents=True)
