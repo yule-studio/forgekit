@@ -34,7 +34,7 @@ from .token_budget import (
 )
 from .retrieval_boost import rerank
 
-SCENARIOS: Tuple[str, ...] = ("dispatch", "recall", "context")
+SCENARIOS: Tuple[str, ...] = ("dispatch", "recall", "context", "bundle")
 # A representative deterministic take size — identical across modes, so the
 # benchmark never claims output savings it cannot prove.
 FIXED_OUTPUT_TOKENS = 256
@@ -291,10 +291,68 @@ def run_context_scenario(mode: str, *, clock: Callable[[], float] = time.perf_co
     )
 
 
+def _fixture_bundle_docs() -> List[Any]:
+    """Instruction layers + named policies (real-ish stems for the selector)."""
+
+    long_body = "# 정책 제목\n\n운영 규칙을 정의한다. " + ("상세 규칙 항목. " * 120)
+    instr = [
+        SimpleNamespace(label="entrypoint", path="AGENTS.md", content="# 진입점\n\n내비게이션."),
+        SimpleNamespace(label="root_instructions", path="CLAUDE.md", content="# 전역 규칙\n\n안전."),
+        SimpleNamespace(label="agent_instructions", path="agents/engineering-agent/CLAUDE.md", content="# 에이전트."),
+    ]
+    stems = [
+        "safety", "context-loading", "testing", "version-control", "workflow",
+        "role-profiles", "role-weights-v0", "memory-policy", "recall-policy",
+        "context-compression", "dispatcher", "message-protocol",
+    ]
+    pol = [
+        SimpleNamespace(
+            label="policy",
+            path=f"policies/runtime/agents/engineering-agent/{s}.md",
+            content=long_body,
+        )
+        for s in stems
+    ]
+    return instr + pol
+
+
+def run_bundle_scenario(mode: str, *, clock: Callable[[], float] = time.perf_counter) -> ScenarioMetrics:
+    start = clock()
+    docs = _fixture_bundle_docs()
+    policy_docs = [d for d in docs if d.label == "policy"]
+    all_bundle = build_policy_bundle(policy_docs, mode="digest")  # all policies, digest
+    notes: List[str] = []
+    if mode == "baseline":
+        fed = all_bundle.fed_tokens
+        saved = 0
+        selected = len(policy_docs)
+    else:
+        from .policy_bundle import build_selected_policy_bundle
+
+        # a concrete task: qa-engineer running a testing task → minimal bundle
+        sb = build_selected_policy_bundle(docs, role="qa-engineer", task_type="testing")
+        fed = sb.bundle.fed_tokens
+        saved = max(0, all_bundle.fed_tokens - fed)
+        selected = sb.selection.selected_policies
+        notes.append(
+            f"selected {selected}/{sb.selection.total_policies} policies (task=testing, role=qa-engineer)"
+        )
+    return ScenarioMetrics(
+        scenario="bundle",
+        mode=mode,
+        loaded_policies_count=len(policy_docs),
+        input_tokens_est=fed,
+        saved_tokens_by_compaction=saved,
+        wall_time_ms=_clock_ms(clock, start),
+        notes=tuple(notes),
+    )
+
+
 _RUNNERS: Dict[str, Callable[..., ScenarioMetrics]] = {
     "dispatch": run_dispatch_scenario,
     "recall": run_recall_scenario,
     "context": run_context_scenario,
+    "bundle": run_bundle_scenario,
 }
 
 

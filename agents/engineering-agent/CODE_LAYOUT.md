@@ -67,7 +67,10 @@
 > - `hot_path.py` — dispatch 결선 seam: capability block gate + per-run receipt + security 판정 + token_efficiency 결합.
 > - `token_budget.py` — 토큰 효율 코어: 일관 추정기(chars/4) + policy digest bundle + previous_decisions compaction(protected 보존) + source reference-mode.
 > - `retrieval_boost.py` — memory-policy 4절 재사용 boost 재정렬(canonical/reusable/decision/retrospective) + reference-mode(why_retrieved/boost_score).
-> - `token_benchmark.py` — deterministic baseline/after 시나리오 + delta(JSON/MD) evidence. `runs/token-efficiency/<date>-<slug>/`.
+> - `token_benchmark.py` — deterministic baseline/after 시나리오(dispatch/recall/context/bundle) + delta(JSON/MD) evidence. `runs/token-efficiency/<date>-<slug>/`.
+> - `compact_canary.py` — live `/compact` canary: estimate vs compact_boundary 동시 측정 + 오차 보고(flag `YULE_COMPACT_LIVE_CANARY_ENABLED`, graceful fallback).
+> - `policy_bundle.py` — role+task+intent 기반 minimal policy bundle selector(관련 policy 만 digest, 미매칭 시 전체 유지 — full-text 회귀 없음).
+> - `mcp_registry.py` — MCP server vendor-neutral SSoT 로더/검증(`integrations/mcp/*.json`).
 >
 > 결선: `agents/runners/role_runner.py`(`pre_dispatch_gate` 훅 + `STATUS_BLOCKED`) → `agents/runners/bootstrap.py`(`YULE_GRANT_ENFORCEMENT_ENABLED` flag 로 gate+receipt 주입). live Claude/`/compact` 는 `agents/runners/claude_code.py`(`YULE_CLAUDE_LIVE_ENABLED`, compact_boundary 캡처+graceful fallback).
 > 토큰 효율 결선: `agents/job_queue/standalone_runners.py`(`YULE_RUNNER_INPUT_COMPACTION_ENABLED` flag 로 role-runner 입력 compaction) · `memory/retrieval.py`(`YULE_RETRIEVAL_BOOST_ENABLED` flag 로 boost 재정렬) · `packages/memory/indexer.py`(canonical/reusable/status → extra 투영). 모든 flag 기본 off. 측정 SSoT 는 `token_benchmark` + `runs/token-efficiency/`.

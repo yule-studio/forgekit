@@ -93,6 +93,12 @@ from .compact_canary import (
     default_compact_fn,
     run_compact_canary,
 )
+from .policy_bundle import (
+    PolicySelection,
+    SelectedPolicyBundle,
+    build_selected_policy_bundle,
+    select_policy_documents,
+)
 from . import token_benchmark
 from .hot_path import (
     build_capability_block_gate,
@@ -168,4 +174,9 @@ __all__ = (
     "canary_enabled",
     "default_compact_fn",
     "run_compact_canary",
+    # minimal policy bundle selector
+    "PolicySelection",
+    "SelectedPolicyBundle",
+    "build_selected_policy_bundle",
+    "select_policy_documents",
 )
