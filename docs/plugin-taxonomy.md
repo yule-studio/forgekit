@@ -97,15 +97,18 @@ pre-tool hook). 그 매핑이 [capability matrix](provider-capability-matrix.md)
 > runtime plugin 매니페스트에는 별도 `supports_providers` 가 필요 없다 — 중립이기 때문.
 > 대신 선택적 `capability_class`(아래) 로 matrix 자동 도출을 준비할 수 있다(후속).
 
-### Gemini projection 을 넣으려면 (구체 체크리스트)
+### Gemini projection (✅ 1차 구현됨)
 
-1. `scripts/sync_harness_skills.py` 의 `HARNESS_TARGETS` 에 `"gemini"` 엔트리 추가
-   (skills_dir/plugin_dir/label). 주석 처리된 라인이 이미 있다.
-2. `_render_skill_md` 의 출력 포맷을 Gemini custom command(`.gemini/commands/<id>.toml`
-   또는 GEMINI.md include) 컨벤션에 맞게 분기(현재는 SKILL.md markdown).
-3. 대상 skill 의 grant `harness` 에 `"gemini"` 추가.
-4. `sync_harness_skills.py` 재실행 + `test_harness_projection` 회귀 0 확인.
-5. `GEMINI.md` 가 생성된 command 디렉터리를 참조하도록 한 줄 추가.
+투영 경로가 실제로 결선됐다 — `research-collect` skill 이 Gemini 로 투영된다:
+
+- `HARNESS_TARGETS["gemini"]` 등록(`.gemini/commands` / `.gemini-plugin`, `fmt: toml`).
+- `_render_skill_toml` 가 Gemini custom command(`description` + `prompt`, SSoT pointer)를 생성.
+- grant `harness` 에 `"gemini"` 포함 시 `.gemini/commands/<id>.toml` + `.gemini-plugin/plugin.json` 생성.
+- `.gitignore` 가 `.gemini/` 로컬 state 는 무시하되 `.gemini/commands/` 는 추적(.claude/skills 패턴과 동일).
+- `GEMINI.md` 가 생성 command 를 참조. 회귀 `test_provider_capability_taxonomy.GeminiProjectionTests`.
+
+남은 후속: research 외 Gemini 적합 skill 확대, GEMINI.md `@include` 자동화, custom command
+argument(`{{args}}`) 매핑.
 
 ## 6. MCP 의 자리 (현재 공백)
 

@@ -21,3 +21,14 @@ Shared project rules are defined in `CLAUDE.md`.
 
 - When working on the Engineering Agent, follow `agents/engineering-agent/agent.json` and the relevant policy files if they exist.  
   (Engineering Agent 작업 시 `agents/engineering-agent/agent.json`과 관련 정책 파일이 존재하면 이를 따른다)
+
+## Custom commands (generated projection)
+
+- `.gemini/commands/*.toml` 은 레지스트리 skill 의 **Gemini projection 생성물**이다
+  (Claude Code `.claude/skills/`, Codex `.agents/skills/` 와 같은 역할).
+  손으로 편집하지 않는다 — SSoT(`skills/<id>.md` + `agents/grants/slash-command-grants.json`)
+  를 고치고 `python3 scripts/sync_harness_skills.py` 를 재실행한다.
+- 어떤 skill 이 Gemini 로 투영되는지는 grant 의 `harness` 목록에 `"gemini"` 포함 여부로 정해진다.
+- Gemini 의 적합 영역(research / large-context / cheap analysis / draft)은
+  [`docs/provider-capability-matrix.md`](docs/provider-capability-matrix.md) 참조.
+  plugin/hook/skill/MCP/backend 개념 분리는 [`docs/plugin-taxonomy.md`](docs/plugin-taxonomy.md).

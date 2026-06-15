@@ -3,7 +3,10 @@
 .claude/settings.local.json
 .claude/*.lock
 .codex/
-.gemini/
+# Gemini CLI: ignore local state, but TRACK the generated command projection
+# (.gemini/commands/ is a sync_harness_skills.py artifact, like .claude/skills/).
+.gemini/*
+!.gemini/commands/
 runs/*
 !runs/.gitkeep
 

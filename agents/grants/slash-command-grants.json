@@ -49,7 +49,7 @@
       "spec": "skills/research-collect.md",
       "purpose": "역할별 자료 수집 (기존 레지스트리 스킬)",
       "default_autonomy": "L1",
-      "harness": ["claude", "codex"]
+      "harness": ["claude", "codex", "gemini"]
     }
   },
 

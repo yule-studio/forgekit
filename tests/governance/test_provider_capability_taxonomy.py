@@ -135,6 +135,34 @@ class ProjectionGeneratorRegistryTests(unittest.TestCase):
             self.assertTrue(rel.startswith(prefixes), f"stray artifact target: {rel}")
 
 
+class GeminiProjectionTests(unittest.TestCase):
+    def test_gemini_target_registered(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "sync_harness_skills2", _REPO_ROOT / "scripts" / "sync_harness_skills.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        self.assertIn("gemini", mod.HARNESS_TARGETS)
+        self.assertEqual(mod.HARNESS_TARGETS["gemini"]["fmt"], "toml")
+
+    def test_gemini_command_artifact_exists_and_shaped(self) -> None:
+        toml_path = _REPO_ROOT / ".gemini" / "commands" / "research-collect.toml"
+        self.assertTrue(toml_path.is_file(), "Gemini command projection missing")
+        text = toml_path.read_text(encoding="utf-8")
+        self.assertIn("description =", text)
+        self.assertIn("prompt =", text)
+        self.assertIn("DO NOT EDIT", text)
+
+    def test_gemini_plugin_manifest_lists_only_gemini_skills(self) -> None:
+        man = _load_json(_REPO_ROOT / ".gemini-plugin" / "plugin.json")
+        self.assertEqual(man["harness"], "gemini")
+        grants = _load_json(_REPO_ROOT / "agents" / "grants" / "slash-command-grants.json")
+        expected = sorted(
+            sid for sid, m in grants["custom_skills"].items() if "gemini" in m.get("harness", [])
+        )
+        self.assertEqual(sorted(man["skills"]), expected)
+
+
 class TaxonomyDocsTests(unittest.TestCase):
     def test_docs_exist_with_key_sections(self) -> None:
         tax = (_REPO_ROOT / "docs" / "plugin-taxonomy.md").read_text(encoding="utf-8")
