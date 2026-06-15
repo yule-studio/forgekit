@@ -119,6 +119,12 @@ def aggregate_receipts(receipts: Sequence[Mapping[str, Any]]) -> dict:
     rule_resolved = llm_used = llm_bypassed = with_opt = 0
     mode_dist: dict[str, int] = {}
     provider_usage: dict[str, int] = {}
+    # provider runtime
+    with_pr = live_runs = fallback_runs = 0
+    total_cost = 0.0
+    total_latency = 0.0
+    latency_n = 0
+    failure_dist: dict[str, int] = {}
 
     for r in receipts:
         if not isinstance(r, Mapping):
@@ -145,9 +151,32 @@ def aggregate_receipts(receipts: Sequence[Mapping[str, Any]]) -> dict:
             prov = opt.get("selected_provider")
             if prov:
                 provider_usage[str(prov)] = provider_usage.get(str(prov), 0) + 1
+        pr = r.get("provider_runtime")
+        if isinstance(pr, Mapping):
+            with_pr += 1
+            if pr.get("live"):
+                live_runs += 1
+            if pr.get("used_fallback"):
+                fallback_runs += 1
+            cost = pr.get("cost")
+            if isinstance(cost, Mapping):
+                total_cost += float(cost.get("total_cost_usd", 0.0) or 0.0)
+            elapsed = pr.get("elapsed_ms")
+            if elapsed is not None:
+                try:
+                    total_latency += float(elapsed)
+                    latency_n += 1
+                except (TypeError, ValueError):
+                    pass
+            for step in pr.get("fallback_from") or []:
+                if isinstance(step, Mapping):
+                    fc = str(step.get("failure_class") or "unknown")
+                    failure_dist[fc] = failure_dist.get(fc, 0) + 1
 
     llm_avoid_rate = round(llm_bypassed / with_opt * 100.0, 1) if with_opt else 0.0
     rule_first_rate = round(rule_resolved / with_opt * 100.0, 1) if with_opt else 0.0
+    fallback_rate = round(fallback_runs / with_pr * 100.0, 1) if with_pr else 0.0
+    avg_latency = round(total_latency / latency_n, 1) if latency_n else None
     return {
         "total_runs": total_runs,
         # token savings
@@ -165,6 +194,14 @@ def aggregate_receipts(receipts: Sequence[Mapping[str, Any]]) -> dict:
         "live_llm_avoided_rate_pct": llm_avoid_rate,
         "resolution_mode_distribution": mode_dist,
         "provider_usage": provider_usage,
+        # provider runtime (WT1)
+        "receipts_with_provider_runtime": with_pr,
+        "live_provider_runs": live_runs,
+        "provider_fallback_runs": fallback_runs,
+        "provider_fallback_rate_pct": fallback_rate,
+        "total_cost_usd": round(total_cost, 6),
+        "avg_latency_ms": avg_latency,
+        "provider_failure_distribution": failure_dist,
     }
 
 
@@ -188,6 +225,24 @@ def render_usage_markdown(usage: Mapping[str, Any]) -> str:
     lines.append("## provider usage")
     for prov, n in sorted((usage.get("provider_usage") or {}).items()):
         lines.append(f"- {prov}: {n}")
+    if usage.get("receipts_with_provider_runtime"):
+        lines.append("")
+        lines.append("## provider runtime")
+        lines.append(
+            f"- live provider runs: {usage.get('live_provider_runs', 0)} / "
+            f"{usage.get('receipts_with_provider_runtime', 0)}"
+        )
+        lines.append(
+            f"- **fallback rate: {usage.get('provider_fallback_runs', 0)} runs "
+            f"({usage.get('provider_fallback_rate_pct', 0)}%)**"
+        )
+        lines.append(f"- avg latency: {usage.get('avg_latency_ms')} ms")
+        lines.append(f"- total cost (proxy): ${usage.get('total_cost_usd', 0)}")
+        fdist = usage.get("provider_failure_distribution") or {}
+        if fdist:
+            lines.append("- failure classes: " + ", ".join(
+                f"{k}={v}" for k, v in sorted(fdist.items())
+            ))
     return "\n".join(lines).rstrip() + "\n"
 
 
