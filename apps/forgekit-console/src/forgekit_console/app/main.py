@@ -37,9 +37,9 @@ def resolve_repo_root(explicit: Optional[str] = None) -> Path:
 # CLI subcommand modules — each exposes add_parser(subparsers) + handle(args).
 # Registered here so `app.main` stays a thin dispatcher.
 def _cli_modules() -> dict:
-    from ..cli import brain_cmd
+    from ..cli import brain_cmd, provider_cmd
 
-    return {"brain": brain_cmd}
+    return {"brain": brain_cmd, "provider": provider_cmd}
 
 
 def build_parser() -> argparse.ArgumentParser:
