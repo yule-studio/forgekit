@@ -27,6 +27,27 @@ def welcome_banner(repo_root: str, profile: str) -> Tuple[str, ...]:
     )
 
 
+def intro_meta_lines(
+    *,
+    repo: str,
+    version: str,
+    profile: str = "operator",
+    provider: str = "—",
+) -> Tuple[str, ...]:
+    """The right-hand meta column of the intro (beside the avatar).
+
+    Claude-style: brand + version on top, then provider/profile, then the repo
+    path — a few quiet lines. Pure so it's unit-testable without a terminal.
+    """
+
+    return (
+        f"[b orange1]{BRAND}[/b orange1] [dim]v{version}[/dim]",
+        f"[dim]{TAGLINE}[/dim]",
+        f"[dim]provider[/dim] {provider}   [dim]profile[/dim] {profile}",
+        f"[dim]{repo}[/dim]",
+    )
+
+
 def issue_line(summary: StatusSummary) -> str:
     """The compact setup/status line under the intro — text-first, one line.
 
@@ -104,11 +125,14 @@ def default_help_tab(sections: Sequence[HelpSection]) -> int:
     return 0
 
 
-def help_document(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
-    """Full-width inline help — a tab strip + only the ACTIVE tab's content.
+def help_in_transcript(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
+    """Help rendered INTO the transcript — Claude-Code style, scannable.
 
-    One screen, no accordion, no nested panels: the open tab is shown in full so
-    "what's open now" is obvious. Tabs switch with ←/→, Esc closes.
+    Not a modal/panel/accordion: this returns full-width lines the transcript
+    appends inline (with a rule above/below so the block reads as one unit). A
+    tab strip marks the active tab; only the active tab's content is shown so the
+    block stays scannable. Tab switches the active tab, Esc closes it. The
+    composer stays docked at the bottom throughout.
     """
 
     if not sections:
@@ -117,13 +141,13 @@ def help_document(sections: Sequence[HelpSection], active: int) -> Tuple[str, ..
     chips = []
     for i, s in enumerate(sections):
         chips.append(f"[reverse] {s.title} [/reverse]" if i == active else f"[dim]{s.title}[/dim]")
-    lines = [
-        f"[b orange1]forgekit help[/b orange1]   " + "  ".join(chips),
-        "[dim]Tab 탭 전환 · Esc 닫기[/dim]",
+    return (
+        "[dim]" + "─" * 8 + "[/dim] [b orange1]forgekit help[/b orange1]   " + "  ".join(chips),
+        "[dim]Tab 탭 전환 · Esc 닫기 · 입력창은 그대로 열려 있습니다[/dim]",
         "",
         *sections[active].lines,
-    ]
-    return tuple(lines)
+        "[dim]" + "─" * 24 + "[/dim]",
+    )
 
 
 def agent_pane_lines(agents: Sequence[AgentInfo]) -> Tuple[str, ...]:
@@ -247,8 +271,10 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 
 __all__ = (
     "BRAND", "TAGLINE",
-    "welcome_banner", "issue_line", "agent_pane_lines", "status_pane_lines",
+    "welcome_banner", "intro_meta_lines", "issue_line", "agent_pane_lines",
+    "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
-    "status_pill", "hint_line", "help_sections", "help_document", "default_help_tab",
+    "status_pill", "hint_line", "help_sections",
+    "help_in_transcript", "default_help_tab",
     "result_block",
 )

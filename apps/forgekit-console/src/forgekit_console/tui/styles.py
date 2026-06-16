@@ -1,23 +1,16 @@
-"""Screen CSS — Claude-like vertical flow. Kept out of app.py.
+"""Screen CSS — Claude-Code-style chat-first layout. Kept out of app.py.
 
-Top→bottom: compact intro (avatar + brand) · one-line setup/status issue line ·
-thin input row · inline palette · the main content (log, or the full-width help
-document when open) · a one-line hint. No side panels, no thick footer.
+Top→bottom: intro (small avatar + brand/meta) · one quiet issue line · the
+transcript (chat-first main area, ``1fr``) · a one-line hint · a **fixed bottom
+composer** docked to the bottom (always visible — even when ``/help`` fills the
+transcript). Per-widget CSS lives on each widget (IntroHeader / Composer /
+Transcript / CommandPalette); this holds only the Screen-level frame.
 """
 
 SCREEN_CSS = """
 Screen { layout: vertical; background: $background; }
 
-#intro { height: auto; padding: 1 1 0 1; }
 #issue { height: 1; padding: 0 1; }
-
-#inputrow { height: 1; padding: 0 1; }
-#modepill { width: auto; padding: 0 1 0 0; }
-#prompt { border: none; background: $background; height: 1; padding: 0; }
-
-#content { height: 1fr; }
-#log { width: 1fr; padding: 0 1; }
-
 #hint { height: 1; padding: 0 1; color: $text-muted; }
 """
 
