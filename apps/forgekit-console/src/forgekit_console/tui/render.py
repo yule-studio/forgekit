@@ -19,22 +19,89 @@ _LEVEL_STYLE = {"info": "dim", "warn": "yellow", "error": "bold red"}
 
 
 def welcome_banner(repo_root: str, profile: str) -> Tuple[str, ...]:
-    """The first-screen banner + quick commands."""
+    """The first content block — compact, reads top→down above results."""
 
     return (
-        f"[b orange1]{BRAND}[/b orange1] — {TAGLINE}",
-        f"[dim]repo:[/dim] {repo_root}   [dim]profile:[/dim] {profile}",
+        "[dim]운영자 콘솔. 위 입력창에 명령을 치면 결과가 여기 아래로 쌓입니다.[/dim]",
+        "[dim]일반 텍스트(자유 입력)는 아직 live submit 에 연결되지 않았습니다.[/dim]",
         "",
-        "운영자 콘솔. live submit 은 아직 연결되지 않았습니다 (stub).",
+        "[b]quick[/b]  "
+        "[orange3]/help[/orange3] 도움말 · [orange3]/status[/orange3] 운영요약 · "
+        "[orange3]/agents[/orange3] 에이전트 · [orange3]/doctor[/orange3] 진단 · "
+        "[orange3]/layout[/orange3] 보기전환",
+        "[dim]`/` 팔레트 · Tab 자동완성 · F1 도움말 · ^C 종료[/dim]",
         "",
-        "[b]quick commands[/b]",
-        "  /help     도움말 오버레이       /status   운영 대시보드",
-        "  /agents   에이전트 목록          /doctor   환경 진단",
-        "  /runtime  runtime status        /harness  harness 요약",
-        "  /quit     종료",
-        "",
-        "[dim]하단 입력창에 `/` 를 치면 command palette 가 열립니다 · Tab 자동완성 · F1 도움말[/dim]",
     )
+
+
+def status_pill(summary: StatusSummary) -> str:
+    """A single compact operator line — secondary, not the star of the screen."""
+
+    if not summary.available:
+        return "[yellow]●[/yellow] [dim]status unavailable[/dim]"
+    if any(a.level == "error" for a in summary.alerts):
+        dot = "[red]●[/red]"
+    elif any(a.level == "warn" for a in summary.alerts):
+        dot = "[yellow]●[/yellow]"
+    else:
+        dot = "[green]●[/green]"
+    parts = []
+    for section in summary.sections[:3]:
+        first = section.lines[0] if section.lines else ""
+        if len(first) > 30:
+            first = first[:29] + "…"
+        parts.append(f"[dim]{section.title}[/dim] {first}")
+    body = "   ·   ".join(parts) if parts else "ready"
+    return f"{dot} {body}"
+
+
+def mode_pill(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
+    """A restrained mode indicator for the input row (replaces the heavy badge)."""
+
+    if mode in (MODE_OPERATOR, "") or not mode:
+        return "[orange1]●[/orange1] [dim]operator[/dim]"
+    if mode == "palette":
+        return "[cyan]●[/cyan] [dim]palette[/dim]"
+    if mode.startswith("agent:"):
+        agent_id = mode.split(":", 1)[1]
+        label = agent_id
+        for a in agents:
+            if a.agent_id == agent_id:
+                label = a.label
+                break
+        return f"[dark_orange]●[/dark_orange] [b]{label}[/b]"
+    return f"[dim]●[/dim] {mode}"
+
+
+def hint_line(*, palette_open: bool = False, help_open: bool = False, in_agent: bool = False) -> str:
+    """Contextual one-line shortcut hint (replaces the thick footer)."""
+
+    if help_open:
+        return "[dim]Esc[/dim] 닫기   [dim]↑/↓[/dim] 스크롤"
+    if palette_open:
+        return "[dim]Tab · ↑/↓[/dim] 순환   [dim]Enter[/dim] 실행   [dim]Esc[/dim] 닫기"
+    base = (
+        "[dim]/[/dim] palette   [dim]Tab[/dim] 완성   [dim]F1[/dim] help   "
+        "[dim]/layout[/dim] 보기   [dim]^L[/dim] clear   [dim]^C[/dim] quit"
+    )
+    if in_agent:
+        return "[dim]Esc[/dim] operator   " + base
+    return base
+
+
+def help_inline(sections: Sequence[HelpSection]) -> Tuple[str, ...]:
+    """Inline help document — reads in the flow (no modal). Sections stacked."""
+
+    tabs = "  ·  ".join(f"[b]{s.title}[/b]" for s in sections)
+    lines = [
+        f"[b orange1]forgekit help[/b orange1]   [dim]{tabs}[/dim]   [dim](Esc 닫기)[/dim]",
+        "",
+    ]
+    for section in sections:
+        lines.append(f"[b orange3]▸ {section.title}[/b orange3]")
+        lines.extend(f"  {line}" for line in section.lines)
+        lines.append("")
+    return tuple(lines)
 
 
 def agent_pane_lines(agents: Sequence[AgentInfo]) -> Tuple[str, ...]:
@@ -162,6 +229,7 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 __all__ = (
     "BRAND", "TAGLINE",
     "welcome_banner", "agent_pane_lines", "status_pane_lines",
-    "palette_lines", "palette_panel_lines", "mode_badge", "help_sections",
+    "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
+    "status_pill", "hint_line", "help_sections", "help_inline",
     "result_block",
 )

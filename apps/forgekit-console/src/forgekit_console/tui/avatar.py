@@ -37,9 +37,24 @@ def _asset_path() -> Path:
 
 
 def text_brandmark() -> Tuple[str, ...]:
-    """The zero-dependency fallback mark (Rich markup lines)."""
+    """The block-letter fallback mark (Rich markup lines, ~7 rows)."""
 
     return _TEXT_BRANDMARK
+
+
+def mini_brandmark() -> Tuple[str, ...]:
+    """A small, crisp, terminal-safe wordmark — the *default* console mark.
+
+    Two lines only, box-drawing-free in the wordmark itself so it renders
+    cleanly on any terminal. Deliberately not a raster image: a pixelated photo
+    avatar must never be the first impression, so the app shows this by default
+    and only renders the baked image on explicit opt-in.
+    """
+
+    return (
+        "[b orange1]forge[/b orange1][b orange3]kit[/b orange3] [dim]▸ operator console[/dim]",
+        "[dim]content-first terminal ops console[/dim]",
+    )
 
 
 def load_baked_asset() -> Optional[Tuple[str, ...]]:
@@ -118,4 +133,5 @@ __all__ = (
     "load_baked_asset",
     "render_from_image",
     "text_brandmark",
+    "mini_brandmark",
 )
