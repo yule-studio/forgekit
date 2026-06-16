@@ -25,6 +25,12 @@
 - `engineering-agent/devops-engineer`
 - `engineering-agent/ai-engineer`
 - `engineering-agent/product-designer` *(현재 engineering 에 있지만 CPO 산하 product 와 cross-functional)*
+- `engineering-agent/platform-runtime-engineer` — *auxiliary runtime*: 설치/연결/runtime/provider/doctor (contract: platform, code+commit)
+- `engineering-agent/knowledge-engineer` — *auxiliary runtime*: vault/brain/retrieval 구조화 (contract: curator, note-only; alias: memory-curator)
+- `engineering-agent/ops-observer` — *cross-cutting observer*: 24h 감시/budget/alert/fallback triage (contract: observer, note-only)
+
+> 위 3개는 7-seat deliberation council 의 seat 가 아니다 — auxiliary/cross-cutting role.
+> 호출 계약은 [`docs/agent-invocation-contract.md`](../../../docs/agent-invocation-contract.md).
 
 ### Product (CPO 산하)
 - `product-agent/product-manager` — PRD / 발견 / 우선순위
