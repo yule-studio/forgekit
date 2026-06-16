@@ -1,15 +1,19 @@
 """Forgekit operator console — Claude-Code-style chat-first layout.
 
-Top→bottom: a small real-image avatar + brand/meta intro · one quiet issue line ·
-the main panel (a transcript XOR help-view state machine) · a **fixed bottom
-composer** (mode pill + input + inline palette) that is ALWAYS visible · a
-one-line hint. The user reads straight down and types at the bottom, exactly like
-Claude Code.
+Top→bottom, TOP-ALIGNED: a small real-image avatar + brand/meta intro (fixed
+banner) · then a single session flow of one quiet issue line · the main panel (a
+transcript XOR help-view state machine, ``height: auto``) · a **session-following
+inline composer** (mode pill + input + inline palette) that renders IMMEDIATELY
+AFTER the active content · a one-line hint. When the session is short the composer
+sits near the top with empty space below; as the transcript grows the content
+pushes the composer down and the :class:`tui.session_flow.SessionFlow` scroll
+keeps it in view. The user reads + types "at the end of the current session",
+exactly like Claude Code — the composer is NOT docked to the viewport bottom.
 
 ``/help`` (and F1) does NOT append into the transcript — it switches the whole
-main area to a dedicated help VIEW (transcript hidden). Esc switches back to the
-transcript exactly as it was. The view switch lives in
-:class:`tui.main_panel.MainPanel`; the composer never disappears across it.
+main area to a dedicated help VIEW (transcript hidden). The composer still sits
+right BELOW the help view (active content). Esc switches back to the transcript
+exactly as it was. The view switch lives in :class:`tui.main_panel.MainPanel`.
 
 Pure logic (parse/route/palette-state/intro/help strings + image-renderer
 selection) lives in the core/helpers; this module owns the live widget state
@@ -42,6 +46,7 @@ from .composer import Composer
 from .header import IntroHeader
 from .main_panel import MainPanel
 from .palette import CommandPalette
+from .session_flow import SessionFlow
 from .styles import SCREEN_CSS
 from .transcript import Transcript
 
@@ -75,21 +80,27 @@ class ForgekitConsoleApp(App):
     # --- layout -------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        # top: small real-image avatar + brand/version/provider/profile/repo
+        # top (fixed banner): small real-image avatar + brand/version/provider/...
         yield IntroHeader(
             repo=str(self.repo_root),
             version=__version__,
             profile=self.context.profile,
             id="intro",
         )
-        # one quiet issue line under the intro
-        yield Static(id="issue")
-        # main area — a transcript XOR help-view state machine (mutually exclusive)
-        yield MainPanel(id="main")
-        # one-line hint just above the fixed composer
-        yield Static(id="hint")
-        # fixed bottom composer (always visible — palette inline, mode pill, input)
-        yield Composer(id="composer")
+        # the live session is a single TOP-ALIGNED vertical flow that scrolls:
+        #   issue line → active content (transcript XOR help) → inline composer → hint.
+        # The composer renders right after the content (height: auto), so a short
+        # session leaves it near the top with empty space below; as content grows
+        # the flow scrolls to keep the composer in view.
+        with SessionFlow(id="flow"):
+            # one quiet issue line under the intro
+            yield Static(id="issue")
+            # main area — a transcript XOR help-view state machine (mutually exclusive)
+            yield MainPanel(id="main")
+            # session-following inline composer (palette inline, mode pill, input)
+            yield Composer(id="composer")
+            # one-line hint follows the composer
+            yield Static(id="hint")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
@@ -100,6 +111,7 @@ class ForgekitConsoleApp(App):
         self._refresh_issue()
         self._refresh_chrome()
         self.query_one("#prompt", Input).focus()
+        self._follow_tail()
 
     # --- input / palette ----------------------------------------------------
 
@@ -202,6 +214,8 @@ class ForgekitConsoleApp(App):
             self._refresh_chrome()
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
+        # keep the inline composer in view as the session grows (Claude-style tail)
+        self._follow_tail()
 
     # --- help (a VIEW SWITCH, not a transcript append; composer stays visible) --
 
@@ -223,6 +237,16 @@ class ForgekitConsoleApp(App):
         # Switch back to the transcript exactly as it was (nothing left behind).
         self._main.show_transcript()
         self._refresh_chrome()
+
+    @property
+    def _flow(self) -> SessionFlow:
+        return self.query_one("#flow", SessionFlow)
+
+    def _follow_tail(self) -> None:
+        """Scroll the session flow so the inline composer stays in view."""
+
+        # call_after_refresh so the layout (new content height) is settled first.
+        self.call_after_refresh(self._flow.follow_tail)
 
     @property
     def _main(self) -> MainPanel:

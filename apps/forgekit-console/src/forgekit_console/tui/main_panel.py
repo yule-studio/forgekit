@@ -13,7 +13,14 @@ This replaces the old "append help into the transcript" behaviour:
   about help is left behind in the transcript — help lives in its own widget.
 
 It is an in-app panel, not a modal: no new screen is pushed, so the composer
-stays docked at the bottom and the screen stack length stays 1.
+stays in the inline session flow right below it and the screen stack length
+stays 1.
+
+Layout note: the panel is ``height: auto`` (it sizes to its active child's
+content), NOT ``1fr``. That is what lets the composer render IMMEDIATELY AFTER the
+content instead of being shoved to the viewport bottom by a flex-filled main
+area. The enclosing :class:`tui.session_flow.SessionFlow` scroll provides the
+overflow handling as the transcript grows.
 """
 
 from __future__ import annotations
@@ -28,12 +35,16 @@ _HELP_ID = "help"
 
 
 class MainPanel(ContentSwitcher):
-    """Switches the main area between the transcript and the help view (XOR)."""
+    """Switches the main area between the transcript and the help view (XOR).
+
+    ``height: auto`` — sizes to the active child so the composer follows the
+    content inline (see module docstring).
+    """
 
     DEFAULT_CSS = """
     MainPanel {
         width: 1fr;
-        height: 1fr;
+        height: auto;
     }
     """
 
