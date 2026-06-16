@@ -1,5 +1,15 @@
 # Forgekit console — 운영자 콘솔 (Claude Code-스타일)
 
+> **브랜드 테마**: 콘솔은 forgekit 워드마크 배너(`assets/forgekit.png`, cyan→magenta
+> 그라데이션 픽셀아트)에서 추출한 **cyan/magenta-on-black** 팔레트를 쓴다. SSoT 는
+> [`tui/theme.py`](../apps/forgekit-console/src/forgekit_console/tui/theme.py) — 명명 상수
+> (BG/FG/MUTED/ACCENT_PRIMARY(cyan)/ACCENT_SECONDARY(magenta)/ACCENT_DIM/BORDER/
+> WARNING/SUCCESS/ERROR) + `wordmark()`(forge=cyan·kit=magenta 그라데이션 마크).
+> 이전 orange 토큰은 전부 제거했다. neon 은 **악센트/마커로만**(prompt 마커 `›`,
+> active 탭, 브랜드 워드마크, 상태 점) 쓰고 본문은 foreground/muted 로 둬 Claude-Code 식
+> 절제를 유지한다. CSS 변수(`$accent`/`$accent-secondary`/`$brand-border`/`$text` …)는
+> `App.get_css_variables` 로 전역 등록돼 위젯 `DEFAULT_CSS` 에서도 해석된다.
+
 > `forgekit` 는 이 레포(사용자-facing 이름 **forgekit**)의 운영자 콘솔이다. 터미널에서
 > `forgekit` 한 줄이면 전체화면 TUI 콘솔이 열린다. UI 는 **Claude Code CLI 처럼 chat-first**:
 > 상단 작은 실-이미지 아바타 intro(고정 배너) → 조용한 issue line → 본문(transcript) →
@@ -39,6 +49,21 @@ forgekit console --repo-root /path/to/repo   # status 기준 경로 지정
 - `pip install -e .`(코어, textual 미포함) 만 해도 `forgekit` 명령은 등록된다. 단 textual 이 없으면
   콘솔 실행 시 **친절한 설치 안내(exit 3)** 를 출력한다(트레이스백 아님).
 - 기본 repo root 해석 우선순위: `--repo-root` > `YULE_REPO_ROOT` > 현재 디렉터리.
+
+### 인트로 브랜드 마크 — forgekit 워드마크 배너 (image FIRST)
+
+인트로 상단의 브랜드 마크는 **forgekit 워드마크 배너**다. 원본 배너
+(`assets/brand/forgekit-banner.png`, 1916×821 cyan→magenta 픽셀아트 워드마크)를
+**사전-베이크**(`python -m forgekit_console.assets.brand.bake`, Pillow)해 작은 인트로
+배너(`assets/brand/forgekit-banner-intro.png`, ≈360px)로 만들어 커밋한다. 콘솔은 큰
+1916px master 를 그대로 슬램하지 않고 이 작은 PNG 만 렌더한다.
+
+표시는 **image-first**: graphics-capable 터미널이면 `textual-image` 로 작은 배너를 **진짜
+인라인 이미지**로 그리고(`tui/brand_panel.py` + `tui/image_renderer.py` 의
+`make_brand_renderer`/`BrandBannerRenderer`), 그렇지 않으면 **compact 텍스트 워드마크**
+(`tui/theme.py` 의 `wordmark()` — forge=cyan·kit=magenta 그라데이션)로 떨어진다. 텍스트
+워드마크는 그 자체로 깔끔하게 보이도록 디자인됐다. 배너는 항상 compact(작게) 유지하며 full
+master 를 크게 띄우지 않는다.
 
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 
@@ -107,10 +132,12 @@ ready · /status                        ← issue line (텍스트 1줄, 조용)
   transcript 는 숨는다 — transcript 에 아무것도 append 되지 않는다. Esc 로 transcript 가 그대로
   복원된다.
 - **composer(inline, 세션 추종)**: `dock` **없음** — content 바로 아래에 inline 으로 렌더된다.
-  입력 위 **강조 rule(border-top heavy)** 로 채팅 바가 뚜렷한 별도 바로 읽힌다. inline
-  palette(slash 입력 시 입력 바로 위) + mode pill(`● operator` / `● palette` / `● <agent>`) +
-  입력창. help 뷰가 열려 있는 동안에는 그 **help 뷰 바로 아래**에 그대로 inline 으로 보이고
-  입력 가능하다.
+  Claude-Code 식 절제: 입력 위 **얇은 단일 rule(border-top solid `$brand-border`)** 하나만
+  두고(heavy/full box 아님), 왼쪽 **accent prompt 마커 `›`**(cyan) 와 **약화된 muted mode
+  pill** 로 입력 행 자체를 주인공으로 둔다. inline palette(slash 입력 시 입력 바로 위, 얇은
+  accent rule + 선택 행 accent 하이라이트) + 입력창. help 뷰가 열려 있는 동안에는 그 **help
+  뷰 바로 아래**에 그대로 inline 으로 보이고 입력 가능하다. Enter → 입력이 transcript 엔트리가
+  되고 빈 prompt 가 아래로 이어진다.
 
 ## 3b. 키 바인딩 / 상호작용
 
@@ -163,8 +190,10 @@ apps/forgekit-console/src/forgekit_console/
     palette.py         palette/autocomplete 상태머신 — open/refilter/cycle/complete (순수)
     router.py          ParsedInput → CommandResult (순수, 로더 주입)
   data/status_loader.py  기존 surface 재사용 + 순수 shaper
-  tui/render.py        문자열 렌더(welcome/intro-meta/issue-line/hint/mode-pill/help-panel-document/palette) — 순수
-  tui/image_renderer.py 아바타 렌더 추상화 — capability 검출(순수) + real/half-block/text 3-tier renderer
+  tui/theme.py         브랜드 팔레트 SSoT — cyan/magenta-on-black 명명 상수 + wordmark() + css_variables() (순수)
+  tui/render.py        문자열 렌더(welcome/intro-meta/issue-line/hint/mode-pill/help-panel-document/palette) — 순수, theme 토큰 참조
+  tui/image_renderer.py 아바타 + 브랜드 배너 렌더 추상화 — capability 검출(순수) + 아바타 3-tier + 브랜드 배너(real image→text wordmark)
+  tui/brand_panel.py   브랜드 배너 위젯(인트로 워드마크 마크, image-first → 텍스트 워드마크)
   tui/halfblock.py     tier-2 image-derived half-block 렌더(베이크 PNG → Pillow downscale → ▀ 래스터)
   tui/avatar_panel.py  아바타 위젯(선택된 renderer 의 renderable 을 mount, textual)
   tui/header.py        IntroHeader 위젯 — 아바타(좌) + 브랜드/버전/provider/profile/repo(우)
@@ -181,6 +210,9 @@ apps/forgekit-console/src/forgekit_console/
   assets/avatar/profile_hermes_source.jpg  고해상 master(헤드폰 라인아트 portrait, crop 원본)
   assets/avatar/forgekit-avatar.png        작은 베이크 PNG(image-first 표시 에셋: tier1 real / tier2 half-block 소스)
   assets/avatar/bake.py                    master → 작은 PNG 베이크 build-time 도구(Pillow)
+  assets/brand/forgekit-banner.png         full 워드마크 master(1916×821, cyan→magenta) — README 도 같은 이미지를 root assets/forgekit.png 로 보관
+  assets/brand/forgekit-banner-intro.png   작은 베이크 인트로 배너(≈360px, image-first 브랜드 마크)
+  assets/brand/bake.py                     master → 작은 인트로 배너 베이크 build-time 도구(Pillow)
 ```
 
 - **순수 코어(models/commands/data/tui.render·image_renderer 의 검출·선택·keymap·styles)는 textual 없이 import·테스트 가능.**
