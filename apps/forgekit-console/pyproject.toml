@@ -8,14 +8,17 @@ version = "0.1.0"
 description = "Forgekit operator console — a Textual TUI over the yule runtime/harness surfaces."
 requires-python = ">=3.9"
 # The TUI layer needs textual; the pure core (commands/data/models) is stdlib-only
-# and importable + testable without it. Pillow is OPTIONAL — only for live image
-# rendering / regenerating the baked avatar; the shipped asset works without it.
+# and importable + testable without it. Pillow bakes the small display avatar from
+# the source portrait. textual-image renders the REAL inline avatar image via a
+# terminal graphics protocol (Kitty/iTerm2/Sixel) — the primary avatar path.
 dependencies = [
   "textual>=0.50",
 ]
 
 [project.optional-dependencies]
-image = ["pillow>=10.0"]
+# Real inline avatar image + baking. textual-image is the primary avatar renderer
+# (it degrades to a small text mark when the terminal lacks graphics support).
+image = ["pillow>=10.0", "textual-image>=0.6"]
 
 [project.scripts]
 forgekit = "forgekit_console.app.main:main"
@@ -24,6 +27,6 @@ forgekit = "forgekit_console.app.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# Ship the pre-baked avatar (Rich-markup half-block art) so the brand mark
-# renders with no image library at runtime.
-forgekit_console = ["assets/*.txt"]
+# Ship the avatar assets: the small baked display PNG (primary, real-image path)
+# and the high-res source master it's baked from.
+forgekit_console = ["assets/avatar/*.png", "assets/avatar/*.jpg"]

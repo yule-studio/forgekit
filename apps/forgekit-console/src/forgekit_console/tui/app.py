@@ -1,13 +1,15 @@
-"""Forgekit operator console — Claude-like vertical flow.
+"""Forgekit operator console — Claude-Code-style chat-first layout.
 
-Top→bottom: compact intro (small avatar + brand/version/profile/repo) · one-line
-setup/status issue line · thin input row · inline palette · main content (the log,
-or the full-width inline help document when open) · one-line hint. The user reads
-straight down; ``/help`` opens a full-width help doc in the content area (not a
-modal), Esc returns to the log.
+Top→bottom: a small real-image avatar + brand/meta intro · one quiet issue line ·
+the transcript (chat-first main area where command results AND ``/help`` stack) ·
+a **fixed bottom composer** (mode pill + input + inline palette) that is ALWAYS
+visible · a one-line hint. The user reads straight down and types at the bottom,
+exactly like Claude Code. ``/help`` renders INTO the transcript (not a modal);
+the composer never disappears.
 
-Pure logic (parse/route/palette-state/intro/help strings) lives in the core; this
-module owns the live widget state (mode, palette, help tab) and wiring.
+Pure logic (parse/route/palette-state/intro/help strings + image-renderer
+selection) lives in the core/helpers; this module owns the live widget state
+(mode, palette, help tab) and the wiring between them.
 """
 
 from __future__ import annotations
@@ -17,8 +19,7 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal
-from textual.widgets import Input, RichLog, Static
+from textual.widgets import Input, Static
 
 from .. import __version__
 from ..commands import palette as palette_state
@@ -32,17 +33,18 @@ from ..models import (
     KIND_QUIT,
     MODE_OPERATOR,
 )
-from . import intro as intro_mod
 from . import keymap, render
-from .help_document import HelpDocument
+from .composer import Composer
+from .header import IntroHeader
 from .palette import CommandPalette
 from .styles import SCREEN_CSS
+from .transcript import Transcript
 
 _STATUS_COMMANDS = {"status", "harness", "runtime", "doctor"}
 
 
 class ForgekitConsoleApp(App):
-    """The operator console — compact intro, then a single reading flow."""
+    """The operator console — small avatar intro, transcript, fixed composer."""
 
     CSS = SCREEN_CSS
 
@@ -69,24 +71,26 @@ class ForgekitConsoleApp(App):
     # --- layout -------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        yield Static(id="intro")
+        # top: small real-image avatar + brand/version/provider/profile/repo
+        yield IntroHeader(
+            repo=str(self.repo_root),
+            version=__version__,
+            profile=self.context.profile,
+            id="intro",
+        )
+        # one quiet issue line under the intro
         yield Static(id="issue")
-        with Horizontal(id="inputrow"):
-            yield Static(id="modepill")
-            yield Input(placeholder="명령 입력 — `/help` 로 시작", id="prompt")
-        yield CommandPalette(id="palette")
-        with Container(id="content"):
-            yield RichLog(id="log", markup=True, wrap=True, highlight=False)
-            yield HelpDocument(id="helpdoc")
+        # chat-first main area — results AND help stack here
+        yield Transcript(id="log")
+        # one-line hint just above the fixed composer
         yield Static(id="hint")
+        # fixed bottom composer (always visible — palette inline, mode pill, input)
+        yield Composer(id="composer")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
         self.sub_title = render.TAGLINE
-        self.query_one("#intro", Static).update("\n".join(intro_mod.intro_lines(
-            repo=str(self.repo_root), version=__version__, profile=self.context.profile,
-        )))
-        log = self.query_one("#log", RichLog)
+        log = self.query_one("#log", Transcript)
         for line in render.welcome_banner(str(self.repo_root), self.context.profile):
             log.write(line)
         self._refresh_issue()
@@ -115,13 +119,13 @@ class ForgekitConsoleApp(App):
     def action_next(self) -> None:
         if self._palette.is_open:
             self._cycle(1)
-        elif self._helpdoc.is_open:
+        elif self._transcript.help_open:
             self._switch_help_tab(1)
 
     def action_prev(self) -> None:
         if self._palette.is_open:
             self._cycle(-1)
-        elif self._helpdoc.is_open:
+        elif self._transcript.help_open:
             self._switch_help_tab(-1)
 
     def action_palette_next(self) -> None:
@@ -133,7 +137,7 @@ class ForgekitConsoleApp(App):
             self._cycle(-1)
 
     def action_dismiss(self) -> None:
-        if self._helpdoc.is_open:
+        if self._transcript.help_open:
             self._close_help()
             return
         if self._palette.is_open:
@@ -142,7 +146,7 @@ class ForgekitConsoleApp(App):
         if self.mode != MODE_OPERATOR:
             self.mode = MODE_OPERATOR
             self._refresh_chrome()
-            self.query_one("#log", RichLog).write("[dim]› operator 모드로 복귀[/dim]")
+            self.query_one("#log", Transcript).write("[dim]› operator 모드로 복귀[/dim]")
 
     def _cycle(self, direction: int) -> None:
         self._palette = palette_state.cycle(self._palette, direction)
@@ -180,25 +184,25 @@ class ForgekitConsoleApp(App):
             self.exit()
             return
         if result.kind == KIND_CLEAR:
-            self.query_one("#log", RichLog).clear()
+            self.query_one("#log", Transcript).clear()
+            self._transcript.close_help()
             return
         if result.kind in (KIND_HELP, KIND_LAYOUT):
             self._open_help()  # /layout also routes to help in this flow
             return
-        log = self.query_one("#log", RichLog)
-        log.write(f"[dim]›[/dim] {raw}")
-        for line in render.result_block(result.title, result.lines):
-            log.write(line)
+        log = self.query_one("#log", Transcript)
+        log.write_echo(raw)
+        log.write_result(result.title, result.lines)
         if result.kind == KIND_AGENT_MODE:
             self.mode = result.title  # router titles agent results as "agent:<id>"
             self._refresh_chrome()
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
 
-    # --- help (full-width inline, swaps with the log) -----------------------
+    # --- help (rendered INTO the transcript; composer stays visible) --------
 
     def action_open_help(self) -> None:
-        if self._helpdoc.is_open:
+        if self._transcript.help_open:
             self._close_help()
         else:
             self._open_help()
@@ -208,28 +212,27 @@ class ForgekitConsoleApp(App):
         self._help_tab = render.default_help_tab(
             render.help_sections(self.context.commands, self.context.agents)
         )
-        self._helpdoc.show(self.context.commands, self.context.agents, self._help_tab)
-        self.query_one("#log", RichLog).display = False
+        self._transcript.open_help(self.context.commands, self.context.agents, self._help_tab)
         self._refresh_chrome()
 
     def _close_help(self) -> None:
-        self._helpdoc.hide()
-        self.query_one("#log", RichLog).display = True
+        self._transcript.close_help()
         self._refresh_chrome()
 
     def _switch_help_tab(self, direction: int) -> None:
         n = len(render.help_sections(self.context.commands, self.context.agents))
         self._help_tab = (self._help_tab + direction) % n
-        self._helpdoc.show(self.context.commands, self.context.agents, self._help_tab)
+        self._transcript.rerender_help(self.context.commands, self.context.agents, self._help_tab)
 
     @property
-    def _helpdoc(self) -> HelpDocument:
-        return self.query_one("#helpdoc", HelpDocument)
+    def _transcript(self) -> Transcript:
+        return self.query_one("#log", Transcript)
 
     # --- chrome / status ----------------------------------------------------
 
     def action_clear_log(self) -> None:
-        self.query_one("#log", RichLog).clear()
+        self.query_one("#log", Transcript).clear()
+        self._transcript.close_help()
 
     def action_refresh_status(self) -> None:
         self._refresh_issue()
@@ -244,7 +247,7 @@ class ForgekitConsoleApp(App):
         self.query_one("#hint", Static).update(
             render.hint_line(
                 palette_open=self._palette.is_open,
-                help_open=self._helpdoc.is_open,
+                help_open=self._transcript.help_open,
                 in_agent=self.mode != MODE_OPERATOR,
             )
         )

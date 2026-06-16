@@ -115,7 +115,9 @@ class ModePillTests(unittest.TestCase):
         self.assertIn("palette", render.mode_pill("palette"))
 
 
-class HelpDocumentTests(unittest.TestCase):
+class HelpInTranscriptTests(unittest.TestCase):
+    """Help is rendered INTO the transcript (Claude-Code style), not a modal."""
+
     def _secs(self):
         return render.help_sections(load_commands(), load_agents())
 
@@ -124,10 +126,10 @@ class HelpDocumentTests(unittest.TestCase):
         self.assertEqual(titles, ["Help", "General", "Commands", "Agents"])
         self.assertEqual(self._secs()[render.default_help_tab(self._secs())].title, "General")
 
-    def test_document_shows_tab_strip_and_active_body_only(self) -> None:
+    def test_block_shows_tab_strip_and_active_body_only(self) -> None:
         secs = self._secs()
         general = render.default_help_tab(secs)
-        joined = "\n".join(render.help_document(secs, general))
+        joined = "\n".join(render.help_in_transcript(secs, general))
         self.assertIn("forgekit help", joined)
         self.assertIn("Esc", joined)
         # all four tab labels appear in the strip
@@ -137,32 +139,34 @@ class HelpDocumentTests(unittest.TestCase):
         self.assertIn("단축키", joined)
         self.assertNotIn("/quit", joined)
 
+    def test_block_keeps_composer_note(self) -> None:
+        # The help block reminds the operator the input stays open (composer fixed)
+        secs = self._secs()
+        joined = "\n".join(render.help_in_transcript(secs, render.default_help_tab(secs)))
+        self.assertIn("입력창", joined)
+
     def test_commands_tab_lists_exit_alias(self) -> None:
         secs = self._secs()
         cmd_idx = next(i for i, s in enumerate(secs) if s.title == "Commands")
-        joined = "\n".join(render.help_document(secs, cmd_idx))
+        joined = "\n".join(render.help_in_transcript(secs, cmd_idx))
         self.assertIn("/exit", joined)
         self.assertIn("/quit", joined)
 
 
-class IntroTests(unittest.TestCase):
-    def test_intro_has_avatar_left_and_brand_right(self) -> None:
-        from forgekit_console.tui import intro
-
-        avatar = ("[rgb(200,200,205)]▀▀[/]", "[rgb(200,200,205)]▄▄[/]")
-        lines = intro.intro_lines(repo="/repo", version="0.1.0", avatar_lines=avatar)
+class IntroMetaTests(unittest.TestCase):
+    def test_meta_has_brand_version_provider_profile_repo(self) -> None:
+        lines = render.intro_meta_lines(
+            repo="/repo", version="0.1.0", profile="operator", provider="claude"
+        )
         joined = "\n".join(lines)
         self.assertIn("forgekit", joined)
         self.assertIn("v0.1.0", joined)
         self.assertIn("/repo", joined)
         self.assertIn("operator", joined)  # profile
-        # avatar markup is on the left of the first row
-        self.assertTrue(lines[0].startswith("[rgb(200,200,205)]▀▀"))
+        self.assertIn("claude", joined)    # provider
 
-    def test_intro_uses_baked_avatar_by_default(self) -> None:
-        from forgekit_console.tui import intro
-
-        lines = intro.intro_lines(repo="/r", version="0.1.0")
+    def test_meta_defaults(self) -> None:
+        lines = render.intro_meta_lines(repo="/r", version="0.1.0")
         self.assertTrue(lines)
         self.assertIn("forgekit", "\n".join(lines))
 
