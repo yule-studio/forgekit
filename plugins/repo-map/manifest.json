@@ -11,5 +11,6 @@
   "autonomy_level": "advisory",
   "paste_guard_required": true,
   "risk_class": "LOW",
-  "module_path": "yule_engineering.agents.exploration.repo_map"
+  "module_path": "yule_engineering.agents.exploration.repo_map",
+  "capability_class": "exploration"
 }

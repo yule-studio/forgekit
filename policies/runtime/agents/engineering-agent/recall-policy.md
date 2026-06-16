@@ -90,9 +90,10 @@ topic 횡단 recall 결과는 [memory-policy §4](./memory-policy.md#4-재사용
 
 본 정책의 코드 구현 — 본 phase 범위 밖:
 
-1. **`yule insights` CLI** (`cli/insights.py`) — `--days N` / `--topic` 옵션, 보고서 §3.2 contract 준수. 우선순위 P1.
-2. **topic 횡단 검색** — `cli/memory.py` 에 `--topic` filter 추가. 우선순위 P2.
+1. ✅ **token-efficiency insights** — `yule harness insights` 가 누적 토큰 절감 집계(`agents/harness/insights.py`). Hermes insights 의 정량 보고는 후속(`--days N` 활동 회고).
+2. ✅ **topic 횡단 recall** — `memory/retrieval.fetch_topic_context(topic=…)` 가 frontmatter `topic`(index extra 투영) 기준 횡단 회수. `yule memory search --boost` 로 boost 근거 노출.
 3. **supervisor 의 회고 후보 안내** — `agents/session_status.py` 가 *회고 미작성 + decision 존재* 세션을 별도 신호로 노출. 우선순위 P2.
+4. **retrieval pool cache** — `fetch_role_context` 가 `YULE_RETRIEVAL_CACHE_ENABLED`(기본 off) 뒤에서 index mtime 기반 캐시(reindex 시 자동 invalidation).
 
 각 milestone 은 별도 issue + decision note 로.
 

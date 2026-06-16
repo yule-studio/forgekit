@@ -73,6 +73,22 @@ PLUGIN_KINDS: Tuple[str, ...] = (
     "delivery",
 )
 
+#: Vendor-neutral capability classes — the taxonomy axis the provider
+#: capability matrix is keyed on (docs/provider-capability-matrix.md). A plugin
+#: MAY declare one so the matrix can be derived from data, not prose. Optional
+#: + append-only.
+CAPABILITY_CLASSES: Tuple[str, ...] = (
+    "security_gate",
+    "enforcement",
+    "verification",
+    "memory",
+    "exploration",
+    "delivery",
+    "execution",
+    "research",
+    "compaction",
+)
+
 
 _MODULE_PATH_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$")
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -114,6 +130,8 @@ class PluginManifest:
     paste_guard_required: bool = True
     risk_class: str = "LOW"
     module_path: str = ""
+    #: vendor-neutral capability class (optional) — one of CAPABILITY_CLASSES.
+    capability_class: str = ""
 
 
 @dataclass(frozen=True)
@@ -205,6 +223,7 @@ def load_plugin_manifest_from_dict(payload: Any) -> PluginManifest:
         paste_guard_required=bool(data.get("paste_guard_required", True)),
         risk_class=data.get("risk_class", "LOW"),
         module_path=data.get("module_path", ""),
+        capability_class=data.get("capability_class", ""),
     )
     validate_plugin_manifest(manifest)
     return manifest
@@ -293,6 +312,11 @@ def validate_plugin_manifest(manifest: PluginManifest) -> None:
     _validate_hook_names(manifest.hooks_provided, "plugin manifest", "hooks_provided")
     _validate_hook_names(manifest.hooks_consumed, "plugin manifest", "hooks_consumed")
     _validate_module_path(manifest.module_path, "plugin manifest")
+    if manifest.capability_class and manifest.capability_class not in CAPABILITY_CLASSES:
+        raise ManifestValidationError(
+            f"plugin manifest capability_class '{manifest.capability_class}' "
+            f"must be one of {CAPABILITY_CLASSES}"
+        )
 
 
 def validate_agent_manifest(manifest: AgentManifest) -> None:

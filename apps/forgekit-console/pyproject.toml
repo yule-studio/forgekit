@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgekit-console"
+version = "0.1.0"
+description = "Forgekit operator console — a Textual TUI over the yule runtime/harness surfaces."
+requires-python = ">=3.9"
+# The TUI layer needs textual; the pure core (commands/data/models) is stdlib-only
+# and importable + testable without it. Pillow is OPTIONAL — only for live image
+# rendering / regenerating the baked avatar; the shipped asset works without it.
+dependencies = [
+  "textual>=0.50",
+]
+
+[project.optional-dependencies]
+image = ["pillow>=10.0"]
+
+[project.scripts]
+forgekit = "forgekit_console.app.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the pre-baked avatar (Rich-markup half-block art) so the brand mark
+# renders with no image library at runtime.
+forgekit_console = ["assets/*.txt"]

@@ -15,5 +15,6 @@
   "autonomy_level": "advisory",
   "paste_guard_required": true,
   "risk_class": "MEDIUM",
-  "module_path": "yule_engineering.agents.static_analysis.lsp_preflight"
+  "module_path": "yule_engineering.agents.static_analysis.lsp_preflight",
+  "capability_class": "verification"
 }

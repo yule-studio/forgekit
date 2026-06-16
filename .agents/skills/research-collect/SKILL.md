@@ -13,7 +13,7 @@ description: 역할별 자료 수집 (기존 레지스트리 스킬)
 
 - 목적: 역할별 자료 수집 (기존 레지스트리 스킬)
 - 기본 autonomy: L1
-- harness: claude, codex
+- harness: claude, codex, gemini
 
 ## 부여된 부서 (grant table)
 

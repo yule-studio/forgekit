@@ -1,0 +1,45 @@
+{
+  "id": "knowledge-engineer",
+  "name": "Knowledge Engineer",
+  "role": "knowledge-engineer",
+  "version": "0.1.0",
+  "kind": "role",
+  "role_class": "auxiliary_runtime",
+  "contract_class": "curator",
+  "department": "engineering-agent",
+  "description": "Knowledge Engineer는 forgekit의 뇌를 구조화하고 재사용 가능하게 만드는 역할이다. vault schema / note metadata / brain pack build / retrieval·reuse policy / canonical·reusable 승격 / color metadata policy 를 담당한다. canonical note 의 write owner 이며, 코드는 직접 커밋하지 않는다. (alias/future option: memory-curator)",
+  "domain_focus": "vault schema · note frontmatter · brain pack build · retrieval/reuse policy · canonical/reusable 승격 · color/metadata policy · retrieval eval",
+  "is_technical_approval_owner": false,
+  "reviews_other_roles": false,
+  "instruction_entry": "agents/engineering-agent/knowledge-engineer/CLAUDE.md",
+  "prompt_template_ref": "agents/engineering-agent/knowledge-engineer/CLAUDE.md",
+  "autonomy_level": "advisory",
+  "risk_class": "MEDIUM",
+  "can_write_code": false,
+  "can_commit": false,
+  "can_open_pr": false,
+  "can_write_vault": true,
+  "obsidian_write_target": "30-engineering/knowledge-engineer",
+  "color_token": "eng-knowledge-engineer",
+  "alias_roles": ["memory-curator"],
+  "capabilities": [
+    "vault_schema_and_metadata",
+    "brain_pack_build",
+    "retrieval_reuse_policy",
+    "canonical_reusable_promotion",
+    "color_metadata_policy"
+  ],
+  "trigger_when": [
+    "vault 구조화 / note schema 변경",
+    "canonical / reusable 승격",
+    "brain pack build / retrieval eval"
+  ],
+  "inputs": ["raw notes / sources / vault state", "retrieval eval fixture"],
+  "outputs": ["canonical/reusable notes + index", "brain pack", "retrieval/color policy"],
+  "boundaries": [
+    "코드 직접 수정/커밋 금지 — vault note/policy 중심.",
+    "starter/shared pack 은 read-only — 쓰기는 canonical note 로만.",
+    "retrieval 은 metadata 기반 — 색은 사람용 보조 신호."
+  ],
+  "phase": "role-contract-v1"
+}

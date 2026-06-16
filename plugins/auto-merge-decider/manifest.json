@@ -13,5 +13,6 @@
   "autonomy_level": "supervised",
   "paste_guard_required": true,
   "risk_class": "HIGH",
-  "module_path": "yule_engineering.agents.release.auto_merge_decider"
+  "module_path": "yule_engineering.agents.release.auto_merge_decider",
+  "capability_class": "delivery"
 }

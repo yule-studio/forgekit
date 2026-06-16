@@ -19,6 +19,9 @@
 ## Core Safety Rules
 - **secret / 자격 정보 / 개인 키 / 로컬 runtime state 절대 커밋 금지.**
 - **파괴적 명령 / 프로덕션 배포 / 민감 자격 접근 전 사람 승인 필수.**
+- **git write 는 `git -C <검증된 repo>` + 명시 pathspec 만.** HOME/모호 경로·broad
+  `git add .` 금지 — hard rail SSoT 는 [`docs/git-write-safety.md`](docs/git-write-safety.md)
+  (코드 `agents/governance/git_path_safety.py`).
 - 자동 결정의 자율 등급 / 승인 매트릭스는 [`docs/autonomy-policy.md`](docs/autonomy-policy.md),
   [`docs/approval-matrix.md`](docs/approval-matrix.md) 가 SSoT.
 
@@ -47,7 +50,9 @@
 | 코드 구조 작업 | + `agents/<agent>/CLAUDE.md` + `agents/<agent>/CODE_LAYOUT.md` |
 | 브랜치/커밋/PR | + `policies/reference/*` |
 | 승인/운영 | + `docs/autonomy-policy.md` / `docs/approval-matrix.md` / `docs/operations.md` |
-| 슬래시 명령어/스킬/플러그인/compact→vault | + `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json`) |
+| 슬래시 명령어/스킬/플러그인/compact→vault/grant 강제/execution receipt/cleanup | + `docs/agent-slash-commands.md` (+ `agents/grants/slash-command-grants.json`) |
+| 보안 검토 / cross-cutting security 게이트 | + `docs/security-review.md` (+ `agents/engineering-agent/security-engineer/` 역할 계약 SSoT) |
+| plugin/hook/skill/MCP/backend 분리 / provider 배치 | + `docs/plugin-taxonomy.md` + `docs/provider-capability-matrix.md` |
 | engineering role council / tech-lead signoff / execution review | + `docs/engineering-role-council-runtime.md` (SSoT — same-role peer review 통과 후에만 cross-role synthesis, tech-lead = technical approval, gateway = operator approval surface. 코드 contract: `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
 | 모노레포 구조 / packages·apps 추가 / compat shim | + `docs/monorepo-structure.md` (현황·의존 규칙·shim 카탈로그·로드맵 SSoT) |
 

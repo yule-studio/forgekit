@@ -64,6 +64,10 @@ ENV_WORKTREE_REGISTRY_PATH: str = "YULE_SELF_IMPROVEMENT_WORKTREE_REGISTRY"
 ENV_BASE_BRANCH: str = "YULE_SELF_IMPROVEMENT_BASE_BRANCH"
 ENV_REPO_CWD: str = "YULE_SELF_IMPROVEMENT_REPO_CWD"
 ENV_DAILY_CAP: str = "YULE_SELF_IMPROVEMENT_DAILY_CAP"
+# Second opt-in: the loop journals + updates ledgers by default; turning this on
+# additionally hands the proposal to the coding-executor *queue* (draft-PR only).
+ENV_ENQUEUE_ENABLED: str = "YULE_SELF_IMPROVEMENT_ENQUEUE_ENABLED"
+ENV_SUPERVISOR_SESSION_ID: str = "YULE_SELF_IMPROVEMENT_SUPERVISOR_SESSION_ID"
 
 DEFAULT_INTERVAL_SECONDS: float = 300.0
 
@@ -88,6 +92,79 @@ def resolve_interval_seconds(env: Optional[Mapping[str, str]] = None) -> float:
         return max(30.0, float(raw))
     except ValueError:
         return DEFAULT_INTERVAL_SECONDS
+
+
+def enqueue_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    """Whether detected proposals are handed to the coding-executor queue.
+
+    Default off — the loop still journals + updates ledgers, but a proposal
+    only becomes a real ``coding_execute`` job (draft-PR only) when the operator
+    opts into this second flag on top of :data:`ENV_ENABLED`.
+    """
+
+    env = env if env is not None else os.environ
+    raw = (env.get(ENV_ENQUEUE_ENABLED) or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
+# ---------------------------------------------------------------------------
+# Queue executor handoff — production
+# ---------------------------------------------------------------------------
+
+
+def build_queue_executor_enqueue_fn(
+    *,
+    job_queue: Any,
+    session_prefix: str = "self-improvement",
+) -> Callable[..., Optional[str]]:
+    """Return an ``enqueue_fn(payload=...) -> job_id`` for the executor handoff.
+
+    Turns a self-improvement proposal payload into a ``coding_execute`` job on
+    the SQLite queue. Hard rails:
+      * **Refuses to enqueue** unless the payload carries ``draft_pr_only=True``
+        — defense-in-depth on top of the delegated_operator escalation list, so
+        a malformed payload can never dispatch a non-draft change.
+      * Failures are logged + swallowed (returns None) so the supervisor never
+        crashes on an enqueue error.
+    """
+
+    from ..job_queue import JOB_TYPE_CODING_EXECUTE
+
+    def _enqueue(*, payload: Mapping[str, Any]) -> Optional[str]:
+        if not isinstance(payload, Mapping):
+            logger.warning("self-improvement enqueue: payload not a mapping; skip")
+            return None
+        if not payload.get("draft_pr_only"):
+            logger.warning(
+                "self-improvement enqueue refused: payload missing "
+                "draft_pr_only=True (signature=%s)",
+                payload.get("problem_signature"),
+            )
+            return None
+        signature = str(payload.get("problem_signature") or "unknown")
+        session_id = f"{session_prefix}:{signature}"
+        try:
+            job = job_queue.enqueue(
+                session_id=session_id,
+                job_type=JOB_TYPE_CODING_EXECUTE,
+                role=payload.get("owner_role"),
+                payload=payload,
+            )
+        except Exception:  # noqa: BLE001 - never crash supervisor on enqueue
+            logger.warning(
+                "self-improvement: queue enqueue raised", exc_info=True
+            )
+            return None
+        job_id = getattr(job, "job_id", None)
+        logger.info(
+            "self-improvement proposal enqueued: job=%s session=%s signature=%s",
+            job_id,
+            session_id,
+            signature,
+        )
+        return job_id
+
+    return _enqueue
 
 
 # ---------------------------------------------------------------------------
@@ -560,16 +637,20 @@ __all__ = (
     "ENV_BASE_BRANCH",
     "ENV_DAILY_CAP",
     "ENV_ENABLED",
+    "ENV_ENQUEUE_ENABLED",
     "ENV_INTERVAL_SECONDS",
     "ENV_LEDGER_PATH",
     "ENV_REPO_CWD",
+    "ENV_SUPERVISOR_SESSION_ID",
     "ENV_WORKTREE_REGISTRY_PATH",
     "ENV_WORKTREE_ROOT",
     "build_executor_handoff_hook",
     "build_observation_provider",
     "build_obsidian_record_hook",
     "build_operator_action_hook",
+    "build_queue_executor_enqueue_fn",
     "build_self_improvement_dispatcher",
+    "enqueue_enabled",
     "is_enabled",
     "resolve_interval_seconds",
 )

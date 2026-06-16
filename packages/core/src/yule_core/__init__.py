@@ -1,4 +1,11 @@
-from .context_loader import ContextError, ContextDocument, LoadedContext, load_agent_context, render_context
+from .context_loader import (
+    ContextError,
+    ContextDocument,
+    LoadedContext,
+    load_agent_context,
+    render_context,
+    render_context_digest,
+)
 from .env_loader import load_env_files
 from .timezone import local_tz, local_tz_name, now_local, to_local
 from .tls import TLSCABundle, apply_ca_bundle_fallback, resolve_ca_bundle
@@ -16,5 +23,6 @@ __all__ = [
     "now_local",
     "resolve_ca_bundle",
     "render_context",
+    "render_context_digest",
     "to_local",
 ]

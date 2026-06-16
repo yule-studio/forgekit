@@ -28,12 +28,21 @@ from typing import Any, Mapping, Optional, Sequence
 
 from yule_security.paste_guard import OutboundChannel, guard_outbound
 
+from ..governance.git_path_safety import (
+    UnsafeGitPathError,
+    assert_safe_git_repo_path,
+    run_safe_git,
+)
+
 
 ENV_AUTOPUSH_ENABLED = "YULE_VAULT_AUTOPUSH_ENABLED"
 ENV_VAULT_REPO_ROOT = "YULE_VAULT_REPO_ROOT"
 ENV_VAULT_BRANCH = "YULE_VAULT_BRANCH"
+ENV_VAULT_MIRROR_SUBPATH = "YULE_VAULT_MIRROR_SUBPATH"
 
 DEFAULT_AUTO_BRANCH = "auto/notes-sync"
+# Scoped staging target (relative to the vault repo) — never a broad `git add .`.
+DEFAULT_MIRROR_SUBPATH = "notes/vault-mirror"
 PROTECTED_BRANCHES: Sequence[str] = ("main", "master")
 
 
@@ -81,25 +90,23 @@ def _completion_status(event: Any) -> str:
     return ""
 
 
+def _mirror_subpath(env: Optional[Mapping[str, str]]) -> str:
+    raw = _read_env(env, ENV_VAULT_MIRROR_SUBPATH)
+    if raw is None or not raw.strip():
+        return DEFAULT_MIRROR_SUBPATH
+    return raw.strip()
+
+
 def _has_staged_changes(repo_root: Path) -> bool:
-    result = subprocess.run(
-        ["git", "status", "--porcelain"],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return bool(result.stdout.strip())
+    # git -C <repo> — validated path, never an ambiguous cwd.
+    result = run_safe_git(repo_root, ["status", "--porcelain"], check=False)
+    return bool((result.stdout or "").strip())
 
 
 def _run_git(args: Sequence[str], *, repo_root: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", *args],
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    # All writes go through the safety guardrail: `git -C <validated repo> ...`,
+    # HOME/ambiguous-path refused, broad `git add .` refused.
+    return run_safe_git(repo_root, args, check=True)
 
 
 def push_vault_if_ready(
@@ -151,6 +158,7 @@ def push_vault_if_ready(
             )
         repo_root = Path(raw).expanduser()
 
+    # Light sanity (dry-run preview tolerates any absolute existing dir).
     if not repo_root.is_absolute() or not repo_root.exists():
         return AutoPushVerdict(
             performed=False,
@@ -178,6 +186,18 @@ def push_vault_if_ready(
             skipped_reason="dry_run=True — no git operations performed",
         )
 
+    # Hard rail: refuse HOME / ambiguous / ancestor-of-HOME / non-repo paths
+    # before ANY git write. This is the write-path guard (dry-run already
+    # returned above), so the home-git-accident is unrepresentable here.
+    try:
+        repo_root = assert_safe_git_repo_path(repo_root)
+    except UnsafeGitPathError as exc:
+        return AutoPushVerdict(
+            performed=False,
+            branch=branch,
+            blocked_reason=f"unsafe vault repo root: {exc}",
+        )
+
     if not _has_staged_changes(repo_root):
         return AutoPushVerdict(
             performed=False,
@@ -185,10 +205,12 @@ def push_vault_if_ready(
             skipped_reason="vault working tree clean — nothing to push",
         )
 
+    mirror_subpath = _mirror_subpath(env)
     try:
         _run_git(["checkout", "-B", branch], repo_root=repo_root)
-        _run_git(["add", "."], repo_root=repo_root)
-        _run_git(["commit", "-m", commit_message], repo_root=repo_root)
+        # Scoped staging — only the vault mirror subpath, never a broad `git add .`.
+        _run_git(["add", "--", mirror_subpath], repo_root=repo_root)
+        _run_git(["commit", "-m", commit_message, "--", mirror_subpath], repo_root=repo_root)
         hash_proc = _run_git(["rev-parse", "HEAD"], repo_root=repo_root)
         commit_hash = hash_proc.stdout.strip()
         _run_git(["push", "--set-upstream", "origin", branch], repo_root=repo_root)
@@ -209,8 +231,10 @@ def push_vault_if_ready(
 __all__ = (
     "AutoPushVerdict",
     "DEFAULT_AUTO_BRANCH",
+    "DEFAULT_MIRROR_SUBPATH",
     "ENV_AUTOPUSH_ENABLED",
     "ENV_VAULT_BRANCH",
+    "ENV_VAULT_MIRROR_SUBPATH",
     "ENV_VAULT_REPO_ROOT",
     "PROTECTED_BRANCHES",
     "push_vault_if_ready",
