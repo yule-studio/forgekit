@@ -1,11 +1,14 @@
 """forgekit console TUI smoke — driven headlessly via Textual's pilot.
 
-Exercises the Claude-Code-style chat-first layout: small-avatar intro · quiet
-issue line · main panel (transcript XOR help view) · **fixed bottom composer
-(always visible)** · hint line. Verifies the composer stays present before AND
-after ``/help`` (the key fix), that ``/help`` is a single-panel VIEW SWITCH
-(transcript hidden, NOT appended, screen-stack length stays 1 → a panel not a
-modal), that Esc restores the transcript unchanged, that ``/exit`` quits, and
+Exercises the Claude-Code-style chat-first layout: small-avatar intro · then a
+top-aligned session flow of quiet issue line · main panel (transcript XOR help
+view) · **session-following inline composer (NOT docked to the viewport bottom)** ·
+hint line. Verifies the composer renders within/after the content flow (short
+session → composer near the top with empty space below; grown transcript →
+composer pushed down following the content), that it stays right below the help
+view when ``/help`` is open (the key fix), that ``/help`` is a single-panel VIEW
+SWITCH (transcript hidden, NOT appended, screen-stack length stays 1 → a panel not
+a modal), that Esc restores the transcript unchanged, that ``/exit`` quits, and
 palette open/Tab-complete/cycle/close. Skipped without textual.
 """
 
@@ -66,8 +69,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(app.query_one("#prompt", Input))
             self.assertIn("operator", str(app.query_one("#modepill", Static).render()))
 
-    async def test_composer_fixed_before_and_after_help(self) -> None:
-        """The composer (chat input) is ALWAYS visible + docked at the bottom — even with help open."""
+    async def test_composer_is_inline_not_docked_bottom(self) -> None:
+        """Composer is NOT dock:bottom — it flows inline right after the content.
+
+        On a short session it sits in the UPPER area with EMPTY space below (not
+        pinned to the viewport bottom, unlike the old footer).
+        """
         from textual.widgets import Input
         from forgekit_console.tui.composer import Composer
 
@@ -75,24 +82,56 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            # before help: visible + docked at the very bottom
+            # the composer carries NO dock (it is part of the inline session flow)
+            self.assertNotEqual(str(composer.styles.dock or "none").lower(), "bottom")
             self.assertTrue(composer.display)
             self.assertTrue(app.query_one("#prompt", Input).display)
-            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
-            # open help (switches the main area to the help VIEW)
+            # short session → composer near the TOP, empty space below (not pinned)
+            self.assertLess(composer.region.bottom, app.size.height - 2)
+            self.assertLess(composer.region.y, app.size.height // 2)
+
+    async def test_composer_follows_content_as_transcript_grows(self) -> None:
+        """As the transcript grows, the inline composer is pushed DOWN (follows content)."""
+        from forgekit_console.tui.composer import Composer
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            composer = app.query_one("#composer", Composer)
+            short_y = composer.region.y
+            # write several transcript entries
+            for _ in range(30):
+                app._execute("/status")
+            await pilot.pause()
+            await pilot.pause()
+            # the composer moved down (content pushed it), still visible
+            self.assertGreater(composer.region.y, short_y)
+            self.assertTrue(composer.display)
+
+    async def test_composer_below_help_panel_when_help_open(self) -> None:
+        """When help is open the composer still sits right BELOW the help view."""
+        from textual.widgets import Input
+        from forgekit_console.tui.composer import Composer
+        from forgekit_console.tui.main_panel import MainPanel
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            composer = app.query_one("#composer", Composer)
             app._execute("/help")
             await pilot.pause()
+            await pilot.pause()
             self.assertTrue(app._main.help_open)
-            # composer STILL visible + still docked at the bottom after help opened
             self.assertTrue(composer.display)
             self.assertTrue(app.query_one("#prompt", Input).display)
-            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
-            # and after closing help
+            # composer is below the help content (active content), not at viewport bottom
+            main = app.query_one("#main", MainPanel)
+            self.assertGreaterEqual(composer.region.y, main.region.bottom)
+            # close help → transcript restored, composer still visible below it
             await pilot.press("escape")
             await pilot.pause()
             self.assertFalse(app._main.help_open)
             self.assertTrue(composer.display)
-            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
 
     async def test_help_is_view_switch_not_transcript_append(self) -> None:
         """/help switches the main area to the help view; the transcript is hidden,
@@ -218,11 +257,13 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app.mode, "operator")
 
-    async def test_topdown_order_intro_issue_transcript_hint_composer(self) -> None:
-        """Geometry smoke: widgets stack top→down with the composer at the bottom.
+    async def test_topdown_order_intro_issue_content_composer_hint(self) -> None:
+        """Geometry smoke: TOP-ALIGNED inline flow intro → issue → main → composer → hint.
 
         Stands in for an SVG snapshot (the CI sweep runs unittest, not the
         textual-snapshot pytest plugin): it asserts the y-order of the regions.
+        The composer renders right after the content (inline), NOT docked at the
+        viewport bottom — so on a short session it leaves empty space below.
         """
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
@@ -235,15 +276,15 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             intro = app.query_one("#intro", IntroHeader).region
             issue = app.query_one("#issue", Static).region
             log = app.query_one("#main", MainPanel).region
-            hint = app.query_one("#hint", Static).region
             composer = app.query_one("#composer", Composer).region
-            # top → down: intro above issue above transcript; composer is last
+            hint = app.query_one("#hint", Static).region
+            # top → down: intro · issue · content · composer · hint (composer inline)
             self.assertLessEqual(intro.y, issue.y)
             self.assertLessEqual(issue.y, log.y)
-            self.assertLess(log.y, composer.y)
-            self.assertLessEqual(hint.y, composer.y)
-            # composer is docked at the very bottom of the screen
-            self.assertGreaterEqual(composer.bottom, app.size.height - 1)
+            self.assertLessEqual(log.bottom, composer.y)
+            self.assertLessEqual(composer.bottom, hint.y)
+            # composer is NOT pinned to the viewport bottom on a short session
+            self.assertLess(composer.bottom, app.size.height - 2)
 
     async def test_intro_avatar_renderer_selected(self) -> None:
         from forgekit_console.tui.header import IntroHeader
@@ -253,8 +294,11 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await pilot.pause()
             intro = app.query_one("#intro", IntroHeader)
-            # whichever the headless terminal selected, it is one of the two
-            self.assertIn(intro.avatar_renderer_id, (ir.RENDERER_REAL, ir.RENDERER_TEXT))
+            # whichever the headless terminal selected, it is one of the three tiers
+            self.assertIn(
+                intro.avatar_renderer_id,
+                (ir.RENDERER_REAL, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
+            )
 
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/

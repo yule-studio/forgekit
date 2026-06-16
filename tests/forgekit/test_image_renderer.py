@@ -1,9 +1,13 @@
-"""Avatar image renderer — capability detection + renderer selection + fallback.
+"""Avatar image renderer — capability detection + 3-tier renderer priority.
 
-Real-image-FIRST is the contract: when the terminal is capable we select the
-real-image renderer; otherwise the text-mark fallback. The capability decision
-and the selection are pure (injectable env / force), so these tests need no real
-terminal and no graphics protocol.
+Image-FIRST is the contract, with an explicit 3-tier priority:
+
+1. capable terminal → REAL inline raster,
+2. not-capable terminal → IMAGE-DERIVED half-block (still an image, NOT text),
+3. only when Pillow / the asset is missing → text/logo mark.
+
+The capability decision and the selection are pure (injectable env / force), so
+these tests need no real terminal and no graphics protocol.
 """
 
 from __future__ import annotations
@@ -48,28 +52,43 @@ class CapabilityDetectionTests(unittest.TestCase):
         self.assertIn("no known", cap.reason)
 
 
+class CapabilityVscodeTests(unittest.TestCase):
+    def test_vscode_integrated_terminal_attempts_real(self) -> None:
+        # recent VS Code terminals speak the iTerm2 inline-image protocol → attempt
+        cap = ir.detect_image_capability({"TERM_PROGRAM": "vscode"})
+        self.assertTrue(cap.capable)
+        self.assertIn("vscode", cap.reason)
+
+    def test_wezterm_detected(self) -> None:
+        self.assertTrue(ir.detect_image_capability({"TERM_PROGRAM": "WezTerm"}).capable)
+        self.assertTrue(ir.detect_image_capability({"TERM": "wezterm"}).capable)
+
+
 class RendererSelectionTests(unittest.TestCase):
     def test_capable_selects_real(self) -> None:
         cap = ir.ImageCapability(True)
         self.assertEqual(ir.select_renderer(cap), ir.RENDERER_REAL)
 
-    def test_not_capable_selects_text(self) -> None:
+    def test_not_capable_selects_image_derived_halfblock_not_text(self) -> None:
+        # tier 2: not-capable → image-derived half-block, NOT the text mark
         cap = ir.ImageCapability(False)
-        self.assertEqual(ir.select_renderer(cap), ir.RENDERER_TEXT)
+        self.assertEqual(ir.select_renderer(cap), ir.RENDERER_HALFBLOCK)
+        self.assertNotEqual(ir.select_renderer(cap), ir.RENDERER_TEXT)
 
     def test_accepts_bare_bool(self) -> None:
         self.assertEqual(ir.select_renderer(True), ir.RENDERER_REAL)
-        self.assertEqual(ir.select_renderer(False), ir.RENDERER_TEXT)
+        self.assertEqual(ir.select_renderer(False), ir.RENDERER_HALFBLOCK)
 
     def test_make_renderer_capable_is_real(self) -> None:
         r = ir.make_renderer(ir.ImageCapability(True))
         self.assertEqual(r.renderer_id, ir.RENDERER_REAL)
         self.assertIsInstance(r, ir.RealImageRenderer)
 
-    def test_make_renderer_incapable_is_text(self) -> None:
+    def test_make_renderer_incapable_is_halfblock(self) -> None:
+        # incapable terminal still gets an IMAGE (tier 2), not the text mark
         r = ir.make_renderer(ir.ImageCapability(False))
-        self.assertEqual(r.renderer_id, ir.RENDERER_TEXT)
-        self.assertIsInstance(r, ir.TextMarkRenderer)
+        self.assertEqual(r.renderer_id, ir.RENDERER_HALFBLOCK)
+        self.assertIsInstance(r, ir.HalfBlockRenderer)
 
 
 class AssetTests(unittest.TestCase):
@@ -87,9 +106,34 @@ class AssetTests(unittest.TestCase):
         self.assertEqual(ir.best_image_path(), ir.display_png_path())
 
 
+class HalfBlockTier2Tests(unittest.TestCase):
+    """Tier 2 — an IMAGE-DERIVED half-block render of the baked PNG (Pillow)."""
+
+    def test_halfblock_renderer_produces_image_derived_render_not_text(self) -> None:
+        # With Pillow + the baked asset present, tier 2 is a Rich Text half-block
+        # render of the actual image — NOT the plain text mark.
+        from rich.text import Text
+
+        out = ir.HalfBlockRenderer().renderable()
+        self.assertIsInstance(out, Text)
+        plain = out.plain
+        # the half-block raster is made of upper-half block glyphs (image-derived)
+        self.assertIn("▀", plain)
+        # and it is NOT the brand text mark
+        self.assertNotIn("forge", plain)
+
+    def test_make_renderer_incapable_renders_halfblock_image(self) -> None:
+        from rich.text import Text
+
+        r = ir.make_renderer(ir.ImageCapability(False))
+        out = r.renderable()
+        self.assertIsInstance(out, Text)
+        self.assertIn("▀", out.plain)
+
+
 class FallbackTests(unittest.TestCase):
     def test_text_mark_is_small_and_crisp(self) -> None:
-        # fallback must be a small text mark, NOT a per-pixel raster block
+        # last-resort text mark must be small, NOT a per-pixel raster block
         mark = ir.text_mark_lines()
         self.assertLessEqual(len(mark), 3)
         self.assertIn("forge", "\n".join(mark))
@@ -99,24 +143,29 @@ class FallbackTests(unittest.TestCase):
         out = ir.TextMarkRenderer().renderable()
         self.assertIn("forge", out)
 
-    def test_real_renderer_falls_back_when_lib_missing(self) -> None:
-        # textual-image isn't installed in the test env → real renderer degrades
-        # to the text mark renderable (string), proving the fallback path.
+    def test_real_renderer_degrades_to_halfblock_when_lib_missing(self) -> None:
+        # textual-image isn't installed in the test env → the real renderer drops
+        # to the IMAGE-DERIVED half-block (tier 2), not straight to text.
+        from rich.text import Text
+
         out = ir.RealImageRenderer().renderable()
-        if isinstance(out, str):
+        if isinstance(out, Text):  # tier 2 half-block (expected without textual-image)
+            self.assertIn("▀", out.plain)
+        elif isinstance(out, str):  # only if Pillow/asset somehow gone → text mark
             self.assertIn("forge", out)
-        else:  # textual-image present → an Image renderable; just assert non-None
+        else:  # textual-image present → a real Image renderable
             self.assertIsNotNone(out)
 
-    def test_real_renderer_with_missing_asset_uses_text(self) -> None:
+    def test_halfblock_with_missing_asset_uses_text(self) -> None:
+        # ONLY when the image asset is missing does tier 2 fall through to text.
         orig = ir.best_image_path
-        ir_module = ir
-        ir_module.best_image_path = lambda: None  # type: ignore[assignment]
+        ir.best_image_path = lambda: None  # type: ignore[assignment]
         try:
-            out = ir.RealImageRenderer().renderable()
+            out = ir.HalfBlockRenderer().renderable()
+            self.assertIsInstance(out, str)
             self.assertIn("forge", out)
         finally:
-            ir_module.best_image_path = orig  # type: ignore[assignment]
+            ir.best_image_path = orig  # type: ignore[assignment]
 
 
 if __name__ == "__main__":
