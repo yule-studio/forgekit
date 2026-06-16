@@ -132,6 +132,18 @@ capability 는 `RoleRunnerInput.metadata['capability_class']` 또는 `task_type`
 - native 의존(computer-use/token-cache/pre-tool-hook) = **projection 유지**.
 - Ollama = **backend 분리**.
 
-## 9. 관련
-- [`plugin-taxonomy.md`](plugin-taxonomy.md) · [`agent-slash-commands.md`](agent-slash-commands.md) · `GEMINI.md`
+## 9. Forgekit provider 계약/정책으로의 투영
+
+이 매트릭스가 정의하는 capability 배치는 forgekit(설치형 제품)에서 **고정 최소
+provider 계약(`ProviderSpec`) + slot 정책**으로 투영된다 —
+[`forgekit-provider-policy.md`](forgekit-provider-policy.md). 본 문서가 "어느 provider
+가 어느 capability 를 1차로 두나"를 정하면, forgekit 쪽은 그 capability_flags 를 각
+built-in spec(claude=synthesis/safety, codex=execution/tool, gemini=research/long_context,
+ollama=cheap/local/classification)에 실어 `strict-single`/`hybrid`/`optimized` slot
+해석과 main-provider 기본값/usage 정책을 굴린다. 사내(enterprise) provider 도 같은
+계약의 generic config seam 으로 들어온다. 코드 SSoT 는
+`apps/forgekit-console/src/forgekit_console/{providers,policy}/`.
+
+## 10. 관련
+- [`forgekit-provider-policy.md`](forgekit-provider-policy.md) · [`plugin-taxonomy.md`](plugin-taxonomy.md) · [`agent-slash-commands.md`](agent-slash-commands.md) · `GEMINI.md`
 - backend/runner: `agents/runners/` · 거버넌스 회귀: `tests/governance/test_provider_capability_taxonomy.py`
