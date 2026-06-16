@@ -24,8 +24,9 @@ class CommandPalette(Static):
         max-height: 9;
         padding: 0 2;
         color: $text;
-        background: $surface;
-        border-left: thick $accent;
+        background: $background;
+        /* a single thin accent rule on the left — restrained, brand cyan */
+        border-left: solid $accent;
     }
     CommandPalette.-open { display: block; }
     """
