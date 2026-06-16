@@ -3,6 +3,11 @@
 > 진입점은 [`AGENTS.md`](AGENTS.md). 본 파일은 **모든 에이전트 / 모든 작업
 > 에 적용되는 전역 공통 규칙** 만 둔다. 도메인 한정 규칙은
 > `agents/<agent>/CLAUDE.md` 또는 `docs/<topic>.md` 에 둔다.
+>
+> **이 파일은 vendor-neutral 공통 규칙의 SSoT 다.** 파일명은 `CLAUDE.md` 지만
+> Claude 전용이 아니라 **Codex / Claude / Gemini 모두가 공유**하는 전역 규칙 본문이다.
+> 어떤 provider 를 메인으로 쓰든 `AGENTS.md` → 본 파일 → 작업 맥락 문서 순으로 읽는다.
+> 공통 규칙은 **여기 한 곳에만** 두고 provider 문서(`GEMINI.md` 등)는 본 파일을 참조만 한다.
 
 ## Purpose
 이 레포지토리는 여러 GitHub 프로젝트의 이슈, 문서, 작업 흐름을 관리하는

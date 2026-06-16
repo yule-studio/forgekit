@@ -70,26 +70,27 @@ docs/
 - 새 규칙을 추가할 때는 "자주 강제해야 하면 상위, 도메인 한정이면 하위" 를
   지켜 같은 규칙이 여러 문서에 흩어지지 않게 한다.
 
-## 3. 외부 에이전트별 역할 안내
+## 3. provider 별 진입 — 누가 메인이든 같은 경로
 
-### Codex (이 파일이 진입점)
-- 기본은 **advisor / reviewer / patch proposer**. executor 역할은 작업이
-  명시할 때만.
-- 코드 리뷰, 구현 위험 분석, 테스트 중심 피드백, 패치 제안을 우선한다.
-- 사용자의 명시적 승인 없이 파일 수정, 파괴적 명령 실행, secret 접근을
-  하지 않는다.
-- engineering-agent 작업 시 `agents/engineering-agent/agent.json` 과
-  관련 정책 파일이 존재하면 이를 따른다.
-- `.codex/` 는 로컬 실행 설정이며 공유 정책으로 다루지 않는다.
+**규칙 본문은 어느 provider 문서에도 복제하지 않는다.** 메인 provider 가
+무엇이든 읽기 순서는 동일하다: **이 파일(`AGENTS.md`) → root `CLAUDE.md`(공통 규칙
+SSoT) → 작업 맥락 문서(§2)**. provider 문서는 "진입 + 기본 역할"만 얇게 둔다.
 
-### Claude (Claude Code / API)
-- root `CLAUDE.md` + 작업 맥락의 agent `CLAUDE.md` 가 일차 컨텍스트.
-- 작업이 코드 구조 변경을 동반하면 `agents/engineering-agent/CODE_LAYOUT.md`
-  를 함께 읽는다.
+| provider | native 진입 파일 | 역할 안내 |
+| --- | --- | --- |
+| **Codex** | `AGENTS.md` (이 파일) | 기본 advisor / reviewer / patch proposer. executor 는 작업이 명시할 때만. |
+| **Claude** | `CLAUDE.md` (= 공통 규칙 SSoT) | root `CLAUDE.md` + 작업 맥락 agent `CLAUDE.md` 가 일차 컨텍스트. |
+| **Gemini** | [`GEMINI.md`](GEMINI.md) (얇은 projection → `CLAUDE.md`) | 기본 advisor — 분석 / 긴 맥락 / 계획 보조. |
 
-### Gemini CLI
-- 기본은 **advisor**. 분석 / 요구사항 검토 / 긴 맥락 검토 / 계획 보조 우선.
-- 자세한 역할 컨텍스트는 [`GEMINI.md`](GEMINI.md) 참고.
+- 안전/승인/파괴적 명령 등 **공통 규칙은 모두 root `CLAUDE.md`** 에 있다(provider 무관).
+- skill projection: Claude `.claude/skills/` · Codex `.agents/skills/` · Gemini
+  `.gemini/commands/` — SSoT 는 `skills/<id>.md` + grants, 손편집 금지([`docs/agent-slash-commands.md`](docs/agent-slash-commands.md)).
+- `.codex/` / `.gemini/` 등은 로컬 실행 설정이며 공유 정책이 아니다.
+
+> **`CODEX.md` 를 따로 두지 않는다.** `AGENTS.md` 가 곧 Codex 의 native 진입
+> 파일이라 별도 wrapper 는 같은 역할을 중복할 뿐이다 — Codex 사용자는 이 파일에서
+> 바로 root `CLAUDE.md` 로 라우팅된다. (provider 가 늘어도 같은 패턴: native 진입
+> 파일은 얇게, 규칙은 `CLAUDE.md` 한 곳.)
 
 ## 4. 변경 시 반드시 동기화할 것
 
