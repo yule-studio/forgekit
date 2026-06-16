@@ -115,16 +115,74 @@ class ModePillTests(unittest.TestCase):
         self.assertIn("palette", render.mode_pill("palette"))
 
 
-class HelpInlineTests(unittest.TestCase):
-    def test_inline_help_is_document(self) -> None:
-        secs = render.help_sections(load_commands(), load_agents())
-        lines = render.help_inline(secs)
-        joined = "\n".join(lines)
+class HelpDocumentTests(unittest.TestCase):
+    def _secs(self):
+        return render.help_sections(load_commands(), load_agents())
+
+    def test_tab_order_and_default_is_general(self) -> None:
+        titles = [s.title for s in self._secs()]
+        self.assertEqual(titles, ["Help", "General", "Commands", "Agents"])
+        self.assertEqual(self._secs()[render.default_help_tab(self._secs())].title, "General")
+
+    def test_document_shows_tab_strip_and_active_body_only(self) -> None:
+        secs = self._secs()
+        general = render.default_help_tab(secs)
+        joined = "\n".join(render.help_document(secs, general))
         self.assertIn("forgekit help", joined)
         self.assertIn("Esc", joined)
-        # all four sections present as headers
+        # all four tab labels appear in the strip
         for title in ("Help", "General", "Commands", "Agents"):
             self.assertIn(title, joined)
+        # active = General → its body (단축키) shows, Commands body (/quit list) does not
+        self.assertIn("단축키", joined)
+        self.assertNotIn("/quit", joined)
+
+    def test_commands_tab_lists_exit_alias(self) -> None:
+        secs = self._secs()
+        cmd_idx = next(i for i, s in enumerate(secs) if s.title == "Commands")
+        joined = "\n".join(render.help_document(secs, cmd_idx))
+        self.assertIn("/exit", joined)
+        self.assertIn("/quit", joined)
+
+
+class IntroTests(unittest.TestCase):
+    def test_intro_has_avatar_left_and_brand_right(self) -> None:
+        from forgekit_console.tui import intro
+
+        avatar = ("[rgb(200,200,205)]▀▀[/]", "[rgb(200,200,205)]▄▄[/]")
+        lines = intro.intro_lines(repo="/repo", version="0.1.0", avatar_lines=avatar)
+        joined = "\n".join(lines)
+        self.assertIn("forgekit", joined)
+        self.assertIn("v0.1.0", joined)
+        self.assertIn("/repo", joined)
+        self.assertIn("operator", joined)  # profile
+        # avatar markup is on the left of the first row
+        self.assertTrue(lines[0].startswith("[rgb(200,200,205)]▀▀"))
+
+    def test_intro_uses_baked_avatar_by_default(self) -> None:
+        from forgekit_console.tui import intro
+
+        lines = intro.intro_lines(repo="/r", version="0.1.0")
+        self.assertTrue(lines)
+        self.assertIn("forgekit", "\n".join(lines))
+
+
+class IssueLineTests(unittest.TestCase):
+    def _summary(self, **over):
+        base = dict(title="op", sections=(StatusSection("provider", ("ok",)),), alerts=())
+        base.update(over)
+        return StatusSummary(**base)
+
+    def test_quiet_when_no_alerts(self) -> None:
+        self.assertIn("ready", render.issue_line(self._summary()))
+
+    def test_counts_issues_and_points_to_doctor(self) -> None:
+        line = render.issue_line(self._summary(alerts=(Alert("warn", "settings missing"),)))
+        self.assertIn("1 issue", line)
+        self.assertIn("/doctor", line)
+
+    def test_unavailable(self) -> None:
+        self.assertIn("unavailable", render.issue_line(StatusSummary(title="x", available=False)))
 
 
 if __name__ == "__main__":

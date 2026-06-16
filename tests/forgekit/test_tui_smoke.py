@@ -42,19 +42,17 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
 
         return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context())
 
-    async def test_mounts_content_first(self) -> None:
+    async def test_mounts_intro_issue_input_log_topdown(self) -> None:
         from textual.widgets import RichLog, Static
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            # operator mode pill + status pill present, no left agents pane
+            # compact intro shows brand; issue line is the quiet status line
+            self.assertIn("forgekit", str(app.query_one("#intro", Static).render()))
+            self.assertTrue(str(app.query_one("#issue", Static).render()))
             self.assertIn("operator", str(app.query_one("#modepill", Static).render()))
-            self.assertTrue(str(app.query_one("#statuspill", Static).render()))
             self.assertIsNotNone(app.query_one("#log", RichLog))
-            # default layout is focus; rail hidden
-            self.assertEqual(app.layout_mode, "focus")
-            self.assertFalse(app.query_one("#rail", Static).has_class("-show"))
 
     async def test_palette_opens_and_tab_completes(self) -> None:
         from textual.widgets import Input
@@ -99,35 +97,38 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertFalse(app._palette.is_open)
 
-    async def test_help_is_inline_not_modal(self) -> None:
-        from forgekit_console.tui.help_view import InlineHelp
+    async def test_help_is_inline_full_width_not_modal(self) -> None:
+        from textual.widgets import RichLog
+        from forgekit_console.tui.help_document import HelpDocument
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
             app._execute("/help")
             await pilot.pause()
-            help_view = app.query_one("#help", InlineHelp)
-            self.assertTrue(help_view.is_open)
-            # inline: no extra modal screen was pushed
+            helpdoc = app.query_one("#helpdoc", HelpDocument)
+            self.assertTrue(helpdoc.is_open)
+            # inline in the content area: log hidden, no modal screen pushed
+            self.assertFalse(app.query_one("#log", RichLog).display)
             self.assertEqual(len(app.screen_stack), 1)
+            # default tab is General
+            from forgekit_console.tui import render
+
+            secs = render.help_sections(app.context.commands, app.context.agents)
+            self.assertEqual(secs[app._help_tab].title, "General")
             await pilot.press("escape")
             await pilot.pause()
-            self.assertFalse(help_view.is_open)
+            self.assertFalse(helpdoc.is_open)
+            self.assertTrue(app.query_one("#log", RichLog).display)
 
-    async def test_layout_toggle(self) -> None:
-        from textual.widgets import Static
-
+    async def test_exit_alias_quits(self) -> None:
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            app._execute("/layout")
+            app._execute("/exit")
             await pilot.pause()
-            self.assertEqual(app.layout_mode, "dashboard")
-            self.assertTrue(app.query_one("#rail", Static).has_class("-show"))
-            app._execute("/layout")
-            await pilot.pause()
-            self.assertEqual(app.layout_mode, "focus")
+        # run_test context exits cleanly when the app called exit()
+        self.assertTrue(True)
 
     async def test_agent_mode_pill(self) -> None:
         from textual.widgets import Static

@@ -109,6 +109,10 @@ class RouterTests(unittest.TestCase):
 
         self.assertEqual(_route("/layout", _ctx()).kind, KIND_LAYOUT)
 
+    def test_exit_is_quit_alias(self) -> None:
+        self.assertEqual(_route("/exit", _ctx()).kind, KIND_QUIT)
+        self.assertEqual(_route("/quit", _ctx()).kind, KIND_QUIT)
+
 
 if __name__ == "__main__":
     unittest.main()
