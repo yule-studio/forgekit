@@ -22,6 +22,7 @@ H_RUNTIME = "runtime"
 H_HARNESS = "harness"
 H_DOCTOR = "doctor"
 H_AGENT_ENTER = "agent_enter"
+H_LAYOUT = "layout"
 H_QUIT = "quit"
 H_CLEAR = "clear"
 
@@ -63,7 +64,8 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),
     SlashCommand("security-agent", "Security 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "security-agent"),
     SlashCommand("ops-observer", "Ops Observer 모드 진입 (stub)", H_AGENT_ENTER, "agent", "ops-observer"),
-    SlashCommand("clear", "센터 로그 지우기", H_CLEAR),
+    SlashCommand("layout", "레이아웃 전환 (focus ↔ dashboard)", H_LAYOUT),
+    SlashCommand("clear", "로그 지우기", H_CLEAR),
     SlashCommand("quit", "콘솔 종료", H_QUIT),
 )
 
@@ -100,6 +102,6 @@ def find_agent(agent_id: str, agents: Optional[Sequence[AgentInfo]] = None) -> O
 __all__ = (
     "SlashCommand",
     "H_HELP", "H_AGENTS", "H_STATUS", "H_RUNTIME", "H_HARNESS", "H_DOCTOR",
-    "H_AGENT_ENTER", "H_QUIT", "H_CLEAR",
+    "H_AGENT_ENTER", "H_LAYOUT", "H_QUIT", "H_CLEAR",
     "load_agents", "load_commands", "find_command", "find_agent",
 )

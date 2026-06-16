@@ -14,12 +14,18 @@ from typing import Sequence, Tuple
 KIND_INFO = "info"
 KIND_ERROR = "error"
 KIND_AGENT_MODE = "agent_mode"
-KIND_HELP = "help"        # open the help overlay (no log output)
+KIND_HELP = "help"        # open the inline help surface (no log output)
+KIND_LAYOUT = "layout"    # toggle the layout mode (focus <-> dashboard)
 KIND_QUIT = "quit"
 KIND_CLEAR = "clear"
 
 # Console interaction modes (surfaced in the footer / input chrome).
 MODE_OPERATOR = "operator"
+
+# Layout modes — focus is the content-first default; dashboard surfaces the
+# operator rail. The app holds the active one; `/layout` toggles.
+LAYOUT_FOCUS = "focus"
+LAYOUT_DASHBOARD = "dashboard"
 
 
 def agent_mode(agent_id: str) -> str:
@@ -122,9 +128,10 @@ class CommandResult:
 
 
 __all__ = (
-    "KIND_INFO", "KIND_ERROR", "KIND_AGENT_MODE", "KIND_HELP", "KIND_QUIT", "KIND_CLEAR",
+    "KIND_INFO", "KIND_ERROR", "KIND_AGENT_MODE", "KIND_HELP", "KIND_LAYOUT",
+    "KIND_QUIT", "KIND_CLEAR",
     "LEVEL_INFO", "LEVEL_WARN", "LEVEL_ERROR",
-    "MODE_OPERATOR", "agent_mode",
+    "MODE_OPERATOR", "LAYOUT_FOCUS", "LAYOUT_DASHBOARD", "agent_mode",
     "AgentInfo", "Alert", "StatusSection", "StatusSummary", "HelpSection",
     "ParsedInput", "CommandResult",
 )

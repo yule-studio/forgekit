@@ -16,6 +16,7 @@ from ..models import (
     KIND_AGENT_MODE,
     KIND_CLEAR,
     KIND_HELP,
+    KIND_LAYOUT,
     KIND_QUIT,
     CommandResult,
     StatusSummary,
@@ -27,6 +28,7 @@ from .registry import (
     H_DOCTOR,
     H_HARNESS,
     H_HELP,
+    H_LAYOUT,
     H_QUIT,
     H_RUNTIME,
     H_STATUS,
@@ -118,6 +120,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _summary_to_result(ctx.load_doctor())
     if handler == H_AGENT_ENTER:
         return _agent_enter_result(cmd, ctx)
+    if handler == H_LAYOUT:
+        return CommandResult(kind=KIND_LAYOUT, title="layout")
     if handler == H_QUIT:
         return CommandResult(kind=KIND_QUIT, title="quit", lines=("콘솔을 종료합니다…",))
     if handler == H_CLEAR:
