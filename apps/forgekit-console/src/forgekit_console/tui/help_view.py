@@ -1,57 +1,51 @@
-"""Help overlay — a tabbed modal screen (Help / General / Commands / Agents).
+"""Inline help surface — a full-width document that expands in the reading flow.
 
-The content is built by the pure :func:`render.help_sections`; this module only
-arranges it into a textual ``ModalScreen`` with one tab per section. Esc (or the
-footer) dismisses it back to the console.
+Replaces the old centered modal. ``/help`` (or F1) opens this slim panel under
+the input; it shows the help sections stacked as a scrollable document (no popup,
+no focus steal), and Esc collapses it back to the flow. Content comes from the
+pure :func:`render.help_inline`.
 """
 
 from __future__ import annotations
 
 from typing import Sequence
 
-from textual.app import ComposeResult
-from textual.containers import Vertical
-from textual.screen import ModalScreen
-from textual.widgets import Static, TabbedContent, TabPane
+from textual.containers import VerticalScroll
+from textual.widgets import Static
 
 from ..models import AgentInfo
 from . import render
 
 
-class HelpScreen(ModalScreen):
-    """Full help surface as a centered modal with section tabs."""
-
-    BINDINGS = [("escape", "dismiss", "Close"), ("f1", "dismiss", "Close")]
+class InlineHelp(VerticalScroll):
+    """A scrollable, full-width inline help document (hidden until opened)."""
 
     DEFAULT_CSS = """
-    HelpScreen { align: center middle; }
-    HelpScreen > #help-box {
-        width: 84;
-        max-width: 96%;
-        height: 30;
-        max-height: 90%;
+    InlineHelp {
+        display: none;
+        height: auto;
+        max-height: 16;
+        padding: 0 2;
         background: $surface;
-        border: thick $accent;
-        padding: 1 2;
+        border-left: thick $accent;
     }
-    HelpScreen #help-title { text-style: bold; color: $accent; padding-bottom: 1; }
-    HelpScreen TabPane { padding: 1 0; }
+    InlineHelp.-open { display: block; }
     """
 
-    def __init__(self, commands: Sequence, agents: Sequence[AgentInfo]) -> None:
-        super().__init__()
-        self._sections = render.help_sections(commands, agents)
+    def open(self, commands: Sequence, agents: Sequence[AgentInfo]) -> None:
+        lines = render.help_inline(render.help_sections(commands, agents))
+        # rebuild the single Static child with the document content
+        self.remove_children()
+        self.mount(Static("\n".join(lines)))
+        self.add_class("-open")
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="help-box"):
-            yield Static(f"{render.BRAND} · help", id="help-title")
-            with TabbedContent():
-                for section in self._sections:
-                    with TabPane(section.title):
-                        yield Static("\n".join(section.lines))
+    def close(self) -> None:
+        self.remove_class("-open")
+        self.remove_children()
 
-    def action_dismiss(self) -> None:
-        self.dismiss()
+    @property
+    def is_open(self) -> bool:
+        return self.has_class("-open")
 
 
-__all__ = ("HelpScreen",)
+__all__ = ("InlineHelp",)
