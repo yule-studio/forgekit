@@ -1,0 +1,36 @@
+/* forgekit agent color snippet — repo-managed Obsidian CSS.
+   Drop into <vault>/.obsidian/snippets/ and enable.
+   A note opts in via frontmatter: cssclasses: [forgekit-agent, agent-<color_token>]
+   Color is a HUMAN visual aid only; retrieval keys on metadata. */
+
+.forgekit-agent .inline-title { border-left: 4px solid var(--fk-accent, #888); padding-left: 8px; }
+.forgekit-agent.markdown-preview-view { --fk-accent: #888; }
+
+.agent-eng-tech-lead { --fk-accent: #1e61ad; }
+.agent-eng-backend-engineer { --fk-accent: #2362ba; }
+.agent-eng-frontend-engineer { --fk-accent: #2862c6; }
+.agent-eng-devops-engineer { --fk-accent: #2f63d1; }
+.agent-eng-ai-engineer { --fk-accent: #4067d2; }
+.agent-eng-qa-engineer { --fk-accent: #516dd3; }
+.agent-eng-security-engineer { --fk-accent: #6175d5; }
+.agent-eng-product-designer { --fk-accent: #717dd7; }
+.agent-eng-platform-runtime-engineer { --fk-accent: #8187d9; }
+.agent-eng-knowledge-engineer { --fk-accent: #9091dc; }
+.agent-eng-ops-observer { --fk-accent: #a19fdf; }
+.agent-prod-product-manager { --fk-accent: #1ead90; }
+.agent-prod-user-researcher { --fk-accent: #23baa3; }
+.agent-prod-growth-analyst { --fk-accent: #28c6b7; }
+.agent-plan-planning-agent { --fk-accent: #ad7d1e; }
+.agent-mkt-brand-manager { --fk-accent: #ad1e79; }
+.agent-mkt-content-strategist { --fk-accent: #ba237b; }
+.agent-mkt-growth-marketer { --fk-accent: #c6287d; }
+.agent-mkt-seo-specialist { --fk-accent: #d12f7e; }
+.agent-mkt-example { --fk-accent: #d24080; }
+.agent-hr-culture-coach { --fk-accent: #741ead; }
+.agent-hr-people-ops { --fk-accent: #8523ba; }
+.agent-hr-recruiter { --fk-accent: #9728c6; }
+.agent-fin-budget-analyst { --fk-accent: #ad901e; }
+.agent-rev-customer-success { --fk-accent: #ad571e; }
+.agent-rev-sales-rep { --fk-accent: #ba6723; }
+.agent-legal-contract-reviewer { --fk-accent: #1e82ad; }
+.agent-legal-privacy-officer { --fk-accent: #2385ba; }

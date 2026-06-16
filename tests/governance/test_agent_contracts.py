@@ -88,6 +88,15 @@ class DriftTests(unittest.TestCase):
         )
 
 
+class ColorSnippetDriftTests(unittest.TestCase):
+    def test_css_snippet_covers_every_token(self) -> None:
+        css = (_REPO / "vault-assets" / "forgekit-agent-colors.css").read_text(encoding="utf-8")
+        for c in reg.all_contracts():
+            self.assertIn(f".agent-{c.color_token}", css,
+                          f"CSS snippet missing rule for {c.color_token}")
+            self.assertIn(c.color_hex, css, f"CSS snippet missing hex {c.color_hex}")
+
+
 class FrontmatterTests(unittest.TestCase):
     def test_schema_complete_and_metadata_driven(self) -> None:
         c = reg.contract_for("product-manager")
