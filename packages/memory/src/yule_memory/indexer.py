@@ -250,16 +250,26 @@ def _document_from_markdown_file(
         or md_path.stem
     )
     note_kind = _normalize_note_kind(_frontmatter_value(frontmatter, "kind"))
+    # Prefer the legacy plural ``roles`` list; fall back to the singular
+    # ``role`` stamped by the agent invocation contract (note_frontmatter).
     role = _normalize_role(_first_role(_frontmatter_value(frontmatter, "roles")))
+    if role is None:
+        role = _normalize_role(_frontmatter_value(frontmatter, "role"))
     task_type = _frontmatter_value(frontmatter, "task_type")
     tags = tuple(_split_yaml_list(_frontmatter_value(frontmatter, "tags")))
     created_at = _parse_iso_datetime(_frontmatter_value(frontmatter, "created_at"))
     relative = _relative_path(md_path, base_dir)
     doc_id = f"{source_kind}:{relative}"
     # Project memory-policy section 4 reuse-boost markers + topic (recall-policy
-    # section 4 topic-aware recall) into extra (read-side only).
+    # section 4 topic-aware recall) into extra (read-side only). The agent
+    # invocation contract keys (agent / obsidian_lane / color_token /
+    # write_owner) are projected the same way so retrieval can filter on agent
+    # identity — color_token stays a passive field, never a ranking key.
     extra: dict = {}
-    for marker in ("canonical", "reusable", "status", "topic"):
+    for marker in (
+        "canonical", "reusable", "status", "topic",
+        "agent", "obsidian_lane", "color_token", "write_owner",
+    ):
         value = _frontmatter_value(frontmatter, marker)
         if value not in (None, ""):
             extra[marker] = str(value)
