@@ -15,6 +15,7 @@ from typing import Callable, Tuple
 from ..models import (
     KIND_AGENT_MODE,
     KIND_CLEAR,
+    KIND_HELP,
     KIND_QUIT,
     CommandResult,
     StatusSummary,
@@ -125,12 +126,14 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
 
 
 def _help_result(ctx: ConsoleContext) -> CommandResult:
+    # KIND_HELP signals the TUI to open the help overlay. Lines are kept as a
+    # text fallback for non-TUI / test consumers.
     lines = ["사용 가능한 명령:"]
     for cmd in ctx.commands:
         lines.append(f"  /{cmd.name:<16} {cmd.summary}")
     lines.append("")
     lines.append("일반 텍스트는 아직 echo/stub 입니다 (live submit 범위 밖).")
-    return CommandResult.info("help", tuple(lines))
+    return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
 
 
 def _agents_result(ctx: ConsoleContext) -> CommandResult:

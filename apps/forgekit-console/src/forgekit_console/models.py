@@ -14,8 +14,18 @@ from typing import Sequence, Tuple
 KIND_INFO = "info"
 KIND_ERROR = "error"
 KIND_AGENT_MODE = "agent_mode"
+KIND_HELP = "help"        # open the help overlay (no log output)
 KIND_QUIT = "quit"
 KIND_CLEAR = "clear"
+
+# Console interaction modes (surfaced in the footer / input chrome).
+MODE_OPERATOR = "operator"
+
+
+def agent_mode(agent_id: str) -> str:
+    """The mode string for an entered agent (e.g. ``agent:product-agent``)."""
+
+    return f"agent:{agent_id}"
 
 # Alert levels for the status pane.
 LEVEL_INFO = "info"
@@ -42,6 +52,14 @@ class Alert:
 
 @dataclass(frozen=True)
 class StatusSection:
+    title: str
+    lines: Tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class HelpSection:
+    """One tab/section of the help overlay."""
+
     title: str
     lines: Tuple[str, ...] = ()
 
@@ -104,8 +122,9 @@ class CommandResult:
 
 
 __all__ = (
-    "KIND_INFO", "KIND_ERROR", "KIND_AGENT_MODE", "KIND_QUIT", "KIND_CLEAR",
+    "KIND_INFO", "KIND_ERROR", "KIND_AGENT_MODE", "KIND_HELP", "KIND_QUIT", "KIND_CLEAR",
     "LEVEL_INFO", "LEVEL_WARN", "LEVEL_ERROR",
-    "AgentInfo", "Alert", "StatusSection", "StatusSummary",
+    "MODE_OPERATOR", "agent_mode",
+    "AgentInfo", "Alert", "StatusSection", "StatusSummary", "HelpSection",
     "ParsedInput", "CommandResult",
 )
