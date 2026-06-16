@@ -39,6 +39,14 @@ class AvatarTests(unittest.TestCase):
     def test_render_from_missing_image_is_none(self) -> None:
         self.assertIsNone(avatar.render_from_image(Path("/nonexistent/x.jpg")))
 
+    def test_mini_brandmark_is_small_and_crisp(self) -> None:
+        # the default mark must be tiny (never a raster block) and contain no
+        # per-pixel colour spans (which is what pixelates in a poor terminal).
+        mark = avatar.mini_brandmark()
+        self.assertLessEqual(len(mark), 3)
+        self.assertTrue(any("forge" in line for line in mark))
+        self.assertNotIn("on rgb(", "\n".join(mark))
+
 
 if __name__ == "__main__":
     unittest.main()

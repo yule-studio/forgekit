@@ -46,12 +46,17 @@ class EntrypointTests(unittest.TestCase):
 
 
 class RenderHelperTests(unittest.TestCase):
-    def test_welcome_banner_has_brand_and_quick_commands(self) -> None:
-        lines = render.welcome_banner("/tmp/repo", "operator")
-        joined = "\n".join(lines)
-        self.assertIn("forgekit", joined)
+    def test_welcome_banner_has_quick_commands(self) -> None:
+        joined = "\n".join(render.welcome_banner("/tmp/repo", "operator"))
         self.assertIn("/help", joined)
-        self.assertIn("/quit", joined)
+        self.assertIn("/status", joined)
+
+    def test_brand_in_mini_brandmark(self) -> None:
+        from forgekit_console.tui import avatar
+
+        joined = "\n".join(avatar.mini_brandmark())
+        self.assertIn("forge", joined)
+        self.assertLessEqual(len(avatar.mini_brandmark()), 3)  # small, not a raster
 
     def test_agent_pane_lines(self) -> None:
         from forgekit_console.commands.registry import load_agents

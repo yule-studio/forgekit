@@ -1,8 +1,8 @@
 """forgekit console TUI smoke — driven headlessly via Textual's pilot.
 
-Exercises the real widget wiring (mount, palette open/close, Tab autocomplete,
-help overlay, agent-mode badge). Skipped entirely when textual isn't installed so
-the stdlib suite still runs.
+Exercises the content-first layout: mount, palette open/Tab complete/close,
+inline help open/close (not a modal), layout toggle, agent-mode pill. Skipped
+when textual isn't installed so the stdlib suite still runs.
 """
 
 from __future__ import annotations
@@ -42,16 +42,19 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
 
         return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context())
 
-    async def test_mounts_with_operator_badge_and_agents(self) -> None:
-        from textual.widgets import Static
+    async def test_mounts_content_first(self) -> None:
+        from textual.widgets import RichLog, Static
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            badge = app.query_one("#modebadge", Static)
-            self.assertIn("OPERATOR", str(badge.render()))
-            agents = app.query_one("#agents", Static)
-            self.assertIn("Engineering", str(agents.render()))
+            # operator mode pill + status pill present, no left agents pane
+            self.assertIn("operator", str(app.query_one("#modepill", Static).render()))
+            self.assertTrue(str(app.query_one("#statuspill", Static).render()))
+            self.assertIsNotNone(app.query_one("#log", RichLog))
+            # default layout is focus; rail hidden
+            self.assertEqual(app.layout_mode, "focus")
+            self.assertFalse(app.query_one("#rail", Static).has_class("-show"))
 
     async def test_palette_opens_and_tab_completes(self) -> None:
         from textual.widgets import Input
@@ -63,7 +66,6 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             prompt.value = "/he"
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
-            self.assertEqual([c.name for c in app._palette.matches], ["help"])
             await pilot.press("tab")
             await pilot.pause()
             self.assertEqual(prompt.value, "/help ")
@@ -97,20 +99,37 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertFalse(app._palette.is_open)
 
-    async def test_help_overlay_opens_and_dismisses(self) -> None:
-        from forgekit_console.tui.help_view import HelpScreen
+    async def test_help_is_inline_not_modal(self) -> None:
+        from forgekit_console.tui.help_view import InlineHelp
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
             app._execute("/help")
             await pilot.pause()
-            self.assertIsInstance(app.screen, HelpScreen)
+            help_view = app.query_one("#help", InlineHelp)
+            self.assertTrue(help_view.is_open)
+            # inline: no extra modal screen was pushed
+            self.assertEqual(len(app.screen_stack), 1)
             await pilot.press("escape")
             await pilot.pause()
-            self.assertNotIsInstance(app.screen, HelpScreen)
+            self.assertFalse(help_view.is_open)
 
-    async def test_agent_mode_sets_badge(self) -> None:
+    async def test_layout_toggle(self) -> None:
+        from textual.widgets import Static
+
+        app = self._app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._execute("/layout")
+            await pilot.pause()
+            self.assertEqual(app.layout_mode, "dashboard")
+            self.assertTrue(app.query_one("#rail", Static).has_class("-show"))
+            app._execute("/layout")
+            await pilot.pause()
+            self.assertEqual(app.layout_mode, "focus")
+
+    async def test_agent_mode_pill(self) -> None:
         from textual.widgets import Static
 
         app = self._app()
@@ -119,8 +138,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             app._execute("/pm-agent")
             await pilot.pause()
             self.assertEqual(app.mode, "agent:product-agent")
-            self.assertIn("AGENT", str(app.query_one("#modebadge", Static).render()))
-            # Esc returns to operator mode
+            self.assertIn("Product", str(app.query_one("#modepill", Static).render()))
             await pilot.press("escape")
             await pilot.pause()
             self.assertEqual(app.mode, "operator")

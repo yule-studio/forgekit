@@ -104,6 +104,11 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(_route("/quit", _ctx()).kind, KIND_QUIT)
         self.assertEqual(_route("/clear", _ctx()).kind, KIND_CLEAR)
 
+    def test_layout_kind(self) -> None:
+        from forgekit_console.models import KIND_LAYOUT
+
+        self.assertEqual(_route("/layout", _ctx()).kind, KIND_LAYOUT)
+
 
 if __name__ == "__main__":
     unittest.main()
