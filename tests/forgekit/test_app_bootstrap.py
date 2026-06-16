@@ -51,12 +51,12 @@ class RenderHelperTests(unittest.TestCase):
         self.assertIn("/help", joined)
         self.assertIn("/status", joined)
 
-    def test_brand_in_mini_brandmark(self) -> None:
-        from forgekit_console.tui import avatar
+    def test_brand_in_text_mark_fallback(self) -> None:
+        from forgekit_console.tui import image_renderer as ir
 
-        joined = "\n".join(avatar.mini_brandmark())
+        joined = "\n".join(ir.text_mark_lines())
         self.assertIn("forge", joined)
-        self.assertLessEqual(len(avatar.mini_brandmark()), 3)  # small, not a raster
+        self.assertLessEqual(len(ir.text_mark_lines()), 3)  # small, not a raster
 
     def test_agent_pane_lines(self) -> None:
         from forgekit_console.commands.registry import load_agents
