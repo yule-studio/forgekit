@@ -13,6 +13,7 @@ from forgekit_console.models import (
     KIND_AGENT_MODE,
     KIND_CLEAR,
     KIND_ERROR,
+    KIND_HELP,
     KIND_INFO,
     KIND_QUIT,
     Alert,
@@ -43,9 +44,10 @@ def _route(line: str, ctx: ConsoleContext):
 
 
 class RouterTests(unittest.TestCase):
-    def test_help_lists_commands(self) -> None:
+    def test_help_opens_overlay_kind(self) -> None:
         r = _route("/help", _ctx())
-        self.assertEqual(r.kind, KIND_INFO)
+        self.assertEqual(r.kind, KIND_HELP)
+        # lines kept as a text fallback for non-TUI consumers
         joined = "\n".join(r.lines)
         self.assertIn("/status", joined)
         self.assertIn("/quit", joined)
