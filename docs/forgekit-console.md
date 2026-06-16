@@ -83,6 +83,10 @@ ready · /status                        ← setup/status issue line (텍스트 1
 | `/runtime` · `/doctor` | runtime status · 환경 진단 요약 |
 | `/pm-agent` | **Product intake gate** — 요구 보강·결정 질문·spec packet handoff(엔지니어링 앞단). [`product-intake-gate.md`](product-intake-gate.md) |
 | `/planning-agent`·`/backend-agent`·`/security-agent`·`/ops-observer` | 에이전트 모드 진입 **stub** |
+
+`/agents` 는 platform-runtime-engineer / knowledge-engineer / ops-observer 를 포함한 28 역할의
+책임·커밋권한·vault lane·색을 보여준다. 역할 호출 계약은 [`agent-invocation-contract.md`](agent-invocation-contract.md),
+공통 vault 색/메타데이터 정책은 [`obsidian-agent-color-policy.md`](obsidian-agent-color-policy.md).
 | `/layout` | (예약) 현재는 help 로 안내 |
 | `/clear` | 로그 지우기 |
 | `/quit` · **`/exit`** | 종료 (`/exit` 는 `/quit` alias) |

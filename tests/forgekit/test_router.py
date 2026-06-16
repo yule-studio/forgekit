@@ -58,6 +58,12 @@ class RouterTests(unittest.TestCase):
         self.assertIn("Engineering", joined)
         self.assertIn("Security", joined)
 
+    def test_agents_lists_new_roles(self) -> None:
+        joined = "\n".join(_route("/agents", _ctx()).lines)
+        self.assertIn("Platform Runtime", joined)
+        self.assertIn("Knowledge", joined)
+        self.assertIn("Ops Observer", joined)
+
     def test_status_uses_operator_loader(self) -> None:
         called = []
         ctx = _ctx(load_operator=lambda: (called.append(1) or StatusSummary(title="operator dashboard")))

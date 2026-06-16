@@ -61,6 +61,39 @@
 `20-product/product-manager`, `40-ops/ops-observer`). 색/메타데이터 정책은
 [`obsidian-agent-color-policy.md`](obsidian-agent-color-policy.md) 가 SSoT.
 
+## 4b. Operator 한눈 요약 (28 역할 — 레지스트리 생성)
+
+| agent | code | vault | commit | namespace | color |
+| --- | :--: | :--: | :--: | --- | --- |
+| `engineering-agent/tech-lead` | — | ✅ | — | `30-engineering/tech-lead` | `eng-tech-lead` |
+| `engineering-agent/backend-engineer` | ✅ | ✅ | ✅ | `30-engineering/backend-engineer` | `eng-backend-engineer` |
+| `engineering-agent/frontend-engineer` | ✅ | ✅ | ✅ | `30-engineering/frontend-engineer` | `eng-frontend-engineer` |
+| `engineering-agent/devops-engineer` | ✅ | ✅ | ✅ | `30-engineering/devops-engineer` | `eng-devops-engineer` |
+| `engineering-agent/ai-engineer` | ✅ | ✅ | ✅ | `30-engineering/ai-engineer` | `eng-ai-engineer` |
+| `engineering-agent/qa-engineer` | — | ✅ | — | `30-engineering/qa-engineer` | `eng-qa-engineer` |
+| `engineering-agent/security-engineer` | — | ✅ | — | `30-engineering/security-engineer` | `eng-security-engineer` |
+| `engineering-agent/product-designer` | — | ✅ | — | `30-engineering/product-designer` | `eng-product-designer` |
+| `engineering-agent/platform-runtime-engineer` | ✅ | ✅ | ✅ | `30-engineering/platform-runtime-engineer` | `eng-platform-runtime-engineer` |
+| `engineering-agent/knowledge-engineer` | — | ✅ | — | `30-engineering/knowledge-engineer` | `eng-knowledge-engineer` |
+| `engineering-agent/ops-observer` | — | ✅ | — | `40-ops/ops-observer` | `eng-ops-observer` |
+| `product-agent/product-manager` | — | ✅ | — | `20-product/product-manager` | `prod-product-manager` |
+| `product-agent/user-researcher` | — | ✅ | — | `20-product/user-researcher` | `prod-user-researcher` |
+| `product-agent/growth-analyst` | — | ✅ | — | `20-product/growth-analyst` | `prod-growth-analyst` |
+| `planning-agent/planning-agent` | — | ✅ | — | `50-planning/planning-agent` | `plan-planning-agent` |
+| `marketing-agent/brand-manager` | — | ✅ | — | `60-marketing/brand-manager` | `mkt-brand-manager` |
+| `marketing-agent/content-strategist` | — | ✅ | — | `60-marketing/content-strategist` | `mkt-content-strategist` |
+| `marketing-agent/growth-marketer` | — | ✅ | — | `60-marketing/growth-marketer` | `mkt-growth-marketer` |
+| `marketing-agent/seo-specialist` | — | ✅ | — | `60-marketing/seo-specialist` | `mkt-seo-specialist` |
+| `marketing-agent/example` | — | ✅ | — | `60-marketing/example` | `mkt-example` |
+| `hr-agent/culture-coach` | — | ✅ | — | `70-people/culture-coach` | `hr-culture-coach` |
+| `hr-agent/people-ops` | — | ✅ | — | `70-people/people-ops` | `hr-people-ops` |
+| `hr-agent/recruiter` | — | ✅ | — | `70-people/recruiter` | `hr-recruiter` |
+| `finance-agent/budget-analyst` | — | ✅ | — | `80-finance/budget-analyst` | `fin-budget-analyst` |
+| `sales-cs-agent/customer-success` | — | ✅ | — | `90-revenue/customer-success` | `rev-customer-success` |
+| `sales-cs-agent/sales-rep` | — | ✅ | — | `90-revenue/sales-rep` | `rev-sales-rep` |
+| `legal-agent/contract-reviewer` | — | ✅ | — | `95-legal/contract-reviewer` | `legal-contract-reviewer` |
+| `legal-agent/privacy-officer` | — | ✅ | — | `95-legal/privacy-officer` | `legal-privacy-officer` |
+
 ## 5. 관련
 - [`obsidian-agent-color-policy.md`](obsidian-agent-color-policy.md) ·
   [`product-intake-gate.md`](product-intake-gate.md) ·
