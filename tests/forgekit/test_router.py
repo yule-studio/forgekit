@@ -79,10 +79,18 @@ class RouterTests(unittest.TestCase):
         r = _route("/runtime", ctx)
         self.assertEqual(r.kind, KIND_ERROR)
 
-    def test_agent_enter_stub(self) -> None:
+    def test_pm_agent_shows_intake_gate_role(self) -> None:
         r = _route("/pm-agent", _ctx())
         self.assertEqual(r.kind, KIND_AGENT_MODE)
         self.assertEqual(r.title, "agent:product-agent")
+        joined = "\n".join(r.lines)
+        self.assertIn("intake gate", joined)
+        self.assertIn("implied features", joined)
+        self.assertIn("handoff", joined)
+
+    def test_other_agent_enter_stub(self) -> None:
+        r = _route("/backend-agent", _ctx())
+        self.assertEqual(r.kind, KIND_AGENT_MODE)
         self.assertIn("stub", "\n".join(r.lines))
 
     def test_ops_observer_includes_alerts(self) -> None:

@@ -152,6 +152,27 @@ def _agent_enter_result(cmd, ctx: ConsoleContext) -> CommandResult:
     agent = find_agent(cmd.agent_id, ctx.agents)
     if agent is None:
         return CommandResult.error(f"unknown agent: {cmd.agent_id}")
+    # Product (PM) is the engineering-front intake gate — show its real job.
+    if agent.agent_id == "product-agent":
+        return CommandResult(
+            kind=KIND_AGENT_MODE,
+            title=f"agent:{agent.agent_id}",
+            lines=(
+                "▶ Product (PM) — engineering 앞단 intake gate",
+                "  raw 요청을 그대로 구현으로 넘기지 않고, 빠진 결정·기본 기능을 먼저 정리합니다.",
+                "",
+                "이 게이트가 하는 일:",
+                "  - feature family 별 누락 기능 자동 보강 (implied features)",
+                "  - 중요한 비즈니스 결정만 ≤3개 질문 (옵션 + 추천안)",
+                "  - 안전한 기본값은 자동 채움 (loading/empty/error/validation 등)",
+                "  - acceptance criteria / non-goals 정리 후 tech-lead 로 product packet handoff",
+                "",
+                "예: '영상 업로드 구현' → 공개 정책·업로드 주체·노출 순서를 먼저 묻고,",
+                "    처리 상태·실패 재시도·썸네일 fallback 을 자동 보강합니다.",
+                "",
+                "[dim]live submit 은 아직 stub — 정책/패킷 코어는 agents/product_intake.[/dim]",
+            ),
+        )
     lines = [
         f"▶ {agent.label} 에이전트 모드 진입 (stub)",
         f"  {agent.description}",

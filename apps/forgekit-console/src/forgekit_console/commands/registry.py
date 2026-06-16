@@ -42,7 +42,7 @@ class SlashCommand:
 _AGENTS: Tuple[AgentInfo, ...] = (
     AgentInfo("engineering-agent", "Engineering", "개발 intake / 계획 / deliberation / GitHub", ""),
     AgentInfo("planning-agent", "Planning", "일정 / 계획 / 브리핑", "/planning-agent"),
-    AgentInfo("product-agent", "Product (PM)", "제품 요구 / 우선순위 / 스펙", "/pm-agent"),
+    AgentInfo("product-agent", "Product (PM)", "intake gate — 요구 보강·결정 질문·spec packet", "/pm-agent"),
     AgentInfo("backend-agent", "Backend", "백엔드 설계 / 구현 / 리뷰", "/backend-agent"),
     AgentInfo("security-agent", "Security", "보안 리뷰 / 위협 모델 / 게이트", "/security-agent"),
     AgentInfo("ops-observer", "Ops Observer", "런타임 관측 / 알림 / 상태 요약", "/ops-observer"),
@@ -59,7 +59,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("runtime", "runtime status 요약", H_RUNTIME, "status"),
     SlashCommand("harness", "harness/operator 대시보드 요약", H_HARNESS, "status"),
     SlashCommand("doctor", "환경 진단 (doctor) 요약", H_DOCTOR, "status"),
-    SlashCommand("pm-agent", "Product 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "product-agent"),
+    SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),
     SlashCommand("security-agent", "Security 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "security-agent"),

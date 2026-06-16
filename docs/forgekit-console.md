@@ -81,7 +81,8 @@ ready · /status                        ← setup/status issue line (텍스트 1
 | `/agents` | 에이전트 레지스트리(로그에 inline 출력) |
 | `/status` | operator 요약(provider/eval/self-improve/token) — 자세한 상태는 여기서 |
 | `/runtime` · `/doctor` | runtime status · 환경 진단 요약 |
-| `/pm-agent`·`/planning-agent`·`/backend-agent`·`/security-agent`·`/ops-observer` | 에이전트 모드 진입 **stub** |
+| `/pm-agent` | **Product intake gate** — 요구 보강·결정 질문·spec packet handoff(엔지니어링 앞단). [`product-intake-gate.md`](product-intake-gate.md) |
+| `/planning-agent`·`/backend-agent`·`/security-agent`·`/ops-observer` | 에이전트 모드 진입 **stub** |
 | `/layout` | (예약) 현재는 help 로 안내 |
 | `/clear` | 로그 지우기 |
 | `/quit` · **`/exit`** | 종료 (`/exit` 는 `/quit` alias) |
