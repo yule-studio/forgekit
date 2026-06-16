@@ -17,9 +17,12 @@ dependencies = [
 [project.optional-dependencies]
 # The Forgekit operator console (TUI). Kept out of core deps so the stdlib-only
 # CI install (`pip install -e .`) stays lean; install with
-# `pip install -e '.[console]'` to run the full `forgekit` TUI.
+# `pip install -e '.[console]'` to run the full `forgekit` TUI. Pillow is
+# optional — only for live image rendering / re-baking the avatar asset; the
+# shipped baked avatar renders without it.
 console = [
   "textual>=0.50",
+  "pillow>=10.0",
 ]
 
 [project.scripts]
