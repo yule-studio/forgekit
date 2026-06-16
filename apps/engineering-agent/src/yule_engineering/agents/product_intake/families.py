@@ -165,6 +165,38 @@ BASELINE_DEFAULTS: Tuple[str, ...] = (
 BASELINE_OBSERVABILITY = "주요 액션 audit/observability 훅(쓰기·삭제 등 민감 작업)"
 
 
+# decision key → (keyword, resolved label). If the user already stated the
+# answer in the raw ask, the PM resolves it (assumption) instead of asking.
+RESOLUTION_HINTS: Mapping[str, Tuple[Tuple[str, str], ...]] = {
+    "who_can_upload_view": (("관리자만", "관리자만 업로드"), ("누구나", "일반 유저도 업로드"),
+                            ("일반 유저", "일반 유저도 업로드")),
+    "visibility_policy": (("즉시 공개", "즉시 공개"), ("예약 공개", "예약 공개"),
+                          ("비공개", "비공개 후 수동 공개")),
+    "ordering_policy": (("최신순", "최신순"), ("수동 정렬", "수동 정렬"), ("인기순", "인기순")),
+    "publish_visibility": (("즉시 공개", "즉시 공개"), ("draft", "draft 후 수동 공개")),
+    "draft_support": (("임시저장", "지원"), ("draft", "지원")),
+    "auth_method": (("소셜", "소셜 로그인(OAuth)"), ("oauth", "소셜 로그인(OAuth)"),
+                    ("이메일", "이메일+비밀번호")),
+    "session_policy": (("refresh", "단기 만료+refresh"),),
+    "role_scope": (("rbac", "세분화된 RBAC"), ("admin/user", "admin/user 분리")),
+    "billing_model": (("구독", "구독(subscription)"), ("단건", "단건 결제"), ("사용량", "사용량 기반")),
+    "refund_policy": (("자동 환불", "자동 환불"),),
+    "notification_channels": (("이메일", "인앱+이메일"), ("푸시", "푸시 포함")),
+    "search_scope": (("본문", "제목+본문"),),
+    "schedule_policy": (("즉시만", "즉시만"), ("항상 예약", "항상 예약")),
+}
+
+
+def resolve_answered(text: str, decision_key: str) -> str:
+    """Return the resolved option label if *text* answers *decision_key*, else ''."""
+
+    low = (text or "").lower()
+    for keyword, label in RESOLUTION_HINTS.get(decision_key, ()):  # type: ignore[arg-type]
+        if keyword.lower() in low:
+            return label
+    return ""
+
+
 def detect_families(text: str) -> Tuple[str, ...]:
     """Return the family keys whose keywords appear in *text* (stable order)."""
 

@@ -83,12 +83,24 @@ def shape_product_intent(
         decision_keys.extend(family.ask)
         suggested_roles.extend(family.suggested_roles)
 
-    questions = question_policy.select_questions(decision_keys)
-    deferred = question_policy.deferred_keys(decision_keys, questions)
+    # decisions the user already answered in the ask are resolved, not asked
+    resolved_assumptions: list[str] = []
+    unresolved_keys: list[str] = []
+    for key in decision_keys:
+        answer = fam.resolve_answered(text, key)
+        if answer:
+            tmpl = fam.TEMPLATE_BY_KEY.get(key)
+            label = tmpl.prompt if tmpl else key
+            resolved_assumptions.append(f"{label} → '{answer}' (요청에 명시됨)")
+        else:
+            unresolved_keys.append(key)
+
+    questions = question_policy.select_questions(unresolved_keys)
+    deferred = question_policy.deferred_keys(unresolved_keys, questions)
 
     # baseline cross-cutting concerns are auto-filled, never asked
     recommended_defaults = tuple(dict.fromkeys(recommended)) + fam.BASELINE_DEFAULTS
-    assumptions = []
+    assumptions = list(resolved_assumptions)
     if any(f.key in ("media_upload", "admin_crud", "payment_or_billing") for f in detected):
         assumptions.append(fam.BASELINE_OBSERVABILITY)
     # deferred (budget-dropped) decisions become explicit assumptions w/ the default
