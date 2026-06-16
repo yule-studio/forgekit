@@ -115,8 +115,8 @@ class ModePillTests(unittest.TestCase):
         self.assertIn("palette", render.mode_pill("palette"))
 
 
-class HelpInTranscriptTests(unittest.TestCase):
-    """Help is rendered INTO the transcript (Claude-Code style), not a modal."""
+class HelpPanelDocumentTests(unittest.TestCase):
+    """Help is its own VIEW document for the active tab (not a transcript block)."""
 
     def _secs(self):
         return render.help_sections(load_commands(), load_agents())
@@ -126,10 +126,10 @@ class HelpInTranscriptTests(unittest.TestCase):
         self.assertEqual(titles, ["Help", "General", "Commands", "Agents"])
         self.assertEqual(self._secs()[render.default_help_tab(self._secs())].title, "General")
 
-    def test_block_shows_tab_strip_and_active_body_only(self) -> None:
+    def test_document_shows_tab_strip_and_active_body_only(self) -> None:
         secs = self._secs()
         general = render.default_help_tab(secs)
-        joined = "\n".join(render.help_in_transcript(secs, general))
+        joined = "\n".join(render.help_panel_document(secs, general))
         self.assertIn("forgekit help", joined)
         self.assertIn("Esc", joined)
         # all four tab labels appear in the strip
@@ -139,18 +139,28 @@ class HelpInTranscriptTests(unittest.TestCase):
         self.assertIn("단축키", joined)
         self.assertNotIn("/quit", joined)
 
-    def test_block_keeps_composer_note(self) -> None:
-        # The help block reminds the operator the input stays open (composer fixed)
+    def test_document_keeps_composer_note(self) -> None:
+        # The help view reminds the operator the input stays open (composer fixed)
         secs = self._secs()
-        joined = "\n".join(render.help_in_transcript(secs, render.default_help_tab(secs)))
+        joined = "\n".join(render.help_panel_document(secs, render.default_help_tab(secs)))
         self.assertIn("입력창", joined)
 
     def test_commands_tab_lists_exit_alias(self) -> None:
         secs = self._secs()
         cmd_idx = next(i for i, s in enumerate(secs) if s.title == "Commands")
-        joined = "\n".join(render.help_in_transcript(secs, cmd_idx))
+        joined = "\n".join(render.help_panel_document(secs, cmd_idx))
         self.assertIn("/exit", joined)
         self.assertIn("/quit", joined)
+
+    def test_switching_tab_does_not_accumulate(self) -> None:
+        # Each tab renders its OWN document — General body absent on Commands tab.
+        secs = self._secs()
+        general = render.default_help_tab(secs)
+        cmd_idx = next(i for i, s in enumerate(secs) if s.title == "Commands")
+        gen_doc = "\n".join(render.help_panel_document(secs, general))
+        cmd_doc = "\n".join(render.help_panel_document(secs, cmd_idx))
+        self.assertIn("단축키", gen_doc)
+        self.assertNotIn("단축키", cmd_doc)
 
 
 class IntroMetaTests(unittest.TestCase):
