@@ -1,0 +1,105 @@
+"""Command + agent registry — the single source the palette/router read from.
+
+Data-driven on purpose: adding a slash command or an agent is a list edit, not a
+code change. This is the seam where, later, ``skills/*.md`` / grant tables / the
+agent projection can hydrate the registry instead of the static defaults — see
+:func:`load_agents` / :func:`load_commands`, which today return the built-ins but
+are the documented extension point.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Optional, Sequence, Tuple
+
+from ..models import AgentInfo
+
+# Handler keys the router dispatches on (kept stable; the router maps these).
+H_HELP = "help"
+H_AGENTS = "agents"
+H_STATUS = "status"
+H_RUNTIME = "runtime"
+H_HARNESS = "harness"
+H_DOCTOR = "doctor"
+H_AGENT_ENTER = "agent_enter"
+H_QUIT = "quit"
+H_CLEAR = "clear"
+
+
+@dataclass(frozen=True)
+class SlashCommand:
+    name: str          # without leading slash
+    summary: str
+    handler: str       # H_*
+    category: str = "general"
+    agent_id: str = "" # set for agent-entry commands
+
+
+# --- Agents (quick list / registry) ----------------------------------------
+# These are the operator-facing agent surfaces. enter_command links to the slash
+# command that enters that agent's (stub) mode.
+_AGENTS: Tuple[AgentInfo, ...] = (
+    AgentInfo("engineering-agent", "Engineering", "개발 intake / 계획 / deliberation / GitHub", ""),
+    AgentInfo("planning-agent", "Planning", "일정 / 계획 / 브리핑", "/planning-agent"),
+    AgentInfo("product-agent", "Product (PM)", "제품 요구 / 우선순위 / 스펙", "/pm-agent"),
+    AgentInfo("backend-agent", "Backend", "백엔드 설계 / 구현 / 리뷰", "/backend-agent"),
+    AgentInfo("security-agent", "Security", "보안 리뷰 / 위협 모델 / 게이트", "/security-agent"),
+    AgentInfo("ops-observer", "Ops Observer", "런타임 관측 / 알림 / 상태 요약", "/ops-observer"),
+    AgentInfo("marketing-agent", "Marketing", "메시징 / 캠페인 (예정)", ""),
+    AgentInfo("legal-agent", "Legal", "약관 / 컴플라이언스 (예정)", ""),
+    AgentInfo("finance-agent", "Finance", "비용 / 예산 (예정)", ""),
+)
+
+# --- Slash commands ---------------------------------------------------------
+_COMMANDS: Tuple[SlashCommand, ...] = (
+    SlashCommand("help", "이 콘솔의 명령 목록", H_HELP),
+    SlashCommand("agents", "에이전트 레지스트리 표시", H_AGENTS),
+    SlashCommand("status", "운영 대시보드 요약 (provider/eval/self-improve/token)", H_STATUS, "status"),
+    SlashCommand("runtime", "runtime status 요약", H_RUNTIME, "status"),
+    SlashCommand("harness", "harness/operator 대시보드 요약", H_HARNESS, "status"),
+    SlashCommand("doctor", "환경 진단 (doctor) 요약", H_DOCTOR, "status"),
+    SlashCommand("pm-agent", "Product 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "product-agent"),
+    SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
+    SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),
+    SlashCommand("security-agent", "Security 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "security-agent"),
+    SlashCommand("ops-observer", "Ops Observer 모드 진입 (stub)", H_AGENT_ENTER, "agent", "ops-observer"),
+    SlashCommand("clear", "센터 로그 지우기", H_CLEAR),
+    SlashCommand("quit", "콘솔 종료", H_QUIT),
+)
+
+
+def load_agents() -> Tuple[AgentInfo, ...]:
+    """Return the agent registry. Extension seam: hydrate from agent projection
+    / grants later; today returns the static built-ins."""
+
+    return _AGENTS
+
+
+def load_commands() -> Tuple[SlashCommand, ...]:
+    """Return the slash-command registry. Extension seam: merge ``skills/*.md`` /
+    grant-derived commands later; today returns the static built-ins."""
+
+    return _COMMANDS
+
+
+def find_command(name: str, commands: Optional[Sequence[SlashCommand]] = None) -> Optional[SlashCommand]:
+    name = (name or "").strip().lstrip("/").lower()
+    for cmd in commands if commands is not None else _COMMANDS:
+        if cmd.name == name:
+            return cmd
+    return None
+
+
+def find_agent(agent_id: str, agents: Optional[Sequence[AgentInfo]] = None) -> Optional[AgentInfo]:
+    for agent in agents if agents is not None else _AGENTS:
+        if agent.agent_id == agent_id:
+            return agent
+    return None
+
+
+__all__ = (
+    "SlashCommand",
+    "H_HELP", "H_AGENTS", "H_STATUS", "H_RUNTIME", "H_HARNESS", "H_DOCTOR",
+    "H_AGENT_ENTER", "H_QUIT", "H_CLEAR",
+    "load_agents", "load_commands", "find_command", "find_agent",
+)
