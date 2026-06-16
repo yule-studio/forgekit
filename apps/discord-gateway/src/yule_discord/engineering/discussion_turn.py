@@ -64,6 +64,8 @@ from yule_engineering.agents.discussion import (
     synthesize_discussion,
 )
 
+from .product_intake_seam import ProductIntakeResult, run_product_intake
+
 
 # ---------------------------------------------------------------------------
 # Operator-facing escalation states — gateway surface 가 그대로 라우팅 키
@@ -95,15 +97,26 @@ class DiscussionTurnResponse:
     ``operator_status``는 운영자 surface가 사용자/운영자/tech-lead 중
     누가 다음 행동을 해야 하는지 한 dict 로 라우팅할 수 있도록 정렬된
     상태 묶음이다. 필드 의미는 모듈 docstring 참고.
+
+    ``product_intake``는 PM intake pre-step 이 켜졌을 때만 채워진다
+    (그 외엔 None). PM gate 가 제품/기능 요청을 가로채면 그 결과가
+    여기 담긴다 — PM clarification(short-circuit) 이면 ``operator_status``
+    도 PM 상태(``pm_*`` / ``layer="product"``)로 정렬되고, handoff-ready
+    면 product packet 요약이 ``rendered_text`` 앞에 carry 된 뒤 engineering
+    flow 가 그대로 이어진다. PM clarification 은 engineering 의 기술
+    clarification 과 라벨·state 가 분리되어 있다.
     """
 
     rendered_text: str
-    classification: DiscussionModeMatch
-    synthesis: DiscussionSynthesis
-    context_pack: ContextPack
+    # engineering 분류/합성/pack — PM clarification short-circuit 일 때는 None
+    # (engineering 단계를 돌지 않았다는 의미). 그 외 모든 turn 에서는 채워진다.
+    classification: Optional[DiscussionModeMatch] = None
+    synthesis: Optional[DiscussionSynthesis] = None
+    context_pack: Optional[ContextPack] = None
     handoff: Optional[DiscussionHandoff] = None
     blockers: Sequence[str] = field(default_factory=tuple)
     operator_status: Mapping[str, Any] = field(default_factory=dict)
+    product_intake: Optional[ProductIntakeResult] = None
 
 
 def build_discussion_turn_response(
@@ -118,6 +131,7 @@ def build_discussion_turn_response(
     llm_synthesizer: Optional[Any] = None,
     department_dir: Optional[Path] = None,
     role_profile_loader: Optional[Mapping[str, Mapping[str, object]]] = None,
+    product_intake_gate: bool = False,
 ) -> DiscussionTurnResponse:
     """One-shot tech-lead discussion turn.
 
@@ -125,7 +139,27 @@ def build_discussion_turn_response(
     경우 pack은 message + session에서 끌어낸 정보만 담고, issue/PR/note
     seam은 비어 있는 상태로 전달된다. caller가 풍부한 pack을 원하면
     seam이 채워진 builder를 주입한다.
+
+    ``product_intake_gate`` 가 True 면 engineering 분류/합성 *전에* PM intake
+    pre-step(:func:`run_product_intake`)을 한 번 돈다. 이 게이트는 **additive**
+    이고 기본값은 off — 끄면 비-제품 요청뿐 아니라 모든 입력에서 동작이
+    byte-for-byte 무변경이다. 켜진 상태에서도 PM gate 가 제품/기능 요청으로
+    보지 않으면(``should_intercept`` False) 기존 engineering flow 그대로 흐른다.
+    제품 요청일 때만:
+
+    * ``clarification_needed`` → PM 결정 질문을 그대로 응답으로 내고 turn 종료
+      (engineering 분류/합성/handoff 를 건너뜀). 이것은 engineering 의 기술
+      clarification 과 라벨·operator state 가 분리된 *PM* clarification 이다.
+    * ``spec_ready`` / ``implementation_candidate`` → product packet 요약을
+      engineering 본문 앞에 carry 한 뒤 engineering flow 를 계속한다 — tech-lead
+      가 raw 요청이 아니라 packet 위에서 움직인다.
     """
+
+    intake: Optional[ProductIntakeResult] = None
+    if product_intake_gate:
+        intake = run_product_intake(message_text)
+        if intake.intercepted and intake.short_circuit:
+            return _pm_short_circuit_response(intake)
 
     if builder is None:
         builder = ContextPackBuilder()
@@ -150,7 +184,12 @@ def build_discussion_turn_response(
     )
 
     handoff: Optional[DiscussionHandoff] = None
-    rendered_parts: list[str] = [synthesis.response_text]
+    rendered_parts: list[str] = []
+    # PM handoff-ready 면 product packet 요약을 engineering 본문 앞에 carry —
+    # tech-lead 가 raw 요청이 아니라 packet 위에서 움직이게 한다.
+    if intake is not None and intake.handoff_context:
+        rendered_parts.append(intake.handoff_context)
+    rendered_parts.append(synthesis.response_text)
     if synthesis.mode == DiscussionMode.IMPLEMENTATION_CANDIDATE and synthesis.implementation_ready:
         handoff = build_implementation_handoff(
             synthesis=synthesis,
@@ -186,6 +225,29 @@ def build_discussion_turn_response(
         handoff=handoff,
         blockers=blockers_dedup,
         operator_status=operator_status,
+        product_intake=intake,
+    )
+
+
+def _pm_short_circuit_response(intake: ProductIntakeResult) -> DiscussionTurnResponse:
+    """PM clarification 단계 — engineering 분류/합성을 건너뛴 응답.
+
+    제품 요청이 ``clarification_needed`` 면 engineering 으로 넘기지 않고
+    PM 결정 질문만 사용자에게 돌려준다. ``classification`` / ``synthesis`` /
+    ``context_pack`` 은 engineering 단계를 돌지 않았다는 의미로 None 자리표시
+    (placeholder) 를 둔다 — gateway 는 ``product_intake.short_circuit`` 또는
+    ``operator_status["layer"] == "product"`` 로 PM 단계임을 안다.
+    """
+
+    return DiscussionTurnResponse(
+        rendered_text=intake.rendered_text,
+        classification=None,  # engineering 분류를 돌지 않았음 (PM 단계)
+        synthesis=None,
+        context_pack=None,
+        handoff=None,
+        blockers=(),
+        operator_status=intake.operator_status,
+        product_intake=intake,
     )
 
 
@@ -293,6 +355,8 @@ def _state_remediation(state: str, synthesis: DiscussionSynthesis) -> str:
 __all__ = (
     "DiscussionTurnResponse",
     "build_discussion_turn_response",
+    "ProductIntakeResult",
+    "run_product_intake",
     "OPERATOR_STATE_CLARIFICATION",
     "OPERATOR_STATE_DISCUSSION",
     "OPERATOR_STATE_RESEARCH_PENDING",
