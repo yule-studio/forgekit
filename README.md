@@ -1,12 +1,42 @@
 <p align="center">
-  <img src="assets/banner.png" alt="Hermes Agent" width="100%">
+  <img src="assets/forgekit.png" alt="ForgeKit" width="100%">
 </p>
 
-# Yule Studio Agent
+# ForgeKit
 
-개인 홈서버에서 여러 AI 에이전트를 한 팀처럼 운영하기 위한 오케스트레이터다.
+> **ForgeKit = 에이전트·워크플로·내부 도구를 직접 벼려 쓰는 개인 자동화 툴킷.**
+> *forge*(만들다 / 단조 — 쇠를 달궈 두드려 형태를 잡는 대장간) + *kit*(도구 묶음).
+> 즉 "내 작업을 자동화할 에이전트와 도구를 직접 벼리는 도구 일습".
 
-## 무엇을 하는가
+이 레포는 문서 저장소가 아니라 **개인 자동화 플랫폼**이다 — 역할별 AI 에이전트,
+워크플로, always-on 런타임, 운영 도구가 한곳에서 한 팀처럼 굴러간다. 모든 산출물은
+SQLite + Obsidian vault 에 결정적으로 적재돼 다음 작업이 같은 컨텍스트를 다시 쓴다.
+
+## 지금 상태
+
+- **운영자 콘솔 `forgekit`** — 터미널 한 줄이면 열리는 Claude-Code 스타일 TUI 콘솔.
+  런타임/harness/doctor surface 를 읽어 표시한다(cyan/magenta-on-black 브랜드 테마).
+- **provider / 런타임** — always-on engineering 런타임, 역할 멤버 봇, 자료 수집기.
+- **memory / vault** — SQLite 인덱스 + Obsidian 미러로 컨텍스트를 누적.
+- **agent 시스템** — Planning / Engineering 등 좁은 책임의 역할별 에이전트.
+
+## 설치 / 진입
+
+```bash
+pip install -e '.[console]'   # 콘솔 extra (textual + 이미지 렌더)
+forgekit                      # 운영자 콘솔 TUI 열기
+yule --help                   # 기존 engineering CLI (runtime/harness/engineer/…)
+```
+
+자세한 콘솔 가이드는 [docs/forgekit-console.md](docs/forgekit-console.md).
+
+## 명령(지침) 구조
+
+읽기 순서는 한 줄로 정리된다: **[`AGENTS.md`](AGENTS.md)(진입점) → root
+[`CLAUDE.md`](CLAUDE.md)(전역 규칙 SSoT) → 작업 맥락별 `docs/<topic>.md` / scoped
+`agents/<agent>/CLAUDE.md`**. provider(Claude·Codex·Gemini)가 무엇이든 같은 경로다.
+
+## 구성 요소
 
 - **Planning Agent** — 캘린더 + GitHub 이슈 + reminder 를 모아 매일의 daily plan 과 시간 블록 브리핑을 만든다.
 - **Engineering Agent** — `#업무-접수` 채널에서 자유 대화로 작업을 받고, 7 개 역할 멤버 봇이 협업으로 리서치·합의·결과를 정리한다.

@@ -41,7 +41,7 @@ from ..models import (
     KIND_QUIT,
     MODE_OPERATOR,
 )
-from . import keymap, render
+from . import keymap, render, theme
 from .composer import Composer
 from .header import IntroHeader
 from .main_panel import MainPanel
@@ -76,6 +76,14 @@ class ForgekitConsoleApp(App):
         self.mode = MODE_OPERATOR
         self._palette = palette_state.CLOSED
         self._suppress_refilter = False
+
+    def get_css_variables(self) -> dict:
+        # Merge the forgekit brand tokens into the global variable scope so the
+        # screen CSS AND every widget's DEFAULT_CSS resolve $accent / $brand-border
+        # / $text etc. against the cyan/magenta-on-black palette (tui.theme).
+        variables = super().get_css_variables()
+        variables.update(theme.css_variables())
+        return variables
 
     # --- layout -------------------------------------------------------------
 

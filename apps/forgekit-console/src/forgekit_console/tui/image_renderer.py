@@ -41,6 +41,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Protocol, Tuple
 
+from . import theme
+
 # The baked small display PNG (Claude-icon scale) — primary asset.
 _DISPLAY_PNG = "forgekit-avatar.png"
 # The high-res master, used only if the baked PNG is somehow absent.
@@ -71,6 +73,38 @@ def assets_dir() -> Path:
     """Directory holding the avatar assets (sibling ``assets/avatar``)."""
 
     return Path(__file__).resolve().parent.parent / "assets" / "avatar"
+
+
+def brand_dir() -> Path:
+    """Directory holding the brand banner assets (sibling ``assets/brand``)."""
+
+    return Path(__file__).resolve().parent.parent / "assets" / "brand"
+
+
+# The small baked intro banner (Claude-icon-scale wordmark) — primary brand asset.
+_BANNER_INTRO_PNG = "forgekit-banner-intro.png"
+# The full-resolution wordmark master (used only if the baked intro is absent).
+_BANNER_MASTER_PNG = "forgekit-banner.png"
+
+
+def banner_intro_path() -> Path:
+    return brand_dir() / _BANNER_INTRO_PNG
+
+
+def banner_master_path() -> Path:
+    return brand_dir() / _BANNER_MASTER_PNG
+
+
+def best_banner_path() -> Optional[Path]:
+    """The brand banner to render: the small baked intro, else the master, else None."""
+
+    intro = banner_intro_path()
+    if intro.is_file():
+        return intro
+    master = banner_master_path()
+    if master.is_file():
+        return master
+    return None
 
 
 def display_png_path() -> Path:
@@ -164,7 +198,7 @@ def select_renderer(capability) -> str:
 # are what pixelate in a poor terminal). This is the fallback only; the real
 # image is the default when the terminal supports inline graphics.
 _TEXT_MARK: Tuple[str, ...] = (
-    "[b orange1]◆ forge[/b orange1][b orange3]kit[/b orange3]",
+    theme.wordmark("forgekit"),
     "[dim]operator console[/dim]",
 )
 
@@ -243,6 +277,78 @@ class RealImageRenderer:
             return HalfBlockRenderer().renderable()
 
 
+# --- brand banner (intro brand mark) ---------------------------------------
+
+# The text-wordmark fallback for the brand mark — the cyan→magenta gradient. It
+# stands on its own (clean) when no inline image renders.
+RENDERER_BRAND_IMAGE = "brand-image"  # tier 1 — real inline banner raster
+RENDERER_BRAND_TEXT = "brand-text"  # fallback — text wordmark gradient
+
+
+def brand_wordmark_lines() -> Tuple[str, ...]:
+    """The compact text wordmark used when the banner can't render inline."""
+
+    return (theme.wordmark("forgekit"),)
+
+
+@dataclass(frozen=True)
+class BrandTextRenderer:
+    """Fallback brand mark — the cyan→magenta text wordmark (no image)."""
+
+    renderer_id: str = RENDERER_BRAND_TEXT
+
+    def renderable(self) -> str:
+        return "\n".join(brand_wordmark_lines())
+
+
+@dataclass(frozen=True)
+class BrandBannerRenderer:
+    """TIER 1 — the forgekit wordmark banner as a real inline image.
+
+    Renders the small baked intro banner via ``textual-image`` on a
+    graphics-capable terminal. Degrades straight to the compact TEXT wordmark
+    (the gradient mark) when the lib / asset is unavailable — the wordmark is the
+    intended compact fallback, so no half-block tier here.
+    """
+
+    renderer_id: str = RENDERER_BRAND_IMAGE
+    width: int = 28  # cells; compact, small banner — not the full 1916px master
+
+    def renderable(self):
+        path = best_banner_path()
+        if path is None:
+            return BrandTextRenderer().renderable()
+        try:
+            from textual_image.renderable import Image as _InlineImage  # noqa: WPS433
+        except Exception:  # noqa: BLE001 - textual-image absent → text wordmark
+            return BrandTextRenderer().renderable()
+        try:
+            return _InlineImage(str(path), width=self.width)
+        except Exception:  # noqa: BLE001 - raster construction failed → text wordmark
+            return BrandTextRenderer().renderable()
+
+
+def make_brand_renderer(
+    capability=None,
+    *,
+    width: int = 28,
+    env: Optional[Mapping[str, str]] = None,
+) -> AvatarRenderer:
+    """Build the intro brand renderer: real banner image first, else text wordmark.
+
+    Image-first like the avatar path: a graphics-capable terminal gets the real
+    inline banner; otherwise (or when the asset/lib is missing) the compact
+    cyan→magenta text wordmark, which is clean on its own.
+    """
+
+    if capability is None:
+        capability = detect_image_capability(env)
+    capable = capability.capable if isinstance(capability, ImageCapability) else bool(capability)
+    if capable:
+        return BrandBannerRenderer(width=width)
+    return BrandTextRenderer()
+
+
 def make_renderer(
     capability=None,
     *,
@@ -269,17 +375,27 @@ __all__ = (
     "RENDERER_REAL",
     "RENDERER_HALFBLOCK",
     "RENDERER_TEXT",
+    "RENDERER_BRAND_IMAGE",
+    "RENDERER_BRAND_TEXT",
     "ImageCapability",
     "AvatarRenderer",
     "RealImageRenderer",
     "HalfBlockRenderer",
     "TextMarkRenderer",
+    "BrandBannerRenderer",
+    "BrandTextRenderer",
     "detect_image_capability",
     "select_renderer",
     "make_renderer",
+    "make_brand_renderer",
     "text_mark_lines",
+    "brand_wordmark_lines",
     "assets_dir",
+    "brand_dir",
     "display_png_path",
     "source_image_path",
     "best_image_path",
+    "banner_intro_path",
+    "banner_master_path",
+    "best_banner_path",
 )

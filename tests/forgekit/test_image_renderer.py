@@ -168,5 +168,49 @@ class FallbackTests(unittest.TestCase):
             ir.best_image_path = orig  # type: ignore[assignment]
 
 
+class BrandBannerTests(unittest.TestCase):
+    """The intro brand mark: REAL inline banner image first, else text wordmark."""
+
+    def test_banner_asset_paths_exist_in_package(self) -> None:
+        # the brand banner master + the small baked intro both ship in the package
+        master = ir.banner_master_path()
+        intro = ir.banner_intro_path()
+        self.assertTrue(master.is_file(), f"banner master missing: {master}")
+        self.assertEqual(master.suffix, ".png")
+        self.assertTrue(intro.is_file(), f"baked intro banner missing: {intro}")
+        # best_banner_path prefers the small baked intro
+        self.assertEqual(ir.best_banner_path(), intro)
+        # the baked intro is small (compact), not the full 1916px master
+        self.assertLess(intro.stat().st_size, master.stat().st_size)
+
+    def test_capable_terminal_selects_real_banner_image(self) -> None:
+        r = ir.make_brand_renderer(ir.ImageCapability(True))
+        self.assertEqual(r.renderer_id, ir.RENDERER_BRAND_IMAGE)
+        self.assertIsInstance(r, ir.BrandBannerRenderer)
+
+    def test_incapable_terminal_falls_to_text_wordmark(self) -> None:
+        r = ir.make_brand_renderer(ir.ImageCapability(False))
+        self.assertEqual(r.renderer_id, ir.RENDERER_BRAND_TEXT)
+        self.assertIsInstance(r, ir.BrandTextRenderer)
+
+    def test_text_wordmark_is_cyan_magenta_gradient(self) -> None:
+        from forgekit_console.tui import theme
+
+        out = ir.BrandTextRenderer().renderable()
+        self.assertIn(theme.ACCENT_PRIMARY, out)
+        self.assertIn(theme.ACCENT_SECONDARY, out)
+        self.assertIn("forge", out)
+        self.assertIn("kit", out)
+
+    def test_banner_renderer_degrades_to_text_when_lib_missing(self) -> None:
+        # textual-image may be absent → the real banner renderer drops to the
+        # compact text wordmark (the intended fallback), never crashes.
+        out = ir.BrandBannerRenderer().renderable()
+        if isinstance(out, str):  # text wordmark fallback
+            self.assertIn("forge", out)
+        else:  # textual-image present → a real Image renderable
+            self.assertIsNotNone(out)
+
+
 if __name__ == "__main__":
     unittest.main()

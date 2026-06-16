@@ -300,6 +300,64 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 (ir.RENDERER_REAL, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
+    async def test_composer_is_thin_no_heavy_box(self) -> None:
+        """The composer is a THIN bar: a single subtle top rule, no full/heavy box.
+
+        Claude-Code restraint — the input row is the star. We assert the composer
+        carries only a top border (no left/right/bottom box) and a left accent
+        prompt marker ``›``.
+        """
+        from textual.widgets import Static
+        from forgekit_console.tui.composer import Composer
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            composer = app.query_one("#composer", Composer)
+            # border-top only — left/right/bottom edges are NOT a box
+            edges = composer.styles.border
+            top_edge = composer.styles.border_top
+            self.assertIsNotNone(top_edge)
+            self.assertNotEqual((top_edge[0] or "").lower(), "")
+            # the top rule is a THIN style (solid), not heavy
+            self.assertNotEqual((top_edge[0] or "").lower(), "heavy")
+            # no left/right/bottom border (a thin separator, not a full box)
+            self.assertIn((composer.styles.border_left[0] or "").lower(), ("", "none"))
+            self.assertIn((composer.styles.border_bottom[0] or "").lower(), ("", "none"))
+            # left accent prompt marker present
+            marker = str(app.query_one("#marker", Static).render())
+            self.assertIn("›", marker)
+
+    async def test_intro_shows_brand_banner_mark(self) -> None:
+        """The intro shows the forgekit BRAND mark (banner image-first / text wordmark)."""
+        from forgekit_console.tui.brand_panel import BrandPanel
+        from forgekit_console.tui.header import IntroHeader
+        from forgekit_console.tui import image_renderer as ir
+
+        app = self._app()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            intro = app.query_one("#intro", IntroHeader)
+            brand = intro.query_one("#intro-brand", BrandPanel)
+            self.assertIsNotNone(brand)
+            # whichever the headless terminal selected, it's the image or text tier
+            self.assertIn(
+                intro.brand_renderer_id,
+                (ir.RENDERER_BRAND_IMAGE, ir.RENDERER_BRAND_TEXT),
+            )
+
+    async def test_intro_brand_image_first_selection(self) -> None:
+        """Image-first: a graphics-capable terminal selects the REAL banner image;
+        a plain one falls back to the compact TEXT wordmark."""
+        from forgekit_console.tui import image_renderer as ir
+
+        capable = ir.make_brand_renderer(ir.ImageCapability(True))
+        plain = ir.make_brand_renderer(ir.ImageCapability(False))
+        self.assertEqual(capable.renderer_id, ir.RENDERER_BRAND_IMAGE)
+        self.assertEqual(plain.renderer_id, ir.RENDERER_BRAND_TEXT)
+        # text fallback is the clean cyan→magenta wordmark on its own
+        self.assertIn("forge", plain.renderable())
+
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
         provider/profile/repo meta (right)."""

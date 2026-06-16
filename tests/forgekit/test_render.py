@@ -74,14 +74,18 @@ class StatusPillTests(unittest.TestCase):
         return StatusSummary(**base)
 
     def test_one_line_with_green_dot_when_healthy(self) -> None:
+        from forgekit_console.tui import theme
+
         pill = render.status_pill(self._summary())
-        self.assertIn("green", pill)
+        self.assertIn(theme.SUCCESS, pill)  # brand success (green) dot
         self.assertIn("provider", pill)
         self.assertNotIn("\n", pill)
 
     def test_warn_dot(self) -> None:
+        from forgekit_console.tui import theme
+
         pill = render.status_pill(self._summary(alerts=(Alert("warn", "x"),)))
-        self.assertIn("yellow", pill)
+        self.assertIn(theme.WARNING, pill)  # brand warning (amber) dot
 
     def test_unavailable(self) -> None:
         pill = render.status_pill(StatusSummary(title="x", available=False, error="no db"))
@@ -130,7 +134,10 @@ class HelpPanelDocumentTests(unittest.TestCase):
         secs = self._secs()
         general = render.default_help_tab(secs)
         joined = "\n".join(render.help_panel_document(secs, general))
-        self.assertIn("forgekit help", joined)
+        # the header is the cyan→magenta wordmark + "help" (brand mark, not a
+        # plain "forgekit help" literal)
+        self.assertIn("forge", joined)
+        self.assertIn("help", joined)
         self.assertIn("Esc", joined)
         # all four tab labels appear in the strip
         for title in ("Help", "General", "Commands", "Agents"):
@@ -169,7 +176,9 @@ class IntroMetaTests(unittest.TestCase):
             repo="/repo", version="0.1.0", profile="operator", provider="claude"
         )
         joined = "\n".join(lines)
-        self.assertIn("forgekit", joined)
+        # brand is the cyan→magenta wordmark ("forge" + "kit" split spans)
+        self.assertIn("forge", joined)
+        self.assertIn("kit", joined)
         self.assertIn("v0.1.0", joined)
         self.assertIn("/repo", joined)
         self.assertIn("operator", joined)  # profile
@@ -178,7 +187,7 @@ class IntroMetaTests(unittest.TestCase):
     def test_meta_defaults(self) -> None:
         lines = render.intro_meta_lines(repo="/r", version="0.1.0")
         self.assertTrue(lines)
-        self.assertIn("forgekit", "\n".join(lines))
+        self.assertIn("forge", "\n".join(lines))
 
 
 class IssueLineTests(unittest.TestCase):

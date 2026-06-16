@@ -10,12 +10,21 @@ from __future__ import annotations
 from typing import Optional, Sequence, Tuple
 
 from ..models import MODE_OPERATOR, AgentInfo, HelpSection, StatusSummary
+from . import theme
 
 BRAND = "forgekit"
 TAGLINE = "operator console"
 
-# Textual/Rich console-markup colours per alert level.
-_LEVEL_STYLE = {"info": "dim", "warn": "yellow", "error": "bold red"}
+# Brand markup tokens (cyan/magenta accents on black) — see tui.theme.
+_ACCENT = theme.ACCENT_PRIMARY
+_ACCENT2 = theme.ACCENT_SECONDARY
+_MUTED = theme.MUTED
+_WARN = theme.WARNING
+_OK = theme.SUCCESS
+_ERR = theme.ERROR
+
+# Rich console-markup colours per alert level (brand-tuned).
+_LEVEL_STYLE = {"info": "dim", "warn": _WARN, "error": f"bold {_ERR}"}
 
 
 def welcome_banner(repo_root: str, profile: str) -> Tuple[str, ...]:
@@ -41,7 +50,7 @@ def intro_meta_lines(
     """
 
     return (
-        f"[b orange1]{BRAND}[/b orange1] [dim]v{version}[/dim]",
+        f"{theme.wordmark(BRAND)} [dim]v{version}[/dim]",
         f"[dim]{TAGLINE}[/dim]",
         f"[dim]provider[/dim] {provider}   [dim]profile[/dim] {profile}",
         f"[dim]{repo}[/dim]",
@@ -56,26 +65,26 @@ def issue_line(summary: StatusSummary) -> str:
     """
 
     if not summary.available:
-        return "[yellow]status unavailable[/yellow] [dim]· /doctor[/dim]"
+        return f"[{_WARN}]status unavailable[/{_WARN}] [dim]· /doctor[/dim]"
     alerts = [a for a in summary.alerts if a.level in ("warn", "error")]
     if not alerts:
         return "[dim]ready · /status[/dim]"
     labels = ", ".join(a.message.split(" ")[0] for a in alerts[:3])
     word = "issue" if len(alerts) == 1 else "issues"
-    return f"[yellow]{len(alerts)} {word}[/yellow]: {labels} [dim]· /doctor[/dim]"
+    return f"[{_WARN}]{len(alerts)} {word}[/{_WARN}]: {labels} [dim]· /doctor[/dim]"
 
 
 def status_pill(summary: StatusSummary) -> str:
     """A single compact operator line — secondary, not the star of the screen."""
 
     if not summary.available:
-        return "[yellow]●[/yellow] [dim]status unavailable[/dim]"
+        return f"[{_WARN}]●[/{_WARN}] [dim]status unavailable[/dim]"
     if any(a.level == "error" for a in summary.alerts):
-        dot = "[red]●[/red]"
+        dot = f"[{_ERR}]●[/{_ERR}]"
     elif any(a.level == "warn" for a in summary.alerts):
-        dot = "[yellow]●[/yellow]"
+        dot = f"[{_WARN}]●[/{_WARN}]"
     else:
-        dot = "[green]●[/green]"
+        dot = f"[{_OK}]●[/{_OK}]"
     parts = []
     for section in summary.sections[:3]:
         first = section.lines[0] if section.lines else ""
@@ -90,9 +99,9 @@ def mode_pill(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
     """A restrained mode indicator for the input row (replaces the heavy badge)."""
 
     if mode in (MODE_OPERATOR, "") or not mode:
-        return "[orange1]●[/orange1] [dim]operator[/dim]"
+        return f"[{_ACCENT}]●[/{_ACCENT}] [dim]operator[/dim]"
     if mode == "palette":
-        return "[cyan]●[/cyan] [dim]palette[/dim]"
+        return f"[{_ACCENT2}]●[/{_ACCENT2}] [dim]palette[/dim]"
     if mode.startswith("agent:"):
         agent_id = mode.split(":", 1)[1]
         label = agent_id
@@ -100,7 +109,7 @@ def mode_pill(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
             if a.agent_id == agent_id:
                 label = a.label
                 break
-        return f"[dark_orange]●[/dark_orange] [b]{label}[/b]"
+        return f"[{_ACCENT2}]●[/{_ACCENT2}] [b]{label}[/b]"
     return f"[dim]●[/dim] {mode}"
 
 
@@ -142,9 +151,13 @@ def help_panel_document(sections: Sequence[HelpSection], active: int) -> Tuple[s
     active = max(0, min(active, len(sections) - 1))
     chips = []
     for i, s in enumerate(sections):
-        chips.append(f"[reverse] {s.title} [/reverse]" if i == active else f"[dim]{s.title}[/dim]")
+        chips.append(
+            f"[reverse {_ACCENT}] {s.title} [/reverse {_ACCENT}]"
+            if i == active
+            else f"[dim]{s.title}[/dim]"
+        )
     return (
-        "[b orange1]forgekit help[/b orange1]   " + "  ".join(chips),
+        theme.wordmark("forgekit") + " [dim]help[/dim]   " + "  ".join(chips),
         "[dim]Tab 탭 전환 · Esc 로 transcript 로 돌아갑니다 · 입력창은 그대로 열려 있습니다[/dim]",
         "[dim]" + "─" * 48 + "[/dim]",
         "",
@@ -202,7 +215,7 @@ def palette_panel_lines(commands: Sequence, selected: int = -1) -> Tuple[str, ..
     out = []
     for i, c in enumerate(commands):
         if i == selected:
-            out.append(f"[reverse] ▸ /{c.name} [/reverse] [dim]{c.summary}[/dim]")
+            out.append(f"[reverse {_ACCENT}] ▸ /{c.name} [/reverse {_ACCENT}] [dim]{c.summary}[/dim]")
         else:
             out.append(f"   [b]/{c.name}[/b] [dim]{c.summary}[/dim]")
     return tuple(out)
@@ -220,9 +233,9 @@ def mode_badge(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
             if a.agent_id == agent_id:
                 label = a.label
                 break
-        return f"[reverse dark_orange] AGENT · {label} [/reverse dark_orange]"
+        return f"[reverse {_ACCENT2}] AGENT · {label} [/reverse {_ACCENT2}]"
     if mode == "palette":
-        return "[reverse cyan] PALETTE [/reverse cyan]"
+        return f"[reverse {_ACCENT2}] PALETTE [/reverse {_ACCENT2}]"
     return f"[reverse] {mode.upper()} [/reverse]"
 
 
@@ -276,7 +289,7 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
 def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
     """Frame a command result for the center log."""
 
-    header = f"[b cyan]» {title}[/b cyan]" if title else "[b cyan]»[/b cyan]"
+    header = f"[b {_ACCENT}]» {title}[/b {_ACCENT}]" if title else f"[b {_ACCENT}]»[/b {_ACCENT}]"
     return (header, *lines, "")
 
 
