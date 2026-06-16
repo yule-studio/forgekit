@@ -34,15 +34,25 @@ def resolve_repo_root(explicit: Optional[str] = None) -> Path:
     return Path.cwd().resolve()
 
 
+# CLI subcommand modules — each exposes add_parser(subparsers) + handle(args).
+# Registered here so `app.main` stays a thin dispatcher.
+def _cli_modules() -> dict:
+    from ..cli import brain_cmd
+
+    return {"brain": brain_cmd}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="forgekit",
-        description="Forgekit operator console (TUI over the yule runtime/harness surfaces).",
+        description="Forgekit provider-agnostic operator console + setup.",
     )
     parser.add_argument("--version", action="store_true", help="버전 출력 후 종료")
     sub = parser.add_subparsers(dest="command")
     console = sub.add_parser("console", help="운영자 콘솔 TUI 열기 (기본)")
     console.add_argument("--repo-root", help="status surface 의 기준 repo 경로")
+    for module in _cli_modules().values():
+        module.add_parser(sub)
     return parser
 
 
@@ -74,9 +84,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return EXIT_OK
 
     # bare `forgekit` or `forgekit console` → open the console
-    repo_root = resolve_repo_root(getattr(args, "repo_root", None))
     if args.command in (None, "console"):
+        repo_root = resolve_repo_root(getattr(args, "repo_root", None))
         return launch_console(repo_root=repo_root)
+
+    modules = _cli_modules()
+    if args.command in modules:
+        return modules[args.command].handle(args)
 
     parser.print_help()
     return EXIT_USAGE
