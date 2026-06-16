@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgekit-console"
+version = "0.1.0"
+description = "Forgekit operator console — a Textual TUI over the yule runtime/harness surfaces."
+requires-python = ">=3.9"
+# The TUI layer needs textual; the pure core (commands/data/models) is stdlib-only
+# and importable + testable without it. The root install exposes the `forgekit`
+# console script and pulls textual via the root `console` extra.
+dependencies = [
+  "textual>=0.50",
+]
+
+[project.scripts]
+forgekit = "forgekit_console.app.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

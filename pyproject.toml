@@ -14,8 +14,19 @@ dependencies = [
   "icalendar>=6.0.0",
 ]
 
+[project.optional-dependencies]
+# The Forgekit operator console (TUI). Kept out of core deps so the stdlib-only
+# CI install (`pip install -e .`) stays lean; install with
+# `pip install -e '.[console]'` to run the full `forgekit` TUI.
+console = [
+  "textual>=0.50",
+]
+
 [project.scripts]
+# `yule` = the existing engineering CLI (backward-compatible, unchanged).
+# `forgekit` = the operator console; bare `forgekit` opens `forgekit console`.
 yule = "yule_engineering.cli:main"
+forgekit = "forgekit_console.app.main:main"
 
 [tool.setuptools.packages.find]
 # Monorepo packages live under packages/<name>/src and are discovered here so
@@ -41,4 +52,5 @@ where = [
     "packages/learning/src",
     "packages/agent-memory/src",
     "packages/agent-runtime/src",
+    "apps/forgekit-console/src",
 ]
