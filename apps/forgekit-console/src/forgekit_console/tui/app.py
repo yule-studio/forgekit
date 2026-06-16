@@ -1,15 +1,19 @@
 """Forgekit operator console — Claude-Code-style chat-first layout.
 
 Top→bottom: a small real-image avatar + brand/meta intro · one quiet issue line ·
-the transcript (chat-first main area where command results AND ``/help`` stack) ·
-a **fixed bottom composer** (mode pill + input + inline palette) that is ALWAYS
-visible · a one-line hint. The user reads straight down and types at the bottom,
-exactly like Claude Code. ``/help`` renders INTO the transcript (not a modal);
-the composer never disappears.
+the main panel (a transcript XOR help-view state machine) · a **fixed bottom
+composer** (mode pill + input + inline palette) that is ALWAYS visible · a
+one-line hint. The user reads straight down and types at the bottom, exactly like
+Claude Code.
+
+``/help`` (and F1) does NOT append into the transcript — it switches the whole
+main area to a dedicated help VIEW (transcript hidden). Esc switches back to the
+transcript exactly as it was. The view switch lives in
+:class:`tui.main_panel.MainPanel`; the composer never disappears across it.
 
 Pure logic (parse/route/palette-state/intro/help strings + image-renderer
 selection) lives in the core/helpers; this module owns the live widget state
-(mode, palette, help tab) and the wiring between them.
+(mode, palette) and the wiring between them.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ from ..models import (
 from . import keymap, render
 from .composer import Composer
 from .header import IntroHeader
+from .main_panel import MainPanel
 from .palette import CommandPalette
 from .styles import SCREEN_CSS
 from .transcript import Transcript
@@ -65,7 +70,6 @@ class ForgekitConsoleApp(App):
         self.context.profile = self.context.profile or "operator"
         self.mode = MODE_OPERATOR
         self._palette = palette_state.CLOSED
-        self._help_tab = 0
         self._suppress_refilter = False
 
     # --- layout -------------------------------------------------------------
@@ -80,8 +84,8 @@ class ForgekitConsoleApp(App):
         )
         # one quiet issue line under the intro
         yield Static(id="issue")
-        # chat-first main area — results AND help stack here
-        yield Transcript(id="log")
+        # main area — a transcript XOR help-view state machine (mutually exclusive)
+        yield MainPanel(id="main")
         # one-line hint just above the fixed composer
         yield Static(id="hint")
         # fixed bottom composer (always visible — palette inline, mode pill, input)
@@ -90,7 +94,7 @@ class ForgekitConsoleApp(App):
     def on_mount(self) -> None:
         self.title = render.BRAND
         self.sub_title = render.TAGLINE
-        log = self.query_one("#log", Transcript)
+        log = self._transcript
         for line in render.welcome_banner(str(self.repo_root), self.context.profile):
             log.write(line)
         self._refresh_issue()
@@ -119,14 +123,14 @@ class ForgekitConsoleApp(App):
     def action_next(self) -> None:
         if self._palette.is_open:
             self._cycle(1)
-        elif self._transcript.help_open:
-            self._switch_help_tab(1)
+        elif self._main.help_open:
+            self._main.switch_help_tab(1)
 
     def action_prev(self) -> None:
         if self._palette.is_open:
             self._cycle(-1)
-        elif self._transcript.help_open:
-            self._switch_help_tab(-1)
+        elif self._main.help_open:
+            self._main.switch_help_tab(-1)
 
     def action_palette_next(self) -> None:
         if self._palette.is_open:
@@ -137,7 +141,7 @@ class ForgekitConsoleApp(App):
             self._cycle(-1)
 
     def action_dismiss(self) -> None:
-        if self._transcript.help_open:
+        if self._main.help_open:
             self._close_help()
             return
         if self._palette.is_open:
@@ -146,7 +150,7 @@ class ForgekitConsoleApp(App):
         if self.mode != MODE_OPERATOR:
             self.mode = MODE_OPERATOR
             self._refresh_chrome()
-            self.query_one("#log", Transcript).write("[dim]› operator 모드로 복귀[/dim]")
+            self._transcript.write("[dim]› operator 모드로 복귀[/dim]")
 
     def _cycle(self, direction: int) -> None:
         self._palette = palette_state.cycle(self._palette, direction)
@@ -184,13 +188,13 @@ class ForgekitConsoleApp(App):
             self.exit()
             return
         if result.kind == KIND_CLEAR:
-            self.query_one("#log", Transcript).clear()
-            self._transcript.close_help()
+            self._transcript.clear()
+            self._main.show_transcript()
             return
         if result.kind in (KIND_HELP, KIND_LAYOUT):
             self._open_help()  # /layout also routes to help in this flow
             return
-        log = self.query_one("#log", Transcript)
+        log = self._transcript
         log.write_echo(raw)
         log.write_result(result.title, result.lines)
         if result.kind == KIND_AGENT_MODE:
@@ -199,40 +203,40 @@ class ForgekitConsoleApp(App):
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
 
-    # --- help (rendered INTO the transcript; composer stays visible) --------
+    # --- help (a VIEW SWITCH, not a transcript append; composer stays visible) --
 
     def action_open_help(self) -> None:
-        if self._transcript.help_open:
+        if self._main.help_open:
             self._close_help()
         else:
             self._open_help()
 
     def _open_help(self) -> None:
+        # Switch the whole main area to the dedicated help view (transcript hidden).
+        # Nothing is appended to the transcript — opening/switching tabs re-renders
+        # the help panel in place.
         self._close_palette()
-        self._help_tab = render.default_help_tab(
-            render.help_sections(self.context.commands, self.context.agents)
-        )
-        self._transcript.open_help(self.context.commands, self.context.agents, self._help_tab)
+        self._main.show_help(self.context.commands, self.context.agents)
         self._refresh_chrome()
 
     def _close_help(self) -> None:
-        self._transcript.close_help()
+        # Switch back to the transcript exactly as it was (nothing left behind).
+        self._main.show_transcript()
         self._refresh_chrome()
 
-    def _switch_help_tab(self, direction: int) -> None:
-        n = len(render.help_sections(self.context.commands, self.context.agents))
-        self._help_tab = (self._help_tab + direction) % n
-        self._transcript.rerender_help(self.context.commands, self.context.agents, self._help_tab)
+    @property
+    def _main(self) -> MainPanel:
+        return self.query_one("#main", MainPanel)
 
     @property
     def _transcript(self) -> Transcript:
-        return self.query_one("#log", Transcript)
+        return self._main.transcript
 
     # --- chrome / status ----------------------------------------------------
 
     def action_clear_log(self) -> None:
-        self.query_one("#log", Transcript).clear()
-        self._transcript.close_help()
+        self._transcript.clear()
+        self._main.show_transcript()
 
     def action_refresh_status(self) -> None:
         self._refresh_issue()
@@ -247,7 +251,7 @@ class ForgekitConsoleApp(App):
         self.query_one("#hint", Static).update(
             render.hint_line(
                 palette_open=self._palette.is_open,
-                help_open=self._transcript.help_open,
+                help_open=self._main.help_open,
                 in_agent=self.mode != MODE_OPERATOR,
             )
         )
