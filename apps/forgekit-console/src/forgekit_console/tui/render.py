@@ -19,19 +19,29 @@ _LEVEL_STYLE = {"info": "dim", "warn": "yellow", "error": "bold red"}
 
 
 def welcome_banner(repo_root: str, profile: str) -> Tuple[str, ...]:
-    """The first content block — compact, reads top→down above results."""
+    """The first content block — one quiet line. Detail lives in /help and /status."""
 
     return (
-        "[dim]운영자 콘솔. 위 입력창에 명령을 치면 결과가 여기 아래로 쌓입니다.[/dim]",
-        "[dim]일반 텍스트(자유 입력)는 아직 live submit 에 연결되지 않았습니다.[/dim]",
-        "",
-        "[b]quick[/b]  "
-        "[orange3]/help[/orange3] 도움말 · [orange3]/status[/orange3] 운영요약 · "
-        "[orange3]/agents[/orange3] 에이전트 · [orange3]/doctor[/orange3] 진단 · "
-        "[orange3]/layout[/orange3] 보기전환",
-        "[dim]`/` 팔레트 · Tab 자동완성 · F1 도움말 · ^C 종료[/dim]",
+        "[dim]`/help` 로 시작 · `/` 명령 팔레트 · `/status` 운영 요약[/dim]",
         "",
     )
+
+
+def issue_line(summary: StatusSummary) -> str:
+    """The compact setup/status line under the intro — text-first, one line.
+
+    Quiet by default ("ready") so the input flow leads; surfaces a count +
+    pointer when there's something to look at, Claude-style.
+    """
+
+    if not summary.available:
+        return "[yellow]status unavailable[/yellow] [dim]· /doctor[/dim]"
+    alerts = [a for a in summary.alerts if a.level in ("warn", "error")]
+    if not alerts:
+        return "[dim]ready · /status[/dim]"
+    labels = ", ".join(a.message.split(" ")[0] for a in alerts[:3])
+    word = "issue" if len(alerts) == 1 else "issues"
+    return f"[yellow]{len(alerts)} {word}[/yellow]: {labels} [dim]· /doctor[/dim]"
 
 
 def status_pill(summary: StatusSummary) -> str:
@@ -77,30 +87,42 @@ def hint_line(*, palette_open: bool = False, help_open: bool = False, in_agent: 
     """Contextual one-line shortcut hint (replaces the thick footer)."""
 
     if help_open:
-        return "[dim]Esc[/dim] 닫기   [dim]↑/↓[/dim] 스크롤"
+        return "[dim]Tab 탭 · Esc 닫기[/dim]"
     if palette_open:
-        return "[dim]Tab · ↑/↓[/dim] 순환   [dim]Enter[/dim] 실행   [dim]Esc[/dim] 닫기"
-    base = (
-        "[dim]/[/dim] palette   [dim]Tab[/dim] 완성   [dim]F1[/dim] help   "
-        "[dim]/layout[/dim] 보기   [dim]^L[/dim] clear   [dim]^C[/dim] quit"
-    )
+        return "[dim]Tab 순환 · Enter 실행 · Esc 닫기[/dim]"
     if in_agent:
-        return "[dim]Esc[/dim] operator   " + base
-    return base
+        return "[dim]/help · Esc operator · ^C quit[/dim]"
+    return "[dim]/help · / palette · Tab 완성 · ^C quit[/dim]"
 
 
-def help_inline(sections: Sequence[HelpSection]) -> Tuple[str, ...]:
-    """Inline help document — reads in the flow (no modal). Sections stacked."""
+def default_help_tab(sections: Sequence[HelpSection]) -> int:
+    """Index of the default-open help tab (``General``), else 0."""
 
-    tabs = "  ·  ".join(f"[b]{s.title}[/b]" for s in sections)
+    for i, s in enumerate(sections):
+        if s.title == "General":
+            return i
+    return 0
+
+
+def help_document(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
+    """Full-width inline help — a tab strip + only the ACTIVE tab's content.
+
+    One screen, no accordion, no nested panels: the open tab is shown in full so
+    "what's open now" is obvious. Tabs switch with ←/→, Esc closes.
+    """
+
+    if not sections:
+        return ("[dim]no help[/dim]",)
+    active = max(0, min(active, len(sections) - 1))
+    chips = []
+    for i, s in enumerate(sections):
+        chips.append(f"[reverse] {s.title} [/reverse]" if i == active else f"[dim]{s.title}[/dim]")
     lines = [
-        f"[b orange1]forgekit help[/b orange1]   [dim]{tabs}[/dim]   [dim](Esc 닫기)[/dim]",
+        f"[b orange1]forgekit help[/b orange1]   " + "  ".join(chips),
+        "[dim]Tab 탭 전환 · Esc 닫기[/dim]",
         "",
+        *sections[active].lines,
     ]
-    for section in sections:
-        lines.append(f"[b orange3]▸ {section.title}[/b orange3]")
-        lines.extend(f"  {line}" for line in section.lines)
-        lines.append("")
     return tuple(lines)
 
 
@@ -179,44 +201,41 @@ def mode_badge(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
 
 
 def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[HelpSection, ...]:
-    """Build the tabbed help overlay content. Pure — the widget renders it."""
+    """Build the help tabs — short, scannable. Order: Help · General · Commands · Agents.
 
-    overview = HelpSection("Help", (
-        f"[b]{BRAND}[/b] — {TAGLINE}",
-        "",
-        "forgekit 는 yule runtime/harness/doctor surface 위의 운영자 콘솔입니다.",
-        "하단 입력창에 슬래시 명령을 입력하거나, 에이전트 모드로 진입하세요.",
-        "일반 텍스트(자유 입력)는 아직 live submit 에 연결되지 않았습니다.",
-        "",
-        "Esc 로 이 도움말을 닫습니다.",
+    ``General`` is the default-open tab (see :func:`default_help_tab`).
+    """
+
+    help_tab = HelpSection("Help", (
+        "[b]빠른 사용 흐름[/b]",
+        "  1. 입력창에 `/` 를 치면 명령 목록(palette)이 열립니다.",
+        "  2. Tab 으로 자동완성, Enter 로 실행.",
+        "  3. 결과는 아래 본문에 위→아래로 쌓입니다.",
+        "  4. `/status` 운영 요약 · `/doctor` 진단 · `/exit` 종료.",
     ))
     general = HelpSection("General", (
-        "[b]키[/b]",
-        "  /            command palette 열기",
-        "  Tab          autocomplete / 다음 후보",
-        "  Shift+Tab    이전 후보",
-        "  ↑ / ↓        후보 순환",
-        "  Enter        선택/입력 실행",
-        "  Esc          palette 닫기 · agent 모드 해제",
-        "  F1           도움말        ^L 로그 지우기",
-        "  ^R 상태 새로고침            ^C 종료",
+        "forgekit — 운영자 콘솔 (provider-agnostic).",
+        "입력창에 슬래시 명령을 치거나 에이전트 모드로 들어갑니다.",
+        "일반 텍스트는 아직 live submit 에 연결되지 않았습니다.",
         "",
-        "[b]모드[/b]",
-        "  OPERATOR     기본 모드",
-        "  AGENT·<name> 에이전트 모드(현재 stub)",
+        "[b]단축키[/b]",
+        "  /  palette     Tab  자동완성     Enter  실행",
+        "  ←/→  탭         Esc  닫기/복귀     F1  help",
+        "  ^L  clear      ^R  refresh       ^C  quit",
     ))
-    cmd_lines = ["[b]slash commands[/b]", ""]
+    cmd_lines = ["[b]commands[/b]", ""]
     for c in commands:
         cmd_lines.append(f"  [b]/{c.name}[/b]  [dim]{c.summary}[/dim]")
-    custom = HelpSection("Commands", tuple(cmd_lines))
-    agent_lines = ["[b]agent modes[/b]", "", "에이전트 모드 진입(stub):"]
-    for a in agents:
-        if a.enter_command:
-            agent_lines.append(f"  [b]{a.enter_command}[/b]  [dim]{a.label} — {a.description}[/dim]")
-    agent_lines.append("")
-    agent_lines.append("예: /pm-agent · /backend-agent · /security-agent · /ops-observer")
-    agents_sec = HelpSection("Agents", tuple(agent_lines))
-    return (overview, general, custom, agents_sec)
+    commands_tab = HelpSection("Commands", tuple(cmd_lines))
+    agents_tab = HelpSection("Agents", (
+        "[b]operator mode[/b]  기본 모드 — 콘솔 명령으로 운영 표면을 봅니다.",
+        "[b]agent mode[/b]     에이전트 모드(stub) — 진입 시 상단에 표시됩니다.",
+        "",
+        "진입 예: " + " · ".join(a.enter_command for a in agents if a.enter_command) or "(없음)",
+        "",
+        "Esc 로 operator 모드로 돌아옵니다.",
+    ))
+    return (help_tab, general, commands_tab, agents_tab)
 
 
 def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
@@ -228,8 +247,8 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 
 __all__ = (
     "BRAND", "TAGLINE",
-    "welcome_banner", "agent_pane_lines", "status_pane_lines",
+    "welcome_banner", "issue_line", "agent_pane_lines", "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
-    "status_pill", "hint_line", "help_sections", "help_inline",
+    "status_pill", "hint_line", "help_sections", "help_document", "default_help_tab",
     "result_block",
 )

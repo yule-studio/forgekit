@@ -67,6 +67,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("layout", "레이아웃 전환 (focus ↔ dashboard)", H_LAYOUT),
     SlashCommand("clear", "로그 지우기", H_CLEAR),
     SlashCommand("quit", "콘솔 종료", H_QUIT),
+    SlashCommand("exit", "콘솔 종료 (/quit alias)", H_QUIT),
 )
 
 
