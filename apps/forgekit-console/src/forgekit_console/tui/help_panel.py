@@ -28,7 +28,8 @@ class HelpPanel(Static):
     DEFAULT_CSS = """
     HelpPanel {
         width: 1fr;
-        height: 1fr;
+        height: auto;
+        max-height: 80vh;
         padding: 1 2;
         overflow-y: auto;
     }

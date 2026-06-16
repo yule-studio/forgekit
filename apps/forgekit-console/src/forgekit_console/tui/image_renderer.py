@@ -1,10 +1,19 @@
-"""Avatar image rendering — real inline image FIRST, text mark SECOND.
+"""Avatar image rendering — image FIRST, with an explicit 3-tier priority.
 
-The forgekit intro shows a small avatar like Claude Code's brand icon. The
-**primary** path is a real inline image of the baked portrait PNG, rendered with
-a terminal graphics protocol (Kitty / iTerm2 / Sixel) via the ``textual-image``
-package. Only when the terminal can't do that do we fall back to a small, clean
-text/symbol mark — never a big pixelated half-block raster.
+The forgekit intro shows a small avatar like Claude Code's brand icon. The render
+is **image-first**: we always try to show the actual baked portrait, dropping to
+a plain text mark only as a last resort. The priority, top→down, is:
+
+1. **REAL inline raster** — the baked PNG drawn pixel-for-pixel with a terminal
+   graphics protocol (Kitty / iTerm2 / Sixel, incl. the VS Code integrated
+   terminal's iTerm2 inline-image support) via ``textual-image``. Used when
+   :func:`detect_image_capability` says the terminal is graphics-capable.
+2. **IMAGE-DERIVED half-block** — when inline graphics aren't available we still
+   show an *image*: a tiny (~12-16 col) Unicode half-block render derived from
+   the **same baked PNG** with Pillow (:mod:`tui.halfblock`). Clean and small,
+   genuinely the portrait's pixels — NOT typed text approximating it.
+3. **TEXT/logo mark** — only if even Pillow / the asset is missing do we fall to
+   the two-line brand mark.
 
 Design for testability
 -----------------------
@@ -14,11 +23,12 @@ terminal:
 * :func:`detect_image_capability` reads the environment/terminal and returns a
   pure :class:`ImageCapability` decision (injectable ``env`` / overrides).
 * :func:`select_renderer` takes that decision (or any bool) and returns which
-  renderer to use — no IO, fully pure.
-* :class:`RealImageRenderer` / :class:`TextMarkRenderer` are the two concrete
-  renderers; the real one degrades to the fallback if ``textual-image`` is
-  missing at *render* time (import guarded), so the priority is "real first,
-  fall back if truly unsupported".
+  renderer to use — no IO, fully pure. Capable → real raster; not-capable → the
+  image-derived half-block (tier 2), which itself degrades to text only when
+  Pillow/the asset is missing.
+* :class:`RealImageRenderer` / :class:`HalfBlockRenderer` / :class:`TextMarkRenderer`
+  are the three concrete renderers; each degrades down a tier at *render* time
+  (import/asset guarded), so the image-first priority holds wherever it can.
 
 Nothing here imports textual's App; the widget wiring lives in
 :mod:`tui.avatar_panel`.
@@ -37,8 +47,9 @@ _DISPLAY_PNG = "forgekit-avatar.png"
 _SOURCE_JPG = "profile_hermes_source.jpg"
 
 # Renderer identifiers (returned by select_renderer; stable for tests).
-RENDERER_REAL = "real-image"
-RENDERER_TEXT = "text-mark"
+RENDERER_REAL = "real-image"  # tier 1 — inline raster
+RENDERER_HALFBLOCK = "half-block"  # tier 2 — image-derived unicode half-block
+RENDERER_TEXT = "text-mark"  # tier 3 — last-resort text/logo mark
 
 # Env var to force a path regardless of detection (operator/testing override).
 #   FORGEKIT_AVATAR=image  → force real image
@@ -48,6 +59,10 @@ _FORCE_ENV = "FORGEKIT_AVATAR"
 # Terminals/protocols known to support inline graphics. Detection is heuristic
 # (textual-image does the real protocol probing at render time); this gates the
 # *attempt* so a plain terminal never even tries.
+#   iterm.app  — iTerm2 inline image protocol
+#   wezterm    — Kitty + iTerm2 protocols
+#   vscode     — VS Code integrated terminal (recent versions speak the iTerm2
+#                inline-image protocol, so TERM_PROGRAM=vscode is worth attempting)
 _GRAPHICS_TERM_PROGRAMS = ("iterm.app", "wezterm", "vscode")
 _GRAPHICS_TERMS = ("xterm-kitty", "wezterm")
 
@@ -118,6 +133,9 @@ def detect_image_capability(
         return ImageCapability(True, reason="iterm2 inline images")
     if "sixel" in term or environ.get("FORGEKIT_SIXEL"):
         return ImageCapability(True, reason="sixel")
+    # VS Code integrated terminal: recent versions support the iTerm2 inline-image
+    # protocol, so TERM_PROGRAM=vscode is worth the real-raster attempt (textual-
+    # image probes for real at render time; this only gates the attempt).
     if term_program in _GRAPHICS_TERM_PROGRAMS:
         return ImageCapability(True, reason=f"term_program={term_program}")
     if term in _GRAPHICS_TERMS:
@@ -129,12 +147,15 @@ def detect_image_capability(
 def select_renderer(capability) -> str:
     """Pure selection: capability (truthy/ImageCapability) → renderer id.
 
-    Real image FIRST when capable, else the text mark. Accepts a bool or an
-    :class:`ImageCapability` so callers and tests can inject either.
+    Image-first priority: capable terminal → the REAL inline raster (tier 1);
+    otherwise the IMAGE-DERIVED half-block (tier 2). The half-block renderer
+    itself degrades to the text mark (tier 3) at render time when Pillow / the
+    asset is missing, so "show an image whenever possible" holds. Accepts a bool
+    or an :class:`ImageCapability` so callers and tests can inject either.
     """
 
     capable = capability.capable if isinstance(capability, ImageCapability) else bool(capability)
-    return RENDERER_REAL if capable else RENDERER_TEXT
+    return RENDERER_REAL if capable else RENDERER_HALFBLOCK
 
 
 # --- text/symbol fallback mark (SECONDARY) ---------------------------------
@@ -165,7 +186,7 @@ class AvatarRenderer(Protocol):
 
 @dataclass(frozen=True)
 class TextMarkRenderer:
-    """SECONDARY renderer — a small clean text/symbol mark (no image lib)."""
+    """TIER 3 (last resort) — a small clean text/symbol mark (no image at all)."""
 
     renderer_id: str = RENDERER_TEXT
 
@@ -174,11 +195,35 @@ class TextMarkRenderer:
 
 
 @dataclass(frozen=True)
-class RealImageRenderer:
-    """PRIMARY renderer — a real inline image via ``textual-image``.
+class HalfBlockRenderer:
+    """TIER 2 — an image-DERIVED half-block render of the baked PNG (Pillow).
 
-    Falls back to the text mark only if the image lib is missing or the asset is
-    unreadable at render time, so "real image first" holds wherever it can.
+    Shown when inline graphics aren't available: still a real *image* of the
+    portrait (downscaled half-block raster, ~12-16 cols), not typed text. Degrades
+    to the text mark (tier 3) only when Pillow / the asset is missing.
+    """
+
+    renderer_id: str = RENDERER_HALFBLOCK
+    cols: int = 14  # cells wide; small & clean
+
+    def renderable(self):
+        from . import halfblock  # local import keeps Pillow optional at import time
+
+        path = best_image_path()
+        rendered = halfblock.render_halfblock(path, cols=self.cols) if path else None
+        if rendered is None:
+            return TextMarkRenderer().renderable()
+        return rendered
+
+
+@dataclass(frozen=True)
+class RealImageRenderer:
+    """TIER 1 (primary) — a real inline image raster via ``textual-image``.
+
+    Falls back DOWN the tiers if the image lib is missing or the asset is
+    unreadable at render time: first to the image-derived half-block (tier 2),
+    then to the text mark (tier 3). So "show the real image first, else still an
+    image" holds wherever it can.
     """
 
     renderer_id: str = RENDERER_REAL
@@ -190,12 +235,12 @@ class RealImageRenderer:
             return TextMarkRenderer().renderable()
         try:
             from textual_image.renderable import Image as _InlineImage  # noqa: WPS433
-        except Exception:  # noqa: BLE001 - textual-image not installed → fallback
-            return TextMarkRenderer().renderable()
+        except Exception:  # noqa: BLE001 - textual-image absent → image-derived tier 2
+            return HalfBlockRenderer().renderable()
         try:
             return _InlineImage(str(path), width=self.width)
-        except Exception:  # noqa: BLE001 - any render construction failure
-            return TextMarkRenderer().renderable()
+        except Exception:  # noqa: BLE001 - raster construction failed → tier 2
+            return HalfBlockRenderer().renderable()
 
 
 def make_renderer(
@@ -204,22 +249,30 @@ def make_renderer(
     width: int = 12,
     env: Optional[Mapping[str, str]] = None,
 ) -> AvatarRenderer:
-    """Build the renderer chosen by *capability* (detected from *env* if None)."""
+    """Build the renderer chosen by *capability* (detected from *env* if None).
+
+    Image-first: capable → real raster (tier 1), not-capable → image-derived
+    half-block (tier 2). Both degrade to the text mark (tier 3) at render time.
+    """
 
     if capability is None:
         capability = detect_image_capability(env)
     renderer_id = select_renderer(capability)
     if renderer_id == RENDERER_REAL:
         return RealImageRenderer(width=width)
+    if renderer_id == RENDERER_HALFBLOCK:
+        return HalfBlockRenderer()
     return TextMarkRenderer()
 
 
 __all__ = (
     "RENDERER_REAL",
+    "RENDERER_HALFBLOCK",
     "RENDERER_TEXT",
     "ImageCapability",
     "AvatarRenderer",
     "RealImageRenderer",
+    "HalfBlockRenderer",
     "TextMarkRenderer",
     "detect_image_capability",
     "select_renderer",
