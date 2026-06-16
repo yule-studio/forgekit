@@ -125,14 +125,16 @@ def default_help_tab(sections: Sequence[HelpSection]) -> int:
     return 0
 
 
-def help_in_transcript(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
-    """Help rendered INTO the transcript — Claude-Code style, scannable.
+def help_panel_document(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
+    """The help VIEW document for the active tab — Claude-Code style, scannable.
 
-    Not a modal/panel/accordion: this returns full-width lines the transcript
-    appends inline (with a rule above/below so the block reads as one unit). A
-    tab strip marks the active tab; only the active tab's content is shown so the
-    block stays scannable. Tab switches the active tab, Esc closes it. The
-    composer stays docked at the bottom throughout.
+    This is NOT appended into the transcript. It is the full body the dedicated
+    help panel (:class:`tui.help_panel.HelpPanel`) renders when the main area is
+    switched to the help view. The panel re-renders this *in place* on Tab (the
+    active tab changes) — nothing ever accumulates. A top tab strip marks the
+    active tab; only that tab's content is shown so the view stays scannable.
+    Esc switches the main area back to the transcript; the composer stays docked
+    at the bottom throughout.
     """
 
     if not sections:
@@ -142,11 +144,11 @@ def help_in_transcript(sections: Sequence[HelpSection], active: int) -> Tuple[st
     for i, s in enumerate(sections):
         chips.append(f"[reverse] {s.title} [/reverse]" if i == active else f"[dim]{s.title}[/dim]")
     return (
-        "[dim]" + "─" * 8 + "[/dim] [b orange1]forgekit help[/b orange1]   " + "  ".join(chips),
-        "[dim]Tab 탭 전환 · Esc 닫기 · 입력창은 그대로 열려 있습니다[/dim]",
+        "[b orange1]forgekit help[/b orange1]   " + "  ".join(chips),
+        "[dim]Tab 탭 전환 · Esc 로 transcript 로 돌아갑니다 · 입력창은 그대로 열려 있습니다[/dim]",
+        "[dim]" + "─" * 48 + "[/dim]",
         "",
         *sections[active].lines,
-        "[dim]" + "─" * 24 + "[/dim]",
     )
 
 
@@ -231,33 +233,42 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     """
 
     help_tab = HelpSection("Help", (
-        "[b]빠른 사용 흐름[/b]",
-        "  1. 입력창에 `/` 를 치면 명령 목록(palette)이 열립니다.",
-        "  2. Tab 으로 자동완성, Enter 로 실행.",
-        "  3. 결과는 아래 본문에 위→아래로 쌓입니다.",
-        "  4. `/status` 운영 요약 · `/doctor` 진단 · `/exit` 종료.",
+        "[b]forgekit help[/b] — 이 화면 사용법.",
+        "",
+        "  Tab        탭 전환 (Help · General · Commands · Agents)",
+        "  Esc        transcript 로 돌아가기",
+        "  F1         help 토글",
+        "",
+        "탭은 제자리에서 바뀝니다 — 본문에 쌓이지 않습니다.",
     ))
     general = HelpSection("General", (
-        "forgekit — 운영자 콘솔 (provider-agnostic).",
-        "입력창에 슬래시 명령을 치거나 에이전트 모드로 들어갑니다.",
-        "일반 텍스트는 아직 live submit 에 연결되지 않았습니다.",
+        "[b]forgekit[/b] — provider-agnostic 운영자 콘솔.",
+        "슬래시 명령으로 운영 표면을 보거나 에이전트 모드로 들어갑니다.",
         "",
         "[b]단축키[/b]",
-        "  /  palette     Tab  자동완성     Enter  실행",
-        "  ←/→  탭         Esc  닫기/복귀     F1  help",
-        "  ^L  clear      ^R  refresh       ^C  quit",
+        "  /          명령 팔레트 열기",
+        "  Tab        자동완성 · 다음 후보",
+        "  Enter      실행",
+        "  ↑ / ↓      후보 순환",
+        "  Esc        help 닫기 · palette 닫기 · operator 복귀",
+        "  F1         help",
+        "  ^L         clear     ^R  refresh     ^C  quit",
+        "",
+        "[dim]일반 텍스트 입력은 아직 stub 입니다 (live submit 범위 밖).[/dim]",
     ))
-    cmd_lines = ["[b]commands[/b]", ""]
+    cmd_lines = ["[b]commands[/b]  — `/` 로 시작하면 자동완성됩니다.", ""]
     for c in commands:
-        cmd_lines.append(f"  [b]/{c.name}[/b]  [dim]{c.summary}[/dim]")
+        cmd_lines.append(f"  [b]/{c.name:<14}[/b] [dim]{c.summary}[/dim]")
     commands_tab = HelpSection("Commands", tuple(cmd_lines))
+    enter_examples = " · ".join(a.enter_command for a in agents if a.enter_command) or "(없음)"
     agents_tab = HelpSection("Agents", (
-        "[b]operator mode[/b]  기본 모드 — 콘솔 명령으로 운영 표면을 봅니다.",
-        "[b]agent mode[/b]     에이전트 모드(stub) — 진입 시 상단에 표시됩니다.",
+        "[b]operator[/b]  기본 모드 — 콘솔 명령으로 운영 표면을 봅니다.",
+        "[b]agent[/b]     에이전트 모드(stub) — 진입하면 상단 pill 에 표시됩니다.",
         "",
-        "진입 예: " + " · ".join(a.enter_command for a in agents if a.enter_command) or "(없음)",
-        "",
+        "진입 예: " + enter_examples,
         "Esc 로 operator 모드로 돌아옵니다.",
+        "",
+        "전체 레지스트리는 `/agents` 로 봅니다.",
     ))
     return (help_tab, general, commands_tab, agents_tab)
 
@@ -275,6 +286,6 @@ __all__ = (
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
-    "help_in_transcript", "default_help_tab",
+    "help_panel_document", "default_help_tab",
     "result_block",
 )

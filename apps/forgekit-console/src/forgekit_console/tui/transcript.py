@@ -1,12 +1,12 @@
-"""Transcript — the chat-first main area where everything stacks.
+"""Transcript — the chat-first main area where command output stacks.
 
-Like Claude Code's transcript: command echoes, results, agent output, and the
-``/help`` document all stack top→down in one scrolling area. ``/help`` is NOT a
-modal or side panel — it's appended into this same transcript and Esc removes it.
+Like Claude Code's transcript: command echoes, results, and agent output stack
+top→down in one scrolling area. ``/help`` is NOT rendered here — it is a separate
+view (:class:`tui.help_panel.HelpPanel`) that the :class:`tui.main_panel.MainPanel`
+switches to, so opening or switching help never appends anything to this log.
 The composer stays docked at the bottom the whole time.
 
-The widget is a thin :class:`RichLog` wrapper plus a marker so the app can remove
-an open help block on Esc without clearing the rest of the transcript.
+This is a thin :class:`RichLog` wrapper; it owns no help/view state anymore.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from . import render
 
 
 class Transcript(RichLog):
-    """Scrolling chat-first log. Help renders inline here, not in a modal."""
+    """Scrolling chat-first log. Help is a separate view, not appended here."""
 
     DEFAULT_CSS = """
     Transcript {
@@ -34,11 +34,6 @@ class Transcript(RichLog):
         kwargs.setdefault("wrap", True)
         kwargs.setdefault("highlight", False)
         super().__init__(**kwargs)
-        self._help_open = False
-
-    @property
-    def help_open(self) -> bool:
-        return self._help_open
 
     def write_lines(self, lines: Sequence[str]) -> None:
         for line in lines:
@@ -51,26 +46,6 @@ class Transcript(RichLog):
 
     def write_result(self, title: str, lines: Sequence[str]) -> None:
         self.write_lines(render.result_block(title, lines))
-
-    def open_help(self, commands, agents, active: int) -> None:
-        """Append the full-width help document into the transcript."""
-
-        sections = render.help_sections(commands, agents)
-        self.write_lines(render.help_in_transcript(sections, active))
-        self._help_open = True
-
-    def close_help(self) -> None:
-        """Mark help closed and note it in the transcript (no destructive clear)."""
-
-        if self._help_open:
-            self.write("[dim]— help 닫힘 —[/dim]")
-            self._help_open = False
-
-    def rerender_help(self, commands, agents, active: int) -> None:
-        """Switch the active help tab by appending the newly-active tab."""
-
-        sections = render.help_sections(commands, agents)
-        self.write_lines(render.help_in_transcript(sections, active))
 
 
 __all__ = ("Transcript",)
