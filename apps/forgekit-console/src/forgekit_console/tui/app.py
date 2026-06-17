@@ -237,19 +237,15 @@ class ForgekitConsoleApp(App):
             self._refresh_chrome()
         if result.kind == KIND_ERROR:
             self._record_failure(parsed, result)
+        if (parsed.name or "") == "render":
+            self._observe_render()  # repeated blocked render → escalate w/ alternatives
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
         # keep the inline composer in view as the session grows (Claude-style tail)
         self._follow_tail()
 
     def _record_failure(self, parsed, result) -> None:
-        """Feed a failed command into the escalator; surface advisory or full RCA.
-
-        Below the threshold the operator just sees a quiet ``2/3 — still retrying``
-        line; once the same signature crosses it, the mini-RCA (why · alternatives ·
-        next step) is written to the transcript AND the issue line flips to a blocked
-        banner — never a silent repeated failure.
-        """
+        """Feed a failed command into the escalator; surface advisory or full RCA."""
 
         from ..lifecycle.failure_escalation import FailureSignature, KIND_COMMAND, KIND_STATUS_SURFACE
 
@@ -258,6 +254,43 @@ class ForgekitConsoleApp(App):
         outcome = self._escalator.record_failure(
             signature, symptom=result.title or "", evidence="\n".join(result.lines)
         )
+        self._surface_escalation(outcome)
+
+    def _observe_render(self) -> None:
+        """Treat a repeated NON-true-raster render as a blocked UI/render issue.
+
+        The operator ran ``/render`` and it is still a fallback. That is fine ONCE
+        (managed fallback is intentional), but if the same render limitation persists
+        across repeated checks it should not stay silent — past the threshold it
+        escalates with render-specific alternatives (a graphics terminal / Python
+        3.10+) and a blocked banner, so "why won't the real image show" is answered.
+        """
+
+        from ..lifecycle.failure_escalation import FailureSignature, KIND_RENDERER
+        from .render_readiness import render_readiness_report
+
+        report = render_readiness_report()
+        if report.true_raster_ready:
+            return  # real raster — nothing blocked
+        if not report.lib_ok:
+            reason = "lib-unavailable"
+        elif "no known" in (report.capability_reason or ""):
+            reason = "terminal-no-graphics"
+        else:
+            reason = "no-true-raster"
+        signature = FailureSignature(KIND_RENDERER, reason, report.avatar_backend)
+        outcome = self._escalator.record_failure(
+            signature,
+            symptom=f"avatar/brand 가 fallback({report.avatar_backend})로 반복 렌더됨",
+            evidence=f"cap={report.capability_reason} · lib_ok={report.lib_ok} · backend={report.lib_backend}",
+            attempted_fix="prime_image_backend (앱 시작 전 early probe)",
+        )
+        self._surface_escalation(outcome)
+
+    def _surface_escalation(self, outcome) -> None:
+        """Surface an escalation outcome: advisory below threshold, full RCA + blocked
+        banner once it crosses it — never a silent repeated failure."""
+
         log = self._transcript
         if outcome.escalated and outcome.report is not None:
             for line in outcome.report.to_lines():
