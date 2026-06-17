@@ -68,7 +68,8 @@ top padding 0, 메타 3줄로 줄여 issue line 이 바로 아래 붙는다.)
 콘솔 avatar 우선순위:
 1. **true-raster(tgp/sixel)** → 픽셀 아이콘을 **진짜 픽셀 이미지**로(사용자 제공 03:05 시트의 128/96
    를 resize, 임의 실루엣 재창작 아님).
-2. **non-raster(VS Code 등)** → **같은 픽셀 아이콘의 half-block** 이미지(grayscale, ~16 cols). 즉
+2. **non-raster(VS Code 등)** → **같은 픽셀 아이콘의 half-block** 이미지(grayscale, **10 cols
+   ≈ 5행** — compact intro 슬롯에 맞춰 축소, 픽셀 figure 는 유지). 즉
    내가 평소 보는 화면에서도 **픽셀 이미지 계열**이 나온다(`fk` 배지 아님).
 3. **Pillow/asset 부재 등 정말 불가** → `fk` 배지 → bare text (최후 fallback).
 
