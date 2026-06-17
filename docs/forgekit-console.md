@@ -50,20 +50,17 @@ forgekit console --repo-root /path/to/repo   # status 기준 경로 지정
   콘솔 실행 시 **친절한 설치 안내(exit 3)** 를 출력한다(트레이스백 아님).
 - 기본 repo root 해석 우선순위: `--repo-root` > `YULE_REPO_ROOT` > 현재 디렉터리.
 
-### 인트로 브랜드 마크 — forgekit 워드마크 배너 (image FIRST)
+### 인트로 — compact product header (Claude 식)
 
-인트로 상단의 브랜드 마크는 **forgekit 워드마크 배너**다. 원본 배너
-(`assets/brand/forgekit-banner.png`, 1916×821 cyan→magenta 픽셀아트 워드마크)를
-**사전-베이크**(`python -m forgekit_console.assets.brand.bake`, Pillow)해 작은 인트로
-배너(`assets/brand/forgekit-banner-intro.png`, ≈360px)로 만들어 커밋한다. 콘솔은 큰
-1916px master 를 그대로 슬램하지 않고 이 작은 PNG 만 렌더한다.
+인트로는 **짧은 제품 헤더**다(상단 무게 최소화). 별도의 워드마크 배너 줄은 두지 않고,
+브랜딩은 메타 첫 줄의 `forgekit v0.1.0`(`theme.wordmark()` cyan→magenta)이 담당한다.
+구성: 작은 픽셀 avatar(좌) + **3 줄 메타**(우) — `forgekit v0.1.0` / `provider · profile` /
+repo path. (이전의 standalone `forgekit` 배너 줄 + `operator console` 태그라인 줄은 제거 —
+top padding 0, 메타 3줄로 줄여 issue line 이 바로 아래 붙는다.)
 
-표시는 **image-first**: graphics-capable 터미널이면 `textual-image` 로 작은 배너를 **진짜
-인라인 이미지**로 그리고(`tui/brand_panel.py` + `tui/image_renderer.py` 의
-`make_brand_renderer`/`BrandBannerRenderer`), 그렇지 않으면 **compact 텍스트 워드마크**
-(`tui/theme.py` 의 `wordmark()` — forge=cyan·kit=magenta 그라데이션)로 떨어진다. 텍스트
-워드마크는 그 자체로 깔끔하게 보이도록 디자인됐다. 배너는 항상 compact(작게) 유지하며 full
-master 를 크게 띄우지 않는다.
+> `BrandPanel`/`make_brand_renderer`/`forgekit-banner*` 자산은 코드/테스트에 남아 있지만
+> 인트로에서는 더 이상 별도 배너 줄로 렌더하지 않는다(필요 시 재도입 가능). avatar 정책은
+> 불변 — true-raster=픽셀 raster / non-raster=픽셀 half-block / 최후수단=fk 배지(아래 절).
 
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 

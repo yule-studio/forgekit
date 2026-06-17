@@ -458,7 +458,7 @@ class HalfBlockRenderer:
     """
 
     renderer_id: str = RENDERER_HALFBLOCK
-    cols: int = 16  # cells wide — a touch bigger than the icon scale for readability
+    cols: int = 12  # cells wide — compact intro icon scale (still the pixel image)
     portrait: bool = False
 
     def _resolve(self):

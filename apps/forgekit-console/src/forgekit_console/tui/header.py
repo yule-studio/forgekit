@@ -20,7 +20,6 @@ from textual.widgets import Static
 
 from . import image_renderer, render
 from .avatar_panel import AvatarPanel
-from .brand_panel import BrandPanel
 
 
 class IntroHeader(Vertical):
@@ -29,11 +28,7 @@ class IntroHeader(Vertical):
     DEFAULT_CSS = """
     IntroHeader {
         height: auto;
-        padding: 1 1 0 1;
-    }
-    IntroHeader #intro-brand {
-        height: auto;
-        padding: 0 0 0 0;
+        padding: 0 1 0 1;   /* no top padding — a tight product header */
     }
     IntroHeader #intro-body {
         height: auto;
@@ -58,7 +53,7 @@ class IntroHeader(Vertical):
         profile: str,
         provider: str = "—",
         renderer: Optional[image_renderer.AvatarRenderer] = None,
-        brand_renderer: Optional[image_renderer.AvatarRenderer] = None,
+        brand_renderer: Optional[image_renderer.AvatarRenderer] = None,  # accepted, unused (compat)
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -66,21 +61,16 @@ class IntroHeader(Vertical):
         self._version = version
         self._profile = profile
         self._provider = provider
-        self._brand = BrandPanel(renderer=brand_renderer, id="intro-brand")
         self._avatar = AvatarPanel(renderer=renderer, id="intro-avatar")
 
     @property
     def avatar_renderer_id(self) -> str:
         return self._avatar.renderer_id
 
-    @property
-    def brand_renderer_id(self) -> str:
-        return self._brand.renderer_id
-
     def compose(self):
-        # slim top brand line — the forgekit wordmark banner (image-first)
-        yield self._brand
-        # then the small avatar (left) + quiet meta (right)
+        # a compact product header: small avatar (left) + 3 quiet meta lines (right).
+        # The standalone wordmark banner line is dropped — branding lives in the
+        # meta's "forgekit v0.1.0", keeping the top tight (Claude-style).
         with Horizontal(id="intro-body"):
             yield self._avatar
             yield Static(

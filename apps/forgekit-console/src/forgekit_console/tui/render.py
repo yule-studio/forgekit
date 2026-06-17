@@ -45,14 +45,15 @@ def intro_meta_lines(
 ) -> Tuple[str, ...]:
     """The right-hand meta column of the intro (beside the avatar).
 
-    Claude-style: brand + version on top, then provider/profile, then the repo
-    path — a few quiet lines. Pure so it's unit-testable without a terminal.
+    Claude-style: a SHORT product header — brand+version, then provider·profile,
+    then the repo path. Three quiet lines (the redundant "operator console" tagline
+    line is dropped so the intro reads fast and the issue line sits closer). Pure so
+    it's unit-testable without a terminal.
     """
 
     return (
         f"{theme.wordmark(BRAND)} [dim]v{version}[/dim]",
-        f"[dim]{TAGLINE}[/dim]",
-        f"[dim]provider[/dim] {provider}   [dim]profile[/dim] {profile}",
+        f"[dim]provider[/dim] {provider}  [dim]·[/dim]  [dim]profile[/dim] {profile}",
         f"[dim]{repo}[/dim]",
     )
 

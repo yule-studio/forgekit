@@ -429,23 +429,27 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # compact: capped height so it never becomes a giant box
             self.assertLessEqual(palette.height, 8)
 
-    async def test_intro_shows_brand_banner_mark(self) -> None:
-        """The intro shows the forgekit BRAND mark (banner image-first / text wordmark)."""
-        from forgekit_console.tui.brand_panel import BrandPanel
+    async def test_intro_is_compact_branding_in_meta_no_separate_wordmark(self) -> None:
+        """The intro is a COMPACT product header: the standalone wordmark banner line
+        is gone (Claude-style), branding lives in the meta's `forgekit v0.1.0`, and
+        there is no `#intro-brand` widget any more."""
+        from textual.widgets import Static
+        from textual.css.query import NoMatches
         from forgekit_console.tui.header import IntroHeader
-        from forgekit_console.tui import image_renderer as ir
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
             intro = app.query_one("#intro", IntroHeader)
-            brand = intro.query_one("#intro-brand", BrandPanel)
-            self.assertIsNotNone(brand)
-            # whichever the headless terminal selected, it's the image or text tier
-            self.assertIn(
-                intro.brand_renderer_id,
-                (ir.RENDERER_BRAND_IMAGE, ir.RENDERER_BRAND_TEXT),
-            )
+            # the separate brand wordmark line is removed
+            with self.assertRaises(NoMatches):
+                intro.query_one("#intro-brand")
+            # branding is the meta's wordmark; meta is a short 3-line header
+            meta = str(app.query_one("#intro-meta", Static).render())
+            self.assertIn("forge", meta)
+            self.assertIn("v0.1.0", meta)
+            self.assertNotIn("operator console", meta)  # redundant tagline dropped
+            self.assertLessEqual(len([l for l in meta.split("\n") if l.strip()]), 3)
 
     async def test_intro_brand_image_first_selection(self) -> None:
         """Image-first: a graphics-capable terminal selects the REAL banner image;
