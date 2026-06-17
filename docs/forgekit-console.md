@@ -374,6 +374,26 @@ provider 가 하나도 설정되지 않으면 forgekit 는 **`setup-required`(bl
 > 현재 범위(WT3): bounded 루프 상태머신 + runbook + escalation + 콘솔 데모 연결. 실제 repo 스캐너
 > (관측 소스)와 백그라운드 스케줄러는 후속 — 지금은 deterministic stepped loop(숨은 스레드 아님).
 
+## 2e. operator notifications — macOS/Windows desktop + inbox (WT4)
+
+승인/결정/정보/접근/secret 필요 + 반복 실패 + doctor critical + runtime blocked 는
+operator inbox 뿐 아니라 **데스크탑 알림**까지 표면화된다 — 코드 SSoT 는
+[`notify/`](../apps/forgekit-console/src/forgekit_console/notify/)
+(`events.py` payload · `desktop.py` cross-platform · `service.py` inbox+desktop).
+
+- **Python-first**: stdlib `subprocess` 로 네이티브 notifier 구동 — 새 언어/런타임 없음.
+  macOS=`osascript`, Windows=PowerShell toast(BurntToast 있으면 사용, 없으면 WinRT/fallback).
+  헤드리스/미지원 → desktop 없음(`channel=none`)으로 **정직히** 반환, inbox 는 항상 기록.
+  > 새 언어 미도입 이유: 네이티브 CLI 로 신뢰성 있는 전달이 되므로 컴파일 helper 는 과함.
+- **action-oriented payload**: 무엇이 필요/왜 멈춤/지금 뭘 할지/옵션. event→approval-matrix
+  request_type(APPROVAL/DECISION/INFO/ACCESS/SECRET) 매핑 → inbox·desktop 이 같은 사건 추적.
+- **opt-in desktop**: `FORGEKIT_NOTIFY` 로 desktop 켬(escalator 와 동일 정책). 끄면 inbox 만.
+- **실제 트리거**: always-on 이 권한 없는 영역에서 대기 → `ACCESS_REQUIRED` 알림(inbox+desktop).
+  반복 실패는 기존 escalator(FORGEKIT_NOTIFY) 가 발화.
+- 검증: `tests/forgekit/test_notify.py`(payload·macOS/Windows command·inbox 추적). macOS 실기에서
+  `desktop.dispatch` 실제 발화 확인됨. 예시 inbox:
+  [`apps/forgekit-console/examples/notify/sample-inbox.json`](../apps/forgekit-console/examples/notify/sample-inbox.json).
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**

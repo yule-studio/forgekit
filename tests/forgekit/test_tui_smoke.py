@@ -770,8 +770,17 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
 
     def _ready_app(self, main="claude", **kw):
+        import tempfile
         from forgekit_console.tui.app import ForgekitConsoleApp
+        from forgekit_console.notify.service import NotificationService
 
+        # isolated notifier: tmp inbox + desktop OFF (no real toast / no home writes)
+        if "notifier" not in kw:
+            tmp = Path(tempfile.mkdtemp())
+            self.addCleanup(lambda: __import__("shutil").rmtree(tmp, ignore_errors=True))
+            kw["notifier"] = NotificationService(
+                inbox_path=tmp / "inbox.json", desktop_enabled=False
+            )
         return ForgekitConsoleApp(
             repo_root=Path("/tmp/repo"), context=_fake_context(),
             config={"main_provider": main}, **kw,
@@ -844,6 +853,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("runbook", joined)        # privileged area → runbook
             self.assertIn("대기", joined)            # operator-wait surfaced
             self.assertIn("execute phase 없음", joined)  # destructive structurally blocked
+            self.assertIn("operator 알림", joined)   # WT4 notification fired (inbox)
 
     async def test_pm_agent_mode_runs_intake_handoff_not_live_submit(self) -> None:
         """In product-agent mode, a product ask runs PM intake→tech-lead split (with

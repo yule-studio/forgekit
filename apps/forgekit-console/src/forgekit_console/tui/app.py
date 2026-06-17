@@ -77,6 +77,7 @@ class ForgekitConsoleApp(App):
         escalator=None,
         submit_service=None,
         config: Optional[dict] = None,
+        notifier=None,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
@@ -113,6 +114,14 @@ class ForgekitConsoleApp(App):
         self._runtime_mode = _rm.DEFAULT_MODE
         self._effective_policy = None
         self._recompute_policy()
+        # Operator notifications (WT4): desktop is opt-in (FORGEKIT_NOTIFY, same as the
+        # escalator) so the console never spams; the inbox record is always durable.
+        if notifier is None:
+            from ..lifecycle.failure_escalation import notify_enabled
+            from ..notify.service import NotificationService
+
+            notifier = NotificationService(desktop_enabled=notify_enabled())
+        self._notifier = notifier
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -355,6 +364,22 @@ class ForgekitConsoleApp(App):
             log.write(line)
         if result.escalated:
             log.write("[dim]↳ operator inbox/ledger 에 대기 상태 기록됨[/dim]")
+        # WT4: a bounded loop parked on a privileged area → notify the operator
+        # (inbox always; desktop when FORGEKIT_NOTIFY is on). Action-oriented payload.
+        if result.waiting:
+            from ..notify.events import EVENT_ACCESS_REQUIRED, NotificationEvent
+
+            out = self._notifier.notify(NotificationEvent(
+                EVENT_ACCESS_REQUIRED,
+                title="forgekit always-on: operator 승인 필요",
+                why=f"권한 없는 영역 {result.blocked_count}개에서 멈춤 (runbook 생성됨)",
+                action="runbook 확인 후 `#승인-대기` 에서 승인/거부",
+                options=("승인", "거부", "보류"), source="always-on",
+            ))
+            log.write(
+                f"[dim]↳ operator 알림: inbox={'기록' if out.inbox_written else '실패'} · "
+                f"desktop={out.channel if out.desktop_delivered else 'off(FORGEKIT_NOTIFY)'}[/dim]"
+            )
         self._sync_intro()
         self._follow_tail()
 
