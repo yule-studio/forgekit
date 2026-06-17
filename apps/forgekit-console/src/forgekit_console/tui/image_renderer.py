@@ -43,10 +43,15 @@ from typing import Mapping, Optional, Protocol, Tuple
 
 from . import theme
 
-# The baked small DISPLAY PNG (Claude-icon scale) — the asset the console renders.
-# Produced from the master by assets/avatar/bake.py; never the raw master.
+# The asset the console RENDERS: the baked small display PNG (Claude-icon scale).
+# This is the stable RUNTIME ALIAS, written byte-identical to the canonical
+# `forgekit-avatar-display-128.png` by assets/avatar/bake.py. The renderer loads
+# the alias (not the dated/canonical name) so this constant never churns; it is
+# never the raw master. (Secondary: `forgekit-avatar-96.png` == display-96.)
 _DISPLAY_PNG = "forgekit-avatar.png"
-# The portrait MASTER (human-replaceable), used only if the baked PNG is absent.
+# The portrait MASTER alias (human-replaceable; == the adopted source archive,
+# byte-for-byte). Used ONLY if the baked display PNG is somehow absent — the
+# master is never the normal render path.
 _SOURCE_JPG = "avatar-source.png"
 
 # Renderer identifiers (returned by select_renderer; stable for tests).

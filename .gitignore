@@ -28,5 +28,6 @@ id_ed25519
 __pycache__/
 *.py[cod]
 .venv/
+.venv-*/
 .cache/
 *.egg-info/

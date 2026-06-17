@@ -68,18 +68,35 @@ master 를 크게 띄우지 않는다.
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 
 대표 이미지는 **헤드폰 girl 라인아트 portrait** 다. **source(master)와 display(표시용)를
-분리**한다 — 사람이 교체하는 원본 master 는 `assets/avatar/avatar-source.png`(라인아트
-portrait, 회로 테두리 포함 square), 콘솔이 실제로 렌더하는 건 그걸 **얼굴/헤드폰 중심으로
-crop → contrast 보정 → 약한 sharpen** 한 작은 **display** PNG
-(`assets/avatar/forgekit-avatar.png` 128px primary + `forgekit-avatar-96.png` 96px)다.
-`python -m forgekit_console.assets.avatar.bake`(Pillow 필요)로 **사전-베이크**해 커밋하고,
-콘솔은 큰 master 를 직접 렌더하지 않고 이 작은 display PNG 만 렌더한다. master 를 그대로
-무식하게 축소(raw downscale)하면 회로 테두리까지 같이 줄어 작은 셀에서 얼굴이 뭉개지므로,
-crop+보정을 거친 display asset 을 따로 두는 것이다.
+분리**하고, 파일명은 **보관용 / master alias / canonical display / runtime alias** 4 갈래로
+정리한다(`assets/avatar/`).
 
-> master 채택: 2026-06-17 받은 두 portrait 중 얼굴이 더 밝고 또렷한 `…10_17_33` 변형을
-> 채택(`…_38` 변형은 그늘이 더 많고 작은 크기에서 뭉개짐). 베이크 절차는 `bake.py` 의
-> `_CROP`/`_tune`(autocontrast + UnsharpMask)에 코드로 박혀 있어 재현 가능하다.
+| 분류 | 파일 | 용도 |
+| --- | --- | --- |
+| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-33.png` | **채택** 후보(가장 밝고 또렷) |
+| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-38.png` | 후보(그늘 많음) |
+| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-15-original.png` | 후보(33 보다 부드러움) |
+| master alias | `avatar-source.png` | bake 입력 master = **채택 원본(33) 과 byte 동일** |
+| canonical display | `forgekit-avatar-display-128.png` / `forgekit-avatar-display-96.png` | 의미 있는 산출물 이름 |
+| **runtime alias** | `forgekit-avatar.png` / `forgekit-avatar-96.png` | **렌더가 실제로 읽는 파일**(canonical 과 byte 동일) |
+
+콘솔이 실제로 렌더하는 건 master 가 아니라 그걸 **얼굴/헤드폰 중심으로 crop → contrast 보정
+→ 약한 sharpen → resize** 한 작은 **display** PNG 다 — 코드(`image_renderer`)는 runtime alias
+`forgekit-avatar.png`(= `forgekit-avatar-display-128.png`)를 1순위로 읽는다. master 를 그대로
+무식하게 축소(raw downscale)하면 회로 테두리까지 줄어 작은 셀에서 얼굴이 뭉개지므로 crop+보정
+display asset 을 따로 둔다. `python -m forgekit_console.assets.avatar.bake` 로 재생성하면
+canonical + runtime alias 가 함께(byte 동일하게) 갱신된다 — 결정적.
+
+> master 채택: 후보 3개(2026-06-17 33/38 · 2026-06-15 original) 중 얼굴이 가장 밝고 또렷한
+> **33** 을 채택. 작은 크기와 **Python 3.10+ real-image** 양쪽에서 가장 잘 읽힌다. 나머지 2개는
+> archive 로 보존해 사람이 재선택할 수 있게 둔다. 베이크 절차(`_CROP`/`_tune` = autocontrast +
+> UnsharpMask)는 `bake.py` 에 코드로 박혀 재현 가능하다.
+>
+> **real-image 검증 환경:** `textual-image` 는 Python ≥3.10 을 요구한다. 메인 `.venv`(3.9)는
+> import 가 깨져 fallback 으로 내려가므로, 검증은 별도 console venv(`.venv-console`,
+> `python3.13 -m venv` + `pip install -e 'apps/forgekit-console[image]'`)에서 한다. 거기서
+> `FORGEKIT_DEBUG_RENDERERS=1` 로 `avatar=real-image` / `brand=brand-image`(화살표 없음 =
+> selected==realized)가 나오는지 확인한다.
 
 표시는 **image-first** — 항상 실제 portrait 를 보여주려 하고, 텍스트 마크는 정말 마지막
 수단일 때만 쓴다. 코드(`tui/image_renderer.py`)의 우선순위는 위→아래로:
