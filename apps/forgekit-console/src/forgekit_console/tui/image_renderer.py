@@ -43,10 +43,11 @@ from typing import Mapping, Optional, Protocol, Tuple
 
 from . import theme
 
-# The baked small display PNG (Claude-icon scale) — primary asset.
+# The baked small DISPLAY PNG (Claude-icon scale) — the asset the console renders.
+# Produced from the master by assets/avatar/bake.py; never the raw master.
 _DISPLAY_PNG = "forgekit-avatar.png"
-# The high-res master, used only if the baked PNG is somehow absent.
-_SOURCE_JPG = "profile_hermes_source.jpg"
+# The portrait MASTER (human-replaceable), used only if the baked PNG is absent.
+_SOURCE_JPG = "avatar-source.png"
 
 # Renderer identifiers (returned by select_renderer; stable for tests).
 RENDERER_REAL = "real-image"  # tier 1 — inline raster
@@ -261,7 +262,7 @@ class RealImageRenderer:
     """
 
     renderer_id: str = RENDERER_REAL
-    width: int = 12  # cells; small, Claude-icon scale
+    width: int = 14  # cells; small Claude-icon scale, aligned with the half-block tier
 
     def renderable(self):
         path = best_image_path()

@@ -27,11 +27,10 @@ forgekit = "forgekit_console.app.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-# Ship the avatar assets (small baked display PNG + high-res source master it's
-# baked from) and the brand banner assets (full wordmark master + small baked
-# intro banner) used as the intro brand mark.
+# Ship the avatar assets (baked display PNGs + the PNG source master they're baked
+# from) and the brand banner assets (full wordmark master + small baked intro
+# banner) used as the intro brand mark.
 forgekit_console = [
   "assets/avatar/*.png",
-  "assets/avatar/*.jpg",
   "assets/brand/*.png",
 ]
