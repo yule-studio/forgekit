@@ -288,6 +288,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "sources":
             self._show_sources()
             return
+        if parsed.name == "self-improve":
+            self._run_self_improve()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -391,6 +394,19 @@ class ForgekitConsoleApp(App):
         ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_self_improve(self) -> None:
+        """`/self-improve` — scan repo for gaps → risk-classified packets (no execution)."""
+
+        from ..selfimprove import run_self_improvement
+
+        log = self._transcript
+        log.write_echo("/self-improve")
+        result = run_self_improvement(self.repo_root, limit=8)
+        for line in render.self_improve_lines(result):
             log.write(line)
         self._sync_intro()
         self._follow_tail()

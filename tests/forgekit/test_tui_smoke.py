@@ -840,6 +840,17 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_self_improve_scans_and_classifies(self) -> None:
+        """/self-improve surfaces risk-classified packets (no execution)."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/self-improve")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("self-improvement", joined)
+            self.assertIn("packets:", joined)  # scan ran (bounded; no-exec covered by unit test)
+
     async def test_idea_discovery_mode_produces_briefs(self) -> None:
         """In idea-discovery mode, free text yields a reference bundle + idea briefs."""
         from forgekit_console.policy import runtime_mode as rm

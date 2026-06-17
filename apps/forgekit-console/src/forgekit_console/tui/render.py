@@ -435,6 +435,22 @@ def source_status_lines(registry) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def self_improve_lines(result) -> Tuple[str, ...]:
+    """Render a self-improvement scan — packets by risk class (no execution)."""
+
+    lines = [
+        f"[b {_ACCENT}]» self-improvement (bounded)[/b {_ACCENT}]",
+        f"  packets: {len(result.packets)} · safe {len(result.safe)} · "
+        f"risky {len(result.risky)} · blocked {len(result.blocked)}",
+    ]
+    for p in result.packets[:6]:
+        tag = {"safe": _OK, "risky": _WARN, "blocked": _ERR}.get(p.risk, _MUTED)
+        lines.append(f"    [{tag}]{p.risk:<7}[/{tag}] {p.finding[:54]}")
+        lines.append(f"        [dim]불편: {p.user_discomfort} · owner {p.recommended_owner}[/dim]")
+    lines.append("  [dim]safe 만 승인 체계 내 자동 가능 · risky→approval-wait · blocked→runbook (자동 실행 없음)[/dim]")
+    return tuple(lines)
+
+
 def discovery_lines(result) -> Tuple[str, ...]:
     """Render an idea-discovery result — bundle + gap map + top idea briefs."""
 
@@ -575,5 +591,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "result_block",
 )
