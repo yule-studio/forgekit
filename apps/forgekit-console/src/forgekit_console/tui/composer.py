@@ -4,8 +4,8 @@ Claude-Code-style input. Three things are kept visually + structurally distinct:
 
     transcript ……………………………………………  (the main panel, above)
     ╭───────────────────────────────────────╮
-    │ › ● operator  명령 입력 …               │   ← #composer-shell (the BAR)
-    │   /help · / palette · Tab · ^C quit     │      #inputrow + #subhint
+    │ › ● operator                            │   ← #composer-shell (the BAR)
+    │   /help · / palette · Tab · ^C quit     │      #inputrow (CLEAN input) + #hint
     ╰───────────────────────────────────────╯
       ▎ palette  3  · Tab 완성 · Esc 닫기      ← #palette (SEPARATE surface, below)
       ▎  ▸ /help   …                              compact, auto-height, NOT a box
@@ -87,7 +87,10 @@ class Composer(Vertical):
             with Horizontal(id="inputrow"):
                 yield Static(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}]", id="marker")
                 yield Static(id="modepill")
-                yield Input(placeholder="명령 입력 — `/help` 로 시작", id="prompt")
+                # NO in-field guidance text — the input stays clean (Claude-style).
+                # All hints (`/help`, `/ palette`, Tab, quit) live in the #hint row
+                # below, set by the app from tui.render.hint_line.
+                yield Input(placeholder="", id="prompt")
             yield Static(id="hint")
         # the slash palette — a SEPARATE compact surface BELOW the bar (not inside
         # the input box, not in the transcript). Hidden until a slash is typed.

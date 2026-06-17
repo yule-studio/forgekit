@@ -339,6 +339,20 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             marker = str(app.query_one("#marker", Static).render())
             self.assertIn("›", marker)
 
+    async def test_input_is_clean_hints_live_in_hint_row(self) -> None:
+        """The input field carries NO in-field guidance (clean, Claude-style); the
+        `/help · / palette · Tab · quit` hints live in the #hint row below it."""
+        from textual.widgets import Input, Static
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            prompt = app.query_one("#prompt", Input)
+            self.assertEqual((prompt.placeholder or ""), "")  # no placeholder clutter
+            hint = str(app.query_one("#hint", Static).render())
+            self.assertIn("/help", hint)  # guidance moved to the hint row
+            self.assertIn("palette", hint)
+
     async def test_slash_palette_is_separate_surface_below_the_bar(self) -> None:
         """Slash palette is a SEPARATE surface BELOW the composer-shell (bar) — not
         inside the input box, not in the transcript. The key Claude-style fix."""
