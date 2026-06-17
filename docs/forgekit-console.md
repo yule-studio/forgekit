@@ -500,6 +500,28 @@ risk/proposed_change/confidence/owner) 로 패킷화 — 코드 SSoT 는
   [`examples/security/blocked-public.json`](../apps/forgekit-console/examples/security/blocked-public.json)(공용 거부) ·
   회귀: `tests/forgekit/test_security_redblue.py`.
 
+## 2l. discovery 프로그램 통합 — 모드 관계 (discovery WT6)
+
+새 모드/명령이 기존 런타임 위에 통합된다. operator 가 보는 관계:
+
+| 모드 / 명령 | 무엇 | 안전/경계 |
+| --- | --- | --- |
+| `auto` / `/auto` | 상황 분류 → 모드 추천/안전전환/에스컬레이션 | operator pin 안 덮어씀, gated 모드 자동 진입 금지 |
+| `/sources` | 수집원 레지스트리 | 무료 우선 live, YouTube/IG/Google = planned(fake 아님) |
+| `idea-discovery` | 신호 → 경쟁 gap + 아이디어 브리프 | 상위 브리프 → `/pm-agent` handoff 승격 |
+| `video-watch` | transcript/notes 요약 | bare 링크 = reference_only(크롤 없음) |
+| `self-improvement` / `/self-improve` | repo gap → risk 패킷 | safe만 자동(승인 내), risky→approval-wait, blocked→runbook |
+| `red-blue` / `/red-blue` | 내 자산 보안 드릴 | allowlist+격리만, plan-first, active=승인필수 |
+| `always-on` | bounded 운영 루프 | execute phase 없음 |
+| `approval-wait` | 모든 행동 보류 | live-submit 실제 hold |
+
+흐름 연결: `auto` 가 상황을 분류해 위 모드로 안전 전환(또는 추천) → `idea-discovery`/`self-improvement`
+가 packet 생성 → `/pm-agent` handoff(WT2) → 권한 없는 영역은 runbook + operator 알림(WT4) →
+authored vault note(WT5). 모든 mutation/active 는 gated, planned/blocked 는 정직하게 표면화.
+
+- end-to-end 회귀: `tests/forgekit/test_discovery_e2e.py` (sources→idea→handoff→self-improve→red/blue).
+- evidence: `examples/discovery/` · `examples/selfimprove/` · `examples/security/` · `examples/sources/`.
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**
