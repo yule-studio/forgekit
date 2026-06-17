@@ -85,6 +85,7 @@ def renderer_debug_line(diag) -> str:
     parts = [
         side("avatar", diag.avatar_backend, diag.avatar_policy),
         side("brand", diag.brand_backend, diag.brand_policy),
+        f"ansi={getattr(diag, 'ansi_status', '?')}/{getattr(diag, 'ansi_theme', '?')}",
         f"cap={diag.capability_reason}",
         lib,
     ]

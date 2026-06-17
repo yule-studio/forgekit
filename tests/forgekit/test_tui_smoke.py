@@ -338,7 +338,8 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # whichever the headless terminal selected, it is one of the known tiers
             self.assertIn(
                 intro.avatar_renderer_id,
-                (ir.RENDERER_REAL, ir.RENDERER_AVATAR_MARK, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
+                (ir.RENDERER_REAL, ir.RENDERER_ANSI_ICON, ir.RENDERER_AVATAR_MARK,
+                 ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
     async def test_input_bar_clean_mode_hidden_in_idle_hint_outside(self) -> None:

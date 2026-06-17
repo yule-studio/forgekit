@@ -71,6 +71,9 @@ class RenderReadiness:
     brand_backend: str
     brand_policy: str
     true_raster_ready: bool
+    ansi_status: str           # ok / unsafe-ansi / invalid-ansi / no-ansi-asset / ansi-too-wide
+    ansi_theme: str            # resolved dark / light
+    ansi_theme_source: str     # explicit / auto:COLORFGBG / auto:default-dark
 
 
 def render_readiness_report(env: Optional[Mapping[str, str]] = None) -> RenderReadiness:
@@ -93,6 +96,9 @@ def render_readiness_report(env: Optional[Mapping[str, str]] = None) -> RenderRe
         brand_backend=diag.brand_backend,
         brand_policy=diag.brand_policy,
         true_raster_ready=true_ready,
+        ansi_status=diag.ansi_status,
+        ansi_theme=diag.ansi_theme,
+        ansi_theme_source=diag.ansi_theme_source,
     )
 
 
@@ -101,11 +107,30 @@ def _avatar_family(backend: str) -> str:
 
     if backend in (ir.BACKEND_TGP, ir.BACKEND_SIXEL):
         return "pixel-icon (true raster)"
+    if backend == ir.BACKEND_ANSI_ICON:
+        return "ansi-icon (sanitized, non-raster)"
     if backend == ir.BACKEND_HALFBLOCK:
         return "pixel-halfblock (image fallback)"
     if backend == ir.BACKEND_AVATAR_MARK:
         return "fk-badge (last resort)"
     return "text-mark (last resort)"
+
+
+def _ansi_line(r: "RenderReadiness") -> str:
+    """One line describing the ANSI icon path state + theme (always shown)."""
+
+    from .ansi_icon import render as ar
+
+    ok = r.ansi_status == ar.STATUS_OK
+    mark = f"[{theme.SUCCESS}]✓[/{theme.SUCCESS}]" if ok else f"[{theme.WARNING}]·[/{theme.WARNING}]"
+    note = {
+        ar.STATUS_OK: "sanitize 후 safe renderable 로 렌더",
+        ar.STATUS_UNSAFE: "unsafe escape 탐지 → 거부, fallback",
+        ar.STATUS_INVALID: "parse 불가/빈 asset → fallback",
+        ar.STATUS_NO_ASSET: "asset 없음 → fallback",
+        ar.STATUS_TOO_WIDE: "intro 폭 초과 → braille (FORGEKIT_AVATAR=ansi 로 강제)",
+    }.get(r.ansi_status, r.ansi_status)
+    return f"  {mark} ansi-icon    {r.ansi_status} · theme={r.ansi_theme} ({r.ansi_theme_source}) — {note}"
 
 
 def _ok(flag: bool) -> str:
@@ -131,6 +156,7 @@ def render_readiness_lines(report: Optional[RenderReadiness] = None,
         f"  · terminal     {r.capability_reason}",
         f"  · avatar asset {r.avatar_asset} → {_avatar_family(r.avatar_backend)}",
         f"  · avatar       {r.avatar_backend} ({r.avatar_policy})",
+        _ansi_line(r),
         f"  · brand        {r.brand_backend} ({r.brand_policy})",
         "",
     ]

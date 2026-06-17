@@ -332,10 +332,16 @@ class ForgekitConsoleApp(App):
         from ..lifecycle.failure_escalation import FailureSignature, KIND_RENDERER
         from .render_readiness import render_readiness_report
 
+        from .ansi_icon import render as ar
+
         report = render_readiness_report()
         if report.true_raster_ready:
             return  # real raster — nothing blocked
-        if not report.lib_ok:
+        # An UNSAFE/INVALID/missing ANSI asset is a distinct, actionable cause: the
+        # non-raster default could not use the ANSI icon, so name it in the signature.
+        if report.ansi_status in (ar.STATUS_UNSAFE, ar.STATUS_INVALID, ar.STATUS_NO_ASSET):
+            reason = f"ansi-{report.ansi_status}"
+        elif not report.lib_ok:
             reason = "lib-unavailable"
         elif "no known" in (report.capability_reason or ""):
             reason = "terminal-no-graphics"
@@ -345,7 +351,10 @@ class ForgekitConsoleApp(App):
         outcome = self._escalator.record_failure(
             signature,
             symptom=f"avatar/brand 가 fallback({report.avatar_backend})로 반복 렌더됨",
-            evidence=f"cap={report.capability_reason} · lib_ok={report.lib_ok} · backend={report.lib_backend}",
+            evidence=(
+                f"cap={report.capability_reason} · lib_ok={report.lib_ok} · "
+                f"backend={report.lib_backend} · ansi={report.ansi_status}/{report.ansi_theme}"
+            ),
             attempted_fix="prime_image_backend (앱 시작 전 early probe)",
         )
         self._surface_escalation(outcome)
