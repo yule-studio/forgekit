@@ -880,6 +880,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             joined = "\n".join(str(s) for s in app._transcript.lines)
             self.assertIn("handoff", joined)        # the intake→handoff ran
             self.assertIn("BLOCKED", joined)         # infra surfaced honestly
+            self.assertIn("vault note", joined)      # WT5 authored note written
             self.assertEqual(svc.calls, 0)           # NOT a raw live submit
 
     async def test_approval_wait_holds_live_submit(self) -> None:

@@ -404,8 +404,24 @@ class ForgekitConsoleApp(App):
         path = write_handoff_evidence(handoff, self.repo_root)
         if path is not None:
             self._transcript.write(f"[dim]↳ evidence: {path}[/dim]")
+        # WT5: also write an AUTHORED vault note (who/role/handoff phase metadata).
+        note_path = self._write_handoff_note(handoff)
+        if note_path is not None:
+            self._transcript.write(f"[dim]↳ vault note (tech-lead, authored): {note_path}[/dim]")
         self._sync_intro()
         self._follow_tail()
+
+    def _write_handoff_note(self, handoff):
+        """Best-effort: persist an authored vault note for the handoff (WT5)."""
+
+        try:
+            from datetime import date
+            from ..vault.note import note_from_handoff, write_note
+
+            content = note_from_handoff(handoff, created_at=date.today().isoformat())
+            return write_note(content, self.repo_root, "runs/forgekit/vault/handoff-note.md")
+        except Exception:  # noqa: BLE001 - vault write is best-effort, never fatal
+            return None
 
     def _submit_blocking(self, text: str) -> None:
         result = self._submit_service.submit(text)  # blocking IO (worker thread)
