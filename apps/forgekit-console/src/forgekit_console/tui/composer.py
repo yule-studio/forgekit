@@ -1,32 +1,29 @@
-"""Composer — a Claude-style input region with FOUR separated rows.
+"""Composer — a Claude-Code-style input BAR (full-width rule bar + hint + palette).
 
-The input BOX holds ONLY the prompt marker + the actual input. Everything else —
-the mode indicator and the shortcut hints — lives OUTSIDE the box, and the slash
-palette opens as its own surface below it. Top→bottom:
+Spec = the Claude Code terminal composer: a full-width input strip bounded by a
+TOP and BOTTOM horizontal rule (no side box, no inset), with the ``>`` prompt + the
+input inside it, the shortcut hints on a row BELOW the bar, and the slash command
+list as a separate surface below that. Top→bottom:
 
     transcript ……………………………………………  (the main panel, above)
-      ● operator                              ← #modepill   (meta, OUTSIDE the box)
-    ╭───────────────────────────────────────╮
-    │ ›  (your input)                         │ ← #composer-input-shell  (the BOX: marker + input ONLY)
-    ╰───────────────────────────────────────╯
-      /help · / palette · Tab 완성 · ^C quit    ← #hint       (hints, OUTSIDE the box)
-      ▎ /help   /harness   …                    ← #palette    (slash list, BELOW the box)
+    ─────────────────────────────────────────   ← #composer-input-shell top rule
+     > (your input)                              ← the BAR (marker + input ONLY)
+    ─────────────────────────────────────────   ← bottom rule (full width)
+     /help · / palette · Tab 완성 · ^C quit       ← #hint   (OUTSIDE the bar)
+     ▎ /help   /harness   …                       ← #palette (separate surface, below)
 
-Why this anatomy: previously the mode pill and the hint text sat INSIDE the
-bordered shell, so the input "box" looked like it was full of mode/help/Tab/quit
-text instead of being a clean input. Now:
+Notes:
 
-* ``#modepill`` (mode) is a row ABOVE the box.
-* ``#composer-input-shell`` is the input BAR — a filled, rounded box (background +
-  border contrast so it clearly reads as "the input bar") containing ONLY the accent
-  ``›`` marker and the input. No placeholder clutter; ``/`` is just typed text.
-* ``#hint`` (``/help · / palette · Tab · ^C quit``) is a row BELOW the box.
-* ``#palette`` is a separate compact surface below the hint — never inside the box,
-  never in the transcript (see :class:`tui.palette.CommandPalette`).
+* In the default **operator** state there is NO mode row above the bar (the app
+  hides ``#modepill``); the prompt bar is the first thing read, like Claude. The
+  mode indicator only appears for agent / palette states.
+* The bar is full width (top+bottom rules span the screen), not an inset rounded
+  box — that is what reads as the Claude input bar.
+* Hints live OUTSIDE the bar; the palette is its own surface below — never inside
+  the input, never bleeding into the transcript.
+* In the help/tab view the whole composer is hidden by the app.
 
-The composer follows the session flow (NO ``dock``; ``height: auto``). It owns no
-command logic — the app drives ``#modepill`` / ``#hint`` / palette / focus. The
-mode + hint strings come from :mod:`tui.render`.
+It owns no command logic — the app drives ``#modepill`` / ``#hint`` / palette / focus.
 """
 
 from __future__ import annotations
@@ -39,26 +36,28 @@ from .palette import CommandPalette
 
 
 class Composer(Vertical):
-    """Input region: mode row · input BOX (marker+input only) · hint row · palette."""
+    """Input region: (mode row, hidden in idle) · input BAR · hint row · palette."""
 
     DEFAULT_CSS = """
     Composer {
         height: auto;
-        margin: 1 1 0 1;   /* a clear gap from the transcript above */
+        margin: 1 0 0 0;   /* a clear gap above; FULL width (no side inset) */
         background: $background;
         padding: 0;
     }
-    /* mode indicator — its own row ABOVE the input box (outside it). */
+    /* mode indicator — its own row above the bar. Hidden by the app in the default
+       operator state (shown only for agent / palette states). */
     Composer #modepill {
-        height: 1;
-        padding: 0 0 0 2;
+        height: auto;
+        padding: 0 0 0 1;
     }
-    /* THE input bar — a filled, rounded box with marker + input ONLY. The
-       background/border contrast makes it read clearly as "the input bar". */
+    /* THE input bar — a full-width strip bounded by a top + bottom rule (Claude).
+       No side borders, no inset: the rules span the whole width. */
     Composer #composer-input-shell {
-        height: 1;                       /* +round border = a 3-row bar */
-        background: $surface;
-        border: round $accent-dim;
+        height: auto;
+        background: $background;
+        border-top: solid $brand-border;
+        border-bottom: solid $brand-border;
         padding: 0 1;
     }
     Composer #marker {
@@ -69,28 +68,28 @@ class Composer(Vertical):
     Composer #prompt {
         width: 1fr;
         border: none;
-        background: $surface;            /* match the shell — one clean bar */
+        background: $background;
         height: 1;
         padding: 0;
     }
-    /* shortcut hints — their own row BELOW the input box (outside it). */
+    /* shortcut hints — their own row BELOW the bar (outside it). */
     Composer #hint {
         height: 1;
-        padding: 0 0 0 2;
+        padding: 0 0 0 1;
         color: $text-muted;
     }
     """
 
     def compose(self):
-        # meta row: mode indicator — OUTSIDE the input box, above it.
+        # mode row (hidden in idle by the app) — above the bar.
         yield Static(id="modepill")
-        # the input BOX — ONLY the accent marker + the actual input (clean).
+        # the input BAR — full-width top+bottom rule strip, marker `>` + input only.
         with Horizontal(id="composer-input-shell"):
-            yield Static(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}]", id="marker")
+            yield Static(f"[{theme.ACCENT_PRIMARY}]>[/{theme.ACCENT_PRIMARY}]", id="marker")
             yield Input(placeholder="", id="prompt")
-        # hint row: shortcuts — OUTSIDE the input box, below it.
+        # hint row — outside the bar, below it.
         yield Static(id="hint")
-        # the slash palette — a separate compact surface BELOW everything.
+        # the slash palette — a separate compact surface below everything.
         yield CommandPalette(id="palette")
 
 

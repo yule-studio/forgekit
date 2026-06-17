@@ -128,9 +128,9 @@ class ForgekitConsoleApp(App):
     def on_mount(self) -> None:
         self.title = render.BRAND
         self.sub_title = render.TAGLINE
-        log = self._transcript
-        for line in render.welcome_banner(str(self.repo_root), self.context.profile):
-            log.write(line)
+        # Claude-style idle: the transcript starts EMPTY (no pre-filled welcome
+        # banner). The same `/help · / palette · …` guidance lives in the composer
+        # hint row, so the welcome line was redundant and showed as a stray band.
         self._refresh_issue()
         self._refresh_chrome()
         self.query_one("#prompt", Input).focus()
@@ -365,7 +365,13 @@ class ForgekitConsoleApp(App):
 
     def _refresh_chrome(self) -> None:
         mode = "palette" if self._palette.is_open else self.mode
-        self.query_one("#modepill", Static).update(render.mode_pill(mode, self.context.agents))
+        # Claude-style idle: NO mode row above the input in the default operator
+        # state. The mode pill only shows for agent / palette states.
+        modepill = self.query_one("#modepill", Static)
+        show_mode = self._palette.is_open or self.mode != MODE_OPERATOR
+        modepill.display = show_mode
+        if show_mode:
+            modepill.update(render.mode_pill(mode, self.context.agents))
         self.query_one("#hint", Static).update(
             render.hint_line(
                 palette_open=self._palette.is_open,

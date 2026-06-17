@@ -82,7 +82,8 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(app._main.help_open)
             self.assertIsNotNone(app.query_one("#composer", Composer))
             self.assertIsNotNone(app.query_one("#prompt", Input))
-            self.assertIn("operator", str(app.query_one("#modepill", Static).render()))
+            # Claude-style idle: the mode pill is hidden (no `● operator` row)
+            self.assertFalse(app.query_one("#modepill", Static).display)
 
     async def test_composer_is_inline_not_docked_bottom(self) -> None:
         """Composer is NOT dock:bottom — it flows inline right after the content.
@@ -339,10 +340,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 (ir.RENDERER_REAL, ir.RENDERER_AVATAR_MARK, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
-    async def test_input_box_holds_only_input_mode_and_hint_outside(self) -> None:
-        """The input BOX (#composer-input-shell) is a bordered bar containing ONLY the
-        marker + input. The mode (#modepill) is a row ABOVE it and the hints (#hint)
-        a row BELOW it — both OUTSIDE the box."""
+    async def test_input_bar_clean_mode_hidden_in_idle_hint_outside(self) -> None:
+        """The input BAR (#composer-input-shell) holds ONLY the marker + input, with
+        full-width top+bottom rules. In the default operator (idle) state the mode row
+        is HIDDEN (Claude-style), and the hints (#hint) are a row BELOW the bar."""
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
 
@@ -351,22 +352,45 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
             box = app.query_one("#composer-input-shell")
-            # the input box carries the full 4-edge rounded border (a clear bar)
-            for edge in (box.styles.border_top, box.styles.border_bottom,
-                         box.styles.border_left, box.styles.border_right):
+            # full-width input strip = top + bottom rules (no heavy box)
+            for edge in (box.styles.border_top, box.styles.border_bottom):
                 self.assertNotIn((edge[0] or "").lower(), ("", "none"))
                 self.assertNotEqual((edge[0] or "").lower(), "heavy")
-            # mode + input + marker live INSIDE the box; mode + hint live OUTSIDE it
+            # idle: the mode row is HIDDEN (no `● operator` above the bar)
+            self.assertFalse(app.query_one("#modepill", Static).display)
+            # marker inside the bar; hint OUTSIDE (below) the bar
             box_region = box.region
-            mode = app.query_one("#modepill", Static).region
-            hint = app.query_one("#hint", Static).region
-            marker = app.query_one("#marker", Static).region
-            self.assertTrue(box_region.contains_region(marker))     # marker inside box
-            self.assertLess(mode.y, box_region.y)                   # mode ABOVE the box
-            self.assertGreaterEqual(hint.y, box_region.bottom)      # hint BELOW the box
-            # a top margin separates the bar from the transcript above
+            self.assertTrue(box_region.contains_region(app.query_one("#marker", Static).region))
+            self.assertGreaterEqual(app.query_one("#hint", Static).region.y, box_region.bottom)
             self.assertGreaterEqual(composer.styles.margin.top, 1)
-            self.assertIn("›", str(app.query_one("#marker", Static).render()))
+            self.assertIn(">", str(app.query_one("#marker", Static).render()))
+
+    async def test_actual_typing_focus_value_and_submit(self) -> None:
+        """REAL interaction (not existence): the prompt is focused on mount, typed
+        characters land in Input.value, `/he` opens the palette, and Enter submits."""
+        from textual.widgets import Input
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            prompt = app.query_one("#prompt", Input)
+            # 1) the prompt has focus on mount
+            self.assertIs(app.focused, prompt)
+            # 2) typing real keys lands in Input.value
+            await pilot.press("a", "b", "c")
+            await pilot.pause()
+            self.assertEqual(prompt.value, "abc")
+            # 3) clear, then a slash query opens the palette with the typed value kept
+            prompt.value = ""
+            await pilot.press("slash", "h", "e")
+            await pilot.pause()
+            self.assertEqual(prompt.value, "/he")
+            self.assertTrue(app._palette.is_open)
+            # 4) Enter submits — palette closes and the prompt resets (submit flow ran)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertFalse(app._palette.is_open)
+            self.assertEqual(app.query_one("#prompt", Input).value, "")
 
     async def test_input_is_clean_hints_live_in_hint_row(self) -> None:
         """The input field carries NO in-field guidance (clean, Claude-style); the
