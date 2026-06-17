@@ -38,15 +38,18 @@ def render_halfblock(
     image_path: Path,
     *,
     cols: int = _DEFAULT_COLS,
+    contrast: bool = False,
 ):
     """Return a Rich ``Text`` half-block render of *image_path*, or ``None``.
 
     ``None`` means Pillow or the asset is unavailable — the caller then falls
     through to the plain text mark (tier 3). Pure given the file: no terminal IO.
+    When *contrast* is set, a mild ``autocontrast`` is applied before the downscale
+    so the figure reads a touch more at small (compact) sizes.
     """
 
     try:
-        from PIL import Image  # noqa: WPS433 - optional console extra
+        from PIL import Image, ImageOps  # noqa: WPS433 - optional console extra
         from rich.text import Text  # noqa: WPS433
     except Exception:  # noqa: BLE001 - Pillow/rich missing → caller uses text mark
         return None
@@ -55,6 +58,10 @@ def render_halfblock(
         img = Image.open(image_path).convert("RGB")
     except Exception:  # noqa: BLE001 - unreadable asset → caller uses text mark
         return None
+
+    if contrast:
+        # boost dark-hair / light-face separation so the small avatar reads better.
+        img = ImageOps.autocontrast(img, cutoff=2)
 
     cols = max(4, int(cols))
     src_w, src_h = img.size

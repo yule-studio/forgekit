@@ -465,7 +465,12 @@ class HalfBlockRenderer:
         from . import halfblock  # local import keeps Pillow optional at import time
 
         path = best_portrait_path() if self.portrait else best_image_path()
-        rendered = halfblock.render_halfblock(path, cols=self.cols) if path else None
+        # the small pixel avatar gets a mild autocontrast so the figure reads better
+        # at compact sizes; the opt-in detailed portrait keeps its tuned bake as-is.
+        rendered = (
+            halfblock.render_halfblock(path, cols=self.cols, contrast=not self.portrait)
+            if path else None
+        )
         if rendered is None:
             # last resort ONLY (no Pillow / asset): the brand badge, then bare text.
             return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
