@@ -147,52 +147,65 @@ FORGEKIT_DEBUG_RENDERERS=1 .venv/bin/forgekit   # 진단 on — intro 아래 dim
 표시 형태(예):
 
 ```
-renderers · avatar=halfcell(fallback) · brand=text-mark(fallback) · cap=term_program=vscode · lib=ok:halfcell
-renderers · avatar=sixel(raster) · brand=sixel(raster) · cap=iterm2 inline images · lib=ok:sixel
+renderers · avatar=avatar-mark (managed-fallback) · brand=brand-text (managed-fallback) · cap=term_program=vscode · lib=ok:unicode
+renderers · avatar=sixel (true-raster) · brand=sixel (true-raster) · cap=iterm2 inline images · lib=ok:sixel
 ```
 
-- `avatar=<backend>(raster|fallback)` : 실제로 화면에 그려진 backend. `(raster)` 면 진짜
-  픽셀 이미지(tgp/sixel), `(fallback)` 이면 셀/텍스트 대체(halfcell/unicode/half-block/text-mark).
-- `cap=…` : capability 검출 사유(우리 휴리스틱의 추측, backend 와 별개).
-- `lib=ok:<backend>` : `textual-image` import 가능 + **그것이 고른 backend**. `lib=ok:halfcell`
-  은 "라이브러리는 되지만 raster 는 아님" 을 뜻한다. import 자체가 안 되면 `lib=✗ <이유>`.
+- `avatar=<backend> (<policy>)` : 실제로 그려진 backend + 정책 state. 정책은 3단 —
+  **true-raster**(tgp/sixel 진짜 픽셀) / **managed-fallback**(의도된 깔끔한 대체: 브랜드
+  배지·워드마크·opt-in portrait) / **hard-fallback**(라이브러리·asset 부족 → bare text).
+- `cap=…` : capability 검출 사유(휴리스틱 추측, backend 와 별개).
+- `lib=ok:<backend>` : `textual-image` import 가능 + **그것이 고른 backend**. `lib=ok:unicode`
+  는 "라이브러리는 되지만 raster 는 아님". import 실패면 `lib=✗ <이유>`.
 
-이 줄 하나로 operator 는 **import 가능 / capability / 라이브러리가 고른 backend / 우리가
-실제 그린 backend** 4가지를 분리해서 본다. `real-image` 라는 말로 halfcell/unicode 를
-더 이상 뭉뚱그리지 않는다.
+이 줄 하나로 operator 는 **import 가능 / capability / 라이브러리가 고른 backend / 실제 그린
+backend(+정책)** 를 분리해서 본다. managed-fallback 을 절대 "real-image" 라고 부르지 않는다.
 
-구현: `image_renderer.renderable_backend()`(결과→backend, import-free) ·
-`is_true_raster()`(tgp/sixel 만 True) · `image_library_status()`(import 가능 + 고른 backend) ·
-`diagnose_renderers()` · `render.renderer_debug_line()`(순수 빌더) · `IntroHeader` 가 flag on
-일 때만 mount.
+debug flag 없이도 보고 싶으면 콘솔에서 **`/render`** — readiness(파이썬·라이브러리·터미널·
+정책 + 권장 터미널 + 지원 매트릭스)를 한 화면에 보여준다.
 
-#### fallback 정책 (true raster 일 때만 textual-image)
+구현: `image_renderer` 의 `renderable_backend()`(결과→backend, import-free) · `is_true_raster()`
+(tgp/sixel 만) · `policy_state()`(backend→3단) · `image_library_status()` · `prime_image_backend()`
+(early probe) · `diagnose_renderers()` · `render.renderer_debug_line()` · `tui/render_readiness.py`
+(`/render`).
 
-진단을 정직하게 고치면서 정책도 맞췄다 — **textual-image 는 backend 가 tgp/sixel 일 때만**
-쓴다.
+#### 렌더 정책 매트릭스
 
-- **avatar**: true raster → portrait 픽셀 이미지. 아니면 textual-image 의 halfcell/unicode
-  대신 **우리 자체 half-block**(베이크된 128px 에서 유도, 대비 튜닝됨 — textual-image 의 cell
-  fallback 보다 깔끔)을 쓴다. 그것도 안 되면 text mark.
-- **brand**: true raster → banner 이미지. 아니면 **cyan→magenta 텍스트 워드마크**(halfcell/
-  unicode 배너보다 훨씬 깔끔).
+| 환경 | 예상 backend | avatar 정책 | brand 정책 | operator 권장 |
+| --- | --- | --- | --- | --- |
+| VS Code 통합 터미널 | `halfcell`/`unicode` | **brand 배지**(managed) | **워드마크**(managed) | fallback-first — 그대로 운영 OK |
+| iTerm2 | `sixel` | portrait **픽셀 이미지**(true-raster) | banner 이미지 | **권장** (Python 3.10+ console env) |
+| WezTerm | `sixel`(tgp 보고) | portrait 픽셀 이미지 | banner 이미지 | **권장** |
+| Kitty | `tgp` | portrait 픽셀 이미지 | banner 이미지 | **권장** |
+| no-tty / 라이브러리 없음 | `none` | 배지(managed) 또는 text(hard) | 워드마크 | — |
 
-즉 "real-image 라고 써놓고 실제론 깨진 halfcell" 을 그리지 않는다.
+정책 핵심:
 
-#### 터미널별 확인 절차 (cross-terminal)
+- **avatar**: true raster(tgp/sixel)일 때만 portrait 픽셀 이미지. 아니면 **깔끔한 브랜드 배지**
+  (cyan `f` + magenta `k` 의 framed 모노그램). 14-col half-block 에서 라인아트 portrait 는
+  도트로 뭉개지므로(실측: threshold/posterize 모두 28px 에서 노이즈) **portrait 를 강행하지 않는다.**
+  portrait half-block 은 `FORGEKIT_AVATAR=portrait` 로 opt-in.
+- **brand**: true raster 일 때만 banner 이미지. 아니면 **cyan→magenta 워드마크**(halfcell/unicode
+  배너보다 훨씬 깔끔).
+- override: `FORGEKIT_AVATAR=image|portrait|mark|text`.
 
-- **VS Code 통합 터미널**: 실측 결과 **halfcell**(real TTY 에서 sixel/tgp probe 무응답) →
-  **true raster 아님**. 그래서 forgekit 는 avatar=우리 half-block / brand=텍스트 워드마크
-  fallback 을 보여준다. `FORGEKIT_DEBUG_RENDERERS=1` 로 `lib=ok:halfcell`(또는 파이프 시
-  `unicode`) 을 확인할 수 있다.
-- **iTerm2 / WezTerm / Kitty**: 같은 명령을 그 터미널에서 실행하면 `lib=ok:sixel`(또는 `tgp`)
-  로 바뀌고 `avatar=sixel(raster)` 가 떠야 한다 — 그때가 진짜 픽셀 이미지다. probe 가
-  Textual 시작 전에 돌도록 `textual_image.renderable` 을 앱 시작 전에 import 해야 할 수도
-  있다(현재는 lazy).
+#### true raster 공식화 + 터미널별 확인 절차
 
-> **요약:** import 가능(=lib ok)·capability 추측·고른 backend·실제 그린 backend 는 서로
-> 다른 신호다. true raster 는 **tgp/sixel** 기준이며 halfcell/unicode 는 fallback 이다.
-> VS Code 통합 터미널에서 실제 backend 가 무엇인지(현재 halfcell)는 위 debug line 으로 확인한다.
+`textual-image` 의 sixel/TGP probe 는 **Textual 이 stdin 을 잡기 전에만** 동작한다. 그래서
+엔트리포인트(`app/main.launch_console`)에서 `App.run()` 직전 `image_renderer.prime_image_backend()`
+로 backend 를 미리 확정한다(early import) — capable 터미널이 halfcell 로 떨어지는 걸 줄인다.
+
+- **VS Code 통합 터미널**: 실측 **halfcell**(real TTY 에서 sixel/tgp 무응답) → true raster 아님.
+  forgekit 는 avatar=브랜드 배지 / brand=워드마크(둘 다 managed-fallback). `/render` 또는
+  `FORGEKIT_DEBUG_RENDERERS=1` 로 `lib=ok:halfcell`(파이프 시 `unicode`) 확인.
+- **iTerm2 / WezTerm / Kitty**: 같은 빌드를 그 터미널 + Python 3.10+ console env 에서 실행하면
+  `lib=ok:sixel`(또는 `tgp`) + `avatar=sixel (true-raster)` 로 바뀐다 — 그때가 진짜 픽셀 이미지.
+  (이 세션에서 GUI 터미널 직접 실행은 불가 — tgp 시뮬로 `avatar=tgp (true-raster)` 만 확인. 실제
+  교차검증 절차/근거는 [`runs/forgekit-render-policy/evidence.md`](../runs/forgekit-render-policy/evidence.md).)
+
+> **요약:** import 가능(lib ok)·capability 추측·고른 backend·실제 그린 backend(+정책)는 서로
+> 다른 신호다. true raster 는 **tgp/sixel** 뿐. VS Code 는 fallback-first(브랜드 배지/워드마크),
+> 진짜 픽셀 이미지는 iTerm2/WezTerm/Kitty 가 공식 권장 경로다.
 
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
@@ -290,9 +303,10 @@ apps/forgekit-console/src/forgekit_console/
   data/status_loader.py  기존 surface 재사용 + 순수 shaper
   tui/theme.py         브랜드 팔레트 SSoT — cyan/magenta-on-black 명명 상수 + wordmark() + css_variables() (순수)
   tui/render.py        문자열 렌더(welcome/intro-meta/issue-line/hint/mode-pill/help-panel-document/palette) — 순수, theme 토큰 참조
-  tui/image_renderer.py 아바타 + 브랜드 배너 렌더 추상화 — capability 검출(순수) + 아바타 3-tier + 브랜드 배너(real image→text wordmark)
-  tui/brand_panel.py   브랜드 배너 위젯(인트로 워드마크 마크, image-first → 텍스트 워드마크)
-  tui/halfblock.py     tier-2 image-derived half-block 렌더(베이크 PNG → Pillow downscale → ▀ 래스터)
+  tui/image_renderer.py 아바타+브랜드 렌더 추상화 — capability 검출·backend 분류(tgp/sixel/halfcell/unicode)·3단 정책(true-raster/managed/hard)·진단·early probe
+  tui/render_readiness.py 렌더 readiness(/render) — python·textual-image·terminal·정책·권장 터미널 + 지원 매트릭스 (순수, env 주입)
+  tui/brand_panel.py   브랜드 배너 위젯(인트로 워드마크 마크, true raster→텍스트 워드마크)
+  tui/halfblock.py     opt-in portrait half-block 렌더(베이크 PNG → Pillow downscale → ▀ 래스터; FORGEKIT_AVATAR=portrait)
   tui/avatar_panel.py  아바타 위젯(선택된 renderer 의 renderable 을 mount, textual)
   tui/header.py        IntroHeader 위젯 — 아바타(좌) + 브랜드/버전/provider/profile/repo(우)
   tui/session_flow.py  SessionFlow(VerticalScroll) — issue·본문·composer·hint 의 top-aligned inline flow + follow_tail
