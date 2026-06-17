@@ -29,7 +29,20 @@ forgekit                      # 운영자 콘솔 TUI 열기
 yule --help                   # 기존 engineering CLI (runtime/harness/engineer/…)
 ```
 
-자세한 콘솔 가이드는 [docs/forgekit-console.md](docs/forgekit-console.md).
+### 터미널별 이미지 렌더 (true raster vs fallback)
+
+forgekit 의 대표 이미지는 터미널 graphics 지원에 따라 다르게 그려진다.
+
+- **VS Code 통합 터미널 = fallback-first 경로.** sixel/TGP 무응답이라 진짜 픽셀
+  이미지가 안 되고, forgekit 는 **깔끔한 브랜드 배지 / 워드마크**(managed fallback)로
+  표시한다 — 도트로 깨지는 portrait 를 강행하지 않는다. 기본 운영 환경으로 문제없다.
+- **iTerm2 / WezTerm / Kitty = true-raster 권장 경로.** 진짜 인라인 픽셀 이미지를
+  그린다. 단 `textual-image` 는 **Python 3.10+** 가 필요하므로 별도 console env
+  (`python3.13 -m venv .venv-console` + `pip install -e 'apps/forgekit-console[image]'`)를 쓴다.
+- **지금 내 환경 확인:** 콘솔에서 `/render` (readiness + 권장 터미널) 또는
+  `FORGEKIT_DEBUG_RENDERERS=1 forgekit` (intro 아래 `avatar=<backend> (<policy>)` 한 줄).
+
+자세한 콘솔 가이드 / 정책 매트릭스는 [docs/forgekit-console.md](docs/forgekit-console.md).
 
 ## 명령(지침) 구조
 
