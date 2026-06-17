@@ -86,26 +86,34 @@ class RendererSelectionTests(unittest.TestCase):
         cap = ir.ImageCapability(True)
         self.assertEqual(ir.select_renderer(cap), ir.RENDERER_REAL)
 
-    def test_not_capable_selects_image_derived_halfblock_not_text(self) -> None:
-        # tier 2: not-capable → image-derived half-block, NOT the text mark
+    def test_not_capable_selects_brand_badge_not_text(self) -> None:
+        # non-raster default is the crisp brand BADGE (managed), NOT the dotty
+        # portrait half-block and NOT the bare text mark.
         cap = ir.ImageCapability(False)
-        self.assertEqual(ir.select_renderer(cap), ir.RENDERER_HALFBLOCK)
+        self.assertEqual(ir.select_renderer(cap), ir.RENDERER_AVATAR_MARK)
         self.assertNotEqual(ir.select_renderer(cap), ir.RENDERER_TEXT)
+        self.assertNotEqual(ir.select_renderer(cap), ir.RENDERER_HALFBLOCK)
 
     def test_accepts_bare_bool(self) -> None:
         self.assertEqual(ir.select_renderer(True), ir.RENDERER_REAL)
-        self.assertEqual(ir.select_renderer(False), ir.RENDERER_HALFBLOCK)
+        self.assertEqual(ir.select_renderer(False), ir.RENDERER_AVATAR_MARK)
 
     def test_make_renderer_capable_is_real(self) -> None:
         r = ir.make_renderer(ir.ImageCapability(True))
         self.assertEqual(r.renderer_id, ir.RENDERER_REAL)
         self.assertIsInstance(r, ir.RealImageRenderer)
 
-    def test_make_renderer_incapable_is_halfblock(self) -> None:
-        # incapable terminal still gets an IMAGE (tier 2), not the text mark
+    def test_make_renderer_incapable_is_brand_badge(self) -> None:
+        # incapable terminal gets the crisp brand badge (managed fallback)
         r = ir.make_renderer(ir.ImageCapability(False))
-        self.assertEqual(r.renderer_id, ir.RENDERER_HALFBLOCK)
-        self.assertIsInstance(r, ir.HalfBlockRenderer)
+        self.assertEqual(r.renderer_id, ir.RENDERER_AVATAR_MARK)
+        self.assertIsInstance(r, ir.AvatarMarkRenderer)
+
+    def test_force_overrides_select_renderer(self) -> None:
+        self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "portrait"}), ir.HalfBlockRenderer)
+        self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "mark"}), ir.AvatarMarkRenderer)
+        self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "text"}), ir.TextMarkRenderer)
+        self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "image"}), ir.RealImageRenderer)
 
 
 class AssetTests(unittest.TestCase):
@@ -206,10 +214,12 @@ class HalfBlockTier2Tests(unittest.TestCase):
         # and it is NOT the brand text mark
         self.assertNotIn("forge", plain)
 
-    def test_make_renderer_incapable_renders_halfblock_image(self) -> None:
+    def test_portrait_override_renders_halfblock_image(self) -> None:
+        # the half-block portrait is now OPT-IN (FORGEKIT_AVATAR=portrait), not the
+        # incapable default — that default is the crisp brand badge.
         from rich.text import Text
 
-        r = ir.make_renderer(ir.ImageCapability(False))
+        r = ir.make_renderer(env={"FORGEKIT_AVATAR": "portrait"})
         out = r.renderable()
         self.assertIsInstance(out, Text)
         self.assertIn("▀", out.plain)
@@ -227,20 +237,32 @@ class FallbackTests(unittest.TestCase):
         out = ir.TextMarkRenderer().renderable()
         self.assertIn("forge", out)
 
-    @unittest.skipUnless(_HAS_RICH, "needs rich for the half-block Text type")
-    def test_real_renderer_degrades_to_halfblock_when_not_true_raster(self) -> None:
-        # textual-image absent OR resolving to a non-raster backend → the real
-        # renderer drops to OUR image-derived half-block (tier 2), not textual-
-        # image's cell fallback and not straight to text.
-        from rich.text import Text
+    def test_avatar_mark_is_crisp_brand_badge(self) -> None:
+        # the default non-raster avatar: a clean framed fk badge in brand colours,
+        # NO per-pixel colour spans (those are what dither in a poor terminal).
+        out = ir.AvatarMarkRenderer().renderable()
+        self.assertIsInstance(out, str)
+        self.assertEqual(ir.AvatarMarkRenderer().realized_backend(), ir.BACKEND_AVATAR_MARK)
+        self.assertIn("f", out)
+        self.assertIn("k", out)
+        from forgekit_console.tui import theme
+        self.assertIn(theme.ACCENT_PRIMARY, out)   # cyan (forge)
+        self.assertIn(theme.ACCENT_SECONDARY, out)  # magenta (kit)
+        self.assertNotIn("▀", out)  # not a half-block raster
+        self.assertNotIn("on rgb(", out)  # not per-pixel colour
 
+    def test_real_renderer_degrades_to_brand_badge_when_not_true_raster(self) -> None:
+        # textual-image absent OR resolving to a non-raster backend → the real
+        # renderer drops to the crisp brand BADGE (managed), never a muddy cell
+        # render. (Only a true-raster terminal yields a textual-image Image.)
         out = ir.RealImageRenderer().renderable()
-        if isinstance(out, Text):  # tier 2 half-block (expected when not true raster)
-            self.assertIn("▀", out.plain)
-        elif isinstance(out, str):  # only if Pillow/asset somehow gone → text mark
-            self.assertIn("forge", out)
+        backend = ir.RealImageRenderer().realized_backend()
+        if isinstance(out, str):
+            # managed brand badge (default) or, if even the asset is gone, text mark
+            self.assertIn(backend, (ir.BACKEND_AVATAR_MARK, ir.BACKEND_TEXT))
+            self.assertFalse(ir.is_true_raster(backend))
         else:  # a true-raster textual-image Image renderable
-            self.assertTrue(ir.is_true_raster(ir.renderable_backend(out)))
+            self.assertTrue(ir.is_true_raster(backend))
 
     def test_halfblock_with_missing_asset_uses_text(self) -> None:
         # ONLY when the image asset is missing does tier 2 fall through to text.
@@ -256,7 +278,11 @@ class FallbackTests(unittest.TestCase):
 
 _ALL_BACKENDS = (
     ir.BACKEND_TGP, ir.BACKEND_SIXEL, ir.BACKEND_HALFCELL, ir.BACKEND_UNICODE,
-    ir.BACKEND_HALFBLOCK, ir.BACKEND_TEXT, ir.BACKEND_NONE, ir.BACKEND_UNKNOWN,
+    ir.BACKEND_HALFBLOCK, ir.BACKEND_AVATAR_MARK, ir.BACKEND_BRAND_TEXT,
+    ir.BACKEND_TEXT, ir.BACKEND_NONE, ir.BACKEND_UNKNOWN,
+)
+_ALL_POLICIES = (
+    ir.POLICY_TRUE_RASTER, ir.POLICY_MANAGED_FALLBACK, ir.POLICY_HARD_FALLBACK,
 )
 
 
@@ -308,22 +334,35 @@ class DiagnosticsTests(unittest.TestCase):
         if not ok:
             self.assertEqual(backend, ir.BACKEND_NONE)
 
-    def test_diagnose_renderers_fields_are_known_backends(self) -> None:
+    def test_diagnose_renderers_fields_are_known_backends_and_policies(self) -> None:
         # env-portable: assert structure + vocabulary, not a specific backend.
         diag = ir.diagnose_renderers({"TERM_PROGRAM": "iterm.app"})
         self.assertIn(diag.avatar_backend, _ALL_BACKENDS)
         self.assertIn(diag.brand_backend, _ALL_BACKENDS)
         self.assertEqual(diag.avatar_true_raster, ir.is_true_raster(diag.avatar_backend))
         self.assertEqual(diag.brand_true_raster, ir.is_true_raster(diag.brand_backend))
+        self.assertIn(diag.avatar_policy, _ALL_POLICIES)
+        self.assertIn(diag.brand_policy, _ALL_POLICIES)
+        # policy is derived from the realized backend, consistently
+        self.assertEqual(diag.avatar_policy, ir.policy_state(diag.avatar_backend))
+        self.assertEqual(diag.brand_policy, ir.policy_state(diag.brand_backend))
         self.assertIn(diag.lib_backend, _ALL_BACKENDS)
         self.assertTrue(diag.capability_reason)
 
-    def test_diagnose_forced_text_never_true_raster(self) -> None:
+    def test_diagnose_forced_text_is_hard_fallback(self) -> None:
         diag = ir.diagnose_renderers({"FORGEKIT_AVATAR": "text"})
-        self.assertEqual(diag.avatar_selected, ir.RENDERER_HALFBLOCK)
-        self.assertEqual(diag.brand_selected, ir.RENDERER_BRAND_TEXT)
+        self.assertEqual(diag.avatar_selected, ir.RENDERER_TEXT)
+        self.assertEqual(diag.avatar_policy, ir.POLICY_HARD_FALLBACK)
         self.assertFalse(diag.avatar_true_raster)
         self.assertFalse(diag.brand_true_raster)
+
+    def test_policy_state_mapping(self) -> None:
+        self.assertEqual(ir.policy_state(ir.BACKEND_TGP), ir.POLICY_TRUE_RASTER)
+        self.assertEqual(ir.policy_state(ir.BACKEND_SIXEL), ir.POLICY_TRUE_RASTER)
+        for managed in (ir.BACKEND_AVATAR_MARK, ir.BACKEND_BRAND_TEXT, ir.BACKEND_HALFBLOCK):
+            self.assertEqual(ir.policy_state(managed), ir.POLICY_MANAGED_FALLBACK, managed)
+        for hard in (ir.BACKEND_TEXT, ir.BACKEND_NONE, ir.BACKEND_UNKNOWN):
+            self.assertEqual(ir.policy_state(hard), ir.POLICY_HARD_FALLBACK, hard)
 
 
 class TrueRasterPolicyTests(unittest.TestCase):
@@ -352,25 +391,30 @@ class TrueRasterPolicyTests(unittest.TestCase):
 
     def test_true_raster_backend_is_used_for_avatar(self) -> None:
         self._install_fake_backend("textual_image.renderable.tgp")
-        out = ir.RealImageRenderer().renderable()
-        self.assertEqual(ir.renderable_backend(out), ir.BACKEND_TGP)
-        self.assertTrue(ir.is_true_raster(ir.renderable_backend(out)))
+        r = ir.RealImageRenderer()
+        self.assertEqual(r.realized_backend(), ir.BACKEND_TGP)
+        self.assertEqual(ir.renderable_backend(r.renderable()), ir.BACKEND_TGP)
+        self.assertTrue(ir.is_true_raster(r.realized_backend()))
 
-    def test_halfcell_avatar_falls_to_our_fallback_not_cell(self) -> None:
+    def test_halfcell_avatar_falls_to_brand_badge_not_cell(self) -> None:
         self._install_fake_backend("textual_image.renderable.halfcell")
-        be = ir.renderable_backend(ir.RealImageRenderer().renderable())
-        # never textual-image's own halfcell/unicode — our half-block or text mark
-        self.assertIn(be, (ir.BACKEND_HALFBLOCK, ir.BACKEND_TEXT))
-        self.assertFalse(ir.is_true_raster(be))
+        r = ir.RealImageRenderer()
+        # never textual-image's own halfcell/unicode — the crisp brand badge
+        self.assertEqual(r.realized_backend(), ir.BACKEND_AVATAR_MARK)
+        self.assertEqual(ir.policy_state(r.realized_backend()), ir.POLICY_MANAGED_FALLBACK)
+        self.assertIsInstance(r.renderable(), str)
 
     def test_true_raster_backend_is_used_for_brand(self) -> None:
         self._install_fake_backend("textual_image.renderable.sixel")
-        out = ir.BrandBannerRenderer().renderable()
-        self.assertEqual(ir.renderable_backend(out), ir.BACKEND_SIXEL)
+        r = ir.BrandBannerRenderer()
+        self.assertEqual(r.realized_backend(), ir.BACKEND_SIXEL)
+        self.assertEqual(ir.renderable_backend(r.renderable()), ir.BACKEND_SIXEL)
 
     def test_halfcell_brand_falls_to_text_wordmark(self) -> None:
         self._install_fake_backend("textual_image.renderable.unicode")
-        out = ir.BrandBannerRenderer().renderable()
+        r = ir.BrandBannerRenderer()
+        self.assertEqual(r.realized_backend(), ir.BACKEND_BRAND_TEXT)
+        out = r.renderable()
         self.assertIsInstance(out, str)
         self.assertIn("forge", out)
 

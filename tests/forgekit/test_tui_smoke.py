@@ -294,10 +294,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await pilot.pause()
             intro = app.query_one("#intro", IntroHeader)
-            # whichever the headless terminal selected, it is one of the three tiers
+            # whichever the headless terminal selected, it is one of the known tiers
             self.assertIn(
                 intro.avatar_renderer_id,
-                (ir.RENDERER_REAL, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
+                (ir.RENDERER_REAL, ir.RENDERER_AVATAR_MARK, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
     async def test_composer_is_thin_no_heavy_box(self) -> None:

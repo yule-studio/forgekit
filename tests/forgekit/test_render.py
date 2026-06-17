@@ -193,12 +193,12 @@ class IntroMetaTests(unittest.TestCase):
 class _Diag:
     """Minimal RendererDiagnostics-shaped stub for the debug-line builder."""
 
-    def __init__(self, *, av_backend, av_raster, br_backend, br_raster,
+    def __init__(self, *, av_backend, av_policy, br_backend, br_policy,
                  cap, lib_ok, lib_backend="none", lib_reason=""):
         self.avatar_backend = av_backend
-        self.avatar_true_raster = av_raster
+        self.avatar_policy = av_policy
         self.brand_backend = br_backend
-        self.brand_true_raster = br_raster
+        self.brand_policy = br_policy
         self.capability_reason = cap
         self.lib_ok = lib_ok
         self.lib_backend = lib_backend
@@ -206,31 +206,34 @@ class _Diag:
 
 
 class RendererDebugLineTests(unittest.TestCase):
-    def test_true_raster_tagged_raster(self) -> None:
+    def test_true_raster_shows_policy(self) -> None:
         line = render.renderer_debug_line(
-            _Diag(av_backend="sixel", av_raster=True, br_backend="sixel", br_raster=True,
+            _Diag(av_backend="sixel", av_policy="true-raster",
+                  br_backend="sixel", br_policy="true-raster",
                   cap="iterm2 inline images", lib_ok=True, lib_backend="sixel")
         )
-        self.assertIn("avatar=sixel(raster)", line)
-        self.assertIn("brand=sixel(raster)", line)
+        self.assertIn("avatar=sixel (true-raster)", line)
+        self.assertIn("brand=sixel (true-raster)", line)
         self.assertIn("cap=iterm2 inline images", line)
         self.assertIn("lib=ok:sixel", line)
 
-    def test_fallback_backend_tagged_fallback(self) -> None:
-        # importable but resolved to a cell fallback → must NOT read as raster
+    def test_managed_fallback_not_called_raster(self) -> None:
+        # importable but resolved to a cell fallback → managed-fallback, NOT raster
         line = render.renderer_debug_line(
-            _Diag(av_backend="half-block", av_raster=False, br_backend="text-mark", br_raster=False,
+            _Diag(av_backend="avatar-mark", av_policy="managed-fallback",
+                  br_backend="brand-text", br_policy="managed-fallback",
                   cap="term_program=vscode", lib_ok=True, lib_backend="halfcell")
         )
-        self.assertIn("avatar=half-block(fallback)", line)
-        self.assertIn("brand=text-mark(fallback)", line)
+        self.assertIn("avatar=avatar-mark (managed-fallback)", line)
+        self.assertIn("brand=brand-text (managed-fallback)", line)
         self.assertIn("cap=term_program=vscode", line)
         self.assertIn("lib=ok:halfcell", line)  # importable, but halfcell ≠ raster
-        self.assertNotIn("(raster)", line)
+        self.assertNotIn("true-raster", line)
 
     def test_lib_import_failure_shown(self) -> None:
         line = render.renderer_debug_line(
-            _Diag(av_backend="half-block", av_raster=False, br_backend="text-mark", br_raster=False,
+            _Diag(av_backend="avatar-mark", av_policy="managed-fallback",
+                  br_backend="brand-text", br_policy="managed-fallback",
                   cap="term_program=vscode", lib_ok=False, lib_backend="none",
                   lib_reason="ImportError: cannot import name 'NoneType'")
         )
@@ -239,7 +242,8 @@ class RendererDebugLineTests(unittest.TestCase):
 
     def test_long_lib_reason_truncated(self) -> None:
         line = render.renderer_debug_line(
-            _Diag(av_backend="text-mark", av_raster=False, br_backend="text-mark", br_raster=False,
+            _Diag(av_backend="text-mark", av_policy="hard-fallback",
+                  br_backend="brand-text", br_policy="managed-fallback",
                   cap="x", lib_ok=False, lib_backend="none", lib_reason="X" * 200)
         )
         self.assertIn("…", line)
