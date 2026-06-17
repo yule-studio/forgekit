@@ -109,10 +109,14 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(r.kind, KIND_ERROR)
         self.assertIn("unknown command", r.title)
 
-    def test_free_text_not_wired(self) -> None:
+    def test_free_text_routes_to_live_submit_note(self) -> None:
+        # the pure router does NOT submit (no IO); the TUI app intercepts free text
+        # and sends it to the live provider path. The router just notes that.
         r = _route("just chatting", _ctx())
         self.assertEqual(r.kind, KIND_INFO)
-        self.assertIn("아직 연결되지 않았습니다", "\n".join(r.lines))
+        joined = "\n".join(r.lines)
+        self.assertIn("live-submit", joined)
+        self.assertNotIn("아직 연결되지 않았습니다", joined)
 
     def test_quit_and_clear_kinds(self) -> None:
         self.assertEqual(_route("/quit", _ctx()).kind, KIND_QUIT)

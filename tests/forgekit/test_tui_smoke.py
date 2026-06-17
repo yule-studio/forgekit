@@ -44,11 +44,12 @@ def _fake_context():
 
 @unittest.skipUnless(_TEXTUAL, "textual not installed")
 class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
-    def _app(self, *, escalator=None):
+    def _app(self, *, escalator=None, submit_service=None):
         from forgekit_console.tui.app import ForgekitConsoleApp
 
         return ForgekitConsoleApp(
-            repo_root=Path("/tmp/repo"), context=_fake_context(), escalator=escalator
+            repo_root=Path("/tmp/repo"), context=_fake_context(),
+            escalator=escalator, submit_service=submit_service,
         )
 
     def _tempdir_escalator(self, *, threshold=3):
@@ -549,6 +550,99 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # the escalation RCA block was written to the transcript
             n_before = len(app._transcript.lines)
             self.assertGreater(n_before, 0)
+
+    async def test_free_text_live_submit_appends_assistant_reply(self) -> None:
+        """A non-slash line goes to the injected submit service (NOT the slash path):
+        the user echo + the assistant reply land in the transcript, the input is
+        cleared, and focus returns to the prompt — no escalation on a live result."""
+        from textual.widgets import Input
+        from forgekit_console.chat import models as m
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.prompts = []
+
+            def submit(self, text):
+                self.prompts.append(text)
+                return m.SubmitResult(
+                    ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
+                    text="안녕하세요 — 라이브 응답입니다", provider_id="ollama",
+                    provider_label="Ollama", source=m.SOURCE_LOCAL_DEFAULT, model="gemma3:latest",
+                )
+
+        svc = FakeService()
+        app = self._app(submit_service=svc)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            n_before = len(app._transcript.lines)
+            prompt = app.query_one("#prompt", Input)
+            prompt.value = "프로젝트 상태 알려줘"
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()  # the threaded submit worker
+            await pilot.pause()
+            # the free text reached the live submit service (slash path NOT taken)
+            self.assertEqual(svc.prompts, ["프로젝트 상태 알려줘"])
+            # echo + assistant reply both appended
+            self.assertGreater(len(app._transcript.lines), n_before)
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("라이브 응답", joined)
+            # input cleared, focus kept on the prompt, no escalation
+            self.assertEqual(app.query_one("#prompt", Input).value, "")
+            self.assertIs(app.focused, app.query_one("#prompt", Input))
+            self.assertFalse(app._blocked)
+
+    async def test_free_text_failure_records_escalation(self) -> None:
+        """A non-live submit (e.g. no provider) is surfaced honestly AND, after the
+        threshold, escalates as a repeated failure (never silently swallowed)."""
+        from textual.widgets import Input
+        from forgekit_console.chat import models as m
+
+        class FailingService:
+            def submit(self, text):
+                return m.SubmitResult(
+                    ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER,
+                    text="provider 가 아직 설정되지 않았습니다.",
+                    next_action="로컬 ollama 를 실행하거나 provider 를 설정하세요.",
+                )
+
+        app = self._app(escalator=self._tempdir_escalator(threshold=1), submit_service=FailingService())
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app.query_one("#prompt", Input).value = "hello?"
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("다음 단계", joined)  # the next-action guidance is shown
+            self.assertTrue(app._blocked)  # threshold 1 → escalated
+
+    async def test_slash_command_not_routed_to_submit_service(self) -> None:
+        """Slash commands must NEVER hit the live submit service — they stay on the
+        pure router path."""
+        from forgekit_console.chat import models as m
+
+        class TrackingService:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def submit(self, text):
+                self.calls += 1
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
+
+        svc = TrackingService()
+        app = self._app(submit_service=svc)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            n_before = len(app._transcript.lines)
+            app._execute("/status")
+            await pilot.pause()
+            self.assertEqual(svc.calls, 0)  # the slash path never calls submit
+            # /status still routed normally → its result reached the transcript
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertGreater(len(app._transcript.lines), n_before)
+            self.assertIn("operator dashboard", joined)
 
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
