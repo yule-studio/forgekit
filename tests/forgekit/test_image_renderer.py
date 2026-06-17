@@ -124,21 +124,52 @@ class AssetTests(unittest.TestCase):
 
 
 class BakedDisplayAssetTests(unittest.TestCase):
-    """The bake pipeline's outputs ship as package assets (deterministic path)."""
+    """The bake pipeline's outputs ship as package assets (canonical + alias)."""
 
-    def test_bake_module_paths_match_renderer(self) -> None:
+    def test_bake_source_alias_matches_renderer(self) -> None:
         from forgekit_console.assets.avatar import bake
 
         self.assertEqual(bake.SOURCE, ir.source_image_path())
-        self.assertEqual(bake.DISPLAY_PRIMARY, ir.display_png_path())
-        self.assertEqual(bake.DISPLAY_PRIMARY.name, "forgekit-avatar.png")
 
-    def test_primary_and_small_display_assets_present(self) -> None:
+    def test_runtime_alias_is_the_render_path(self) -> None:
+        # the renderer loads the runtime alias (forgekit-avatar.png == display-128).
         from forgekit_console.assets.avatar import bake
 
-        self.assertTrue(bake.DISPLAY_PRIMARY.is_file())
-        self.assertTrue(bake.DISPLAY_SMALL.is_file(), "96px secondary display missing")
-        self.assertEqual(bake.DISPLAY_SMALL.name, "forgekit-avatar-96.png")
+        self.assertEqual(bake.ALIAS_PRIMARY, ir.display_png_path())
+        self.assertEqual(bake.ALIAS_PRIMARY.name, "forgekit-avatar.png")
+
+    def test_canonical_display_assets_present(self) -> None:
+        from forgekit_console.assets.avatar import bake
+
+        self.assertTrue(bake.DISPLAY_128.is_file(), "canonical 128 display missing")
+        self.assertTrue(bake.DISPLAY_96.is_file(), "canonical 96 display missing")
+        self.assertEqual(bake.DISPLAY_128.name, "forgekit-avatar-display-128.png")
+        self.assertEqual(bake.DISPLAY_96.name, "forgekit-avatar-display-96.png")
+
+    def test_aliases_are_byte_identical_to_canonical(self) -> None:
+        # alias == canonical (git dedups the blob); they must never drift.
+        from forgekit_console.assets.avatar import bake
+
+        self.assertEqual(bake.ALIAS_PRIMARY.read_bytes(), bake.DISPLAY_128.read_bytes())
+        self.assertEqual(bake.ALIAS_SMALL.read_bytes(), bake.DISPLAY_96.read_bytes())
+
+    def test_three_source_archives_preserved(self) -> None:
+        # all three candidates are kept in-repo so a human can re-pick later.
+        d = ir.assets_dir()
+        for name in (
+            "forgekit-avatar-source-2026-06-17-33.png",
+            "forgekit-avatar-source-2026-06-17-38.png",
+            "forgekit-avatar-source-2026-06-15-original.png",
+        ):
+            self.assertTrue((d / name).is_file(), f"source archive missing: {name}")
+
+    def test_master_alias_equals_adopted_archive(self) -> None:
+        # avatar-source.png is the ADOPTED original (33), byte-for-byte.
+        d = ir.assets_dir()
+        self.assertEqual(
+            (d / "avatar-source.png").read_bytes(),
+            (d / "forgekit-avatar-source-2026-06-17-33.png").read_bytes(),
+        )
 
 
 class HalfBlockTier2Tests(unittest.TestCase):
