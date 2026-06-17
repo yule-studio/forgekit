@@ -1,28 +1,27 @@
-"""Bake the console avatar assets from the portrait master.
+"""Bake the console avatar assets — terminal ICON vs detailed PORTRAIT.
 
-**Two output families — terminal ICON (default) vs detailed PORTRAIT (archive).**
-A detailed line-art portrait carries far too much detail for a tiny terminal intro
-slot: even as a true raster it reads busy, and as a half-block it turns to mush. So
-the console's DEFAULT avatar is a deliberately **simplified terminal icon** (a bold
-2-tone headphone silhouette — keeps the identity, drops the detail, crisp on black
-like Claude Code's brand icon). The detailed portrait is kept as an asset for a
-**larger/GUI surface or the opt-in portrait mode**, not the tiny terminal default.
+Two families, two sources:
 
-* ``avatar-source.png`` — the human-replaceable portrait MASTER (byte-identical to
-  the adopted source archive; see the three ``forgekit-avatar-source-*`` files).
-* TERMINAL ICON (the runtime DEFAULT the console renders):
-  ``forgekit-terminal-icon-master.png`` (256px) → ``-128.png`` / ``-96.png``.
-  Runtime alias ``forgekit-avatar.png`` is byte-identical to the 128 icon, so the
-  renderer's stable path resolves to the icon.
-* DETAILED PORTRAIT (archive / future GUI / ``FORGEKIT_AVATAR=portrait``):
-  ``forgekit-avatar-display-128.png`` / ``-96.png`` (crop + contrast + sharpen).
+* **TERMINAL ICON** (the runtime DEFAULT the console renders in true-raster
+  terminals): baked from ``forgekit-terminal-icon-source.png`` — a **provided
+  pixel-art** headphone-girl icon (the user's 2026-06-17 03:05 sheet, the 128/96
+  reference). We resize it (preserve the pixel art; no re-creation), NOT invent a
+  silhouette. Outputs ``forgekit-terminal-icon-master.png`` (256) / ``-128`` /
+  ``-96``; the runtime alias ``forgekit-avatar.png`` is byte-identical to the 128.
+* **DETAILED PORTRAIT** (archive / future GUI / opt-in ``FORGEKIT_AVATAR=portrait``):
+  baked from the portrait master ``avatar-source.png`` (crop + contrast + sharpen)
+  → ``forgekit-avatar-display-128.png`` / ``-96``.
 
-Re-bake after replacing the master::
+Non-raster terminals (e.g. VS Code) don't render an image at all — they show the
+``fk`` brand badge — because a ~14-col half-block of the pixel icon is muddy. So the
+pixel icon is the **true-raster** asset; the badge stays the non-raster fallback.
+
+Re-bake after replacing a source::
 
     python -m forgekit_console.assets.avatar.bake
 
 Pure build-time tool (Pillow, the ``image`` extra). The console ships the
-already-baked PNGs, so runtime needs no Pillow. Deterministic: same master in →
+already-baked PNGs, so runtime needs no Pillow. Deterministic: same sources in →
 same bytes out.
 """
 
@@ -33,11 +32,13 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 
-# Master alias the bake reads (== the adopted source archive, byte-for-byte).
+# Portrait master (detailed portrait family).
 SOURCE = _HERE / "avatar-source.png"
+# Terminal-icon source — the PROVIDED pixel-art icon (resized, not re-created).
+ICON_SOURCE = _HERE / "forgekit-terminal-icon-source.png"
 
-# --- terminal ICON (the runtime DEFAULT) -----------------------------------
-ICON_MASTER = _HERE / "forgekit-terminal-icon-master.png"  # 256px simplified master
+# --- terminal ICON (the runtime DEFAULT, true-raster) ----------------------
+ICON_MASTER = _HERE / "forgekit-terminal-icon-master.png"  # 256px
 ICON_128 = _HERE / "forgekit-terminal-icon-128.png"        # canonical 128
 ICON_96 = _HERE / "forgekit-terminal-icon-96.png"          # canonical 96
 ALIAS_PRIMARY = _HERE / "forgekit-avatar.png"   # runtime alias == ICON_128
@@ -51,13 +52,8 @@ ICON_MASTER_PX = 256
 PRIMARY_PX = 128
 SMALL_PX = 96
 
-# Crop the head/headphones out of the bordered square master. Drop the circuit
-# border + chest so the subject fills the frame at small sizes.
+# Crop the head/headphones out of the bordered square portrait master.
 _CROP = (0.11, 0.06, 0.89, 0.86)  # left, top, right, bottom (fractions)
-
-# Terminal-icon binarisation threshold (0-255). Tuned so the headphone + head
-# silhouette stays bold and readable without speckle in the hair.
-_ICON_THRESHOLD = 100
 
 
 def _crop_head_square(img):
@@ -79,53 +75,41 @@ def _tune_portrait(img):
     return img.filter(ImageFilter.UnsharpMask(radius=1.2, percent=80, threshold=2))
 
 
-def _simplify_icon(head, px):
-    """Terminal icon: a bold 2-tone silhouette — simplified, crisp on black."""
-
-    from PIL import ImageFilter, ImageOps
-
-    g = ImageOps.autocontrast(ImageOps.grayscale(head), cutoff=1)
-    g = g.resize((px, px), Image.LANCZOS)
-    # consolidate fine detail, then hard 2-tone threshold → pictogram-like icon.
-    g = g.filter(ImageFilter.GaussianBlur(radius=max(0.4, px / 200)))
-    g = g.point(lambda p: 255 if p > _ICON_THRESHOLD else 0)
-    return g.convert("RGB")
-
-
-# Image is imported lazily inside bake(); referenced by the helpers above only when
-# bake() runs (build time), so runtime never needs Pillow.
+# Image is imported lazily inside bake() so runtime never needs Pillow.
 Image = None  # noqa: N816 - rebound from PIL inside bake()
 
 
-def bake(*, source: Path = SOURCE) -> tuple:
+def bake(*, source: Path = SOURCE, icon_source: Path = ICON_SOURCE) -> tuple:
     """Produce the terminal icon (+runtime alias) and the portrait display PNGs.
 
-    Returns every written path. Deterministic; runtime aliases are byte-identical
-    copies of their canonical icon file so the alias and canonical never drift.
+    The terminal icon is the PROVIDED pixel art resized (no re-creation). Returns
+    every written path. Deterministic; runtime aliases are byte-identical copies of
+    their canonical icon file so the alias and canonical never drift.
     """
 
     global Image
     from PIL import Image  # noqa: WPS433 (build-time optional dep)
 
-    img = Image.open(source).convert("RGB")
-    head = _crop_head_square(img)
     written = []
 
-    # 1) terminal ICON family (the runtime default) + master.
-    icon_master = _simplify_icon(head, ICON_MASTER_PX)
+    # 1) terminal ICON family — resize the provided pixel art (preserve it).
+    pix = Image.open(icon_source).convert("RGB")
     ICON_MASTER.parent.mkdir(parents=True, exist_ok=True)
-    icon_master.save(ICON_MASTER, format="PNG", optimize=True)
+    pix.resize((ICON_MASTER_PX, ICON_MASTER_PX), Image.LANCZOS).save(
+        ICON_MASTER, format="PNG", optimize=True
+    )
     written.append(ICON_MASTER)
     for canonical, alias, px in (
         (ICON_128, ALIAS_PRIMARY, PRIMARY_PX),
         (ICON_96, ALIAS_SMALL, SMALL_PX),
     ):
-        icon = _simplify_icon(head, px)
-        icon.save(canonical, format="PNG", optimize=True)
+        pix.resize((px, px), Image.LANCZOS).save(canonical, format="PNG", optimize=True)
         shutil.copyfile(canonical, alias)  # runtime alias == canonical (git dedups)
         written.extend((canonical, alias))
 
     # 2) detailed PORTRAIT display (archive / future GUI / opt-in portrait mode).
+    img = Image.open(source).convert("RGB")
+    head = _crop_head_square(img)
     for canonical, px in ((DISPLAY_128, PRIMARY_PX), (DISPLAY_96, SMALL_PX)):
         portrait = _tune_portrait(head.resize((px, px), Image.LANCZOS))
         portrait.save(canonical, format="PNG", optimize=True)
