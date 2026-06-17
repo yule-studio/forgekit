@@ -421,6 +421,47 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     return (help_tab, general, commands_tab, agents_tab, about)
 
 
+def handoff_summary_lines(handoff) -> Tuple[str, ...]:
+    """Render a PM→gateway→tech-lead Handoff for the transcript (duck-typed).
+
+    Shows the shaped goal, how many implied features the PM added, the per-role task
+    split (ready vs blocked), and — honestly — the blocked areas needing an operator
+    + a runbook. Pure: reads attributes, returns markup lines.
+    """
+
+    packet = handoff.packet
+    goal = getattr(packet, "user_goal", "") or "(목표 미파악)"
+    implied = getattr(packet, "implied_features", ()) or ()
+    questions = getattr(packet, "decision_questions", ()) or ()
+    split = handoff.split
+    lines = [
+        f"[b {_ACCENT}]» PM intake → tech-lead handoff[/b {_ACCENT}]",
+        f"  goal       : {goal}",
+        f"  보강(implied): {len(implied)}개 자동 발견  ·  결정질문: {len(questions)}개",
+        "",
+        "  [b]role split[/b] (tech-lead):",
+    ]
+    for t in split.tasks:
+        if t.state == "blocked":
+            lines.append(
+                f"    [{_WARN}]⏸ {t.role_label:<10}[/{_WARN}] {t.title} "
+                f"[dim]— BLOCKED: {t.blocked_reason}[/dim]"
+            )
+        else:
+            lines.append(f"    [{_OK}]●[/{_OK}] {t.role_label:<10} {t.title}")
+    if handoff.has_blocked:
+        lines.append("")
+        lines.append(
+            f"  [{_WARN}]권한 없는 영역 {len(split.blocked)}개[/{_WARN}] "
+            f"[dim]— operator 승인 + Terraform/ops runbook 필요 (가짜 실행 없음).[/dim]"
+        )
+    lines.append("")
+    lines.append("  [dim]trace: " + " → ".join(
+        f"{t.author_role}" for t in handoff.trace
+    ) + "[/dim]")
+    return tuple(lines)
+
+
 def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
     """Frame a command result for the center log."""
 
@@ -437,5 +478,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "result_block",
+    "handoff_summary_lines", "result_block",
 )

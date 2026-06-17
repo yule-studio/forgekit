@@ -831,6 +831,33 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_pm_agent_mode_runs_intake_handoff_not_live_submit(self) -> None:
+        """In product-agent mode, a product ask runs PM intake→tech-lead split (with
+        BLOCKED infra surfaced) and does NOT hit the live-submit provider."""
+        from forgekit_console.chat import models as m
+
+        class TrackingService:
+            def __init__(self):
+                self.calls = 0
+
+            def submit(self, text):
+                self.calls += 1
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
+
+        svc = TrackingService()
+        app = self._ready_app("claude", submit_service=svc)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/pm-agent")  # enter PM mode
+            await pilot.pause()
+            self.assertEqual(app.mode, "agent:product-agent")
+            app._execute("영상 업로드 기능을 운영까지 완성해줘")  # a product ask
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("handoff", joined)        # the intake→handoff ran
+            self.assertIn("BLOCKED", joined)         # infra surfaced honestly
+            self.assertEqual(svc.calls, 0)           # NOT a raw live submit
+
     async def test_approval_wait_holds_live_submit(self) -> None:
         """approval-wait is REAL enforcement: free text is held, the provider is NOT
         called, and the operator is told why + what to do."""

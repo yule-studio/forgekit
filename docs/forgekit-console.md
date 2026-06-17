@@ -329,6 +329,29 @@ provider 가 하나도 설정되지 않으면 forgekit 는 **`setup-required`(bl
 > target 을 실제 provider 선택에 강제하는 것, usage/budget throttle 집행, always-on loop 본체,
 > PM→gateway handoff, notification, vault authorship — 후속 worktree(WT2~).
 
+## 2c. PM intake → gateway → tech-lead handoff (WT2)
+
+`/pm-agent` 모드에서 입력한 **제품 요청**은 raw 그대로 구현으로 넘어가지 않고
+구조화된 handoff 로 변환된다 — 코드 SSoT 는
+[`handoff/`](../apps/forgekit-console/src/forgekit_console/handoff/)
+(`packet.py` 계약 · `gateway.py` 합성 · `evidence.py` 기록). PM intake 엔진은 기존
+[`product_intake`](../apps/engineering-agent/src/yule_engineering/agents/product_intake/)
+(`shape_product_intent`)를 **재사용**한다.
+
+흐름: raw ask → **PM**(implied features 보강 · 결정질문 · 기본값) → **gateway**(전달) →
+**tech-lead**(역할 분배: FE/BE/DevOps/QA/Security). 각 hop 은 authorship trace
+(who/role/phase/from→to)를 남기고, **실행 권한 없는 영역(infra/deploy/IAM/secret)은
+`BLOCKED`** 로 표면화된다 — operator 승인 + Terraform/ops runbook 필요(가짜 실행 없음).
+
+- 콘솔: `/pm-agent` 진입 후 제품 요청 입력 → 역할 split + blocked 영역 표면화
+  (live-submit 으로 안 감). 런타임 evidence 는 `runs/forgekit/handoff/<slug>.json`(gitignore).
+- 커밋된 예시 evidence: [`apps/forgekit-console/examples/handoff/bkurs.json`](../apps/forgekit-console/examples/handoff/bkurs.json)
+  ("bkurs-fe/be 완성" → 운영 신호 → 배포/인프라 BLOCKED).
+- 회귀: `tests/forgekit/test_handoff.py` (BKURS 시나리오 포함).
+
+> 현재 범위(WT2): packet 계약 + gateway/tech-lead split + 콘솔 PM 모드 연결 + evidence.
+> 실제 역할별 코드 실행/큐 적재는 후속(엔지니어 runner 연결).
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**

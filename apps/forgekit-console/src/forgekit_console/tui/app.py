@@ -249,6 +249,11 @@ class ForgekitConsoleApp(App):
     def _execute(self, raw: str) -> None:
         parsed = parse_input(raw)
         if not parsed.is_slash:
+            if self.mode == "agent:product-agent":
+                # In PM mode, free text is a PRODUCT ASK → run the intake→handoff
+                # path (structured packet + role split), NOT a raw live submit.
+                self._run_pm_intake(raw)
+                return
             # FREE TEXT → live provider submit (NOT the slash command path).
             self._submit_free_text(raw)
             return
@@ -319,6 +324,30 @@ class ForgekitConsoleApp(App):
         if pol is not None and pol.holds_all_actions():
             return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
         return None, ""
+
+    def _run_pm_intake(self, raw: str) -> None:
+        """PM (product-agent) mode: a raw product ask → structured handoff packet.
+
+        Reuses the product-intake engine to find missing requirements, splits the
+        packet across roles (tech-lead), writes evidence JSON, and surfaces blocked
+        (no-permission) areas honestly. No raw live submit here.
+        """
+
+        text = raw.strip()
+        if not text:
+            return
+        self._transcript.write_echo(text)
+        from ..handoff import run_handoff
+        from ..handoff.evidence import write_handoff_evidence
+
+        handoff = run_handoff(text, project="")
+        for line in render.handoff_summary_lines(handoff):
+            self._transcript.write(line)
+        path = write_handoff_evidence(handoff, self.repo_root)
+        if path is not None:
+            self._transcript.write(f"[dim]↳ evidence: {path}[/dim]")
+        self._sync_intro()
+        self._follow_tail()
 
     def _submit_blocking(self, text: str) -> None:
         result = self._submit_service.submit(text)  # blocking IO (worker thread)
