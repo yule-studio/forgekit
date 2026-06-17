@@ -193,15 +193,18 @@ def help_panel_document(sections: Sequence[HelpSection], active: int) -> Tuple[s
     active = max(0, min(active, len(sections) - 1))
     chips = []
     for i, s in enumerate(sections):
+        # active tab: a small accent marker + bold accent text (a POINT use of the
+        # brand cyan), NOT a loud reverse-cyan block. inactive: muted. Easier on the
+        # eyes while still clearly marking the current tab.
         chips.append(
-            f"[reverse {_ACCENT}] {s.title} [/reverse {_ACCENT}]"
+            f"[b {_ACCENT}]▸ {s.title}[/b {_ACCENT}]"
             if i == active
-            else f"[dim]{s.title}[/dim]"
+            else f"[{_MUTED}]{s.title}[/{_MUTED}]"
         )
     return (
-        theme.wordmark("forgekit") + " [dim]help[/dim]   " + "  ".join(chips),
+        f"[b]forgekit[/b] [dim]help[/dim]   " + "   ".join(chips),
         "[dim]Tab 탭 전환 · Esc 로 닫고 transcript 로 돌아가기[/dim]",
-        "[dim]" + "─" * 48 + "[/dim]",
+        f"[{theme.BORDER}]" + "─" * 48 + f"[/{theme.BORDER}]",
         "",
         *sections[active].lines,
     )

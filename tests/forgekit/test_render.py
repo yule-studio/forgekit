@@ -134,9 +134,9 @@ class HelpPanelDocumentTests(unittest.TestCase):
         secs = self._secs()
         general = render.default_help_tab(secs)
         joined = "\n".join(render.help_panel_document(secs, general))
-        # the header is the cyan→magenta wordmark + "help" (brand mark, not a
-        # plain "forgekit help" literal)
-        self.assertIn("forge", joined)
+        # the header is a restrained "forgekit help" (plain bold, no neon wordmark —
+        # WT3 softening keeps the help view easy on the eyes)
+        self.assertIn("forgekit", joined)
         self.assertIn("help", joined)
         self.assertIn("Esc", joined)
         # all four tab labels appear in the strip
@@ -145,6 +145,15 @@ class HelpPanelDocumentTests(unittest.TestCase):
         # active = General → its body (단축키) shows, Commands body (/quit list) does not
         self.assertIn("단축키", joined)
         self.assertNotIn("/quit", joined)
+
+    def test_active_tab_is_restrained_not_reverse_block(self) -> None:
+        # the active tab uses a small accent marker (▸) + accent, NOT a loud
+        # reverse-cyan block — easier on the eyes (WT3 theme softening).
+        secs = self._secs()
+        general = render.default_help_tab(secs)
+        joined = "\n".join(render.help_panel_document(secs, general))
+        self.assertIn("▸ General", joined)        # accent marker on the active tab
+        self.assertNotIn("reverse", joined)        # no reverse-block markup
 
     def test_document_has_esc_close_hint(self) -> None:
         # The help view (composer hidden in help mode) gives the Esc/Tab guidance.

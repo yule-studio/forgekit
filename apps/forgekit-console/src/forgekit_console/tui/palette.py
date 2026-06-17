@@ -33,7 +33,9 @@ class CommandPalette(Static):
         padding: 0 1;
         color: $text;
         background: $background;
-        border-left: solid $accent;  /* thin brand-cyan rule — connects to the bar */
+        /* a restrained desaturated-cyan rule — connects to the bar without the loud
+           neon accent (WT3: accent stays a point, not a wall). */
+        border-left: solid $accent-dim;
     }
     CommandPalette.-open { display: block; }
     """
