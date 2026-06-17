@@ -193,6 +193,14 @@ class BakedDisplayAssetTests(unittest.TestCase):
         self.assertEqual(bake.ALIAS_PRIMARY.read_bytes(), bake.ICON_128.read_bytes())
         self.assertEqual(bake.ALIAS_SMALL.read_bytes(), bake.ICON_96.read_bytes())
 
+    def test_pixel_icon_candidate_archived_not_default(self) -> None:
+        # the pixel-art candidate is preserved as an archive (future GUI/larger
+        # surface), but it is NOT the tiny-intro default — that stays the terminal
+        # icon (whose runtime alias is the rendered path).
+        d = ir.assets_dir()
+        self.assertTrue((d / "forgekit-avatar-pixel-source-2026-06-17.png").is_file())
+        self.assertNotEqual(ir.display_png_path().name, "forgekit-avatar-pixel-source-2026-06-17.png")
+
     def test_default_asset_mode_is_terminal_icon(self) -> None:
         self.assertEqual(ir.avatar_asset_mode({}), ir.ASSET_TERMINAL_ICON)
         self.assertEqual(ir.avatar_asset_mode({"FORGEKIT_AVATAR": "portrait"}), ir.ASSET_PORTRAIT)
