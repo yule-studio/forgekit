@@ -92,11 +92,14 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     if not parsed.is_slash:
         if not (parsed.raw or "").strip():
             return CommandResult.info("", ())
+        # NOTE: in the TUI, free text is intercepted by the app and sent to the live
+        # provider submit path (chat.service.SubmitService) — it does NOT reach here.
+        # The router is pure (no provider IO), so this is only the non-TUI fallback.
         return CommandResult.info(
             "free text",
             (
-                "일반 텍스트 입력은 아직 연결되지 않았습니다 (live submit 범위 밖).",
-                "슬래시 명령을 쓰세요 — `/help` 로 목록을 봅니다.",
+                "일반 텍스트는 콘솔(TUI)에서 provider 로 live-submit 됩니다.",
+                "이 순수 경로에서는 제출하지 않습니다 — 슬래시 명령은 `/help` 참고.",
             ),
         )
     if not parsed.name:
@@ -142,7 +145,7 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     for cmd in ctx.commands:
         lines.append(f"  /{cmd.name:<16} {cmd.summary}")
     lines.append("")
-    lines.append("일반 텍스트는 아직 echo/stub 입니다 (live submit 범위 밖).")
+    lines.append("일반 텍스트는 provider 로 live-submit 됩니다 (provider 미설정 시 setup 안내).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
 
 

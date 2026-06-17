@@ -353,7 +353,7 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
         "  F1         help",
         "  ^L         clear     ^R  refresh     ^C  quit",
         "",
-        "[dim]일반 텍스트 입력은 아직 stub 입니다 (live submit 범위 밖).[/dim]",
+        "[dim]일반 텍스트는 provider 로 live-submit 됩니다 (provider 없으면 setup 안내).[/dim]",
     ))
     cmd_lines = ["[b]commands[/b]  — `/` 로 시작하면 자동완성됩니다.", ""]
     for c in commands:
