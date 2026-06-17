@@ -1,0 +1,103 @@
+{
+  "packets": [
+    {
+      "finding": "apps/discord-gateway/src/yule_discord/bot/_legacy.py: 2932 줄 (분리 검토)",
+      "why_it_matters": "1000 줄 초과 파일은 책임 분리 가드레일 위반 — 변경 위험↑",
+      "affected_area": "refactor",
+      "risk": "safe",
+      "proposed_change": "책임 분리(별도 모듈)",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "파일이 커서 수정 시 사이드이펙트가 두렵다"
+    },
+    {
+      "finding": "apps/engineering-agent/src/yule_engineering/agents/council.py: 1088 줄 (분리 검토)",
+      "why_it_matters": "1000 줄 초과 파일은 책임 분리 가드레일 위반 — 변경 위험↑",
+      "affected_area": "refactor",
+      "risk": "safe",
+      "proposed_change": "책임 분리(별도 모듈)",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "파일이 커서 수정 시 사이드이펙트가 두렵다"
+    },
+    {
+      "finding": "apps/engineering-agent/src/yule_engineering/agents/council_bootstrap.py: 1153 줄 (분리 검토)",
+      "why_it_matters": "1000 줄 초과 파일은 책임 분리 가드레일 위반 — 변경 위험↑",
+      "affected_area": "refactor",
+      "risk": "safe",
+      "proposed_change": "책임 분리(별도 모듈)",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "파일이 커서 수정 시 사이드이펙트가 두렵다"
+    },
+    {
+      "finding": "apps/engineering-agent/src/yule_engineering/agents/engineering_intelligence/source_registry.py: 1263 줄 (분리 검토)",
+      "why_it_matters": "1000 줄 초과 파일은 책임 분리 가드레일 위반 — 변경 위험↑",
+      "affected_area": "refactor",
+      "risk": "safe",
+      "proposed_change": "책임 분리(별도 모듈)",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "파일이 커서 수정 시 사이드이펙트가 두렵다"
+    },
+    {
+      "finding": "apps/engineering-agent/src/yule_engineering/agents/engineering_team_runtime/_legacy.py: 2154 줄 (분리 검토)",
+      "why_it_matters": "1000 줄 초과 파일은 책임 분리 가드레일 위반 — 변경 위험↑",
+      "affected_area": "refactor",
+      "risk": "safe",
+      "proposed_change": "책임 분리(별도 모듈)",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "파일이 커서 수정 시 사이드이펙트가 두렵다"
+    },
+    {
+      "finding": "apps/engineering-agent/src/yule_engineering/agents/job_queue/coding_executor_live_editor.py: 4 TODO/FIXME 누적",
+      "why_it_matters": "누적 TODO/FIXME 는 미완 의도/부채 신호 — 정리 시 가독성·신뢰 향상",
+      "affected_area": "docs/code",
+      "risk": "safe",
+      "proposed_change": "TODO 정리 또는 이슈화 + 작은 리팩터",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "개발자가 코드 의도를 신뢰하기 어렵다"
+    },
+    {
+      "finding": "apps/engineering-agent/src/yule_engineering/cli/parsers.py: 1189 줄 (분리 검토)",
+      "why_it_matters": "1000 줄 초과 파일은 책임 분리 가드레일 위반 — 변경 위험↑",
+      "affected_area": "refactor",
+      "risk": "safe",
+      "proposed_change": "책임 분리(별도 모듈)",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "파일이 커서 수정 시 사이드이펙트가 두렵다"
+    },
+    {
+      "finding": "apps/forgekit-console/src/forgekit_console/selfimprove/loop.py: 5 TODO/FIXME 누적",
+      "why_it_matters": "누적 TODO/FIXME 는 미완 의도/부채 신호 — 정리 시 가독성·신뢰 향상",
+      "affected_area": "docs/code",
+      "risk": "safe",
+      "proposed_change": "TODO 정리 또는 이슈화 + 작은 리팩터",
+      "confidence": 0.6,
+      "approval_needed": false,
+      "recommended_owner": "be",
+      "source_origin": "repo-local",
+      "user_discomfort": "개발자가 코드 의도를 신뢰하기 어렵다"
+    }
+  ],
+  "safe": 8,
+  "risky": 0,
+  "blocked": 0
+}
