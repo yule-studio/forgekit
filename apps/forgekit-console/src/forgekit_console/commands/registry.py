@@ -22,6 +22,7 @@ H_RUNTIME = "runtime"
 H_HARNESS = "harness"
 H_DOCTOR = "doctor"
 H_RENDER = "render"
+H_BLOCKED = "blocked"
 H_AGENT_ENTER = "agent_enter"
 H_LAYOUT = "layout"
 H_QUIT = "quit"
@@ -63,6 +64,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("harness", "harness/operator 대시보드 요약", H_HARNESS, "status"),
     SlashCommand("doctor", "환경 진단 (doctor) 요약", H_DOCTOR, "status"),
     SlashCommand("render", "렌더 readiness — true-raster vs fallback + 권장 터미널", H_RENDER, "status"),
+    SlashCommand("blocked", "반복 실패 에스컬레이션 목록 (왜·대안·다음 단계)", H_BLOCKED, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),

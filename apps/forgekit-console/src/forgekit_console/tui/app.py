@@ -36,6 +36,7 @@ from ..commands.router import ConsoleContext, build_default_context, route
 from ..models import (
     KIND_AGENT_MODE,
     KIND_CLEAR,
+    KIND_ERROR,
     KIND_HELP,
     KIND_LAYOUT,
     KIND_QUIT,
@@ -68,7 +69,13 @@ class ForgekitConsoleApp(App):
         Binding("escape", "dismiss", "dismiss", show=False, priority=True),
     ]
 
-    def __init__(self, *, repo_root: Path, context: Optional[ConsoleContext] = None) -> None:
+    def __init__(
+        self,
+        *,
+        repo_root: Path,
+        context: Optional[ConsoleContext] = None,
+        escalator=None,
+    ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
         self.context = context or build_default_context(self.repo_root)
@@ -76,6 +83,15 @@ class ForgekitConsoleApp(App):
         self.mode = MODE_OPERATOR
         self._palette = palette_state.CLOSED
         self._suppress_refilter = False
+        # Repeated-failure escalation: same blocked signature past the threshold
+        # (default 3) auto-surfaces a mini-RCA instead of failing silently. Injected
+        # in tests (tempdir paths / fake notifier); built from env in production.
+        if escalator is None:
+            from ..lifecycle.failure_escalation import FailureEscalator
+
+            escalator = FailureEscalator()
+        self._escalator = escalator
+        self._blocked = False
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -219,10 +235,37 @@ class ForgekitConsoleApp(App):
         if result.kind == KIND_AGENT_MODE:
             self.mode = result.title  # router titles agent results as "agent:<id>"
             self._refresh_chrome()
+        if result.kind == KIND_ERROR:
+            self._record_failure(parsed, result)
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
         # keep the inline composer in view as the session grows (Claude-style tail)
         self._follow_tail()
+
+    def _record_failure(self, parsed, result) -> None:
+        """Feed a failed command into the escalator; surface advisory or full RCA.
+
+        Below the threshold the operator just sees a quiet ``2/3 — still retrying``
+        line; once the same signature crosses it, the mini-RCA (why · alternatives ·
+        next step) is written to the transcript AND the issue line flips to a blocked
+        banner — never a silent repeated failure.
+        """
+
+        from ..lifecycle.failure_escalation import FailureSignature, KIND_COMMAND, KIND_STATUS_SURFACE
+
+        kind = KIND_STATUS_SURFACE if (parsed.name or "") in _STATUS_COMMANDS else KIND_COMMAND
+        signature = FailureSignature(kind, result.title or "error", parsed.name or "")
+        outcome = self._escalator.record_failure(
+            signature, symptom=result.title or "", evidence="\n".join(result.lines)
+        )
+        log = self._transcript
+        if outcome.escalated and outcome.report is not None:
+            for line in outcome.report.to_lines():
+                log.write(line)
+            self._blocked = True
+            self._refresh_issue()  # flip the issue line to a blocked banner
+        else:
+            log.write(outcome.advisory)
 
     # --- help (a VIEW SWITCH, not a transcript append; composer stays visible) --
 
@@ -273,6 +316,11 @@ class ForgekitConsoleApp(App):
         self._refresh_issue()
 
     def _refresh_issue(self) -> None:
+        if self._blocked:
+            # a repeated failure crossed the threshold — surface a blocked banner
+            # over the normal status line so it can't be missed (details: `/blocked`).
+            self.query_one("#issue", Static).update(render.blocked_banner())
+            return
         summary = self.context.load_operator()
         self.query_one("#issue", Static).update(render.issue_line(summary))
 

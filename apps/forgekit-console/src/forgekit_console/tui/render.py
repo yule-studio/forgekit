@@ -90,6 +90,15 @@ def renderer_debug_line(diag) -> str:
     return f"[dim]renderers · {' · '.join(parts)}[/dim]"
 
 
+def blocked_banner() -> str:
+    """The issue-line banner shown when a repeated failure crossed the threshold."""
+
+    return (
+        f"[{_ERR}]● blocked[/{_ERR}] [dim]반복 실패가 에스컬레이션됨 — `/blocked` 로 "
+        f"원인·대안·다음 단계 확인[/dim]"
+    )
+
+
 def issue_line(summary: StatusSummary) -> str:
     """The compact setup/status line under the intro — text-first, one line.
 
@@ -328,7 +337,8 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 
 __all__ = (
     "BRAND", "TAGLINE",
-    "welcome_banner", "intro_meta_lines", "renderer_debug_line", "issue_line", "agent_pane_lines",
+    "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
+    "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",

@@ -28,6 +28,7 @@ from .registry import (
     H_DOCTOR,
     H_HARNESS,
     H_HELP,
+    H_BLOCKED,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -121,6 +122,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _summary_to_result(ctx.load_doctor())
     if handler == H_RENDER:
         return _render_readiness_result()
+    if handler == H_BLOCKED:
+        return _blocked_result()
     if handler == H_AGENT_ENTER:
         return _agent_enter_result(cmd, ctx)
     if handler == H_LAYOUT:
@@ -150,6 +153,13 @@ def _render_readiness_result() -> CommandResult:
     from ..tui.render_readiness import render_readiness_lines
 
     return CommandResult.info("render readiness", render_readiness_lines())
+
+
+def _blocked_result() -> CommandResult:
+    # Reads the persistent escalation ledger (lazy import; stdlib-only, no textual).
+    from ..lifecycle.failure_escalation import open_escalation_lines
+
+    return CommandResult.info("blocked", open_escalation_lines())
 
 
 def _agents_result(ctx: ConsoleContext) -> CommandResult:
