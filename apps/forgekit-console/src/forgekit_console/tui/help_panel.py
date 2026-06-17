@@ -17,13 +17,19 @@ is shown. No accordion, no OS modal — it's an in-app panel inside the main are
 
 from __future__ import annotations
 
+from textual.containers import Vertical
 from textual.widgets import Static
 
 from . import render
 
 
-class HelpPanel(Static):
-    """In-app help view. Tab switches the active tab IN PLACE (re-render, never append)."""
+class HelpPanel(Vertical):
+    """In-app help view. Tab switches the active tab IN PLACE (re-render, never append).
+
+    Two stacked parts: a ``#help-tabs`` strip (read first — ``Help General …``, no
+    'forgekit help' branding) with a **full-width thin cyan divider** under it
+    (``border-bottom: solid $accent``), then the ``#help-body`` for the active tab.
+    """
 
     DEFAULT_CSS = """
     HelpPanel {
@@ -33,14 +39,27 @@ class HelpPanel(Static):
         padding: 1 2;
         overflow-y: auto;
     }
+    HelpPanel #help-tabs {
+        height: auto;
+        /* the full-width thin cyan divider sits right under the tab row */
+        border-bottom: solid $accent;
+        padding: 0 0 1 0;
+    }
+    HelpPanel #help-body {
+        height: auto;
+        padding: 1 0 0 0;
+    }
     """
 
     def __init__(self, **kwargs) -> None:
-        kwargs.setdefault("markup", True)
         super().__init__(**kwargs)
         self._commands = ()
         self._agents = ()
         self._active = 0
+
+    def compose(self):
+        yield Static(id="help-tabs", markup=True)
+        yield Static(id="help-body", markup=True)
 
     @property
     def active_tab(self) -> int:
@@ -71,10 +90,13 @@ class HelpPanel(Static):
 
     def _render_active(self) -> None:
         sections = render.help_sections(self._commands, self._agents)
-        document = render.help_panel_document(sections, self._active)
-        # update() REPLACES the content — this is what makes tab-switch in-place
-        # instead of an accumulating append.
-        self.update("\n".join(document))
+        # update() REPLACES the content of each part — tab-switch is in-place, never
+        # an accumulating append. The tab strip + the active body are separate so the
+        # cyan divider (CSS border) sits cleanly between them.
+        self.query_one("#help-tabs", Static).update(render.help_tab_strip(sections, self._active))
+        self.query_one("#help-body", Static).update(
+            "\n".join(render.help_body(sections, self._active))
+        )
 
 
 __all__ = ("HelpPanel",)

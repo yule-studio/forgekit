@@ -15,6 +15,7 @@ from forgekit_console.models import (
     agent_mode,
 )
 from forgekit_console.tui import render
+from forgekit_console.tui import theme
 
 
 class HelpSectionTests(unittest.TestCase):
@@ -133,11 +134,11 @@ class HelpPanelDocumentTests(unittest.TestCase):
     def test_document_shows_tab_strip_and_active_body_only(self) -> None:
         secs = self._secs()
         general = render.default_help_tab(secs)
-        joined = "\n".join(render.help_panel_document(secs, general))
-        # the header is a restrained "forgekit help" (plain bold, no neon wordmark —
-        # WT3 softening keeps the help view easy on the eyes)
-        self.assertIn("forgekit", joined)
-        self.assertIn("help", joined)
+        doc = render.help_panel_document(secs, general)
+        joined = "\n".join(doc)
+        # the FIRST line is the tab strip (no "forgekit help" branding header)
+        self.assertNotIn("forgekit", doc[0])
+        self.assertIn("Help", doc[0])
         self.assertIn("Esc", joined)
         # all four tab labels appear in the strip
         for title in ("Help", "General", "Commands", "Agents"):
@@ -146,14 +147,25 @@ class HelpPanelDocumentTests(unittest.TestCase):
         self.assertIn("단축키", joined)
         self.assertNotIn("/quit", joined)
 
+    def test_tab_strip_is_first_no_forgekit_branding(self) -> None:
+        # the help screen reads "Help General Commands Agents" FIRST — no
+        # "forgekit help" branding header (Claude-style hierarchy).
+        secs = self._secs()
+        strip = render.help_tab_strip(secs, render.default_help_tab(secs))
+        self.assertNotIn("forgekit", strip)
+        # all four tabs present, Help first
+        self.assertLess(strip.index("Help"), strip.index("General"))
+        for t in ("Help", "General", "Commands", "Agents"):
+            self.assertIn(t, strip)
+
     def test_active_tab_is_restrained_not_reverse_block(self) -> None:
-        # the active tab uses a small accent marker (▸) + accent, NOT a loud
-        # reverse-cyan block — easier on the eyes (WT3 theme softening).
+        # the active tab is bold brand-cyan (a POINT use of accent), NOT a loud
+        # reverse-cyan block — easier on the eyes.
         secs = self._secs()
         general = render.default_help_tab(secs)
-        joined = "\n".join(render.help_panel_document(secs, general))
-        self.assertIn("▸ General", joined)        # accent marker on the active tab
-        self.assertNotIn("reverse", joined)        # no reverse-block markup
+        strip = render.help_tab_strip(secs, general)
+        self.assertIn(f"[b {theme.ACCENT_PRIMARY}]General", strip)  # active = bold accent
+        self.assertNotIn("reverse", strip)                          # no reverse-block markup
 
     def test_document_has_esc_close_hint(self) -> None:
         # The help view (composer hidden in help mode) gives the Esc/Tab guidance.

@@ -123,6 +123,29 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(composer.region.y, short_y)
             self.assertTrue(composer.display)
 
+    async def test_help_tabs_first_with_cyan_divider_no_branding(self) -> None:
+        """Help reads tabs-first (Help General …, no 'forgekit help' header) with a
+        full-width cyan divider under the tab strip."""
+        from textual.widgets import Static
+        from forgekit_console.tui import theme
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/help")
+            await pilot.pause()
+            await pilot.pause()
+            tabs = app.query_one("#help-tabs", Static)
+            strip = str(tabs.render())
+            self.assertIn("Help", strip)
+            self.assertNotIn("forgekit", strip)  # no branding header in the strip
+            # a full-width divider = the tab strip's bottom border (a cyan accent rule)
+            from textual.color import Color
+
+            edge = tabs.styles.border_bottom
+            self.assertNotIn((edge[0] or "").lower(), ("", "none"))
+            self.assertEqual(edge[1], Color.parse(theme.ACCENT_PRIMARY))  # cyan accent
+
     async def test_composer_hidden_in_help_mode_restored_on_close(self) -> None:
         """Claude-style: the composer BAR is HIDDEN while the help/tab view is open
         (help reads as its own mode), and restored + focused when help closes."""

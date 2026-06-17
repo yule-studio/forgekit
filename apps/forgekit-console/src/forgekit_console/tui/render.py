@@ -188,23 +188,43 @@ def help_panel_document(sections: Sequence[HelpSection], active: int) -> Tuple[s
     at the bottom throughout.
     """
 
+    # Text fallback (non-TUI / tests): tab strip then body. The full-width blue
+    # divider between them is drawn by the HelpPanel widget's CSS (border-bottom),
+    # not by a fixed-length string, so it spans the real terminal width.
     if not sections:
         return ("[dim]no help[/dim]",)
+    return (help_tab_strip(sections, active), *help_body(sections, active))
+
+
+def help_tab_strip(sections: Sequence[HelpSection], active: int) -> str:
+    """The help TAB ROW — read first, no 'forgekit help' branding (Claude-style).
+
+    The active tab is bold brand-cyan (a POINT use of accent), inactive tabs are
+    muted. ``Help`` is the first tab, so the strip reads ``Help  General  …`` as
+    the top hierarchy of the help screen.
+    """
+
+    if not sections:
+        return "[dim]no help[/dim]"
     active = max(0, min(active, len(sections) - 1))
     chips = []
     for i, s in enumerate(sections):
-        # active tab: a small accent marker + bold accent text (a POINT use of the
-        # brand cyan), NOT a loud reverse-cyan block. inactive: muted. Easier on the
-        # eyes while still clearly marking the current tab.
         chips.append(
-            f"[b {_ACCENT}]▸ {s.title}[/b {_ACCENT}]"
+            f"[b {_ACCENT}]{s.title}[/b {_ACCENT}]"
             if i == active
             else f"[{_MUTED}]{s.title}[/{_MUTED}]"
         )
+    return "   ".join(chips)
+
+
+def help_body(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
+    """The active help tab's body — the Esc/Tab hint then the tab's content lines."""
+
+    if not sections:
+        return ("[dim]no help[/dim]",)
+    active = max(0, min(active, len(sections) - 1))
     return (
-        f"[b]forgekit[/b] [dim]help[/dim]   " + "   ".join(chips),
-        "[dim]Tab 탭 전환 · Esc 로 닫고 transcript 로 돌아가기[/dim]",
-        f"[{theme.BORDER}]" + "─" * 48 + f"[/{theme.BORDER}]",
+        "[dim]Tab 탭 전환 · Esc 로 닫기[/dim]",
         "",
         *sections[active].lines,
     )
@@ -345,6 +365,6 @@ __all__ = (
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
-    "help_panel_document", "default_help_tab",
+    "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
     "result_block",
 )
