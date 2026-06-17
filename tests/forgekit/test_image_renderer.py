@@ -179,12 +179,16 @@ class BakedDisplayAssetTests(unittest.TestCase):
         self.assertTrue(bake.DISPLAY_96.is_file(), "portrait 96 missing")
         self.assertEqual(ir.portrait_png_path().name, "forgekit-avatar-display-128.png")
 
-    def test_icon_is_simpler_and_lighter_than_portrait(self) -> None:
-        # the 2-tone icon compresses far smaller than the detailed portrait — proof
-        # it is a simplified asset, not the portrait shipped as the default.
+    def test_terminal_icon_is_the_provided_pixel_art(self) -> None:
+        # the terminal icon is baked from the PROVIDED pixel-art source (not a
+        # re-created silhouette); the runtime alias the renderer loads == that icon.
         from forgekit_console.assets.avatar import bake
 
-        self.assertLess(bake.ICON_128.stat().st_size, bake.DISPLAY_128.stat().st_size)
+        self.assertTrue(bake.ICON_SOURCE.is_file(), "pixel icon source missing")
+        self.assertEqual(bake.ICON_SOURCE.name, "forgekit-terminal-icon-source.png")
+        self.assertEqual(bake.ALIAS_PRIMARY, ir.display_png_path())  # icon IS the render path
+        # icon ≠ portrait (distinct asset families)
+        self.assertNotEqual(bake.ICON_128.read_bytes(), bake.DISPLAY_128.read_bytes())
 
     def test_runtime_aliases_are_byte_identical_to_icon(self) -> None:
         # alias == canonical ICON (git dedups the blob); they must never drift.
@@ -192,14 +196,6 @@ class BakedDisplayAssetTests(unittest.TestCase):
 
         self.assertEqual(bake.ALIAS_PRIMARY.read_bytes(), bake.ICON_128.read_bytes())
         self.assertEqual(bake.ALIAS_SMALL.read_bytes(), bake.ICON_96.read_bytes())
-
-    def test_pixel_icon_candidate_archived_not_default(self) -> None:
-        # the pixel-art candidate is preserved as an archive (future GUI/larger
-        # surface), but it is NOT the tiny-intro default — that stays the terminal
-        # icon (whose runtime alias is the rendered path).
-        d = ir.assets_dir()
-        self.assertTrue((d / "forgekit-avatar-pixel-source-2026-06-17.png").is_file())
-        self.assertNotEqual(ir.display_png_path().name, "forgekit-avatar-pixel-source-2026-06-17.png")
 
     def test_default_asset_mode_is_terminal_icon(self) -> None:
         self.assertEqual(ir.avatar_asset_mode({}), ir.ASSET_TERMINAL_ICON)

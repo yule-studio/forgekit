@@ -67,40 +67,43 @@ master 를 크게 띄우지 않는다.
 
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 
-**방향: 터미널 기본값은 단순화한 "터미널 아이콘", 상세 portrait 는 보관/향후 GUI 자산.**
-작은 터미널 intro slot 에 detail portrait 를 넣으면(true raster 라도) 너무 busy 하고, half-block
-이면 도트로 뭉개진다. 그래서 콘솔 **기본 avatar 는 simplified terminal icon**(헤드폰 girl 의
-정체성은 남기되 2-tone bold 실루엣으로 단순화 — Claude 아이콘처럼 작아도 또렷). detail portrait
+**방향: 터미널 기본 아이콘 = 제공된 픽셀 아트, 상세 portrait 는 보관/향후 GUI 자산.**
+콘솔의 true-raster **기본 avatar 는 사용자가 준 pixel-art terminal icon**(헤드폰 girl, 2026-06-17
+03:05 시트의 128/96 레퍼런스)를 그대로 resize 한 것이다 — **임의 실루엣 재창작이 아니라 제공 asset
+적용**. non-raster(VS Code 등)에선 이미지가 안 떠 `fk` 배지가 보인다(아래 평가 참고). detail portrait
 는 archive / 향후 더 큰 surface / opt-in `FORGEKIT_AVATAR=portrait` 용으로 남긴다.
 
 | 분류 | 파일 | 용도 |
 | --- | --- | --- |
-| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-33.png` (+ `-38` · `-2026-06-15-original`) | 채택 후보 3종 |
-| master alias | `avatar-source.png` | bake 입력 master = **채택 원본(33) 과 byte 동일** |
-| **terminal icon (기본)** | `forgekit-terminal-icon-master.png` / `-128` / `-96` | **단순화 아이콘 — 콘솔 기본 렌더** |
+| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-33.png` (+ `-38` · `-2026-06-15-original`) | portrait 후보 3종 |
+| master alias | `avatar-source.png` | portrait bake 입력(채택 33 과 byte 동일) |
+| **terminal icon source** | `forgekit-terminal-icon-source.png` | **제공된 pixel-art 아이콘**(icon bake 입력) |
+| **terminal icon (기본)** | `forgekit-terminal-icon-master.png` / `-128` / `-96` | **콘솔 기본 렌더(true-raster)** |
 | **runtime alias** | `forgekit-avatar.png` / `forgekit-avatar-96.png` | **렌더가 실제로 읽는 파일**(terminal-icon-128/96 과 byte 동일) |
 | detail portrait (opt-in/archive) | `forgekit-avatar-display-128.png` / `-96` | 상세 portrait — 향후 GUI / `FORGEKIT_AVATAR=portrait` |
 
-콘솔의 **tiny-intro 기본 렌더 = terminal icon** 이다 — 코드(`image_renderer`)는 runtime alias
+콘솔의 **tiny-intro 기본 렌더 = terminal icon(pixel art)** — 코드(`image_renderer`)는 runtime alias
 `forgekit-avatar.png`(= `forgekit-terminal-icon-128.png`)를 1순위로 읽는다(`display_png_path()`).
-상세 portrait 는 `portrait_png_path()`(`forgekit-avatar-display-128.png`)로 분리되어 opt-in
-portrait 모드(`HalfBlockRenderer`)에서만 쓰인다. terminal icon 은 `bake.py` 의 `_simplify_icon`
-(grayscale→autocontrast→blur→2-tone threshold)로, portrait 는 `_tune_portrait`(crop+contrast+
-sharpen)로 만든다 — `python -m forgekit_console.assets.avatar.bake` 한 번에 둘 다 결정적 생성,
-runtime alias 는 icon 과 byte 동일. operator 는 `/render` 의 `avatar asset` 줄로 지금 terminal-icon
-인지 portrait 인지 본다.
+상세 portrait 는 `portrait_png_path()`(`forgekit-avatar-display-128.png`)로 분리되어 opt-in portrait
+모드(`HalfBlockRenderer`)에서만. terminal icon 은 `bake.py` 가 `forgekit-terminal-icon-source.png`
+(제공 픽셀 아트)를 resize 해 만들고, portrait 는 `_tune_portrait`(crop+contrast+sharpen)로 만든다 —
+`python -m forgekit_console.assets.avatar.bake` 한 번에 둘 다 결정적 생성, runtime alias 는 icon 과
+byte 동일. operator 는 `/render` 의 `avatar asset` 줄로 지금 terminal-icon 인지 portrait 인지 본다.
 
 > master 채택: 후보 3개(2026-06-17 33/38 · 2026-06-15 original) 중 얼굴이 가장 밝고 또렷한
 > **33** 을 채택. 작은 크기와 **Python 3.10+ real-image** 양쪽에서 가장 잘 읽힌다. 나머지 2개는
 > archive 로 보존해 사람이 재선택할 수 있게 둔다. 베이크 절차(`_CROP`/`_tune` = autocontrast +
 > UnsharpMask)는 `bake.py` 에 코드로 박혀 재현 가능하다.
 >
-> **픽셀 아이콘 후보 평가(2026-06-17 03:03):** pixel-art 헤드폰 girl 을 terminal icon 후보로
-> 시험했다. 128px full 에선 멋지지만 **tiny intro(~14셀)에선 디테일이 많아 muddy/noisy**(illustration
-> 이지 icon 이 아님), 게다가 메인 환경(VS Code=non-raster)에선 이미지가 아예 안 떠 `fk` 배지가 보인다.
-> → **기본값 유지**: non-raster=`fk` 배지, true-raster=2-tone 실루엣 terminal icon(더 iconic·축소
-> 강함). 픽셀 후보는 `forgekit-avatar-pixel-source-2026-06-17.png` 로 **archive**(향후 더 큰 GUI
-> surface 용). 채택을 원하면 ICON_* 입력만 교체하면 되는 한 줄 변경.
+> **픽셀 아이콘 채택(2026-06-17 03:05 시트):** 제공된 pixel-art 헤드폰 girl 을 실제 terminal
+> icon 으로 시험·**채택**했다. 시트의 클린 아이콘(라벨 제외)을 `forgekit-terminal-icon-source.png`
+> 로 추출 → 128/96 resize. **경로 분리 평가**:
+> - **true-raster(iTerm2/WezTerm/Kitty)**: 128px 에서 또렷한 pixel 아이콘 → **채택, 기본 렌더**.
+> - **non-raster fallback(VS Code half-block ~14셀)**: 28px 로 줄이면 여전히 muddy/noisy(근거:
+>   `/tmp` 28px 다운샘플 확인) → 이 경로에서만 `fk` 배지 fallback 유지(억지 도트 portrait 금지 규칙대로).
+>
+> 즉 "임의 새 아이콘 생성" 이 아니라 **제공 asset 을 true-raster terminal icon 으로 적용**, non-raster
+> 는 배지 유지(뭉개짐 근거 명시).
 >
 > **real-image 검증 환경:** `textual-image` 는 Python ≥3.10 을 요구한다(메인 `.venv`(3.9)는
 > import 자체가 깨짐). 검증은 별도 console venv(`.venv-console`, `python3.13 -m venv` +
