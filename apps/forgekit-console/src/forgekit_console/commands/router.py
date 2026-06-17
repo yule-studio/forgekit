@@ -30,6 +30,7 @@ from .registry import (
     H_HELP,
     H_LAYOUT,
     H_QUIT,
+    H_RENDER,
     H_RUNTIME,
     H_STATUS,
     find_agent,
@@ -118,6 +119,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _summary_to_result(ctx.load_runtime())
     if handler == H_DOCTOR:
         return _summary_to_result(ctx.load_doctor())
+    if handler == H_RENDER:
+        return _render_readiness_result()
     if handler == H_AGENT_ENTER:
         return _agent_enter_result(cmd, ctx)
     if handler == H_LAYOUT:
@@ -138,6 +141,15 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     lines.append("")
     lines.append("일반 텍스트는 아직 echo/stub 입니다 (live submit 범위 밖).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
+
+
+def _render_readiness_result() -> CommandResult:
+    # Render readiness is computed from the live environment (pure given env), not a
+    # runtime loader — so it works even with no yule_engineering install. Lazy import
+    # keeps the router free of any TUI/textual dependency at module load.
+    from ..tui.render_readiness import render_readiness_lines
+
+    return CommandResult.info("render readiness", render_readiness_lines())
 
 
 def _agents_result(ctx: ConsoleContext) -> CommandResult:
