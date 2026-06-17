@@ -67,11 +67,19 @@ master 를 크게 띄우지 않는다.
 
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 
-대표 이미지는 **헤드폰 girl 라인아트 portrait** 다. 원본
-`assets/avatar/profile_hermes_source.jpg`(고해상 master)를 얼굴 중심으로 crop → 작은
-square PNG(`assets/avatar/forgekit-avatar.png`, ≈96px, Claude 아이콘 스케일)로
-**사전-베이크**(`python -m forgekit_console.assets.avatar.bake`, Pillow 필요)해 커밋한다.
-콘솔은 큰 master 를 직접 렌더하지 않고 이 작은 PNG 만 렌더한다.
+대표 이미지는 **헤드폰 girl 라인아트 portrait** 다. **source(master)와 display(표시용)를
+분리**한다 — 사람이 교체하는 원본 master 는 `assets/avatar/avatar-source.png`(라인아트
+portrait, 회로 테두리 포함 square), 콘솔이 실제로 렌더하는 건 그걸 **얼굴/헤드폰 중심으로
+crop → contrast 보정 → 약한 sharpen** 한 작은 **display** PNG
+(`assets/avatar/forgekit-avatar.png` 128px primary + `forgekit-avatar-96.png` 96px)다.
+`python -m forgekit_console.assets.avatar.bake`(Pillow 필요)로 **사전-베이크**해 커밋하고,
+콘솔은 큰 master 를 직접 렌더하지 않고 이 작은 display PNG 만 렌더한다. master 를 그대로
+무식하게 축소(raw downscale)하면 회로 테두리까지 같이 줄어 작은 셀에서 얼굴이 뭉개지므로,
+crop+보정을 거친 display asset 을 따로 두는 것이다.
+
+> master 채택: 2026-06-17 받은 두 portrait 중 얼굴이 더 밝고 또렷한 `…10_17_33` 변형을
+> 채택(`…_38` 변형은 그늘이 더 많고 작은 크기에서 뭉개짐). 베이크 절차는 `bake.py` 의
+> `_CROP`/`_tune`(autocontrast + UnsharpMask)에 코드로 박혀 있어 재현 가능하다.
 
 표시는 **image-first** — 항상 실제 portrait 를 보여주려 하고, 텍스트 마크는 정말 마지막
 수단일 때만 쓴다. 코드(`tui/image_renderer.py`)의 우선순위는 위→아래로:
@@ -207,9 +215,10 @@ apps/forgekit-console/src/forgekit_console/
   tui/palette.py       inline command palette 위젯 (textual, composer 안)
   tui/app.py           Textual App — Claude-Code chat-first compose(session flow) + 상태(mode/palette) + help 뷰 전환 wiring
   app/main.py          `forgekit` 엔트리 (textual 부재 시 graceful degrade)
-  assets/avatar/profile_hermes_source.jpg  고해상 master(헤드폰 라인아트 portrait, crop 원본)
-  assets/avatar/forgekit-avatar.png        작은 베이크 PNG(image-first 표시 에셋: tier1 real / tier2 half-block 소스)
-  assets/avatar/bake.py                    master → 작은 PNG 베이크 build-time 도구(Pillow)
+  assets/avatar/avatar-source.png          source/master(사람 교체용 portrait 원본; 콘솔이 직접 렌더하지 않음)
+  assets/avatar/forgekit-avatar.png        display 에셋 128px primary(image-first 표시: tier1 real / tier2 half-block 소스)
+  assets/avatar/forgekit-avatar-96.png     display 에셋 96px(보조 후보)
+  assets/avatar/bake.py                    source → display PNG 베이크 build-time 도구(crop+contrast+sharpen, Pillow)
   assets/brand/forgekit-banner.png         full 워드마크 master(1916×821, cyan→magenta) — README 도 같은 이미지를 root assets/forgekit.png 로 보관
   assets/brand/forgekit-banner-intro.png   작은 베이크 인트로 배너(≈360px, image-first 브랜드 마크)
   assets/brand/bake.py                     master → 작은 인트로 배너 베이크 build-time 도구(Pillow)
