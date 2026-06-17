@@ -204,6 +204,87 @@ def select_renderer(capability) -> str:
     return RENDERER_REAL if capable else RENDERER_HALFBLOCK
 
 
+# --- textual-image backend classification ----------------------------------
+#
+# ``textual-image`` binds ``textual_image.renderable.Image`` AT IMPORT TIME to one
+# of four backend classes, chosen by probing the terminal:
+#   * tgp      — Terminal Graphics Protocol (Kitty)     → TRUE pixel raster
+#   * sixel    — Sixel (xterm/mlterm/foot/WezTerm…)     → TRUE pixel raster
+#   * halfcell — Unicode half-cells, per-terminal-cell  → FALLBACK (cell/dot look)
+#   * unicode  — plain unicode (no tty / no graphics)   → FALLBACK
+# Only tgp/sixel are real images; halfcell/unicode are textual-image's OWN cell
+# fallbacks (they look "broken" at avatar scale). So "is it a textual_image.Image"
+# is NOT enough — we must look at WHICH backend class it is. The probe also only
+# works *before* Textual grabs stdin, so a late import (after the app starts) tends
+# to resolve to halfcell even on capable terminals — hence we never assume raster.
+
+BACKEND_TGP = "tgp"
+BACKEND_SIXEL = "sixel"
+BACKEND_HALFCELL = "halfcell"
+BACKEND_UNICODE = "unicode"
+BACKEND_HALFBLOCK = "half-block"  # OUR image-derived rich-Text raster (tier 2)
+BACKEND_TEXT = "text-mark"        # OUR text/logo mark (tier 3, a str)
+BACKEND_NONE = "none"             # textual-image not importable at all
+BACKEND_UNKNOWN = "unknown"
+
+_TEXTUAL_IMAGE_BACKENDS = frozenset(
+    {BACKEND_TGP, BACKEND_SIXEL, BACKEND_HALFCELL, BACKEND_UNICODE}
+)
+_TRUE_RASTER_BACKENDS = frozenset({BACKEND_TGP, BACKEND_SIXEL})
+
+
+def is_true_raster(backend: str) -> bool:
+    """Only TGP/Sixel are real pixel rasters; everything else is a fallback."""
+
+    return backend in _TRUE_RASTER_BACKENDS
+
+
+def _module_backend(cls_or_obj) -> str:
+    """Map a textual-image class/instance to its backend label via ``__module__``.
+
+    Import-free (pure string check on the module path) so it is safe to call in
+    environments without rich/Pillow/textual-image installed.
+    """
+
+    mod = getattr(cls_or_obj, "__module__", "") or ""
+    if mod.startswith("textual_image.renderable."):
+        name = mod.rsplit(".", 1)[-1]
+        return name if name in _TEXTUAL_IMAGE_BACKENDS else BACKEND_UNKNOWN
+    return BACKEND_UNKNOWN
+
+
+def renderable_backend(obj) -> str:
+    """Classify a ``renderable()`` RESULT into its real backend label.
+
+    No imports: distinguishes our own outputs (str text mark, rich-Text half-block)
+    from textual-image's four backends purely by type/module name.
+    """
+
+    if obj is None or isinstance(obj, str):
+        return BACKEND_TEXT
+    mod = (type(obj).__module__ or "")
+    if mod.startswith("textual_image.renderable."):
+        return _module_backend(type(obj))
+    if mod.startswith("rich."):  # our HalfBlockRenderer returns a rich.text.Text
+        return BACKEND_HALFBLOCK
+    return BACKEND_UNKNOWN
+
+
+def _textual_image_class():
+    """Import and return textual-image's resolved ``Image`` class, or ``None``.
+
+    The class is whatever backend textual-image bound at import time for THIS
+    process/terminal — inspect ``_module_backend`` on it to see tgp/sixel/halfcell/
+    unicode.
+    """
+
+    try:
+        from textual_image.renderable import Image  # noqa: WPS433
+    except Exception:  # noqa: BLE001 - not importable (absent / wrong python)
+        return None
+    return Image
+
+
 # --- text/symbol fallback mark (SECONDARY) ---------------------------------
 
 # A small, crisp brand mark — two short lines, no per-pixel colour spans (those
@@ -266,10 +347,12 @@ class HalfBlockRenderer:
 class RealImageRenderer:
     """TIER 1 (primary) — a real inline image raster via ``textual-image``.
 
-    Falls back DOWN the tiers if the image lib is missing or the asset is
-    unreadable at render time: first to the image-derived half-block (tier 2),
-    then to the text mark (tier 3). So "show the real image first, else still an
-    image" holds wherever it can.
+    Uses textual-image ONLY when it resolved to a TRUE-raster backend (TGP/Sixel).
+    When textual-image would instead pick its own cell fallback (halfcell/unicode —
+    which looks worse than our tuned, image-derived half-block), or when the lib /
+    asset is unavailable, we fall to OUR half-block (tier 2), then the text mark
+    (tier 3). So we never render textual-image's muddy cell fallback in place of a
+    cleaner one we control.
     """
 
     renderer_id: str = RENDERER_REAL
@@ -279,12 +362,15 @@ class RealImageRenderer:
         path = best_image_path()
         if path is None:
             return TextMarkRenderer().renderable()
-        try:
-            from textual_image.renderable import Image as _InlineImage  # noqa: WPS433
-        except Exception:  # noqa: BLE001 - textual-image absent → image-derived tier 2
+        image_cls = _textual_image_class()
+        if image_cls is None:  # textual-image absent → our image-derived tier 2
+            return HalfBlockRenderer().renderable()
+        if not is_true_raster(_module_backend(image_cls)):
+            # textual-image resolved to halfcell/unicode (not a real raster) — prefer
+            # OUR cleaner half-block over its cell fallback.
             return HalfBlockRenderer().renderable()
         try:
-            return _InlineImage(str(path), width=self.width)
+            return image_cls(str(path), width=self.width)
         except Exception:  # noqa: BLE001 - raster construction failed → tier 2
             return HalfBlockRenderer().renderable()
 
@@ -317,10 +403,12 @@ class BrandTextRenderer:
 class BrandBannerRenderer:
     """TIER 1 — the forgekit wordmark banner as a real inline image.
 
-    Renders the small baked intro banner via ``textual-image`` on a
-    graphics-capable terminal. Degrades straight to the compact TEXT wordmark
-    (the gradient mark) when the lib / asset is unavailable — the wordmark is the
-    intended compact fallback, so no half-block tier here.
+    Renders the small baked intro banner via ``textual-image`` ONLY when it
+    resolved to a TRUE-raster backend (TGP/Sixel). Otherwise — textual-image cell
+    fallback, missing lib, or unreadable asset — it degrades to the compact TEXT
+    wordmark (the cyan→magenta gradient), which is far cleaner than a halfcell/
+    unicode banner. The wordmark is the intended fallback, so there is no half-block
+    tier here.
     """
 
     renderer_id: str = RENDERER_BRAND_IMAGE
@@ -330,12 +418,14 @@ class BrandBannerRenderer:
         path = best_banner_path()
         if path is None:
             return BrandTextRenderer().renderable()
-        try:
-            from textual_image.renderable import Image as _InlineImage  # noqa: WPS433
-        except Exception:  # noqa: BLE001 - textual-image absent → text wordmark
+        image_cls = _textual_image_class()
+        if image_cls is None:  # textual-image absent → text wordmark
+            return BrandTextRenderer().renderable()
+        if not is_true_raster(_module_backend(image_cls)):
+            # not a true raster (halfcell/unicode) → the clean text wordmark wins.
             return BrandTextRenderer().renderable()
         try:
-            return _InlineImage(str(path), width=self.width)
+            return image_cls(str(path), width=self.width)
         except Exception:  # noqa: BLE001 - raster construction failed → text wordmark
             return BrandTextRenderer().renderable()
 
@@ -385,11 +475,15 @@ def make_renderer(
 
 # --- diagnostics (FORGEKIT_DEBUG_RENDERERS) --------------------------------
 #
-# Why selected≠realized matters: detection/selection can pick ``real-image`` while
-# the actual ``renderable()`` silently degrades a tier (textual-image missing/
-# incompatible, asset unreadable, raster construction fails). The selected id alone
-# would mislead — these helpers expose what is REALLY on screen vs what was chosen,
-# so an operator can split "asset problem" from "renderer/terminal path problem".
+# The honest diagnosis separates FOUR independent things that the old "non-str ⇒
+# real-image" check wrongly collapsed into one:
+#   1. library import   — is ``textual-image`` importable at all? (lib_ok)
+#   2. capability detect — what did our heuristic guess for the terminal? (capability_reason)
+#   3. CHOSEN backend    — which class textual-image actually bound (tgp/sixel/
+#      halfcell/unicode), i.e. what it WOULD draw. (lib_backend)
+#   4. REALIZED backend  — what forgekit actually renders after policy (tgp/sixel =
+#      true raster; halfcell/unicode/half-block/text-mark = fallback). (*_backend)
+# Only (4) tells the operator whether the screen is a real pixel image.
 
 
 def debug_renderers_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
@@ -399,74 +493,70 @@ def debug_renderers_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
     return (environ.get(_DEBUG_ENV) or "").strip().lower() in ("1", "true", "on", "yes")
 
 
-def real_image_support() -> Tuple[bool, str]:
-    """Probe whether ``textual-image`` can actually import its inline raster.
+def image_library_status() -> Tuple[bool, str, str]:
+    """``(importable, reason, chosen_backend)`` for textual-image's inline raster.
 
-    Returns ``(ok, reason)``. This is the import that the real renderers attempt at
-    render time; when it fails (e.g. textual-image needs Python ≥3.10 for
-    ``types.NoneType``) EVERY terminal degrades regardless of its graphics support.
+    Import success means ONLY that the library is usable — NOT that a true raster
+    will render. ``chosen_backend`` is the backend textual-image resolved for this
+    process/terminal (tgp/sixel = true raster; halfcell/unicode = its own cell
+    fallback; ``none`` when not importable). Splitting these prevents the old false
+    positive where "importable" was read as "real image".
     """
 
-    try:
-        from textual_image.renderable import Image as _Probe  # noqa: F401,WPS433
-    except Exception as exc:  # noqa: BLE001 - any import failure → no real raster
-        return False, f"{type(exc).__name__}: {exc}"
-    return True, "textual-image import ok"
-
-
-def realized_avatar_id(renderable) -> str:
-    """Classify an avatar ``renderable()`` result back into its actual tier."""
-
-    from rich.text import Text  # noqa: WPS433 - rich is a textual dep, always present
-
-    if isinstance(renderable, str):
-        return RENDERER_TEXT  # tier 3 text mark
-    if isinstance(renderable, Text):
-        return RENDERER_HALFBLOCK  # tier 2 image-derived half-block
-    return RENDERER_REAL  # a textual-image Image renderable (tier 1)
-
-
-def realized_brand_id(renderable) -> str:
-    """Classify a brand ``renderable()`` result back into its actual tier."""
-
-    # brand has no half-block tier: a str is the text wordmark, anything else is
-    # the real inline banner image.
-    return RENDERER_BRAND_TEXT if isinstance(renderable, str) else RENDERER_BRAND_IMAGE
+    image_cls = _textual_image_class()
+    if image_cls is None:
+        # re-probe to surface WHY (kept cheap; only runs under the debug flag).
+        try:
+            from textual_image.renderable import Image as _Probe  # noqa: F401,WPS433
+            reason = "textual-image import ok"
+        except Exception as exc:  # noqa: BLE001
+            return False, f"{type(exc).__name__}: {exc}", BACKEND_NONE
+        return True, reason, BACKEND_UNKNOWN
+    return True, "textual-image import ok", _module_backend(image_cls)
 
 
 @dataclass(frozen=True)
 class RendererDiagnostics:
-    """What was selected vs what actually rendered, for the debug line."""
+    """What was selected vs the REAL backend rendered, for the debug line."""
 
-    avatar_selected: str
-    avatar_realized: str
-    brand_selected: str
-    brand_realized: str
+    avatar_selected: str       # our tier choice: real-image / half-block / text-mark
+    avatar_backend: str        # realized backend (tgp/sixel/halfcell/unicode/half-block/text-mark)
+    avatar_true_raster: bool   # is the avatar an actual pixel raster?
+    brand_selected: str        # brand-image / brand-text
+    brand_backend: str
+    brand_true_raster: bool
     capability_reason: str
-    raster_ok: bool
-    raster_reason: str
+    lib_ok: bool               # textual-image importable (NOT the same as true raster)
+    lib_reason: str
+    lib_backend: str           # backend textual-image WOULD use (tgp/sixel/halfcell/unicode/none)
 
 
 def diagnose_renderers(env: Optional[Mapping[str, str]] = None) -> RendererDiagnostics:
     """Build the renderer diagnostics for *env* (defaults to the live environment).
 
-    Mirrors exactly what the intro panels do (same ``make_renderer`` /
-    ``make_brand_renderer`` selection), then renders once more to capture the
-    REALIZED tier — so the debug line reflects the real screen, not just intent.
+    Mirrors what the intro panels do (same ``make_renderer`` / ``make_brand_renderer``
+    selection), renders once to capture the REALIZED backend, and separately records
+    the backend textual-image itself resolved — so the debug line reflects the real
+    screen, not just intent, and never calls halfcell/unicode a "real image".
     """
 
     cap = detect_image_capability(env)
     avatar = make_renderer(env=env)
     brand = make_brand_renderer(env=env)
-    raster_ok, raster_reason = real_image_support()
+    lib_ok, lib_reason, lib_backend = image_library_status()
+    avatar_backend = renderable_backend(avatar.renderable())
+    brand_backend = renderable_backend(brand.renderable())
     return RendererDiagnostics(
         avatar_selected=avatar.renderer_id,
-        avatar_realized=realized_avatar_id(avatar.renderable()),
+        avatar_backend=avatar_backend,
+        avatar_true_raster=is_true_raster(avatar_backend),
         brand_selected=brand.renderer_id,
-        brand_realized=realized_brand_id(brand.renderable()),
+        brand_backend=brand_backend,
+        brand_true_raster=is_true_raster(brand_backend),
         capability_reason=cap.reason,
-        raster_ok=raster_ok,
-        raster_reason=raster_reason,
+        lib_ok=lib_ok,
+        lib_reason=lib_reason,
+        lib_backend=lib_backend,
     )
 
 
@@ -488,9 +578,17 @@ __all__ = (
     "make_renderer",
     "make_brand_renderer",
     "debug_renderers_enabled",
-    "real_image_support",
-    "realized_avatar_id",
-    "realized_brand_id",
+    "image_library_status",
+    "is_true_raster",
+    "renderable_backend",
+    "BACKEND_TGP",
+    "BACKEND_SIXEL",
+    "BACKEND_HALFCELL",
+    "BACKEND_UNICODE",
+    "BACKEND_HALFBLOCK",
+    "BACKEND_TEXT",
+    "BACKEND_NONE",
+    "BACKEND_UNKNOWN",
     "RendererDiagnostics",
     "diagnose_renderers",
     "text_mark_lines",

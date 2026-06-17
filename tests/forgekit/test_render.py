@@ -193,47 +193,57 @@ class IntroMetaTests(unittest.TestCase):
 class _Diag:
     """Minimal RendererDiagnostics-shaped stub for the debug-line builder."""
 
-    def __init__(self, av_sel, av_real, br_sel, br_real, cap, raster_ok, raster_reason=""):
-        self.avatar_selected = av_sel
-        self.avatar_realized = av_real
-        self.brand_selected = br_sel
-        self.brand_realized = br_real
+    def __init__(self, *, av_backend, av_raster, br_backend, br_raster,
+                 cap, lib_ok, lib_backend="none", lib_reason=""):
+        self.avatar_backend = av_backend
+        self.avatar_true_raster = av_raster
+        self.brand_backend = br_backend
+        self.brand_true_raster = br_raster
         self.capability_reason = cap
-        self.raster_ok = raster_ok
-        self.raster_reason = raster_reason
+        self.lib_ok = lib_ok
+        self.lib_backend = lib_backend
+        self.lib_reason = lib_reason
 
 
 class RendererDebugLineTests(unittest.TestCase):
-    def test_healthy_shows_plain_realized_ids_no_arrow(self) -> None:
-        # selected == realized → no arrow, no raster failure tail
+    def test_true_raster_tagged_raster(self) -> None:
         line = render.renderer_debug_line(
-            _Diag("real-image", "real-image", "brand-image", "brand-image",
-                  "kitty graphics protocol", True, "textual-image import ok")
+            _Diag(av_backend="sixel", av_raster=True, br_backend="sixel", br_raster=True,
+                  cap="iterm2 inline images", lib_ok=True, lib_backend="sixel")
         )
-        self.assertIn("avatar=real-image", line)
-        self.assertIn("brand=brand-image", line)
-        self.assertNotIn("→", line)
-        self.assertNotIn("raster", line)
-        self.assertIn("cap=kitty graphics protocol", line)
+        self.assertIn("avatar=sixel(raster)", line)
+        self.assertIn("brand=sixel(raster)", line)
+        self.assertIn("cap=iterm2 inline images", line)
+        self.assertIn("lib=ok:sixel", line)
 
-    def test_silent_degrade_shows_arrow_and_raster_failure(self) -> None:
-        # selected real but realized fallback → arrow exposes the silent degrade
+    def test_fallback_backend_tagged_fallback(self) -> None:
+        # importable but resolved to a cell fallback → must NOT read as raster
         line = render.renderer_debug_line(
-            _Diag("real-image", "half-block", "brand-image", "brand-text",
-                  "term_program=vscode", False, "ImportError: cannot import name 'NoneType'")
+            _Diag(av_backend="half-block", av_raster=False, br_backend="text-mark", br_raster=False,
+                  cap="term_program=vscode", lib_ok=True, lib_backend="halfcell")
         )
-        self.assertIn("avatar=real-image→half-block", line)
-        self.assertIn("brand=brand-image→brand-text", line)
+        self.assertIn("avatar=half-block(fallback)", line)
+        self.assertIn("brand=text-mark(fallback)", line)
         self.assertIn("cap=term_program=vscode", line)
-        self.assertIn("raster✗", line)
+        self.assertIn("lib=ok:halfcell", line)  # importable, but halfcell ≠ raster
+        self.assertNotIn("(raster)", line)
 
-    def test_long_raster_reason_truncated(self) -> None:
+    def test_lib_import_failure_shown(self) -> None:
         line = render.renderer_debug_line(
-            _Diag("real-image", "half-block", "brand-image", "brand-text",
-                  "term_program=vscode", False, "X" * 200)
+            _Diag(av_backend="half-block", av_raster=False, br_backend="text-mark", br_raster=False,
+                  cap="term_program=vscode", lib_ok=False, lib_backend="none",
+                  lib_reason="ImportError: cannot import name 'NoneType'")
+        )
+        self.assertIn("lib=✗", line)
+        self.assertIn("ImportError", line)
+
+    def test_long_lib_reason_truncated(self) -> None:
+        line = render.renderer_debug_line(
+            _Diag(av_backend="text-mark", av_raster=False, br_backend="text-mark", br_raster=False,
+                  cap="x", lib_ok=False, lib_backend="none", lib_reason="X" * 200)
         )
         self.assertIn("…", line)
-        self.assertLess(len(line), 200)
+        self.assertLess(len(line), 220)
 
 
 class IssueLineTests(unittest.TestCase):
