@@ -53,15 +53,18 @@ from typing import Mapping, Optional, Protocol, Tuple
 
 from . import theme
 
-# The asset the console RENDERS: the baked small display PNG (Claude-icon scale).
-# This is the stable RUNTIME ALIAS, written byte-identical to the canonical
-# `forgekit-avatar-display-128.png` by assets/avatar/bake.py. The renderer loads
-# the alias (not the dated/canonical name) so this constant never churns; it is
-# never the raw master. (Secondary: `forgekit-avatar-96.png` == display-96.)
-_DISPLAY_PNG = "forgekit-avatar.png"
+# The DEFAULT asset the console renders: the simplified TERMINAL ICON (a bold
+# 2-tone headphone silhouette — Claude-icon scale, crisp on black). This is the
+# stable RUNTIME ALIAS, written byte-identical to the canonical
+# `forgekit-terminal-icon-128.png` by assets/avatar/bake.py, so this constant never
+# churns. The detailed portrait is intentionally NOT the tiny-intro default.
+_DISPLAY_PNG = "forgekit-avatar.png"  # == forgekit-terminal-icon-128.png
+# The DETAILED PORTRAIT — kept for a larger/GUI surface and the opt-in portrait mode
+# (`FORGEKIT_AVATAR=portrait`), NOT the terminal default. (Secondary: -96.)
+_PORTRAIT_PNG = "forgekit-avatar-display-128.png"
 # The portrait MASTER alias (human-replaceable; == the adopted source archive,
-# byte-for-byte). Used ONLY if the baked display PNG is somehow absent — the
-# master is never the normal render path.
+# byte-for-byte). Used ONLY if a baked asset is somehow absent — never the normal
+# render path.
 _SOURCE_JPG = "avatar-source.png"
 
 # Renderer identifiers (returned by select_renderer; stable for tests).
@@ -131,7 +134,15 @@ def best_banner_path() -> Optional[Path]:
 
 
 def display_png_path() -> Path:
+    """The DEFAULT render asset — the simplified terminal icon (runtime alias)."""
+
     return assets_dir() / _DISPLAY_PNG
+
+
+def portrait_png_path() -> Path:
+    """The DETAILED portrait — for the opt-in portrait mode / a larger surface."""
+
+    return assets_dir() / _PORTRAIT_PNG
 
 
 def source_image_path() -> Path:
@@ -139,7 +150,7 @@ def source_image_path() -> Path:
 
 
 def best_image_path() -> Optional[Path]:
-    """The image to render: the baked small PNG, else the source, else None."""
+    """The default image to render: the terminal icon, else the source, else None."""
 
     png = display_png_path()
     if png.is_file():
@@ -148,6 +159,15 @@ def best_image_path() -> Optional[Path]:
     if src.is_file():
         return src
     return None
+
+
+def best_portrait_path() -> Optional[Path]:
+    """The detailed portrait to render (portrait mode): portrait, else icon, else source."""
+
+    portrait = portrait_png_path()
+    if portrait.is_file():
+        return portrait
+    return best_image_path()
 
 
 @dataclass(frozen=True)
@@ -442,7 +462,8 @@ class HalfBlockRenderer:
     def _resolve(self):
         from . import halfblock  # local import keeps Pillow optional at import time
 
-        path = best_image_path()
+        # portrait mode → the DETAILED portrait (not the simplified terminal icon).
+        path = best_portrait_path()
         rendered = halfblock.render_halfblock(path, cols=self.cols) if path else None
         if rendered is None:
             return BACKEND_TEXT, TextMarkRenderer().renderable()
@@ -583,6 +604,24 @@ def _avatar_force_mode(env: Optional[Mapping[str, str]] = None) -> str:
 
     environ = os.environ if env is None else env
     return (environ.get(_FORCE_ENV) or "").strip().lower()
+
+
+# Asset-mode labels (which avatar ASSET the path uses, separate from the backend).
+ASSET_TERMINAL_ICON = "terminal-icon"  # simplified icon (default tiny-intro asset)
+ASSET_PORTRAIT = "portrait"            # detailed portrait (opt-in / larger surface)
+
+
+def avatar_asset_mode(env: Optional[Mapping[str, str]] = None) -> str:
+    """Which avatar ASSET the default path renders: terminal-icon vs portrait.
+
+    The console's tiny-intro DEFAULT is the simplified terminal icon; the detailed
+    portrait is opt-in (``FORGEKIT_AVATAR=portrait``). This reports that policy so
+    debug/readiness can say "tiny icon policy" vs "portrait mode".
+    """
+
+    if _avatar_force_mode(env) in ("portrait", "halfblock", "half-block"):
+        return ASSET_PORTRAIT
+    return ASSET_TERMINAL_ICON
 
 
 def make_renderer(
@@ -757,8 +796,11 @@ __all__ = (
     "assets_dir",
     "brand_dir",
     "display_png_path",
+    "portrait_png_path",
     "source_image_path",
     "best_image_path",
+    "best_portrait_path",
+    "avatar_asset_mode",
     "banner_intro_path",
     "banner_master_path",
     "best_banner_path",

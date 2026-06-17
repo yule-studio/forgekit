@@ -65,6 +65,7 @@ class RenderReadiness:
     lib_reason: str
     lib_backend: str
     capability_reason: str
+    avatar_asset: str          # terminal-icon (default) vs portrait (opt-in)
     avatar_backend: str
     avatar_policy: str
     brand_backend: str
@@ -86,6 +87,7 @@ def render_readiness_report(env: Optional[Mapping[str, str]] = None) -> RenderRe
         lib_reason=diag.lib_reason,
         lib_backend=diag.lib_backend,
         capability_reason=diag.capability_reason,
+        avatar_asset=ir.avatar_asset_mode(env),
         avatar_backend=diag.avatar_backend,
         avatar_policy=diag.avatar_policy,
         brand_backend=diag.brand_backend,
@@ -115,6 +117,7 @@ def render_readiness_lines(report: Optional[RenderReadiness] = None,
         f"  {_ok(r.python_ok)} python        {r.python_version}  (textual-image 는 ≥3.10)",
         f"  {_ok(r.lib_ok)} textual-image {lib}",
         f"  · terminal     {r.capability_reason}",
+        f"  · avatar asset {r.avatar_asset}  (기본=terminal-icon · 상세 portrait 는 FORGEKIT_AVATAR=portrait)",
         f"  · avatar       {r.avatar_backend} ({r.avatar_policy})",
         f"  · brand        {r.brand_backend} ({r.brand_policy})",
         "",
