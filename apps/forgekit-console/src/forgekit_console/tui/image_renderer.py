@@ -319,6 +319,22 @@ def _textual_image_class():
     return Image
 
 
+def prime_image_backend() -> str:
+    """Resolve textual-image's backend EARLY, before Textual starts. Returns it.
+
+    ``textual-image`` probes the terminal for sixel/TGP support the first time
+    ``textual_image.renderable`` is imported — and that probe only works while stdin
+    is free. Once Textual's app starts it owns stdin, so a lazy import at render time
+    resolves to ``halfcell`` even on a sixel/TGP-capable terminal. Calling this from
+    the entrypoint (before ``App.run()``) primes the import so the cached backend is
+    the CORRECT one. Safe and idempotent: returns the chosen backend label (``none``
+    if textual-image is absent); never raises.
+    """
+
+    image_cls = _textual_image_class()
+    return _module_backend(image_cls) if image_cls is not None else BACKEND_NONE
+
+
 # --- text/symbol fallback marks --------------------------------------------
 
 # Last-resort text mark — two short lines, no per-pixel colour spans (those are
@@ -706,6 +722,7 @@ __all__ = (
     "make_brand_renderer",
     "debug_renderers_enabled",
     "image_library_status",
+    "prime_image_backend",
     "is_true_raster",
     "policy_state",
     "renderable_backend",
