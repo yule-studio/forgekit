@@ -32,6 +32,16 @@ terminal:
 
 Nothing here imports textual's App; the widget wiring lives in
 :mod:`tui.avatar_panel`.
+
+Module size
+-----------
+~750 lines (over the 700 warn line, under the 1000 split line). It is intentionally
+kept whole for now: every part shares one tightly-coupled domain — capability →
+backend classification → renderer → policy → diagnostics — and the renderers depend
+on the backend/policy helpers, so splitting would mean a circular seam. The natural
+future split, if it grows past ~1000, is to lift the diagnostics surface
+(``RendererDiagnostics`` / ``diagnose_renderers`` / ``image_library_status``) into a
+``render_diagnostics`` module while leaving the backend+policy primitives here.
 """
 
 from __future__ import annotations
