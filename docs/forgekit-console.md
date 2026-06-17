@@ -95,6 +95,13 @@ runtime alias 는 icon 과 byte 동일. operator 는 `/render` 의 `avatar asset
 > archive 로 보존해 사람이 재선택할 수 있게 둔다. 베이크 절차(`_CROP`/`_tune` = autocontrast +
 > UnsharpMask)는 `bake.py` 에 코드로 박혀 재현 가능하다.
 >
+> **픽셀 아이콘 후보 평가(2026-06-17 03:03):** pixel-art 헤드폰 girl 을 terminal icon 후보로
+> 시험했다. 128px full 에선 멋지지만 **tiny intro(~14셀)에선 디테일이 많아 muddy/noisy**(illustration
+> 이지 icon 이 아님), 게다가 메인 환경(VS Code=non-raster)에선 이미지가 아예 안 떠 `fk` 배지가 보인다.
+> → **기본값 유지**: non-raster=`fk` 배지, true-raster=2-tone 실루엣 terminal icon(더 iconic·축소
+> 강함). 픽셀 후보는 `forgekit-avatar-pixel-source-2026-06-17.png` 로 **archive**(향후 더 큰 GUI
+> surface 용). 채택을 원하면 ICON_* 입력만 교체하면 되는 한 줄 변경.
+>
 > **real-image 검증 환경:** `textual-image` 는 Python ≥3.10 을 요구한다(메인 `.venv`(3.9)는
 > import 자체가 깨짐). 검증은 별도 console venv(`.venv-console`, `python3.13 -m venv` +
 > `pip install -e 'apps/forgekit-console[image]'`)에서 한다. 단 **import 성공만으로 real
@@ -256,11 +263,16 @@ ready · /status                        ← issue line (텍스트 1줄, 조용)
     separator 도 heavy box 도 아닌 중간). `#inputrow`(accent 마커 `›`(cyan) + muted mode pill +
     입력창 — 주인공) + `#hint`(bar 바닥, 항상 보이는 짧은 힌트). 이 bar 가 독립 입력 영역이다.
   - **slash palette(`#palette`)**: 입력 box **안이 아니라** shell **아래의 별도 surface**.
-    `/` 는 입력 필드에 typed text 로 들어가지만, 명령 **목록**은 bar 아래에 thin accent rule
-    로 연결된 **compact·auto-height** strip 으로 열린다(`max-height 8` + scroll → giant box
-    금지). 일반 텍스트면 숨김. transcript 와 절대 섞이지 않는다.
-  - `/help` 는 별도 **full-VIEW 전환**(MainPanel)이라 inline palette 와 구분된다. help 뷰가
-    열려 있어도 bar 는 그 **아래**에 그대로 보이고 입력 가능. Enter → 입력이 transcript 엔트리.
+    `/` 는 입력 필드에 typed text 로 들어가지만, 명령 **목록**은 bar 아래에 thin **desaturated**
+    accent rule(`$accent-dim`)로 연결된 **compact·auto-height** strip 으로 열린다(`max-height 8` +
+    scroll → giant box 금지). 일반 텍스트면 숨김. transcript 와 절대 섞이지 않는다.
+  - **입력창은 비어 있다**: in-field placeholder 문구 없음(Claude 식). `/help · / palette · Tab ·
+    quit` 안내는 입력창 **안이 아니라** bar 아래 `#hint` row 에 둔다.
+  - `/help` 는 별도 **full-VIEW 전환**(MainPanel). **help/탭 뷰에서는 composer bar 가 숨는다**
+    (Claude 식 "help 모드" — 입력창이 help 본문 아래 어정쩡하게 남지 않음). Esc/Tab 안내는 help
+    본문 상단이 담당하고, Esc 로 닫으면 bar 복원 + 입력 focus. help 탭 색은 절제 — active 탭은
+    loud reverse-cyan 블록이 아니라 작은 `▸` accent 마커 + bold, inactive 는 muted, divider 는
+    `$brand-border`(덜 공격적). accent 는 포인트에만.
 
 ## 3b. 키 바인딩 / 상호작용
 
