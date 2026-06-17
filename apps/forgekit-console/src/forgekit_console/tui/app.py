@@ -297,6 +297,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "autopilot":
             self._run_autopilot(raw)
             return
+        if parsed.name == "digest":
+            self._show_digest()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -401,6 +404,25 @@ class ForgekitConsoleApp(App):
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
             log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_digest(self) -> None:
+        """`/digest` — run an autopilot cycle on forgekit + show the operator digest."""
+
+        from ..autopilot import AutopilotOrchestrator, RepoFinding, observe_repo
+        from ..autopilot.execution import build_operator_digest
+
+        log = self._transcript
+        log.write_echo("/digest")
+        findings = observe_repo("forgekit", self.repo_root, ui_discomfort=["UI spacing 마찰"])
+        findings += [RepoFinding("forgekit", "auth 대규모 rewrite", kind="gap"),
+                     RepoFinding("forgekit", "프로덕션 배포", kind="ops")]
+        risk = lambda f: "blocked" if "배포" in f.finding else ("risky" if "rewrite" in f.finding else "safe")
+        res = AutopilotOrchestrator().run_cycle("forgekit", findings, risk_of=risk)
+        digest = build_operator_digest([res])
+        for line in digest.lines():
+            log.write(f"[dim]{line}[/dim]" if line.startswith("-") or line.startswith("주의") else line)
         self._sync_intro()
         self._follow_tail()
 

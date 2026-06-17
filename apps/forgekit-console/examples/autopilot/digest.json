@@ -1,0 +1,33 @@
+{
+  "discovered": 4,
+  "auto_executed": [
+    {
+      "repo": "forgekit",
+      "finding": "docs 보강",
+      "executor": "tech-lead",
+      "verified": true
+    },
+    {
+      "repo": "forgekit",
+      "finding": "UI spacing 마찰",
+      "executor": "fe",
+      "verified": true
+    }
+  ],
+  "needs_user": [
+    {
+      "repo": "forgekit",
+      "finding": "auth 대규모 rewrite",
+      "decision_class": "risky",
+      "approval_level": "L3_user_approve"
+    }
+  ],
+  "blocked": [
+    {
+      "repo": "forgekit",
+      "finding": "프로덕션 배포",
+      "decision_class": "blocked",
+      "approval_level": "L4_restricted"
+    }
+  ]
+}
