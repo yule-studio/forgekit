@@ -58,30 +58,35 @@ def intro_meta_lines(
 
 
 def renderer_debug_line(diag) -> str:
-    """A small dim diagnostic line: SELECTED→REALIZED avatar/brand renderers.
+    """A small dim diagnostic line: the REAL backend behind avatar/brand.
 
-    Only shown when ``FORGEKIT_DEBUG_RENDERERS`` is set. When the realized tier
-    differs from the selected one (a silent degrade) it is shown as
-    ``selected→realized`` so the operator immediately sees the real image did NOT
-    render. The terminal's capability reason and (if the real raster is
-    unavailable) the import failure are appended — that splits "asset problem"
-    from "renderer/terminal path problem" at a glance. Pure: takes a
-    :class:`tui.image_renderer.RendererDiagnostics`-shaped object, returns markup.
+    Only shown when ``FORGEKIT_DEBUG_RENDERERS`` is set. Each side shows the
+    realized backend with a ``(raster)`` / ``(fallback)`` tag so the operator can
+    tell at a glance whether the screen is a true pixel image (TGP/Sixel) or a
+    cell/text fallback (halfcell/unicode/half-block/text-mark). ``cap`` is the
+    capability guess; ``lib`` separates "textual-image importable" (and which
+    backend it WOULD use) from the realized result — import success is NOT a real
+    raster. Pure: takes a :class:`tui.image_renderer.RendererDiagnostics`-shaped
+    object, returns markup.
     """
 
-    def tier(selected: str, realized: str) -> str:
-        return realized if selected == realized else f"{selected}→{realized}"
+    def side(label: str, backend: str, raster: bool) -> str:
+        return f"{label}={backend}({'raster' if raster else 'fallback'})"
+
+    if diag.lib_ok:
+        lib = f"lib=ok:{diag.lib_backend}"  # importable + which backend it WOULD use
+    else:
+        reason = diag.lib_reason
+        if len(reason) > 48:
+            reason = reason[:47] + "…"
+        lib = f"lib=✗ {reason}"
 
     parts = [
-        f"avatar={tier(diag.avatar_selected, diag.avatar_realized)}",
-        f"brand={tier(diag.brand_selected, diag.brand_realized)}",
+        side("avatar", diag.avatar_backend, diag.avatar_true_raster),
+        side("brand", diag.brand_backend, diag.brand_true_raster),
         f"cap={diag.capability_reason}",
+        lib,
     ]
-    if not diag.raster_ok:
-        reason = diag.raster_reason
-        if len(reason) > 56:
-            reason = reason[:55] + "…"
-        parts.append(f"raster✗ {reason}")
     return f"[dim]renderers · {' · '.join(parts)}[/dim]"
 
 
