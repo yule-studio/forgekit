@@ -39,6 +39,13 @@ from .observe import (
     observe_repo,
     to_improvement_packets,
 )
+from .execution import (
+    SAFE_CLASS_ALLOWLIST,
+    AUTO_FORBIDDEN,
+    OperatorDigest,
+    build_operator_digest,
+    validate_execution,
+)
 from .orchestrator import (
     DEFAULT_ALLOWLIST,
     AutopilotLimits,
@@ -55,6 +62,7 @@ __all__ = (
     "run_internal_chain", "pm_structure", "gateway_route", "tech_lead_signoff",
     "can_specialist_execute", "trace_note",
     "UIReferenceState", "default_ui_reference", "observe_repo", "to_improvement_packets",
+    "SAFE_CLASS_ALLOWLIST", "AUTO_FORBIDDEN", "OperatorDigest", "build_operator_digest", "validate_execution",
     "DEFAULT_ALLOWLIST", "AutopilotLimits", "AutopilotOrchestrator",
     "AutopilotRunResult", "ExecutorArbiter",
 )
