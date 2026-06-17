@@ -284,6 +284,8 @@ ready · /status                        ← issue line (텍스트 1줄, 조용)
 | `/agents` | 에이전트 레지스트리(로그에 inline 출력) |
 | `/status` | operator 요약(provider/eval/self-improve/token) — 자세한 상태는 여기서 |
 | `/runtime` · `/doctor` | runtime status · 환경 진단 요약 |
+| `/render` | 렌더 readiness — true-raster vs fallback · avatar asset(icon/portrait) · 권장 터미널 |
+| `/blocked` | 반복 실패 에스컬레이션 목록 — 왜 안 되나 · 대안 · 다음 단계 · operator 필요 여부 |
 | `/pm-agent` | **Product intake gate** — 요구 보강·결정 질문·spec packet handoff(엔지니어링 앞단). [`product-intake-gate.md`](product-intake-gate.md) |
 | `/planning-agent`·`/backend-agent`·`/security-agent`·`/ops-observer` | 에이전트 모드 진입 **stub** |
 
@@ -295,6 +297,29 @@ ready · /status                        ← issue line (텍스트 1줄, 조용)
 | `/quit` · **`/exit`** | 종료 (`/exit` 는 `/quit` alias) |
 
 일반 텍스트는 아직 **live submit 미연결** — 안내만 표시한다.
+
+### 반복 실패 에스컬레이션 (조용한 실패 금지)
+
+같은 실패가 **임계값(기본 3, `FORGEKIT_BLOCKED_THRESHOLD` 로 1~5 조정) 이상 반복**되면,
+대화에만 남기지 않고 **자동으로 표면화**한다 — `docs/troubleshooting-mandatory.md` 의
+"최소 2 surface" 원칙과 맞춘다. 코드 SSoT 는
+[`lifecycle/failure_escalation.py`](../apps/forgekit-console/src/forgekit_console/lifecycle/failure_escalation.py).
+
+- **"같은 실패" 기준**: 단순 문자열이 아니라 `FailureSignature(kind, reason, scope)` —
+  `renderer` / `import` / `command` / `policy` / `dependency` / `status-surface` 등 kind 로
+  묶어, renderer fallback 과 status-surface unavailable 이 절대 섞이지 않는다.
+- **임계값 전**: 조용한 advisory 한 줄(`↻ … 2/3 — 아직 시도 중`).
+- **임계값 도달 시 자동 mini-RCA**: 증상 · 증거 · 시도한 것 · **왜 안 되나** · **대안 2~3개**
+  (kind 별 remedy KB + 호출자 제공 병합) · **다음 단계** · operator 답변/승인 필요 여부.
+- **표면(항상 ≥2)**: escalation **ledger**(JSON) + operator **inbox**(JSON, `#승인-대기` 성격) +
+  live **console alert**(issue line 이 `● blocked` 배너로 전환, transcript 에 RCA). opt-in 3번째로
+  **macOS 알림**(`FORGEKIT_NOTIFY=1`, best-effort). `yule_engineering` troubleshooting ledger 가
+  import 가능하면 거기에도 bridge(best-effort).
+- **확인**: 콘솔에서 **`/blocked`** — 열린 반복 실패를 signature·횟수·다음 단계·대안과 함께 본다.
+  retry/fallback 으로 결국 성공하더라도 반복 구조가 있으면 ledger 에 남는다(조용한 반복 금지).
+
+> 경로: ledger/inbox 는 `~/.forgekit/state/`(또는 `$FORGEKIT_HOME/state/`). 모든 IO 는 guarded —
+> 알림/bridge/파일 실패가 에스컬레이션 코어를 절대 깨지 않는다. 순수·stdlib 라 bare CI 에서도 동작.
 
 ## 5. 아키텍처 (느슨한 결합)
 

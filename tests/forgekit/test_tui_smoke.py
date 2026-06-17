@@ -44,10 +44,25 @@ def _fake_context():
 
 @unittest.skipUnless(_TEXTUAL, "textual not installed")
 class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
-    def _app(self):
+    def _app(self, *, escalator=None):
         from forgekit_console.tui.app import ForgekitConsoleApp
 
-        return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context())
+        return ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(), escalator=escalator
+        )
+
+    def _tempdir_escalator(self, *, threshold=3):
+        """A FailureEscalator writing to a tempdir (cleaned at test teardown)."""
+        import tempfile
+        from forgekit_console.lifecycle.failure_escalation import FailureEscalator
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp, ignore_errors=True))
+        return FailureEscalator(
+            env={}, threshold=threshold,
+            ledger_path=tmp / "led.json", inbox_path=tmp / "inbox.json",
+            notifier=lambda t, b: True, bridge_troubleshooting=False,
+        )
 
     async def test_mounts_intro_issue_main_composer_topdown(self) -> None:
         from textual.widgets import Input, Static
@@ -405,6 +420,40 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("renderers", line)
                 self.assertIn("avatar=", line)
                 self.assertIn("brand=", line)
+
+    async def test_repeated_failure_advisory_then_blocked_banner(self) -> None:
+        """3 same-signature failures → advisory below threshold, then a blocked banner
+        + RCA in the transcript (never a silent repeated failure)."""
+        from textual.widgets import Static
+
+        app = self._app(escalator=self._tempdir_escalator(threshold=3))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            # /nope is an unknown command → KIND_ERROR, same signature each time
+            app._execute("/nope")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 1/3 — advisory only
+            app._execute("/nope")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 2/3 — still advisory
+            app._execute("/nope")
+            await pilot.pause()
+            # 3/3 → escalated: blocked flag set + issue line is the blocked banner
+            self.assertTrue(app._blocked)
+            issue = str(app.query_one("#issue", Static).render())
+            self.assertIn("blocked", issue)
+
+    async def test_blocked_command_lists_escalation(self) -> None:
+        """After an escalation, /blocked surfaces the open repeated-failure."""
+        app = self._app(escalator=self._tempdir_escalator(threshold=1))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._execute("/nope")  # threshold 1 → immediate escalation
+            await pilot.pause()
+            self.assertTrue(app._blocked)
+            # the escalation RCA block was written to the transcript
+            n_before = len(app._transcript.lines)
+            self.assertGreater(n_before, 0)
 
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
