@@ -58,20 +58,20 @@ def intro_meta_lines(
 
 
 def renderer_debug_line(diag) -> str:
-    """A small dim diagnostic line: the REAL backend behind avatar/brand.
+    """A small dim diagnostic line: the REAL backend + POLICY state per surface.
 
     Only shown when ``FORGEKIT_DEBUG_RENDERERS`` is set. Each side shows the
-    realized backend with a ``(raster)`` / ``(fallback)`` tag so the operator can
-    tell at a glance whether the screen is a true pixel image (TGP/Sixel) or a
-    cell/text fallback (halfcell/unicode/half-block/text-mark). ``cap`` is the
+    realized backend with its policy state — ``true-raster`` (a real pixel image,
+    TGP/Sixel), ``managed-fallback`` (a deliberate clean stand-in: brand badge /
+    wordmark / opt-in portrait), or ``hard-fallback`` (degraded to bare text). So
+    the operator never mistakes a managed fallback for a real raster. ``cap`` is the
     capability guess; ``lib`` separates "textual-image importable" (and which
-    backend it WOULD use) from the realized result — import success is NOT a real
-    raster. Pure: takes a :class:`tui.image_renderer.RendererDiagnostics`-shaped
-    object, returns markup.
+    backend it WOULD use) from the realized result. Pure: takes a
+    :class:`tui.image_renderer.RendererDiagnostics`-shaped object, returns markup.
     """
 
-    def side(label: str, backend: str, raster: bool) -> str:
-        return f"{label}={backend}({'raster' if raster else 'fallback'})"
+    def side(label: str, backend: str, policy: str) -> str:
+        return f"{label}={backend} ({policy})"
 
     if diag.lib_ok:
         lib = f"lib=ok:{diag.lib_backend}"  # importable + which backend it WOULD use
@@ -82,8 +82,8 @@ def renderer_debug_line(diag) -> str:
         lib = f"lib=✗ {reason}"
 
     parts = [
-        side("avatar", diag.avatar_backend, diag.avatar_true_raster),
-        side("brand", diag.brand_backend, diag.brand_true_raster),
+        side("avatar", diag.avatar_backend, diag.avatar_policy),
+        side("brand", diag.brand_backend, diag.brand_policy),
         f"cap={diag.capability_reason}",
         lib,
     ]
