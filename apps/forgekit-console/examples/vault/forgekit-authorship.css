@@ -1,0 +1,19 @@
+/* forgekit agent authorship colours — drop into .obsidian/snippets/ */
+.fk-pm { --fk-color: #f23ccf; border-left: 3px solid #f23ccf; padding-left: 8px; }
+.callout[data-callout="fk-pm"] { --callout-color: #f23ccf; }
+.fk-gateway { --fk-color: #8b90a0; border-left: 3px solid #8b90a0; padding-left: 8px; }
+.callout[data-callout="fk-gateway"] { --callout-color: #8b90a0; }
+.fk-techlead { --fk-color: #00d8f0; border-left: 3px solid #00d8f0; padding-left: 8px; }
+.callout[data-callout="fk-techlead"] { --callout-color: #00d8f0; }
+.fk-fe { --fk-color: #3ddc97; border-left: 3px solid #3ddc97; padding-left: 8px; }
+.callout[data-callout="fk-fe"] { --callout-color: #3ddc97; }
+.fk-be { --fk-color: #e0b020; border-left: 3px solid #e0b020; padding-left: 8px; }
+.callout[data-callout="fk-be"] { --callout-color: #e0b020; }
+.fk-devops { --fk-color: #ff5c7a; border-left: 3px solid #ff5c7a; padding-left: 8px; }
+.callout[data-callout="fk-devops"] { --callout-color: #ff5c7a; }
+.fk-qa { --fk-color: #9b8cf0; border-left: 3px solid #9b8cf0; padding-left: 8px; }
+.callout[data-callout="fk-qa"] { --callout-color: #9b8cf0; }
+.fk-security { --fk-color: #ff8c42; border-left: 3px solid #ff8c42; padding-left: 8px; }
+.callout[data-callout="fk-security"] { --callout-color: #ff8c42; }
+.fk-ops { --fk-color: #2f6f7a; border-left: 3px solid #2f6f7a; padding-left: 8px; }
+.callout[data-callout="fk-ops"] { --callout-color: #2f6f7a; }
