@@ -50,13 +50,30 @@ forgekit console --repo-root /path/to/repo   # status 기준 경로 지정
   콘솔 실행 시 **친절한 설치 안내(exit 3)** 를 출력한다(트레이스백 아님).
 - 기본 repo root 해석 우선순위: `--repo-root` > `YULE_REPO_ROOT` > 현재 디렉터리.
 
-### 인트로 — compact product header (Claude 식)
+### 인트로 — hero vs compact (큰 첫인상, 작업 시엔 작게)
 
-인트로는 **짧은 제품 헤더**다(상단 무게 최소화). 별도의 워드마크 배너 줄은 두지 않고,
-브랜딩은 메타 첫 줄의 `forgekit v0.1.0`(`theme.wordmark()` cyan→magenta)이 담당한다.
-구성: 작은 픽셀 avatar(좌) + **3 줄 메타**(우) — `forgekit v0.1.0` / `provider · profile` /
-repo path. (이전의 standalone `forgekit` 배너 줄 + `operator console` 태그라인 줄은 제거 —
-top padding 0, 메타 3줄로 줄여 issue line 이 바로 아래 붙는다.)
+인트로 헤더는 **두 모드의 상태머신**이다(코드 SSoT: [`tui/intro_state.py`](../apps/forgekit-console/src/forgekit_console/tui/intro_state.py)
++ [`tui/header.py`](../apps/forgekit-console/src/forgekit_console/tui/header.py)).
+
+- **hero** — 첫인상(빈 transcript + idle) 과 `/about`·`/welcome` 에서 **와이드 hero 아트**
+  (56-col unicode subset, [`tui/hero_art.py`](../apps/forgekit-console/src/forgekit_console/tui/hero_art.py)
+  → [`tui/hero_panel.py`](../apps/forgekit-console/src/forgekit_console/tui/hero_panel.py))를 **원본 폭 그대로**
+  중앙에 보여준다. 이 dense 아트는 tiny avatar 슬롯이 아니라 **넓은 surface** 가 제자리다.
+- **compact** — 작업 상태(typing · palette open · agent mode · transcript 에 내용 있음)에서는
+  작은 avatar(좌) + 3 줄 메타(`forgekit v0.1.0` / `provider · profile` / repo)로 접힌다 (Claude 식).
+
+전환은 순수 함수 `resolve_intro_mode(...)` 가 결정하고 app 이 상태 변화마다 `_sync_intro()` 로
+적용한다 — "첫인상은 크게, 일할 땐 작게". 56-col 아트를 16-col 로 압축하지 않는다 — surface 를 바꾼다.
+
+**override**: `FORGEKIT_INTRO_MODE=hero|compact|auto`(auto 가 상태 기반 기본) ·
+`FORGEKIT_HERO_ART=on|off|auto`(off 면 hero 아트 비활성 → 항상 compact). asset 경로 override 는
+`FORGEKIT_HERO_PATH`. hero asset 은 plain unicode text 라 ANSI 같은 복잡한 sanitizer 없이
+**방어적 정리**(control char / stray escape / invalid unicode 제거, 폭 보존, MAX caps)만 한다 —
+raw 를 그대로 터미널에 흘리지 않는다. asset 없으면 hero 모드로 안 가고 compact 유지(빈 박스 없음).
+
+> `BrandPanel`/`make_brand_renderer`/`forgekit-banner*` 자산은 코드/테스트에 남아 있지만
+> 인트로에서는 별도 배너 줄로 렌더하지 않는다. avatar(compact)의 우선순위는
+> true-raster=픽셀 raster / non-raster=**ANSI 아이콘**(→ braille → 배지)이다(아래 절).
 
 > `BrandPanel`/`make_brand_renderer`/`forgekit-banner*` 자산은 코드/테스트에 남아 있지만
 > 인트로에서는 더 이상 별도 배너 줄로 렌더하지 않는다(필요 시 재도입 가능). avatar 우선순위는

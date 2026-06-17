@@ -645,6 +645,130 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(len(app._transcript.lines), n_before)
             self.assertIn("operator dashboard", joined)
 
+    def _hero_app(self, hero_text: str = "HERO ART LINE 1\nHERO ART LINE 2", **env):
+        """An app whose hero asset is a temp file (so hero mode is exercisable)."""
+        import os
+        import tempfile
+        from unittest import mock
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        p = d / "hero.txt"
+        p.write_text(hero_text, encoding="utf-8")
+        patch_env = {"FORGEKIT_HERO_PATH": str(p), **env}
+        ctx = mock.patch.dict(os.environ, patch_env)
+        ctx.start()
+        self.addCleanup(ctx.stop)
+        return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context())
+
+    async def test_empty_session_shows_hero_then_folds_to_compact(self) -> None:
+        """Fresh empty session → HERO art visible; typing/submit → COMPACT header."""
+        from textual.widgets import Input
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._hero_app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            intro = app.query_one("#intro", IntroHeader)
+            self.assertEqual(intro.mode, "hero")  # big first impression
+            self.assertTrue(app.query_one("#intro-hero-wrap").display)
+            self.assertFalse(app.query_one("#intro-body").display)
+            # type a character → folds to compact (working state)
+            await pilot.press("h")
+            await pilot.pause()
+            self.assertEqual(intro.mode, "compact")
+            self.assertFalse(app.query_one("#intro-hero-wrap").display)
+            self.assertTrue(app.query_one("#intro-body").display)
+
+    async def test_no_hero_asset_stays_compact(self) -> None:
+        """Without an asset the intro is always compact (no empty hero box)."""
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._app()  # no FORGEKIT_HERO_PATH
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
+
+    async def test_about_command_shows_hero_and_about_tab(self) -> None:
+        """/about → hero art in the header + the About help tab."""
+        from forgekit_console.tui.header import IntroHeader
+        from forgekit_console.tui import render
+
+        app = self._hero_app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/about")
+            await pilot.pause()
+            self.assertTrue(app._main.help_open)
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
+            secs = render.help_sections(app.context.commands, app.context.agents)
+            self.assertEqual(secs[app._main.help_panel.active_tab].title, "About")
+            # Esc closes help → back to compact (transcript empty but help was the hero)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertFalse(app._main.help_open)
+
+    async def test_intro_mode_override_compact_forces_small(self) -> None:
+        """FORGEKIT_INTRO_MODE=compact keeps the small header even on an empty session."""
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._hero_app(FORGEKIT_INTRO_MODE="compact")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
+
+    async def test_intro_mode_override_hero_forces_big_while_working(self) -> None:
+        """FORGEKIT_INTRO_MODE=hero keeps the big art even after typing."""
+        from textual.widgets import Input
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._hero_app(FORGEKIT_INTRO_MODE="hero")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("h", "i")
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
+
+    async def test_live_submit_still_works_with_hero(self) -> None:
+        """Regression: free-text live-submit still appends + folds hero to compact."""
+        from textual.widgets import Input
+        from forgekit_console.chat import models as m
+        from forgekit_console.tui.header import IntroHeader
+
+        class FakeLive:
+            def submit(self, text):
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
+                                      text="live reply", provider_id="ollama",
+                                      provider_label="Ollama", model="x")
+
+        import os
+        import tempfile
+        from unittest import mock
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        p = d / "hero.txt"
+        p.write_text("HERO", encoding="utf-8")
+        ctx = mock.patch.dict(os.environ, {"FORGEKIT_HERO_PATH": str(p)})
+        ctx.start()
+        self.addCleanup(ctx.stop)
+        app = ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(), submit_service=FakeLive()
+        )
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
+            app.query_one("#prompt", Input).value = "hello"
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("live reply", joined)
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
+
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
         provider/profile/repo meta (right)."""

@@ -19,9 +19,12 @@ from forgekit_console.tui import theme
 
 
 class HelpSectionTests(unittest.TestCase):
-    def test_four_tabs(self) -> None:
+    def test_tabs_order_includes_about(self) -> None:
         secs = render.help_sections(load_commands(), load_agents())
-        self.assertEqual([s.title for s in secs], ["Help", "General", "Commands", "Agents"])
+        self.assertEqual(
+            [s.title for s in secs],
+            ["Help", "General", "Commands", "Agents", "About"],
+        )
 
     def test_commands_tab_lists_slash(self) -> None:
         secs = render.help_sections(load_commands(), load_agents())
@@ -140,7 +143,7 @@ class HelpPanelDocumentTests(unittest.TestCase):
 
     def test_tab_order_and_default_is_general(self) -> None:
         titles = [s.title for s in self._secs()]
-        self.assertEqual(titles, ["Help", "General", "Commands", "Agents"])
+        self.assertEqual(titles, ["Help", "General", "Commands", "Agents", "About"])
         self.assertEqual(self._secs()[render.default_help_tab(self._secs())].title, "General")
 
     def test_document_shows_tab_strip_and_active_body_only(self) -> None:
