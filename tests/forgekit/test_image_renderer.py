@@ -227,18 +227,19 @@ class BakedDisplayAssetTests(unittest.TestCase):
 class HalfBlockTier2Tests(unittest.TestCase):
     """Tier 2 — an IMAGE-DERIVED half-block render of the baked PNG (Pillow)."""
 
-    def test_halfblock_renderer_produces_image_derived_render_not_text(self) -> None:
-        # With Pillow + the baked asset present, tier 2 is a Rich Text half-block
-        # render of the actual image — NOT the plain text mark.
+    def test_avatar_render_is_image_derived_braille_not_text(self) -> None:
+        # the PIXEL avatar is an image-DERIVED render — braille (2x4 dots/cell, the
+        # render-spike path), NOT the plain text mark. Portrait mode stays half-block.
         from rich.text import Text
 
-        out = ir.HalfBlockRenderer().renderable()
+        out = ir.HalfBlockRenderer().renderable()  # default = pixel avatar
         self.assertIsInstance(out, Text)
         plain = out.plain
-        # the half-block raster is made of upper-half block glyphs (image-derived)
-        self.assertIn("▀", plain)
-        # and it is NOT the brand text mark
-        self.assertNotIn("forge", plain)
+        # braille glyphs live in U+2800..U+28FF
+        self.assertTrue(any(0x2800 <= ord(ch) <= 0x28FF for ch in plain), "no braille glyphs")
+        self.assertNotIn("forge", plain)  # not the brand text mark
+        # the opt-in detailed portrait still uses the grayscale half-block (▀)
+        self.assertIn("▀", ir.HalfBlockRenderer(portrait=True).renderable().plain)
 
     def test_portrait_override_renders_halfblock_image(self) -> None:
         # the half-block portrait is now OPT-IN (FORGEKIT_AVATAR=portrait), not the

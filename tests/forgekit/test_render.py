@@ -53,10 +53,12 @@ class ModeBadgeTests(unittest.TestCase):
 
 class PalettePanelTests(unittest.TestCase):
     def test_selected_row_highlighted(self) -> None:
+        # flat list (Claude): NO reverse-cyan block — selected row is bold accent.
         cmds = load_commands()[:3]
         lines = render.palette_panel_lines(cmds, selected=1)
-        self.assertIn("reverse", lines[1])
-        self.assertNotIn("reverse", lines[0])
+        self.assertNotIn("reverse", lines[1])
+        self.assertIn(theme.ACCENT_PRIMARY, lines[1])      # selected = accent
+        self.assertNotIn(theme.ACCENT_PRIMARY, lines[0])   # unselected = plain bold
 
     def test_empty_matches_message(self) -> None:
         lines = render.palette_panel_lines([], selected=-1)
@@ -99,8 +101,18 @@ class HintLineTests(unittest.TestCase):
         self.assertIn("palette", h)
         self.assertNotIn("\n", h)
 
-    def test_palette_open(self) -> None:
-        self.assertIn("순환", render.hint_line(palette_open=True))
+    def test_palette_open_is_empty(self) -> None:
+        # when the palette is open it owns the space — the below-bar hint is empty
+        self.assertEqual(render.hint_line(palette_open=True), "")
+
+    def test_typing_hides_hint(self) -> None:
+        # while typing (non-empty input) the secondary mode line drops (Claude-style)
+        self.assertEqual(render.hint_line(typing=True), "")
+
+    def test_idle_shows_mode_line(self) -> None:
+        line = render.hint_line()
+        self.assertIn("operator", line)
+        self.assertIn("▶▶", line)  # Claude-style bottom mode-line marker
 
     def test_help_open(self) -> None:
         self.assertIn("닫기", render.hint_line(help_open=True))
