@@ -1,0 +1,35 @@
+{
+  "target": {
+    "id": "example.com",
+    "kind": "unknown",
+    "allowlisted": false,
+    "isolated": false,
+    "eligible": false,
+    "note": "allowlist 에 없음 — 대상 불가"
+  },
+  "attack_plan": {
+    "target_id": "example.com",
+    "hypotheses": [],
+    "checks": [],
+    "dry_run": true
+  },
+  "defense_runbook": {
+    "target_id": "example.com",
+    "hardening": [
+      "최소권한 재검토",
+      "불필요 포트/서비스 차단",
+      "secret 매니저로 이전"
+    ],
+    "detection": [
+      "이상 접근 로깅/알림",
+      "authz 실패 모니터"
+    ],
+    "mitigation": [
+      "rate limit / WAF 규칙",
+      "격리 namespace 정책 강화"
+    ]
+  },
+  "status": "blocked",
+  "requires_approval": true,
+  "refusal_reason": "대상이 allowlist 의 격리된 내 자산이 아님 — 드릴 거부 (공용/3rd-party 금지)"
+}

@@ -1,0 +1,43 @@
+{
+  "target": {
+    "id": "k3s-isolated",
+    "kind": "k3s-namespace",
+    "allowlisted": true,
+    "isolated": true,
+    "eligible": true,
+    "note": "전용 격리 k3s namespace (내 인프라)"
+  },
+  "attack_plan": {
+    "target_id": "k3s-isolated",
+    "hypotheses": [
+      "노출된 포트/엔드포인트 점검",
+      "인증/권한 우회 경로 가설",
+      "민감 설정/secret 노출 가설"
+    ],
+    "checks": [
+      "열린 포트/서비스 인벤토리(읽기)",
+      "authz 경계 점검(읽기)",
+      "로그/감사 커버리지 점검"
+    ],
+    "dry_run": true
+  },
+  "defense_runbook": {
+    "target_id": "k3s-isolated",
+    "hardening": [
+      "최소권한 재검토",
+      "불필요 포트/서비스 차단",
+      "secret 매니저로 이전"
+    ],
+    "detection": [
+      "이상 접근 로깅/알림",
+      "authz 실패 모니터"
+    ],
+    "mitigation": [
+      "rate limit / WAF 규칙",
+      "격리 namespace 정책 강화"
+    ]
+  },
+  "status": "plan-only",
+  "requires_approval": true,
+  "refusal_reason": ""
+}
