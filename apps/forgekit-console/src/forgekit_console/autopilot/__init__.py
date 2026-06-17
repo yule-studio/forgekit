@@ -33,6 +33,13 @@ from .chain import (
     tech_lead_signoff,
     trace_note,
 )
+from .orchestrator import (
+    DEFAULT_ALLOWLIST,
+    AutopilotLimits,
+    AutopilotOrchestrator,
+    AutopilotRunResult,
+    ExecutorArbiter,
+)
 
 __all__ = (
     "L0_COLLECT", "L1_PROPOSE", "L2_INTERNAL_APPROVE", "L3_USER_APPROVE", "L4_RESTRICTED",
@@ -41,4 +48,6 @@ __all__ = (
     "ExecutionTaskSplit", "VerificationReport", "VaultTraceNote",
     "run_internal_chain", "pm_structure", "gateway_route", "tech_lead_signoff",
     "can_specialist_execute", "trace_note",
+    "DEFAULT_ALLOWLIST", "AutopilotLimits", "AutopilotOrchestrator",
+    "AutopilotRunResult", "ExecutorArbiter",
 )
