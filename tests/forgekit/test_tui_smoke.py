@@ -840,6 +840,35 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_idea_discovery_mode_produces_briefs(self) -> None:
+        """In idea-discovery mode, free text yields a reference bundle + idea briefs."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._runtime_mode = rm.MODE_IDEA_DISCOVERY
+            app._recompute_policy()
+            app._execute("노트앱 동기화가 느려서 불편하다. 경쟁 제품은 오프라인이 약하다.")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("idea-discovery", joined)
+            self.assertIn("아이디어 브리프", joined)
+
+    async def test_video_watch_link_only_is_reference_only(self) -> None:
+        """Video-watch on a bare link is reference_only (no fake crawl)."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._runtime_mode = rm.MODE_VIDEO_WATCH
+            app._recompute_policy()
+            app._execute("https://youtube.com/watch?v=abc")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("reference_only", joined)
+
     async def test_auto_recommends_and_safe_switches_mode(self) -> None:
         """/auto classifies the ask and safely switches the runtime mode (with reason)."""
         from forgekit_console.policy import runtime_mode as rm

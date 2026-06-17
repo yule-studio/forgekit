@@ -259,10 +259,18 @@ class ForgekitConsoleApp(App):
     def _execute(self, raw: str) -> None:
         parsed = parse_input(raw)
         if not parsed.is_slash:
+            from ..policy import runtime_mode as _rm
+
             if self.mode == "agent:product-agent":
                 # In PM mode, free text is a PRODUCT ASK → run the intake→handoff
                 # path (structured packet + role split), NOT a raw live submit.
                 self._run_pm_intake(raw)
+                return
+            if self._runtime_mode == _rm.MODE_IDEA_DISCOVERY:
+                self._run_idea_discovery(raw)
+                return
+            if self._runtime_mode == _rm.MODE_VIDEO_WATCH:
+                self._run_video_watch(raw)
                 return
             # FREE TEXT → live provider submit (NOT the slash command path).
             self._submit_free_text(raw)
@@ -343,6 +351,49 @@ class ForgekitConsoleApp(App):
         if pol is not None and pol.holds_all_actions():
             return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
         return None, ""
+
+    def _run_idea_discovery(self, raw: str) -> None:
+        """Idea-discovery mode: free text (+ repo-local signals) → briefs, top→handoff hint."""
+
+        from ..discovery import run_idea_discovery
+        from ..sources import RepoLocalCollector
+
+        text = raw.strip()
+        if not text:
+            return
+        log = self._transcript
+        log.write_echo(text)
+        # seed signals = operator ask + a few offline repo-local signals (free)
+        seeds = [s for s in text.replace("\n", ". ").split(".") if len(s.strip()) >= 6] or [text]
+        try:
+            seeds += RepoLocalCollector(self.repo_root).collect(limit=3)
+        except Exception:  # noqa: BLE001
+            pass
+        result = run_idea_discovery(seeds, title="idea-discovery")
+        for line in render.discovery_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_video_watch(self, raw: str) -> None:
+        """Video-watch mode: free text = transcript/notes (or a bare link → reference_only)."""
+
+        from ..discovery import summarize_ingest
+        from ..discovery.video_watch import VideoIngest
+
+        text = raw.strip()
+        if not text:
+            return
+        log = self._transcript
+        log.write_echo(text)
+        # a bare URL → link only (honest reference_only); otherwise treat as transcript/notes
+        is_link = text.startswith("http") and " " not in text
+        ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
+        result = summarize_ingest(ingest)
+        for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
 
     def _show_sources(self) -> None:
         """`/sources` — the source registry status (live free-first vs planned). No network."""
