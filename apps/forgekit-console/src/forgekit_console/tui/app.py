@@ -141,9 +141,11 @@ class ForgekitConsoleApp(App):
     def on_input_changed(self, event: Input.Changed) -> None:
         if self._suppress_refilter:
             self._suppress_refilter = False
+            self._refresh_chrome()  # keep the below-bar hint in sync (typing vs idle)
             return
         self._palette = palette_state.refilter(event.value, self.context.commands)
         self._render_palette()
+        self._refresh_chrome()  # typing reduces the secondary mode line below the bar
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value
@@ -365,20 +367,29 @@ class ForgekitConsoleApp(App):
 
     def _refresh_chrome(self) -> None:
         mode = "palette" if self._palette.is_open else self.mode
-        # Claude-style idle: NO mode row above the input in the default operator
-        # state. The mode pill only shows for agent / palette states.
+        # Both the mode pill and the hint are SECONDARY rows BELOW the input bar
+        # (Claude-style). The mode pill only appears for agent / palette states; in
+        # the default operator state it is hidden. The hint is the bottom mode line.
         modepill = self.query_one("#modepill", Static)
         show_mode = self._palette.is_open or self.mode != MODE_OPERATOR
         modepill.display = show_mode
         if show_mode:
             modepill.update(render.mode_pill(mode, self.context.agents))
+        typing = bool((self._prompt_value() or "").strip())
         self.query_one("#hint", Static).update(
             render.hint_line(
                 palette_open=self._palette.is_open,
                 help_open=self._main.help_open,
                 in_agent=self.mode != MODE_OPERATOR,
+                typing=typing,
             )
         )
+
+    def _prompt_value(self) -> str:
+        try:
+            return self.query_one("#prompt", Input).value
+        except Exception:  # noqa: BLE001 - prompt not mounted yet
+            return ""
 
 
 __all__ = ("ForgekitConsoleApp",)

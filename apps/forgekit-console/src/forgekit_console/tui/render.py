@@ -156,16 +156,30 @@ def mode_pill(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
     return f"[dim]●[/dim] {mode}"
 
 
-def hint_line(*, palette_open: bool = False, help_open: bool = False, in_agent: bool = False) -> str:
-    """Contextual one-line shortcut hint (replaces the thick footer)."""
+def hint_line(
+    *,
+    palette_open: bool = False,
+    help_open: bool = False,
+    in_agent: bool = False,
+    typing: bool = False,
+) -> str:
+    """The secondary mode/shortcut line shown BELOW the input bar (Claude-style).
 
+    Claude shows a quiet mode line under the input (``▶▶ auto mode on …``) only at
+    idle. So: while TYPING (non-empty input) this line is empty — the input is the
+    star and clutter drops. When the palette is open the palette owns the space
+    (also empty here). At idle it shows the mode + key shortcuts with a small accent
+    ``▶▶`` marker, like Claude's bottom mode line.
+    """
+
+    if typing or palette_open:
+        return ""  # reduce clutter while typing / let the palette own the space
+    marker = f"[{_ACCENT}]▶▶[/{_ACCENT}]"
     if help_open:
-        return "[dim]Tab 탭 · Esc 닫기[/dim]"
-    if palette_open:
-        return "[dim]Tab 순환 · Enter 실행 · Esc 닫기[/dim]"
+        return f"{marker} [dim]Tab 탭 전환 · Esc 로 닫기[/dim]"
     if in_agent:
-        return "[dim]/help · Esc operator · ^C quit[/dim]"
-    return "[dim]/help · / palette · Tab 완성 · ^C quit[/dim]"
+        return f"{marker} [dim]Esc 로 operator · /help · ^C quit[/dim]"
+    return f"{marker} [dim]operator · /help · / palette · ^C quit[/dim]"
 
 
 def default_help_tab(sections: Sequence[HelpSection]) -> int:
@@ -274,16 +288,22 @@ def palette_lines(commands: Sequence) -> Tuple[str, ...]:
 
 
 def palette_panel_lines(commands: Sequence, selected: int = -1) -> Tuple[str, ...]:
-    """Palette overlay body: candidates with the selected row highlighted."""
+    """Palette body — a FLAT 2-column list (command · summary), Claude-style.
+
+    No left rule / side bar and no reverse-cyan block: the selected row is just the
+    command in bold accent (others bold foreground), separated by whitespace +
+    alignment. Keeps the list clean and easy to scan.
+    """
 
     if not commands:
         return ("[dim]일치하는 명령이 없습니다[/dim]",)
     out = []
     for i, c in enumerate(commands):
+        name = f"/{c.name}"
         if i == selected:
-            out.append(f"[reverse {_ACCENT}] ▸ /{c.name} [/reverse {_ACCENT}] [dim]{c.summary}[/dim]")
+            out.append(f"  [b {_ACCENT}]{name:<16}[/b {_ACCENT}] [dim]{c.summary}[/dim]")
         else:
-            out.append(f"   [b]/{c.name}[/b] [dim]{c.summary}[/dim]")
+            out.append(f"  [b]{name:<16}[/b] [dim]{c.summary}[/dim]")
     return tuple(out)
 
 

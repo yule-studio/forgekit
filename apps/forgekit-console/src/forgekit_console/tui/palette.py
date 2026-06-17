@@ -22,28 +22,24 @@ class CommandPalette(Static):
     DEFAULT_CSS = """
     CommandPalette {
         display: none;
-        /* auto-height so few matches stay small; capped + scroll so a long list
-           never becomes a giant box. A slight left inset + accent rule connects it
-           under the bar without being inside the input box. */
+        /* a FLAT list (Claude): no left rule / side bar — rows are separated by
+           whitespace + alignment only. auto-height so few matches stay small;
+           capped + scroll so a long list never becomes a giant box. */
         height: auto;
         max-height: 8;
         overflow-y: auto;
         scrollbar-size-vertical: 1;
-        margin: 0 0 0 1;
         padding: 0 1;
         color: $text;
         background: $background;
-        /* a restrained desaturated-cyan rule — connects to the bar without the loud
-           neon accent (WT3: accent stays a point, not a wall). */
-        border-left: solid $accent-dim;
     }
     CommandPalette.-open { display: block; }
     """
 
     def show(self, state: PaletteState) -> None:
         count = len(state.matches)
-        # one compact header line, then the candidate rows (compact spacing).
-        header = f"[dim]▎palette[/dim] [b]{count}[/b] [dim]· Tab · ↑/↓ · Esc[/dim]"
+        # one quiet header line, then the candidate rows — flat, no side rule/marker.
+        header = f"[dim]{count} commands · Tab · ↑/↓ · Esc[/dim]"
         body = render.palette_panel_lines(state.matches, state.index)
         self.update("\n".join((header, *body)))
         self.add_class("-open")
