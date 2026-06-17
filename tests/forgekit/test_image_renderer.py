@@ -105,6 +105,41 @@ class AssetTests(unittest.TestCase):
     def test_best_image_prefers_display_png(self) -> None:
         self.assertEqual(ir.best_image_path(), ir.display_png_path())
 
+    def test_render_path_is_display_not_raw_source(self) -> None:
+        # the console must render the baked DISPLAY asset, never the raw master.
+        self.assertNotEqual(ir.best_image_path(), ir.source_image_path())
+        self.assertEqual(ir.best_image_path().name, "forgekit-avatar.png")
+
+    def test_source_master_is_the_separate_portrait_file(self) -> None:
+        # source/master is its own human-replaceable file, distinct from display.
+        self.assertEqual(ir.source_image_path().name, "avatar-source.png")
+
+    def test_display_is_lighter_than_master_not_a_raw_downscale(self) -> None:
+        # the display asset is a small crop+tuned derivative, far lighter than the
+        # master — evidence it is a baked asset, not the master shipped as-is.
+        self.assertLess(
+            ir.display_png_path().stat().st_size,
+            ir.source_image_path().stat().st_size,
+        )
+
+
+class BakedDisplayAssetTests(unittest.TestCase):
+    """The bake pipeline's outputs ship as package assets (deterministic path)."""
+
+    def test_bake_module_paths_match_renderer(self) -> None:
+        from forgekit_console.assets.avatar import bake
+
+        self.assertEqual(bake.SOURCE, ir.source_image_path())
+        self.assertEqual(bake.DISPLAY_PRIMARY, ir.display_png_path())
+        self.assertEqual(bake.DISPLAY_PRIMARY.name, "forgekit-avatar.png")
+
+    def test_primary_and_small_display_assets_present(self) -> None:
+        from forgekit_console.assets.avatar import bake
+
+        self.assertTrue(bake.DISPLAY_PRIMARY.is_file())
+        self.assertTrue(bake.DISPLAY_SMALL.is_file(), "96px secondary display missing")
+        self.assertEqual(bake.DISPLAY_SMALL.name, "forgekit-avatar-96.png")
+
 
 class HalfBlockTier2Tests(unittest.TestCase):
     """Tier 2 — an IMAGE-DERIVED half-block render of the baked PNG (Pillow)."""

@@ -1,18 +1,24 @@
-"""Bake the small display avatar from the source portrait.
+"""Bake the console display avatar from the portrait master.
 
-The source (`profile_hermes_source.jpg`, ~1MB headphone portrait) is the
-high-resolution master kept in the repo. The console never renders the master
-directly — it would be a huge, blurry block. Instead this script crops to the
-face/headphones and downscales to a SMALL square PNG (`forgekit-avatar.png`),
-the Claude-icon-sized mark the intro shows when the terminal supports real
-inline images.
+**source / master vs display — why they're separate.** `avatar-source.png` is the
+human-replaceable portrait master (a prepared, lean copy of the original). The
+console NEVER renders the master directly: the master is a large square with a
+decorative circuit border, and naively downscaling it to ~12-14 terminal cells
+turns the face into a muddy blob. Instead this script crops to the
+face/headphones, squares it, lifts the black/white contrast, and mildly sharpens
+— producing small **display** PNGs (`forgekit-avatar.png` 128px primary +
+`forgekit-avatar-96.png` 96px) whose silhouette reads first even when tiny.
 
-Run after replacing the source image::
+Adopted master: the cleaner of the two 2026-06-17 portraits (the "…10_17_33"
+variant — brighter, more defined face vs the "…_38" runner-up which sits more in
+shadow and blobs at small size).
+
+Re-bake after replacing the master::
 
     python -m forgekit_console.assets.avatar.bake
 
-Requires Pillow (the ``console`` / ``image`` extra). This is a build-time tool,
-not imported at runtime: the console ships the already-baked PNG.
+Pure build-time tool (Pillow, the ``console``/``image`` extra). The console ships
+the already-baked PNGs, so runtime needs no Pillow.
 """
 
 from __future__ import annotations
@@ -20,39 +26,53 @@ from __future__ import annotations
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-SOURCE = _HERE / "profile_hermes_source.jpg"
-DISPLAY = _HERE / "forgekit-avatar.png"
+SOURCE = _HERE / "avatar-source.png"
+DISPLAY_PRIMARY = _HERE / "forgekit-avatar.png"      # 128px — what the console renders
+DISPLAY_SMALL = _HERE / "forgekit-avatar-96.png"     # 96px — secondary candidate
 
-# Small square — Claude's brand icon is tiny; we match that scale, not a big
-# raster. 96px keeps it crisp on protocol-capable terminals (Kitty/iTerm2/Sixel)
-# while staying a small file.
-DISPLAY_PX = 96
+PRIMARY_PX = 128
+SMALL_PX = 96
+
+# Crop the head/headphones out of the bordered square master. Drop the circuit
+# border + chest so the subject fills the frame at small sizes.
+_CROP = (0.11, 0.06, 0.89, 0.86)  # left, top, right, bottom (fractions)
 
 
-def _crop_to_portrait_square(img):
-    """Crop to a centred square biased slightly upward (face/headphones)."""
-
+def _crop_head_square(img):
     w, h = img.size
-    side = min(w, h)
-    left = (w - side) // 2
-    # Bias the crop upward so the face/headphones sit in frame, not the chest.
-    top = max(0, (h - side) // 2 - int(side * 0.05))
-    return img.crop((left, top, left + side, top + side))
+    l, t, r, b = _CROP
+    head = img.crop((int(w * l), int(h * t), int(w * r), int(h * b)))
+    cw, ch = head.size
+    side = min(cw, ch)
+    left = (cw - side) // 2
+    return head.crop((left, 0, left + side, side))
 
 
-def bake(*, source: Path = SOURCE, out: Path = DISPLAY, px: int = DISPLAY_PX) -> Path:
-    """Produce the small display PNG from the source portrait. Returns *out*."""
+def _tune(img):
+    """Lift B/W contrast + mild sharpen so the silhouette reads when tiny."""
+
+    from PIL import ImageFilter, ImageOps
+
+    img = ImageOps.autocontrast(img, cutoff=1)
+    return img.filter(ImageFilter.UnsharpMask(radius=1.2, percent=80, threshold=2))
+
+
+def bake(*, source: Path = SOURCE) -> tuple:
+    """Produce the display PNGs from the master. Returns the written paths."""
 
     from PIL import Image  # noqa: WPS433 (build-time optional dep)
 
     img = Image.open(source).convert("RGB")
-    img = _crop_to_portrait_square(img)
-    img = img.resize((px, px), Image.LANCZOS)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out, format="PNG", optimize=True)
-    return out
+    head = _crop_head_square(img)
+    written = []
+    for out, px in ((DISPLAY_PRIMARY, PRIMARY_PX), (DISPLAY_SMALL, SMALL_PX)):
+        baked = _tune(head.resize((px, px), Image.LANCZOS))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        baked.save(out, format="PNG", optimize=True)
+        written.append(out)
+    return tuple(written)
 
 
 if __name__ == "__main__":  # pragma: no cover - build-time tool
-    path = bake()
-    print(f"baked {path} ({path.stat().st_size} bytes)")
+    for p in bake():
+        print(f"baked {p.name} ({p.stat().st_size} bytes)")
