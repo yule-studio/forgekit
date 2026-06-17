@@ -101,6 +101,31 @@ def blocked_banner() -> str:
     )
 
 
+def setup_required_banner() -> str:
+    """Issue-line banner when no provider is configured (forgekit can't run yet)."""
+
+    return (
+        f"[{_WARN}]● setup-required[/{_WARN}] [dim]main provider 미설정 — "
+        f"`/doctor` 로 점검, config 의 `main_provider` 설정 (또는 로컬 ollama)[/dim]"
+    )
+
+
+def runtime_mode_line(
+    label: str, policy_mode: str, usage_mode: str, approval: str, *, loop: bool
+) -> str:
+    """A compact one-line summary of the current runtime mode + its real posture.
+
+    Shown on the operator surface (issue line / mode change) so Shift+Tab is never
+    "just a label" — the resolved routing / usage / approval / loop are visible.
+    """
+
+    loop_s = "loop on" if loop else "loop off"
+    return (
+        f"[{_ACCENT}]◆[/{_ACCENT}] [b]{label}[/b] "
+        f"[dim]· routing {policy_mode} · usage {usage_mode} · approval {approval} · {loop_s}[/dim]"
+    )
+
+
 def issue_line(summary: StatusSummary) -> str:
     """The compact setup/status line under the intro — text-first, one line.
 
@@ -396,6 +421,7 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 __all__ = (
     "BRAND", "TAGLINE",
     "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
+    "setup_required_banner", "runtime_mode_line",
     "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",

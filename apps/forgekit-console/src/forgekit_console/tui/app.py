@@ -76,6 +76,7 @@ class ForgekitConsoleApp(App):
         context: Optional[ConsoleContext] = None,
         escalator=None,
         submit_service=None,
+        config: Optional[dict] = None,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
@@ -100,6 +101,18 @@ class ForgekitConsoleApp(App):
 
             submit_service = build_default_service()
         self._submit_service = submit_service
+        # Runtime MODE + provider posture (WT1): the on-disk config decides setup
+        # readiness; the runtime mode × main-provider profile resolves a concrete
+        # EffectivePolicy. Shift+Tab cycles the mode → a REAL policy change.
+        from ..chat.service import load_config
+        from ..policy import runtime_mode as _rm
+        from ..policy.setup_state import resolve_setup_state
+
+        self._config = load_config() if config is None else config
+        self._setup = resolve_setup_state(self._config)
+        self._runtime_mode = _rm.DEFAULT_MODE
+        self._effective_policy = None
+        self._recompute_policy()
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -178,6 +191,10 @@ class ForgekitConsoleApp(App):
             self._cycle(-1)
         elif self._main.help_open:
             self._main.switch_help_tab(-1)
+        else:
+            # idle (no palette / no help) → Shift+Tab cycles the RUNTIME MODE, which
+            # recomputes the EffectivePolicy (real routing/usage/approval change).
+            self._cycle_runtime_mode(1)
 
     def action_palette_next(self) -> None:
         if self._palette.is_open:
@@ -234,6 +251,10 @@ class ForgekitConsoleApp(App):
         if not parsed.is_slash:
             # FREE TEXT → live provider submit (NOT the slash command path).
             self._submit_free_text(raw)
+            return
+        if parsed.name == "mode":
+            # /mode renders the LIVE runtime-mode posture (app state, not pure router).
+            self._show_mode_surface()
             return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
@@ -482,8 +503,96 @@ class ForgekitConsoleApp(App):
             # over the normal status line so it can't be missed (details: `/blocked`).
             self.query_one("#issue", Static).update(render.blocked_banner())
             return
+        if self._setup.blocked:
+            # no provider configured → forgekit can't run; surface setup-required.
+            self.query_one("#issue", Static).update(render.setup_required_banner())
+            return
+        pol = self._effective_policy
+        if pol is not None:
+            self.query_one("#issue", Static).update(
+                render.runtime_mode_line(
+                    pol.mode_label, pol.provider_policy_mode, pol.usage.usage_mode,
+                    pol.approval, loop=pol.background_loop,
+                )
+            )
+            return
         summary = self.context.load_operator()
         self.query_one("#issue", Static).update(render.issue_line(summary))
+
+    # --- runtime mode (Shift+Tab → real policy change) ----------------------
+
+    def _recompute_policy(self) -> None:
+        """Resolve the EffectivePolicy from the current mode × main-provider profile."""
+
+        from ..policy import runtime_mode as rm
+
+        profile = self._setup.profile if self._setup else None
+        if profile is None:
+            self._effective_policy = None
+            return
+        self._effective_policy = rm.resolve_effective_policy(profile, self._runtime_mode)
+
+    def _cycle_runtime_mode(self, direction: int = 1) -> None:
+        """Shift+Tab: advance the runtime mode and recompute the real policy."""
+
+        from ..policy import runtime_mode as rm
+
+        if self._setup.blocked:
+            self._transcript.write(
+                "[dim]provider 미설정 — 모드 전환 전에 setup 이 필요합니다 (`/doctor`).[/dim]"
+            )
+            self._sync_intro()
+            self._follow_tail()
+            return
+        self._runtime_mode = rm.cycle_mode(self._runtime_mode, direction)
+        self._recompute_policy()
+        pol = self._effective_policy
+        if pol is not None:
+            self._transcript.write(
+                render.runtime_mode_line(
+                    pol.mode_label, pol.provider_policy_mode, pol.usage.usage_mode,
+                    pol.approval, loop=pol.background_loop,
+                )
+            )
+        self._refresh_issue()
+        self._refresh_chrome()
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_mode_surface(self) -> None:
+        """/mode — the live runtime-mode table + the resolved EffectivePolicy."""
+
+        from ..policy import runtime_mode as rm
+
+        log = self._transcript
+        log.write_echo("/mode")
+        if self._setup.blocked:
+            log.write_result("mode", (
+                "[dim]provider 미설정 — 모드는 provider 설정 후 적용됩니다.[/dim]",
+                *(f"  - {a}" for a in self._setup.next_actions),
+            ))
+            self._sync_intro()
+            self._follow_tail()
+            return
+        pol = self._effective_policy
+        lines = [
+            f"현재 모드: [b]{pol.mode_label}[/b]  (Shift+Tab 으로 순환)",
+            f"  main provider : {pol.main_provider}",
+            f"  routing       : {pol.provider_policy_mode}  → chat slot = {pol.routing_target()}",
+            f"  usage         : {pol.usage.usage_mode} (reserve {pol.usage.reserve})",
+            f"  autonomy      : {pol.autonomy}",
+            f"  approval      : {pol.approval}",
+            f"  background    : {'on' if pol.background_loop else 'off'}",
+            f"  budget        : {pol.budget_posture}",
+            "",
+            "사용 가능한 모드:",
+        ]
+        for m in rm.all_modes():
+            mark = "●" if m.id == pol.mode_id else "○"
+            lines.append(f"  {mark} [b]{m.label:<13}[/b] [dim]{m.purpose}[/dim]")
+        log.write_result("mode", tuple(lines))
+        self._sync_intro()
+        self._follow_tail()
 
     def _refresh_chrome(self) -> None:
         mode = "palette" if self._palette.is_open else self.mode

@@ -29,6 +29,7 @@ from .registry import (
     H_DOCTOR,
     H_HARNESS,
     H_HELP,
+    H_MODE,
     H_BLOCKED,
     H_LAYOUT,
     H_QUIT,
@@ -132,6 +133,13 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _summary_to_result(ctx.load_runtime())
     if handler == H_DOCTOR:
         return _summary_to_result(ctx.load_doctor())
+    if handler == H_MODE:
+        # The live runtime mode lives in the app (TUI intercepts /mode). This pure
+        # fallback is for non-TUI callers / tests.
+        return CommandResult.info(
+            "mode",
+            ("런타임 모드는 콘솔(TUI)에서 Shift+Tab 으로 순환되고 `/mode` 로 표시됩니다.",),
+        )
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:

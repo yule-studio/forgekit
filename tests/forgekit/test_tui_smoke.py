@@ -769,6 +769,78 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("live reply", joined)
             self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
 
+    def _ready_app(self, main="claude", **kw):
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        return ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(),
+            config={"main_provider": main}, **kw,
+        )
+
+    async def test_shift_tab_cycles_mode_with_real_policy_change(self) -> None:
+        """Shift+Tab advances the runtime mode AND changes the resolved EffectivePolicy
+        (provider-policy mode / usage / approval), not just a label."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            first_mode = app._runtime_mode
+            first_pol = app._effective_policy
+            self.assertIsNotNone(first_pol)
+            seen_policy_modes = {first_pol.provider_policy_mode}
+            seen_usage = {first_pol.usage.usage_mode}
+            for _ in range(len(rm.RUNTIME_MODES) - 1):  # stop one short of a full wrap
+                await pilot.press("shift+tab")
+                await pilot.pause()
+                seen_policy_modes.add(app._effective_policy.provider_policy_mode)
+                seen_usage.add(app._effective_policy.usage.usage_mode)
+            # mode id moved and the resolved policy/usage took on MULTIPLE distinct
+            # values across the cycle → real policy change, not a label flip.
+            self.assertNotEqual(app._runtime_mode, first_mode)
+            self.assertGreater(len(seen_policy_modes), 1)
+            self.assertGreater(len(seen_usage), 1)
+
+    async def test_mode_command_shows_live_posture(self) -> None:
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            n_before = len(app._transcript.lines)
+            app._execute("/mode")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertGreater(len(app._transcript.lines), n_before)
+            self.assertIn("routing", joined)
+            self.assertIn("approval", joined)
+            self.assertIn(app._effective_policy.mode_label, joined)
+
+    async def test_no_provider_shows_setup_required_and_blocks_mode(self) -> None:
+        """No config → setup-required banner; Shift+Tab does NOT pretend to switch."""
+        from textual.widgets import Static
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        app = ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context(), config={})
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertTrue(app._setup.blocked)
+            self.assertIsNone(app._effective_policy)
+            issue = str(app.query_one("#issue", Static).render())
+            self.assertIn("setup-required", issue)
+            before = app._runtime_mode
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            self.assertEqual(app._runtime_mode, before)  # no fake switch
+
+    async def test_main_provider_changes_routing_target(self) -> None:
+        claude = self._ready_app("claude")
+        async with claude.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(claude._effective_policy.routing_target(), "claude")
+        ollama = self._ready_app("ollama")
+        async with ollama.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(ollama._effective_policy.routing_target(), "ollama")
+
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
         provider/profile/repo meta (right)."""
