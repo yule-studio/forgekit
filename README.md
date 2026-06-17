@@ -29,6 +29,16 @@ forgekit                      # 운영자 콘솔 TUI 열기
 yule --help                   # 기존 engineering CLI (runtime/harness/engineer/…)
 ```
 
+콘솔 안에서:
+
+- **provider** — `~/.forgekit/config.json` 의 `main_provider` (없으면 `setup-required`).
+- **mode** — **Shift+Tab** 으로 7 런타임 모드 순환(실제 routing/budget/approval 변경), `/mode` 로 확인.
+- **always-on** — `/always-on` bounded 사이클(관측→분류→패킷→handoff→대기, 무한 자율 아님).
+- **PM intake** — `/pm-agent` 진입 후 제품 요청 → tech-lead handoff(역할 split + 권한 없는 영역 BLOCKED).
+- **알림** — 승인/결정 필요 시 operator inbox + (opt-in `FORGEKIT_NOTIFY`) macOS/Windows desktop.
+- **운영 절차(runbook)** — [docs/forgekit-console.md §2g](docs/forgekit-console.md) · end-to-end 예시
+  [`apps/forgekit-console/examples/e2e/bkurs/`](apps/forgekit-console/examples/e2e/bkurs/).
+
 ### 터미널별 이미지 렌더 (true raster vs fallback)
 
 forgekit 의 대표 이미지는 터미널 graphics 지원에 따라 다르게 그려진다.
