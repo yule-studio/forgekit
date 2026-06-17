@@ -86,29 +86,29 @@ class RendererSelectionTests(unittest.TestCase):
         cap = ir.ImageCapability(True)
         self.assertEqual(ir.select_renderer(cap), ir.RENDERER_REAL)
 
-    def test_not_capable_selects_pixel_halfblock_not_badge(self) -> None:
-        # non-raster default is the PIXEL half-block (image family the operator sees),
-        # NOT the badge and NOT the bare text mark. The badge is only a last resort.
+    def test_not_capable_selects_ansi_icon_not_badge(self) -> None:
+        # non-raster default is now the sanitized ANSI ICON (the better same-tier
+        # choice); it degrades to braille/badge/text at render time. NOT the badge
+        # and NOT the bare text mark as the selection.
         cap = ir.ImageCapability(False)
-        self.assertEqual(ir.select_renderer(cap), ir.RENDERER_HALFBLOCK)
+        self.assertEqual(ir.select_renderer(cap), ir.RENDERER_ANSI_ICON)
         self.assertNotEqual(ir.select_renderer(cap), ir.RENDERER_TEXT)
         self.assertNotEqual(ir.select_renderer(cap), ir.RENDERER_AVATAR_MARK)
 
     def test_accepts_bare_bool(self) -> None:
         self.assertEqual(ir.select_renderer(True), ir.RENDERER_REAL)
-        self.assertEqual(ir.select_renderer(False), ir.RENDERER_HALFBLOCK)
+        self.assertEqual(ir.select_renderer(False), ir.RENDERER_ANSI_ICON)
 
     def test_make_renderer_capable_is_real(self) -> None:
         r = ir.make_renderer(ir.ImageCapability(True))
         self.assertEqual(r.renderer_id, ir.RENDERER_REAL)
         self.assertIsInstance(r, ir.RealImageRenderer)
 
-    def test_make_renderer_incapable_is_pixel_halfblock(self) -> None:
-        # incapable terminal gets the PIXEL half-block (not the badge)
+    def test_make_renderer_incapable_is_ansi_icon(self) -> None:
+        # incapable terminal gets the sanitized ANSI ICON (non-raster default)
         r = ir.make_renderer(ir.ImageCapability(False))
-        self.assertEqual(r.renderer_id, ir.RENDERER_HALFBLOCK)
-        self.assertIsInstance(r, ir.HalfBlockRenderer)
-        self.assertFalse(r.portrait)  # the PIXEL icon source, not the portrait
+        self.assertEqual(r.renderer_id, ir.RENDERER_ANSI_ICON)
+        self.assertIsInstance(r, ir.AnsiIconRenderer)
 
     def test_force_overrides_select_renderer(self) -> None:
         portrait = ir.make_renderer(env={"FORGEKIT_AVATAR": "portrait"})
@@ -117,6 +117,11 @@ class RendererSelectionTests(unittest.TestCase):
         self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "mark"}), ir.AvatarMarkRenderer)
         self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "text"}), ir.TextMarkRenderer)
         self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "image"}), ir.RealImageRenderer)
+        self.assertIsInstance(ir.make_renderer(env={"FORGEKIT_AVATAR": "halfblock"}), ir.HalfBlockRenderer)
+        # ansi force → the full ANSI icon with NO width cap (operator opt-in)
+        ansi = ir.make_renderer(env={"FORGEKIT_AVATAR": "ansi"})
+        self.assertIsInstance(ansi, ir.AnsiIconRenderer)
+        self.assertEqual(ansi.max_cols, 0)
 
 
 class AssetTests(unittest.TestCase):
@@ -284,8 +289,10 @@ class FallbackTests(unittest.TestCase):
         backend = ir.RealImageRenderer().realized_backend()
         if ir.is_true_raster(backend):
             return  # true-raster path
-        # non-raster: pixel half-block (image), or the badge/text only as last resort
-        self.assertIn(backend, (ir.BACKEND_HALFBLOCK, ir.BACKEND_AVATAR_MARK, ir.BACKEND_TEXT))
+        # non-raster: ANSI icon (non-raster default), else pixel half-block, else
+        # the badge/text only as the last resort.
+        self.assertIn(backend, (ir.BACKEND_ANSI_ICON, ir.BACKEND_HALFBLOCK,
+                                ir.BACKEND_AVATAR_MARK, ir.BACKEND_TEXT))
 
     def test_halfblock_badge_is_last_resort_when_asset_missing(self) -> None:
         # the PIXEL half-block falls to the BADGE (last resort) only when Pillow /
@@ -304,8 +311,8 @@ class FallbackTests(unittest.TestCase):
 
 _ALL_BACKENDS = (
     ir.BACKEND_TGP, ir.BACKEND_SIXEL, ir.BACKEND_HALFCELL, ir.BACKEND_UNICODE,
-    ir.BACKEND_HALFBLOCK, ir.BACKEND_AVATAR_MARK, ir.BACKEND_BRAND_TEXT,
-    ir.BACKEND_TEXT, ir.BACKEND_NONE, ir.BACKEND_UNKNOWN,
+    ir.BACKEND_HALFBLOCK, ir.BACKEND_ANSI_ICON, ir.BACKEND_AVATAR_MARK,
+    ir.BACKEND_BRAND_TEXT, ir.BACKEND_TEXT, ir.BACKEND_NONE, ir.BACKEND_UNKNOWN,
 )
 _ALL_POLICIES = (
     ir.POLICY_TRUE_RASTER, ir.POLICY_MANAGED_FALLBACK, ir.POLICY_HARD_FALLBACK,
@@ -390,7 +397,8 @@ class DiagnosticsTests(unittest.TestCase):
     def test_policy_state_mapping(self) -> None:
         self.assertEqual(ir.policy_state(ir.BACKEND_TGP), ir.POLICY_TRUE_RASTER)
         self.assertEqual(ir.policy_state(ir.BACKEND_SIXEL), ir.POLICY_TRUE_RASTER)
-        for managed in (ir.BACKEND_AVATAR_MARK, ir.BACKEND_BRAND_TEXT, ir.BACKEND_HALFBLOCK):
+        for managed in (ir.BACKEND_ANSI_ICON, ir.BACKEND_AVATAR_MARK,
+                        ir.BACKEND_BRAND_TEXT, ir.BACKEND_HALFBLOCK):
             self.assertEqual(ir.policy_state(managed), ir.POLICY_MANAGED_FALLBACK, managed)
         for hard in (ir.BACKEND_TEXT, ir.BACKEND_NONE, ir.BACKEND_UNKNOWN):
             self.assertEqual(ir.policy_state(hard), ir.POLICY_HARD_FALLBACK, hard)
@@ -430,10 +438,11 @@ class TrueRasterPolicyTests(unittest.TestCase):
     def test_halfcell_avatar_falls_to_pixel_halfblock_not_cell(self) -> None:
         self._install_fake_backend("textual_image.renderable.halfcell")
         r = ir.RealImageRenderer()
-        # never textual-image's own halfcell/unicode — OUR pixel half-block (image),
-        # or the badge/text only as a last resort (no Pillow/asset in this env).
+        # never textual-image's own halfcell/unicode — OUR ANSI icon (non-raster
+        # default) / pixel half-block, or the badge/text only as a last resort.
         be = r.realized_backend()
-        self.assertIn(be, (ir.BACKEND_HALFBLOCK, ir.BACKEND_AVATAR_MARK, ir.BACKEND_TEXT))
+        self.assertIn(be, (ir.BACKEND_ANSI_ICON, ir.BACKEND_HALFBLOCK,
+                           ir.BACKEND_AVATAR_MARK, ir.BACKEND_TEXT))
         self.assertEqual(ir.policy_state(be), ir.POLICY_MANAGED_FALLBACK)
 
     def test_true_raster_backend_is_used_for_brand(self) -> None:
