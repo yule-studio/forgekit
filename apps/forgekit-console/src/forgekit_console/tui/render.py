@@ -421,6 +421,21 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     return (help_tab, general, commands_tab, agents_tab, about)
 
 
+def auto_decision_lines(decision) -> Tuple[str, ...]:
+    """Render an auto orchestration decision (recommend / switch-safe / escalate)."""
+
+    lines = [
+        f"[b {_ACCENT}]» auto orchestration[/b {_ACCENT}]",
+        f"  분류: [b]{decision.recommended_mode}[/b]  ·  {decision.decision}",
+        f"  이유: {decision.reason}",
+    ]
+    if decision.switched:
+        lines.append(f"  [{_OK}]→ 모드 전환됨[/{_OK}]")
+    if decision.requires_operator:
+        lines.append(f"  [{_WARN}]⏸ gated 모드 — 자동 전환 안 함, operator 승인 필요[/{_WARN}]")
+    return tuple(lines)
+
+
 def loop_summary_lines(result, *, note: str = "") -> Tuple[str, ...]:
     """Render a bounded always-on LoopResult — phases, handoffs, runbooks, wait state.
 
@@ -507,5 +522,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "result_block",
 )

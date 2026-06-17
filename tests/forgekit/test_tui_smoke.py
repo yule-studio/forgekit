@@ -563,7 +563,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self) -> None:
                 self.prompts = []
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.prompts.append(text)
                 return m.SubmitResult(
                     ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
@@ -600,7 +600,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         from forgekit_console.chat import models as m
 
         class FailingService:
-            def submit(self, text):
+            def submit(self, text, **_):
                 return m.SubmitResult(
                     ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER,
                     text="provider 가 아직 설정되지 않았습니다.",
@@ -628,7 +628,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self) -> None:
                 self.calls = 0
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.calls += 1
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
 
@@ -737,7 +737,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         from forgekit_console.tui.header import IntroHeader
 
         class FakeLive:
-            def submit(self, text):
+            def submit(self, text, **_):
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
                                       text="live reply", provider_id="ollama",
                                       provider_label="Ollama", model="x")
@@ -840,6 +840,45 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_auto_recommends_and_safe_switches_mode(self) -> None:
+        """/auto classifies the ask and safely switches the runtime mode (with reason)."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/auto SaaS 아이디어 수집해줘")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("auto orchestration", joined)
+            self.assertIn("이유", joined)
+            self.assertEqual(app._runtime_mode, rm.MODE_IDEA_DISCOVERY)  # safe switch happened
+
+    async def test_auto_does_not_enter_gated_mode(self) -> None:
+        """/auto recommends red-blue but NEVER auto-switches into it (gated)."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            before = app._runtime_mode
+            app._execute("/auto red team 보안 드릴 돌려줘")
+            await pilot.pause()
+            self.assertEqual(app._runtime_mode, before)  # NOT switched into red-blue
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("gated", joined)
+
+    async def test_auto_respects_operator_pin(self) -> None:
+        """An explicit Shift+Tab pin → /auto won't override it."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("shift+tab")  # operator pins a mode
+            pinned = app._runtime_mode
+            app._execute("/auto SaaS 아이디어 수집")
+            await pilot.pause()
+            self.assertEqual(app._runtime_mode, pinned)  # pin respected
+
     async def test_always_on_runs_bounded_cycle_with_runbook(self) -> None:
         """/always-on runs the bounded loop and surfaces a runbook for the privileged
         (infra) area + an operator-wait — never an execution."""
@@ -864,7 +903,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self):
                 self.calls = 0
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.calls += 1
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
 
@@ -893,7 +932,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self):
                 self.calls = 0
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.calls += 1
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
 

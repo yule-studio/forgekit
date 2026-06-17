@@ -112,6 +112,7 @@ class ForgekitConsoleApp(App):
         self._config = load_config() if config is None else config
         self._setup = resolve_setup_state(self._config)
         self._runtime_mode = _rm.DEFAULT_MODE
+        self._mode_pinned = False  # True once the operator explicitly sets the mode
         self._effective_policy = None
         self._recompute_policy()
         # Operator notifications (WT4): desktop is opt-in (FORGEKIT_NOTIFY, same as the
@@ -273,6 +274,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "always-on":
             self._run_always_on_cycle()
             return
+        if parsed.name == "auto":
+            self._run_auto(raw)
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -336,6 +340,32 @@ class ForgekitConsoleApp(App):
         if pol is not None and pol.holds_all_actions():
             return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
         return None, ""
+
+    def _run_auto(self, raw: str) -> None:
+        """`/auto <ask>` — classify → recommend, and safe-switch the mode if allowed.
+
+        Never overrides an explicit operator pin; never auto-switches INTO a gated
+        mode (red-blue / approval-wait) — those are recommend-only. Reason is shown.
+        """
+
+        from ..policy.auto_mode import auto_switch_safe
+
+        ask = raw.strip()
+        if ask.startswith("/auto"):
+            ask = ask[len("/auto"):].strip()
+        log = self._transcript
+        log.write_echo(raw.strip())
+        decision = auto_switch_safe(ask, current_mode=self._runtime_mode,
+                                    operator_pinned=self._mode_pinned)
+        for line in render.auto_decision_lines(decision):
+            log.write(line)
+        if decision.switched:
+            self._runtime_mode = decision.recommended_mode  # auto switch (NOT a pin)
+            self._recompute_policy()
+            self._refresh_issue()
+            self._refresh_chrome()
+        self._sync_intro()
+        self._follow_tail()
 
     def _run_always_on_cycle(self) -> None:
         """Run ONE bounded always-on cycle (observe→classify→packet→handoff→wait).
@@ -424,8 +454,21 @@ class ForgekitConsoleApp(App):
             return None
 
     def _submit_blocking(self, text: str) -> None:
-        result = self._submit_service.submit(text)  # blocking IO (worker thread)
+        # EffectivePolicy enforcement: the mode's routing target steers the provider
+        # (not just display). Resolved on the main thread state, passed into the worker.
+        prefer = self._policy_routing_target()
+        result = self._submit_service.submit(text, prefer_provider=prefer)
         self.call_from_thread(self._on_submit_result, result)
+
+    def _policy_routing_target(self) -> str:
+        pol = self._effective_policy
+        if pol is None:
+            return ""
+        target = pol.routing_target()
+        # only steer when the target is a builtin (a real configured option)
+        from ..providers import builtins as _b
+
+        return target if _b.is_builtin(target) else ""
 
     def _on_submit_result(self, result) -> None:
         log = self._transcript
@@ -663,6 +706,7 @@ class ForgekitConsoleApp(App):
             self._follow_tail()
             return
         self._runtime_mode = rm.cycle_mode(self._runtime_mode, direction)
+        self._mode_pinned = True  # explicit operator action → auto won't override
         self._recompute_policy()
         pol = self._effective_policy
         if pol is not None:
