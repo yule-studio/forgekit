@@ -105,10 +105,9 @@ class ForgekitConsoleApp(App):
             yield Static(id="issue")
             # main area — a transcript XOR help-view state machine (mutually exclusive)
             yield MainPanel(id="main")
-            # session-following inline composer (palette inline, mode pill, input)
+            # session-following inline composer BAR — input row + inline palette
+            # (opens below the input) + the sub-hint row, all inside one bar.
             yield Composer(id="composer")
-            # one-line hint follows the composer
-            yield Static(id="hint")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
