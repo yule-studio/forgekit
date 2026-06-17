@@ -831,6 +831,39 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_approval_wait_holds_live_submit(self) -> None:
+        """approval-wait is REAL enforcement: free text is held, the provider is NOT
+        called, and the operator is told why + what to do."""
+        from forgekit_console.policy import runtime_mode as rm
+        from forgekit_console.chat import models as m
+
+        class TrackingService:
+            def __init__(self):
+                self.calls = 0
+
+            def submit(self, text):
+                self.calls += 1
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
+
+        svc = TrackingService()
+        app = self._ready_app("claude", submit_service=svc)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            # interactive mode → submit goes through
+            app._submit_free_text("hello")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            self.assertEqual(svc.calls, 1)
+            # switch to approval-wait → the next submit is HELD (no provider call)
+            app._runtime_mode = rm.MODE_APPROVAL_WAIT
+            app._recompute_policy()
+            app._submit_free_text("please run")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            self.assertEqual(svc.calls, 1)  # NOT called again — held
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("보류", joined)
+
     async def test_main_provider_changes_routing_target(self) -> None:
         claude = self._ready_app("claude")
         async with claude.run_test() as pilot:

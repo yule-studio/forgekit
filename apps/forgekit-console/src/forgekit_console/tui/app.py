@@ -300,10 +300,25 @@ class ForgekitConsoleApp(App):
             return
         self._transcript.write_echo(text)  # the user's message
         self._sync_intro()  # transcript now has content → compact working header
+        # RUNTIME MODE ENFORCEMENT: a hold-all posture (approval-wait) does NOT send
+        # the submit live — the mode change has real teeth, not just a label.
+        held, action = self._submit_hold_reason()
+        if held is not None:
+            self._transcript.write(render.submit_held_line(held, action))
+            self._follow_tail()
+            return
         self._follow_tail()
         self.run_worker(
             lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
         )
+
+    def _submit_hold_reason(self):
+        """``(mode_label, action)`` when the runtime mode holds actions, else ``(None, "")``."""
+
+        pol = self._effective_policy
+        if pol is not None and pol.holds_all_actions():
+            return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
+        return None, ""
 
     def _submit_blocking(self, text: str) -> None:
         result = self._submit_service.submit(text)  # blocking IO (worker thread)

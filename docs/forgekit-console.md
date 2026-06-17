@@ -319,12 +319,15 @@ provider 가 하나도 설정되지 않으면 forgekit 는 **`setup-required`(bl
 
 - **always-on 은 무한 자율이 아니다**: autonomy=bounded, destructive/deploy/secret 은 approval 게이트,
   loop 는 "관측→분류→패킷→위임→대기". (loop 본체 구현은 후속 WT — 현재는 계약/posture 까지.)
-- **approval-wait** 는 모든 행동 보류(`holds_all_actions()`), operator 응답 대기.
+- **approval-wait** 는 모든 행동 보류(`holds_all_actions()`) — **실제 집행됨**: 이 모드에서
+  free-text live-submit 은 provider 를 호출하지 않고 `⏸ … 행동 보류(hold)` 로 표면화하고 멈춘다
+  (operator 가 Shift+Tab 으로 모드 변경 또는 승인 후 재시도). 라벨이 아니라 진짜 게이트다.
 - routing target(chat slot)이 main provider 따라 바뀐다 — `/mode` 가 `chat slot = <provider>` 로 표시.
 
-> 현재 범위(WT1): 모드 계약 + EffectivePolicy 해소 + Shift+Tab 순환 + setup gate + operator 표면.
-> EffectivePolicy 를 live-submit routing/budget 집행에 **물리는** 단계와 always-on loop 본체,
-> PM→gateway handoff, notification, vault authorship 는 후속 worktree(WT2~)로 정직하게 분리.
+> 현재 범위(WT1): 모드 계약 + EffectivePolicy 해소 + Shift+Tab 순환 + setup gate + operator 표면
+> + **approval-wait 의 live-submit hold 집행**. 아직 안 물린 것(정직히): EffectivePolicy 의 routing
+> target 을 실제 provider 선택에 강제하는 것, usage/budget throttle 집행, always-on loop 본체,
+> PM→gateway handoff, notification, vault authorship — 후속 worktree(WT2~).
 
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 

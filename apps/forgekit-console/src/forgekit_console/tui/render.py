@@ -110,6 +110,16 @@ def setup_required_banner() -> str:
     )
 
 
+def submit_held_line(mode_label: str, action: str) -> str:
+    """Shown when the runtime mode HOLDS an action (e.g. approval-wait) — the submit
+    is not sent live; the operator is told why + what to do."""
+
+    return (
+        f"[{_WARN}]⏸ {mode_label} — 행동 보류(hold)[/{_WARN}] "
+        f"[dim]{action}[/dim]"
+    )
+
+
 def runtime_mode_line(
     label: str, policy_mode: str, usage_mode: str, approval: str, *, loop: bool
 ) -> str:
@@ -421,7 +431,7 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 __all__ = (
     "BRAND", "TAGLINE",
     "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
-    "setup_required_banner", "runtime_mode_line",
+    "setup_required_banner", "runtime_mode_line", "submit_held_line",
     "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
