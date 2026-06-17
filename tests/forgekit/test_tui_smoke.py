@@ -840,6 +840,18 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_design_surface_shows_restricted_status(self) -> None:
+        """/design shows the restricted source status (blocked/honest, design roles)."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/design")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("design source", joined)
+            self.assertIn("restricted", joined)
+            self.assertIn("ux-ui-designer", joined)  # design roles shown
+
     async def test_digest_separates_auto_from_approval(self) -> None:
         """/digest surfaces the operator digest with the 'no user ≠ no limits' clarity."""
         app = self._ready_app("claude")

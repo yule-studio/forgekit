@@ -300,6 +300,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "digest":
             self._show_digest()
             return
+        if parsed.name == "design":
+            self._show_design()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -403,6 +406,20 @@ class ForgekitConsoleApp(App):
         ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_design(self) -> None:
+        """`/design` — restricted design source status + packet (honest blocked, no fake-read)."""
+
+        from ..design import build_reference_packet, register_design_backup
+
+        log = self._transcript
+        log.write_echo("/design")
+        source = register_design_backup()
+        packet = build_reference_packet(source)
+        for line in render.design_status_lines(source, packet):
             log.write(line)
         self._sync_intro()
         self._follow_tail()

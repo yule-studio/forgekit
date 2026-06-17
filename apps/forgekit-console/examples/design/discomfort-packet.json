@@ -1,0 +1,15 @@
+{
+  "kind": "FrontendImplementationPacket",
+  "packet": {
+    "finding": "버튼 간격이 좁아 누르기 불편",
+    "why_it_matters": "사용 흐름/간격/접근성 마찰 — 작업 완료율/만족도 저하 (reference: figma_not_connected)",
+    "affected_area": "ui-design",
+    "risk": "safe",
+    "proposed_change": "ux-ui-designer 가 FrontendImplementationPacket 로 처리",
+    "confidence": 0.6,
+    "approval_needed": false,
+    "recommended_owner": "ux-ui-designer",
+    "source_origin": "design-discomfort",
+    "user_discomfort": "버튼 간격이 좁아 누르기 불편"
+  }
+}
