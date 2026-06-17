@@ -421,6 +421,35 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     return (help_tab, general, commands_tab, agents_tab, about)
 
 
+def loop_summary_lines(result, *, note: str = "") -> Tuple[str, ...]:
+    """Render a bounded always-on LoopResult — phases, handoffs, runbooks, wait state.
+
+    Makes the bounded autonomy visible: observe→classify→packet→handoff→wait, with
+    privileged areas turned into runbooks (never executed). Pure (duck-typed)."""
+
+    lines = [
+        f"[b {_ACCENT}]» always-on (bounded) — 관측→분류→패킷→handoff→대기[/b {_ACCENT}]",
+    ]
+    if note:
+        lines.append(f"  [dim]{note}[/dim]")
+    # compact phase trace grouped by iteration
+    by_iter: dict = {}
+    for s in result.steps:
+        by_iter.setdefault(s.iteration, []).append(s.phase)
+    for it, phases in by_iter.items():
+        lines.append(f"  [{it}] " + " → ".join(phases))
+    lines.append("")
+    lines.append(f"  packet/handoff : {len(result.handoffs)}개")
+    if result.runbooks:
+        lines.append(f"  [{_WARN}]runbook(권한 없음): {len(result.runbooks)}개[/{_WARN}]")
+        for n in result.runbooks:
+            lines.append(f"    ⏸ {n.title}  [dim]→ {n.area} runbook (operator 승인 필요)[/dim]")
+    if result.waiting:
+        lines.append(f"  [{_WARN}]상태: operator 응답/승인 대기[/{_WARN}] [dim]— 실행은 사람 승인 후[/dim]")
+    lines.append(f"  [dim]정지: {result.halt_reason} · destructive/deploy 는 구조적으로 차단(execute phase 없음)[/dim]")
+    return tuple(lines)
+
+
 def handoff_summary_lines(handoff) -> Tuple[str, ...]:
     """Render a PM→gateway→tech-lead Handoff for the transcript (duck-typed).
 
@@ -478,5 +507,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "result_block",
 )

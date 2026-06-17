@@ -352,6 +352,28 @@ provider 가 하나도 설정되지 않으면 forgekit 는 **`setup-required`(bl
 > 현재 범위(WT2): packet 계약 + gateway/tech-lead split + 콘솔 PM 모드 연결 + evidence.
 > 실제 역할별 코드 실행/큐 적재는 후속(엔지니어 runner 연결).
 
+## 2d. always-on bounded runtime + runbook fallback (WT3)
+
+`always-on` 모드/`/always-on` 명령은 **무한 자율이 아니라 bounded autonomy** 다 — 코드 SSoT 는
+[`runtime/loop.py`](../apps/forgekit-console/src/forgekit_console/runtime/loop.py)(루프 상태머신) ·
+[`runtime/runbook.py`](../apps/forgekit-console/src/forgekit_console/runtime/runbook.py)(권한 없을 때 산출물).
+
+루프는 오직 **관측(observe) → 분류(classify) → 패킷(packet) → handoff → 대기(wait)** 만 한다.
+**execute phase 자체가 없다** — destructive/deploy 는 구조적으로 불가능. 규칙:
+- privileged 영역(deploy/IAM/infra/secret) 발견 → 실행하지 않고 **runbook note**(Terraform skeleton +
+  승인 절차) 생성 + operator 승인 대기. 반복되면 escalation(operator inbox/ledger).
+- `observe`(watch) autonomy → 관측+분류+보고만(패킷/handoff 없음). `bounded`(always-on) → 패킷+handoff까지.
+- `max_iterations` 로 bounded — 무한 루프 불가.
+- product/design gap → WT2 handoff(역할 split). gap 의 BLOCKED 영역 → runbook.
+
+- 콘솔: `/always-on` 이 bounded 데모 사이클 1회 실행(대표 finding 셋 — 실제 프로젝트 스캐너 연결은 후속),
+  phase trace + runbook + 대기 상태 표면. 커밋된 예시 runbook:
+  [`apps/forgekit-console/examples/runbook/bkurs-deploy.md`](../apps/forgekit-console/examples/runbook/bkurs-deploy.md).
+- 회귀: `tests/forgekit/test_runtime_loop.py`(bounded·runbook·observe-only·escalation).
+
+> 현재 범위(WT3): bounded 루프 상태머신 + runbook + escalation + 콘솔 데모 연결. 실제 repo 스캐너
+> (관측 소스)와 백그라운드 스케줄러는 후속 — 지금은 deterministic stepped loop(숨은 스레드 아님).
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**

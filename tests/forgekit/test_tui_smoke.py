@@ -831,6 +831,20 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_always_on_runs_bounded_cycle_with_runbook(self) -> None:
+        """/always-on runs the bounded loop and surfaces a runbook for the privileged
+        (infra) area + an operator-wait — never an execution."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/always-on")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("always-on", joined)
+            self.assertIn("runbook", joined)        # privileged area → runbook
+            self.assertIn("대기", joined)            # operator-wait surfaced
+            self.assertIn("execute phase 없음", joined)  # destructive structurally blocked
+
     async def test_pm_agent_mode_runs_intake_handoff_not_live_submit(self) -> None:
         """In product-agent mode, a product ask runs PM intake→tech-lead split (with
         BLOCKED infra surfaced) and does NOT hit the live-submit provider."""

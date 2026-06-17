@@ -212,8 +212,8 @@ def _agent_enter_result(cmd, ctx: ConsoleContext) -> CommandResult:
                 "예: '영상 업로드 구현' → 공개 정책·업로드 주체·노출 순서를 먼저 묻고,",
                 "    처리 상태·실패 재시도·썸네일 fallback 을 자동 보강합니다.",
                 "",
-                "[dim]이 모드에서 입력한 제품 요청은 실제 intake→gateway→tech-lead handoff 로",
-                "변환됩니다(역할 분배 + 권한 없는 영역은 BLOCKED + evidence 기록).[/dim]",
+                "[dim]이 모드에서 입력한 제품 요청은 실제 intake→gateway→tech-lead handoff 로 변환됩니다.[/dim]",
+                "[dim]역할 분배 + 권한 없는 영역은 BLOCKED + evidence 기록.[/dim]",
             ),
         )
     lines = [

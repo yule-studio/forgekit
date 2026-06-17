@@ -261,6 +261,9 @@ class ForgekitConsoleApp(App):
             # /mode renders the LIVE runtime-mode posture (app state, not pure router).
             self._show_mode_surface()
             return
+        if parsed.name == "always-on":
+            self._run_always_on_cycle()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -324,6 +327,36 @@ class ForgekitConsoleApp(App):
         if pol is not None and pol.holds_all_actions():
             return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
         return None, ""
+
+    def _run_always_on_cycle(self) -> None:
+        """Run ONE bounded always-on cycle (observe→classify→packet→handoff→wait).
+
+        Bounded autonomy: privileged areas (deploy/IAM/infra/secret) become runbooks
+        + an operator-wait, never an execution. Repeated waits surface to escalation.
+        (A live project scanner is not wired yet, so this runs on a representative
+        finding set — labelled honestly — to exercise the real loop + runbook path.)
+        """
+
+        from ..runtime.loop import BoundedRuntimeLoop, Finding, CAT_DESIGN, CAT_INFRA, AUTONOMY_BOUNDED
+
+        log = self._transcript
+        log.write_echo("/always-on")
+        findings = [
+            Finding("bkurs-fe", "디자인/간격(spacing) 보강 필요 — UX 미완성", category=CAT_DESIGN),
+            Finding("bkurs-be", "운영/인프라 배포 준비 부족 (deploy apply 권한 필요)",
+                    category=CAT_INFRA, privileged=True),
+        ]
+        loop = BoundedRuntimeLoop(autonomy=AUTONOMY_BOUNDED, max_iterations=10,
+                                  escalator=self._escalator)
+        result = loop.run(findings)
+        for line in render.loop_summary_lines(
+            result, note="대표 finding 셋 기반 bounded 데모 사이클 — 실제 프로젝트 스캐너 연결은 후속.",
+        ):
+            log.write(line)
+        if result.escalated:
+            log.write("[dim]↳ operator inbox/ledger 에 대기 상태 기록됨[/dim]")
+        self._sync_intro()
+        self._follow_tail()
 
     def _run_pm_intake(self, raw: str) -> None:
         """PM (product-agent) mode: a raw product ask → structured handoff packet.
