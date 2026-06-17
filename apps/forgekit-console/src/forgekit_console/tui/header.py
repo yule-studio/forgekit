@@ -43,6 +43,11 @@ class IntroHeader(Vertical):
         height: auto;
         padding: 0 0 0 1;
     }
+    IntroHeader #intro-renderers {
+        height: auto;
+        padding: 0 0 0 1;
+        color: $text-muted;
+    }
     """
 
     def __init__(
@@ -89,6 +94,11 @@ class IntroHeader(Vertical):
                 ),
                 id="intro-meta",
             )
+        # opt-in diagnostic: SELECTED→REALIZED renderer ids (FORGEKIT_DEBUG_RENDERERS).
+        # Off by default — no chrome unless explicitly enabled.
+        if image_renderer.debug_renderers_enabled():
+            diag = image_renderer.diagnose_renderers()
+            yield Static(render.renderer_debug_line(diag), id="intro-renderers")
 
 
 __all__ = ("IntroHeader",)
