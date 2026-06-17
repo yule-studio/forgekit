@@ -278,12 +278,14 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             log = app.query_one("#main", MainPanel).region
             composer = app.query_one("#composer", Composer).region
             hint = app.query_one("#hint", Static).region
-            # top → down: intro · issue · content · composer · hint (composer inline)
+            # top → down: intro · issue · content · composer-bar (inline)
             self.assertLessEqual(intro.y, issue.y)
             self.assertLessEqual(issue.y, log.y)
             self.assertLessEqual(log.bottom, composer.y)
-            self.assertLessEqual(composer.bottom, hint.y)
-            # composer is NOT pinned to the viewport bottom on a short session
+            # the hint is now the FOOT of the composer bar (inside it), not a stray line
+            self.assertGreaterEqual(hint.y, composer.y)
+            self.assertLessEqual(hint.bottom, composer.bottom)
+            # composer bar is NOT pinned to the viewport bottom on a short session
             self.assertLess(composer.bottom, app.size.height - 2)
 
     async def test_intro_avatar_renderer_selected(self) -> None:
@@ -300,12 +302,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 (ir.RENDERER_REAL, ir.RENDERER_AVATAR_MARK, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
-    async def test_composer_is_thin_no_heavy_box(self) -> None:
-        """The composer is a THIN bar: a single subtle top rule, no full/heavy box.
-
-        Claude-Code restraint — the input row is the star. We assert the composer
-        carries only a top border (no left/right/bottom box) and a left accent
-        prompt marker ``›``.
+    async def test_composer_is_a_contained_bar(self) -> None:
+        """The composer reads as ONE input BAR: a neat full (rounded) rule around the
+        input row + hint, with a small top gap from the transcript — more than a thin
+        separator, lighter than a heavy box. The input row is the star (accent ›).
         """
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
@@ -314,19 +314,38 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            # border-top only — left/right/bottom edges are NOT a box
-            edges = composer.styles.border
-            top_edge = composer.styles.border_top
-            self.assertIsNotNone(top_edge)
-            self.assertNotEqual((top_edge[0] or "").lower(), "")
-            # the top rule is a THIN style (solid), not heavy
-            self.assertNotEqual((top_edge[0] or "").lower(), "heavy")
-            # no left/right/bottom border (a thin separator, not a full box)
-            self.assertIn((composer.styles.border_left[0] or "").lower(), ("", "none"))
-            self.assertIn((composer.styles.border_bottom[0] or "").lower(), ("", "none"))
+            # a full border on all four edges → one contained bar (not a 1-line rule)
+            for edge in (composer.styles.border_top, composer.styles.border_bottom,
+                         composer.styles.border_left, composer.styles.border_right):
+                self.assertNotIn((edge[0] or "").lower(), ("", "none"))
+                self.assertNotEqual((edge[0] or "").lower(), "heavy")  # not a heavy box
+            # a small top margin separates the bar from the transcript above
+            self.assertGreaterEqual(composer.styles.margin.top, 1)
             # left accent prompt marker present
             marker = str(app.query_one("#marker", Static).render())
             self.assertIn("›", marker)
+
+    async def test_slash_palette_opens_below_input_inside_bar(self) -> None:
+        """Slash palette opens DIRECTLY BELOW the input row, inside the composer bar —
+        not above it and not in the transcript (the key Claude-style fix)."""
+        from textual.widgets import Input
+        from forgekit_console.tui.composer import Composer
+        from forgekit_console.tui.palette import CommandPalette
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app.query_one("#prompt", Input).value = "/he"
+            await pilot.pause()
+            self.assertTrue(app._palette.is_open)
+            composer = app.query_one("#composer", Composer).region
+            inputrow = app.query_one("#inputrow").region
+            palette = app.query_one("#palette", CommandPalette).region
+            # palette sits BELOW the input row …
+            self.assertGreaterEqual(palette.y, inputrow.bottom)
+            # … and INSIDE the composer bar (not floating in the transcript)
+            self.assertGreaterEqual(palette.y, composer.y)
+            self.assertLessEqual(palette.bottom, composer.bottom)
 
     async def test_intro_shows_brand_banner_mark(self) -> None:
         """The intro shows the forgekit BRAND mark (banner image-first / text wordmark)."""
