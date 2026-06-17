@@ -104,6 +104,58 @@ crop+보정을 거친 display asset 을 따로 두는 것이다.
   **추상화 + capability 검출 + 3-tier fallback 로직 + 레이아웃 구조** 를 보장하고,
   우선순위(real → image-derived half-block → text)를 명시한다.
 
+### 렌더 경로 진단 — `FORGEKIT_DEBUG_RENDERERS`
+
+아바타/브랜드가 "깨져 보일" 때 원인이 **에셋**인지 **렌더 경로(터미널/라이브러리)**인지
+가르려면, 선택(selected)과 실제 렌더(realized)를 동시에 봐야 한다. selected 는 capability
+검출이 고른 tier 이고, realized 는 `renderable()` 이 실제로 만든 tier 다. 둘이 다르면
+**조용한 degrade** 가 일어난 것이다(real 로 골랐지만 화면엔 half-block).
+
+```bash
+# 평상시(진단 off): 아무 chrome 없음
+.venv/bin/forgekit
+
+# 진단 on: intro 아래 작은 dim 한 줄로 selected→realized 노출
+FORGEKIT_DEBUG_RENDERERS=1 .venv/bin/forgekit
+```
+
+표시 형태(예):
+
+```
+renderers · avatar=real-image→half-block · brand=brand-image→brand-text · cap=term_program=vscode · raster✗ ImportError: cannot import name 'NoneType' …
+```
+
+- `avatar=real-image→half-block` : real 로 선택됐지만 실제론 half-block 으로 떨어짐(조용한 degrade).
+  화살표가 없으면(`avatar=real-image`) selected==realized — 정상.
+- `cap=…` : capability 검출 사유(예 `term_program=vscode`, `no known graphics protocol`).
+- `raster✗ …` : `textual-image` 의 inline-raster import 가 실패한 이유. 이게 떠 있으면
+  **터미널이 무엇이든** tier-1 real 이미지는 안 나오고 전부 half-block/text 로 degrade 한다.
+
+구현: `image_renderer.diagnose_renderers()`(selected/realized/capability/raster 진단 묶음) +
+`render.renderer_debug_line()`(순수 문자열 빌더) + `IntroHeader` 가 flag on 일 때만 한 줄을
+mount. 코드는 `image_renderer.realized_avatar_id` / `realized_brand_id` 로 `renderable()`
+결과를 tier 로 역분류한다.
+
+#### 터미널별 확인 절차 (cross-terminal)
+
+같은 빌드를 서로 다른 터미널에서 돌려 `realized` 가 바뀌는지 비교한다.
+
+- **VS Code 통합 터미널**: `TERM_PROGRAM=vscode` 라 capability 는 `real-image` 를 고른다.
+  `FORGEKIT_DEBUG_RENDERERS=1 .venv/bin/forgekit` 로 `avatar=` 가 `real-image` 그대로인지,
+  아니면 `real-image→half-block` 인지 본다. `raster✗` 가 떠 있으면 터미널과 무관하게
+  `textual-image` 가 import 안 되는 것이다(아래 Python 버전 주의 참고).
+- **iTerm2 / WezTerm**: 같은 명령을 그 터미널에서 실행한다. capability 는 각각
+  `iterm2 inline images` / `term_program=wezterm` 로 잡힌다. `textual-image` 가 정상 import
+  되는 인터프리터라면 여기서 `avatar=real-image`(화살표 없음)로 바뀌어야 한다 — 즉
+  **VS Code 에서 half-block 이던 게 여기선 real 이미지로 바뀌면** 원인은 에셋이 아니라
+  터미널/라이브러리 경로다.
+
+> **Python 버전 주의(이 레포 `.venv` 의 현 상태):** `textual-image` 는 Python ≥3.10
+> 을 요구한다(`types.NoneType`). 현재 `.venv` 가 3.9 면 어느 터미널이든 inline-raster
+> import 가 실패해 `raster✗` 가 뜨고 전부 half-block/text 로 degrade 한다. 이때는
+> **에셋 문제가 아니라** Python/의존성 호환 문제다 — `.[console]` extra 를 3.10+
+> 인터프리터에 설치해야 tier-1 real 이미지가 산다.
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**

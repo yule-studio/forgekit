@@ -358,6 +358,35 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         # text fallback is the clean cyan→magenta wordmark on its own
         self.assertIn("forge", plain.renderable())
 
+    async def test_renderer_debug_line_hidden_by_default(self) -> None:
+        """No diagnostic chrome unless FORGEKIT_DEBUG_RENDERERS is set."""
+        import os
+        from unittest import mock
+        from textual.css.query import NoMatches
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FORGEKIT_DEBUG_RENDERERS", None)
+            app = self._app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                with self.assertRaises(NoMatches):
+                    app.query_one("#intro-renderers")
+
+    async def test_renderer_debug_line_shown_when_flag_set(self) -> None:
+        """With the flag on, the intro shows a SELECTED→REALIZED renderer line."""
+        import os
+        from unittest import mock
+        from textual.widgets import Static
+
+        with mock.patch.dict(os.environ, {"FORGEKIT_DEBUG_RENDERERS": "1"}):
+            app = self._app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                line = str(app.query_one("#intro-renderers", Static).render())
+                self.assertIn("renderers", line)
+                self.assertIn("avatar=", line)
+                self.assertIn("brand=", line)
+
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
         provider/profile/repo meta (right)."""

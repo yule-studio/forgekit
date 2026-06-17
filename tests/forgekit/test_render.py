@@ -190,6 +190,52 @@ class IntroMetaTests(unittest.TestCase):
         self.assertIn("forge", "\n".join(lines))
 
 
+class _Diag:
+    """Minimal RendererDiagnostics-shaped stub for the debug-line builder."""
+
+    def __init__(self, av_sel, av_real, br_sel, br_real, cap, raster_ok, raster_reason=""):
+        self.avatar_selected = av_sel
+        self.avatar_realized = av_real
+        self.brand_selected = br_sel
+        self.brand_realized = br_real
+        self.capability_reason = cap
+        self.raster_ok = raster_ok
+        self.raster_reason = raster_reason
+
+
+class RendererDebugLineTests(unittest.TestCase):
+    def test_healthy_shows_plain_realized_ids_no_arrow(self) -> None:
+        # selected == realized → no arrow, no raster failure tail
+        line = render.renderer_debug_line(
+            _Diag("real-image", "real-image", "brand-image", "brand-image",
+                  "kitty graphics protocol", True, "textual-image import ok")
+        )
+        self.assertIn("avatar=real-image", line)
+        self.assertIn("brand=brand-image", line)
+        self.assertNotIn("→", line)
+        self.assertNotIn("raster", line)
+        self.assertIn("cap=kitty graphics protocol", line)
+
+    def test_silent_degrade_shows_arrow_and_raster_failure(self) -> None:
+        # selected real but realized fallback → arrow exposes the silent degrade
+        line = render.renderer_debug_line(
+            _Diag("real-image", "half-block", "brand-image", "brand-text",
+                  "term_program=vscode", False, "ImportError: cannot import name 'NoneType'")
+        )
+        self.assertIn("avatar=real-image→half-block", line)
+        self.assertIn("brand=brand-image→brand-text", line)
+        self.assertIn("cap=term_program=vscode", line)
+        self.assertIn("raster✗", line)
+
+    def test_long_raster_reason_truncated(self) -> None:
+        line = render.renderer_debug_line(
+            _Diag("real-image", "half-block", "brand-image", "brand-text",
+                  "term_program=vscode", False, "X" * 200)
+        )
+        self.assertIn("…", line)
+        self.assertLess(len(line), 200)
+
+
 class IssueLineTests(unittest.TestCase):
     def _summary(self, **over):
         base = dict(title="op", sections=(StatusSection("provider", ("ok",)),), alerts=())
