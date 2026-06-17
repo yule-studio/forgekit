@@ -33,6 +33,12 @@ from .chain import (
     tech_lead_signoff,
     trace_note,
 )
+from .observe import (
+    UIReferenceState,
+    default_ui_reference,
+    observe_repo,
+    to_improvement_packets,
+)
 from .orchestrator import (
     DEFAULT_ALLOWLIST,
     AutopilotLimits,
@@ -48,6 +54,7 @@ __all__ = (
     "ExecutionTaskSplit", "VerificationReport", "VaultTraceNote",
     "run_internal_chain", "pm_structure", "gateway_route", "tech_lead_signoff",
     "can_specialist_execute", "trace_note",
+    "UIReferenceState", "default_ui_reference", "observe_repo", "to_improvement_packets",
     "DEFAULT_ALLOWLIST", "AutopilotLimits", "AutopilotOrchestrator",
     "AutopilotRunResult", "ExecutorArbiter",
 )
