@@ -1,29 +1,32 @@
-"""Composer — the SESSION-FOLLOWING input BAR + a SEPARATE slash palette below it.
+"""Composer — a Claude-style input region with FOUR separated rows.
 
-Claude-Code-style input. Three things are kept visually + structurally distinct:
+The input BOX holds ONLY the prompt marker + the actual input. Everything else —
+the mode indicator and the shortcut hints — lives OUTSIDE the box, and the slash
+palette opens as its own surface below it. Top→bottom:
 
     transcript ……………………………………………  (the main panel, above)
+      ● operator                              ← #modepill   (meta, OUTSIDE the box)
     ╭───────────────────────────────────────╮
-    │ › ● operator                            │   ← #composer-shell (the BAR)
-    │   /help · / palette · Tab · ^C quit     │      #inputrow (CLEAN input) + #hint
+    │ ›  (your input)                         │ ← #composer-input-shell  (the BOX: marker + input ONLY)
     ╰───────────────────────────────────────╯
-      ▎ palette  3  · Tab 완성 · Esc 닫기      ← #palette (SEPARATE surface, below)
-      ▎  ▸ /help   …                              compact, auto-height, NOT a box
-      ▎    /harness …
+      /help · / palette · Tab 완성 · ^C quit    ← #hint       (hints, OUTSIDE the box)
+      ▎ /help   /harness   …                    ← #palette    (slash list, BELOW the box)
 
-* The **bar** (``#composer-shell``) is a self-contained, bordered input area — the
-  input row + a quiet sub-hint row. It reads as ONE independent bar separated from
-  the transcript by a top margin (more than a thin rule, lighter than a heavy box).
-* The **slash palette** is NOT inside the input box: it is a SEPARATE surface
-  rendered *below* the shell (a sibling), connected by a left accent rule but its
-  own compact, auto-height strip. ``/`` lives as typed text in the input; the
-  command LIST never renders inside the text box and never bleeds into the
-  transcript. ``/help`` is a separate full-VIEW switch (:class:`tui.main_panel`).
+Why this anatomy: previously the mode pill and the hint text sat INSIDE the
+bordered shell, so the input "box" looked like it was full of mode/help/Tab/quit
+text instead of being a clean input. Now:
 
-The composer follows the session flow (NO ``dock``; ``height: auto``) so a short
-session leaves it near the top and a growing transcript pushes it down. It owns no
-command logic — the app drives it (focus, value, palette show/hide, mode pill,
-hint). Pure render strings come from :mod:`tui.render`.
+* ``#modepill`` (mode) is a row ABOVE the box.
+* ``#composer-input-shell`` is the input BAR — a filled, rounded box (background +
+  border contrast so it clearly reads as "the input bar") containing ONLY the accent
+  ``›`` marker and the input. No placeholder clutter; ``/`` is just typed text.
+* ``#hint`` (``/help · / palette · Tab · ^C quit``) is a row BELOW the box.
+* ``#palette`` is a separate compact surface below the hint — never inside the box,
+  never in the transcript (see :class:`tui.palette.CommandPalette`).
+
+The composer follows the session flow (NO ``dock``; ``height: auto``). It owns no
+command logic — the app drives ``#modepill`` / ``#hint`` / palette / focus. The
+mode + hint strings come from :mod:`tui.render`.
 """
 
 from __future__ import annotations
@@ -36,64 +39,58 @@ from .palette import CommandPalette
 
 
 class Composer(Vertical):
-    """The input BAR (bordered shell) + a separate slash palette surface below it."""
+    """Input region: mode row · input BOX (marker+input only) · hint row · palette."""
 
     DEFAULT_CSS = """
     Composer {
-        /* NO dock + no border on the outer wrapper — it just stacks the bar and the
-           separate palette surface, flowing inline after the active content. */
         height: auto;
         margin: 1 1 0 1;   /* a clear gap from the transcript above */
         background: $background;
         padding: 0;
     }
-    /* the BAR: a self-contained, bordered input area (input row + sub-hint). */
-    Composer #composer-shell {
-        height: auto;
-        background: $background;
-        border: round $brand-border;
-        padding: 0 1;
-    }
-    Composer #inputrow {
+    /* mode indicator — its own row ABOVE the input box (outside it). */
+    Composer #modepill {
         height: 1;
-        padding: 0;
+        padding: 0 0 0 2;
+    }
+    /* THE input bar — a filled, rounded box with marker + input ONLY. The
+       background/border contrast makes it read clearly as "the input bar". */
+    Composer #composer-input-shell {
+        height: 1;                       /* +round border = a 3-row bar */
+        background: $surface;
+        border: round $accent-dim;
+        padding: 0 1;
     }
     Composer #marker {
         width: auto;
         padding: 0 1 0 0;
         color: $accent;
     }
-    Composer #modepill {
-        width: auto;
-        padding: 0 1 0 0;
-    }
     Composer #prompt {
+        width: 1fr;
         border: none;
-        background: $background;
+        background: $surface;            /* match the shell — one clean bar */
         height: 1;
         padding: 0;
     }
-    /* the sub-hint row — quiet shortcuts, part of the bar (always visible). */
+    /* shortcut hints — their own row BELOW the input box (outside it). */
     Composer #hint {
         height: 1;
-        padding: 0;
+        padding: 0 0 0 2;
         color: $text-muted;
     }
     """
 
     def compose(self):
-        # the BAR — a bordered shell holding the input row + the sub-hint row.
-        with Vertical(id="composer-shell"):
-            with Horizontal(id="inputrow"):
-                yield Static(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}]", id="marker")
-                yield Static(id="modepill")
-                # NO in-field guidance text — the input stays clean (Claude-style).
-                # All hints (`/help`, `/ palette`, Tab, quit) live in the #hint row
-                # below, set by the app from tui.render.hint_line.
-                yield Input(placeholder="", id="prompt")
-            yield Static(id="hint")
-        # the slash palette — a SEPARATE compact surface BELOW the bar (not inside
-        # the input box, not in the transcript). Hidden until a slash is typed.
+        # meta row: mode indicator — OUTSIDE the input box, above it.
+        yield Static(id="modepill")
+        # the input BOX — ONLY the accent marker + the actual input (clean).
+        with Horizontal(id="composer-input-shell"):
+            yield Static(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}]", id="marker")
+            yield Input(placeholder="", id="prompt")
+        # hint row: shortcuts — OUTSIDE the input box, below it.
+        yield Static(id="hint")
+        # the slash palette — a separate compact surface BELOW everything.
         yield CommandPalette(id="palette")
 
 

@@ -339,10 +339,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 (ir.RENDERER_REAL, ir.RENDERER_AVATAR_MARK, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
-    async def test_composer_shell_is_a_contained_bar(self) -> None:
-        """The input BAR is the bordered ``#composer-shell`` — a neat full (rounded)
-        rule around the input row + hint, with a top gap from the transcript. More
-        than a thin separator, lighter than a heavy box. Input row is the star (›)."""
+    async def test_input_box_holds_only_input_mode_and_hint_outside(self) -> None:
+        """The input BOX (#composer-input-shell) is a bordered bar containing ONLY the
+        marker + input. The mode (#modepill) is a row ABOVE it and the hints (#hint)
+        a row BELOW it — both OUTSIDE the box."""
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
 
@@ -350,17 +350,23 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            shell = app.query_one("#composer-shell")
-            # the SHELL carries the full 4-edge border → one contained input bar
-            for edge in (shell.styles.border_top, shell.styles.border_bottom,
-                         shell.styles.border_left, shell.styles.border_right):
+            box = app.query_one("#composer-input-shell")
+            # the input box carries the full 4-edge rounded border (a clear bar)
+            for edge in (box.styles.border_top, box.styles.border_bottom,
+                         box.styles.border_left, box.styles.border_right):
                 self.assertNotIn((edge[0] or "").lower(), ("", "none"))
-                self.assertNotEqual((edge[0] or "").lower(), "heavy")  # not a heavy box
+                self.assertNotEqual((edge[0] or "").lower(), "heavy")
+            # mode + input + marker live INSIDE the box; mode + hint live OUTSIDE it
+            box_region = box.region
+            mode = app.query_one("#modepill", Static).region
+            hint = app.query_one("#hint", Static).region
+            marker = app.query_one("#marker", Static).region
+            self.assertTrue(box_region.contains_region(marker))     # marker inside box
+            self.assertLess(mode.y, box_region.y)                   # mode ABOVE the box
+            self.assertGreaterEqual(hint.y, box_region.bottom)      # hint BELOW the box
             # a top margin separates the bar from the transcript above
             self.assertGreaterEqual(composer.styles.margin.top, 1)
-            # left accent prompt marker present
-            marker = str(app.query_one("#marker", Static).render())
-            self.assertIn("›", marker)
+            self.assertIn("›", str(app.query_one("#marker", Static).render()))
 
     async def test_input_is_clean_hints_live_in_hint_row(self) -> None:
         """The input field carries NO in-field guidance (clean, Claude-style); the
@@ -373,12 +379,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             prompt = app.query_one("#prompt", Input)
             self.assertEqual((prompt.placeholder or ""), "")  # no placeholder clutter
             hint = str(app.query_one("#hint", Static).render())
-            self.assertIn("/help", hint)  # guidance moved to the hint row
+            self.assertIn("/help", hint)  # guidance in the hint row (outside the box)
             self.assertIn("palette", hint)
 
-    async def test_slash_palette_is_separate_surface_below_the_bar(self) -> None:
-        """Slash palette is a SEPARATE surface BELOW the composer-shell (bar) — not
-        inside the input box, not in the transcript. The key Claude-style fix."""
+    async def test_slash_palette_is_separate_surface_below_the_box(self) -> None:
+        """Slash palette is a SEPARATE surface BELOW the input box + hint — not inside
+        the input box, not in the transcript. The key Claude-style fix."""
         from textual.widgets import Input
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
@@ -390,12 +396,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
             composer = app.query_one("#composer", Composer).region
-            shell = app.query_one("#composer-shell").region
-            inputrow = app.query_one("#inputrow").region
+            box = app.query_one("#composer-input-shell").region
             palette = app.query_one("#palette", CommandPalette).region
-            # palette is BELOW the whole bar (separate surface, not inside the box)
-            self.assertGreaterEqual(palette.y, shell.bottom)
-            self.assertGreaterEqual(palette.y, inputrow.bottom)
+            # palette is BELOW the input box (separate surface, not inside it)
+            self.assertGreaterEqual(palette.y, box.bottom)
             # still part of the composer wrapper (connected), never in the transcript
             self.assertLessEqual(palette.bottom, composer.bottom)
             # compact: capped height so it never becomes a giant box
