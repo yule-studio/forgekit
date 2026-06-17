@@ -67,11 +67,16 @@ master 를 크게 띄우지 않는다.
 
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 
-**방향: 터미널 기본 아이콘 = 제공된 픽셀 아트, 상세 portrait 는 보관/향후 GUI 자산.**
-콘솔의 true-raster **기본 avatar 는 사용자가 준 pixel-art terminal icon**(헤드폰 girl, 2026-06-17
-03:05 시트의 128/96 레퍼런스)를 그대로 resize 한 것이다 — **임의 실루엣 재창작이 아니라 제공 asset
-적용**. non-raster(VS Code 등)에선 이미지가 안 떠 `fk` 배지가 보인다(아래 평가 참고). detail portrait
-는 archive / 향후 더 큰 surface / opt-in `FORGEKIT_AVATAR=portrait` 용으로 남긴다.
+**방향: avatar 는 모든 경로에서 제공된 픽셀 아트 계열을 쓴다(배지는 최후 fallback).**
+콘솔 avatar 우선순위:
+1. **true-raster(tgp/sixel)** → 픽셀 아이콘을 **진짜 픽셀 이미지**로(사용자 제공 03:05 시트의 128/96
+   를 resize, 임의 실루엣 재창작 아님).
+2. **non-raster(VS Code 등)** → **같은 픽셀 아이콘의 half-block** 이미지(grayscale, ~16 cols). 즉
+   내가 평소 보는 화면에서도 **픽셀 이미지 계열**이 나온다(`fk` 배지 아님).
+3. **Pillow/asset 부재 등 정말 불가** → `fk` 배지 → bare text (최후 fallback).
+
+`/render` 의 `avatar asset … → pixel-icon / pixel-halfblock / fk-badge` 줄로 지금 어느 family 인지
+드러난다. detail portrait 는 archive / opt-in `FORGEKIT_AVATAR=portrait` 용으로 남긴다.
 
 | 분류 | 파일 | 용도 |
 | --- | --- | --- |

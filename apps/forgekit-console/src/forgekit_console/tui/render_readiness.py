@@ -96,6 +96,18 @@ def render_readiness_report(env: Optional[Mapping[str, str]] = None) -> RenderRe
     )
 
 
+def _avatar_family(backend: str) -> str:
+    """Which avatar ASSET FAMILY is actually on screen (message E surface)."""
+
+    if backend in (ir.BACKEND_TGP, ir.BACKEND_SIXEL):
+        return "pixel-icon (true raster)"
+    if backend == ir.BACKEND_HALFBLOCK:
+        return "pixel-halfblock (image fallback)"
+    if backend == ir.BACKEND_AVATAR_MARK:
+        return "fk-badge (last resort)"
+    return "text-mark (last resort)"
+
+
 def _ok(flag: bool) -> str:
     return f"[{theme.SUCCESS}]✓[/{theme.SUCCESS}]" if flag else f"[{theme.WARNING}]✗[/{theme.WARNING}]"
 
@@ -117,7 +129,7 @@ def render_readiness_lines(report: Optional[RenderReadiness] = None,
         f"  {_ok(r.python_ok)} python        {r.python_version}  (textual-image 는 ≥3.10)",
         f"  {_ok(r.lib_ok)} textual-image {lib}",
         f"  · terminal     {r.capability_reason}",
-        f"  · avatar asset {r.avatar_asset}  (기본=terminal-icon · 상세 portrait 는 FORGEKIT_AVATAR=portrait)",
+        f"  · avatar asset {r.avatar_asset} → {_avatar_family(r.avatar_backend)}",
         f"  · avatar       {r.avatar_backend} ({r.avatar_policy})",
         f"  · brand        {r.brand_backend} ({r.brand_policy})",
         "",

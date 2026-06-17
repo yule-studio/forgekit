@@ -232,9 +232,10 @@ def select_renderer(capability) -> str:
     """
 
     capable = capability.capable if isinstance(capability, ImageCapability) else bool(capability)
-    # Non-raster default is now the crisp brand BADGE (managed fallback), not the
-    # dotty portrait half-block. The portrait is opt-in (FORGEKIT_AVATAR=portrait).
-    return RENDERER_REAL if capable else RENDERER_AVATAR_MARK
+    # Non-raster default is the PIXEL half-block (the image family the operator
+    # actually sees), NOT the badge — the badge is only the last resort inside the
+    # half-block renderer. The portrait is opt-in (FORGEKIT_AVATAR=portrait).
+    return RENDERER_REAL if capable else RENDERER_HALFBLOCK
 
 
 # --- textual-image backend classification ----------------------------------
@@ -448,25 +449,26 @@ class AvatarMarkRenderer:
 
 @dataclass(frozen=True)
 class HalfBlockRenderer:
-    """OPT-IN portrait fallback — an image-DERIVED half-block of the baked PNG.
+    """DEFAULT non-raster avatar — an image-DERIVED half-block of the PIXEL icon.
 
-    A genuine image of the portrait (downscaled half-block raster), but at ~14 cols
-    a detailed line-art face reads dotty, so this is NOT the default fallback any
-    more — it is opt-in (``FORGEKIT_AVATAR=portrait``) for terminals/operators that
-    prefer it. Degrades to the text mark only when Pillow / the asset is missing.
+    A genuine small image of the pixel avatar (grayscale half-block raster), so the
+    non-raster fallback the operator actually sees is the PIXEL IMAGE family — NOT
+    the ``fk`` badge. The badge is only the LAST resort (Pillow / the asset missing).
+    ``FORGEKIT_AVATAR=portrait`` swaps the source to the detailed portrait.
     """
 
     renderer_id: str = RENDERER_HALFBLOCK
-    cols: int = 14  # cells wide; small & clean
+    cols: int = 16  # cells wide — a touch bigger than the icon scale for readability
+    portrait: bool = False
 
     def _resolve(self):
         from . import halfblock  # local import keeps Pillow optional at import time
 
-        # portrait mode → the DETAILED portrait (not the simplified terminal icon).
-        path = best_portrait_path()
+        path = best_portrait_path() if self.portrait else best_image_path()
         rendered = halfblock.render_halfblock(path, cols=self.cols) if path else None
         if rendered is None:
-            return BACKEND_TEXT, TextMarkRenderer().renderable()
+            # last resort ONLY (no Pillow / asset): the brand badge, then bare text.
+            return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
         return BACKEND_HALFBLOCK, rendered
 
     def renderable(self):
@@ -492,20 +494,17 @@ class RealImageRenderer:
 
     def _resolve(self):
         path = best_image_path()
-        if path is None:  # no asset → still show the clean badge (managed fallback)
-            return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
         image_cls = _textual_image_class()
-        if image_cls is None:  # textual-image absent → managed badge
-            return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
-        backend = _module_backend(image_cls)
-        if not is_true_raster(backend):
-            # textual-image resolved to halfcell/unicode (not a real raster) — the
-            # crisp brand badge is far cleaner than either cell fallback.
-            return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
-        try:
-            return backend, image_cls(str(path), width=self.width)
-        except Exception:  # noqa: BLE001 - raster construction failed → managed badge
-            return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
+        if path is not None and image_cls is not None:
+            backend = _module_backend(image_cls)
+            if is_true_raster(backend):  # tgp/sixel → the real pixel image raster
+                try:
+                    return backend, image_cls(str(path), width=self.width)
+                except Exception:  # noqa: BLE001 - construction failed → pixel half-block
+                    pass
+        # not a true raster (VS Code etc.) → the PIXEL half-block (image family),
+        # never the badge here. The badge is HalfBlockRenderer's own last resort.
+        return HalfBlockRenderer()._resolve()
 
     def renderable(self):
         return self._resolve()[1]
@@ -632,15 +631,17 @@ def make_renderer(
 ) -> AvatarRenderer:
     """Build the avatar renderer for *capability* / *env*.
 
-    Default policy: a true-raster terminal → real image; otherwise the crisp brand
-    BADGE (managed fallback — a dotty portrait is not forced). Operators can
-    override via ``FORGEKIT_AVATAR``: ``image`` (force raster attempt),
-    ``portrait``/``halfblock`` (the image-derived half-block), ``mark``/``badge``
-    (the brand badge), ``text`` (the bare text mark).
+    Default policy: a true-raster terminal → real pixel image; otherwise the PIXEL
+    half-block (the image family). The badge is only the last resort. Operators can
+    override via ``FORGEKIT_AVATAR``: ``image`` (force raster attempt), ``portrait``
+    (the DETAILED portrait half-block), ``halfblock`` (the pixel half-block),
+    ``mark``/``badge`` (the brand badge), ``text`` (the bare text mark).
     """
 
     mode = _avatar_force_mode(env)
-    if mode in ("portrait", "halfblock", "half-block"):
+    if mode == "portrait":
+        return HalfBlockRenderer(portrait=True)
+    if mode in ("halfblock", "half-block"):
         return HalfBlockRenderer()
     if mode in ("mark", "badge"):
         return AvatarMarkRenderer()
