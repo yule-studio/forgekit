@@ -75,6 +75,7 @@ class ForgekitConsoleApp(App):
         repo_root: Path,
         context: Optional[ConsoleContext] = None,
         escalator=None,
+        submit_service=None,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
@@ -92,6 +93,13 @@ class ForgekitConsoleApp(App):
             escalator = FailureEscalator()
         self._escalator = escalator
         self._blocked = False
+        # Free-text live-submit: resolves a provider (config or zero-config local
+        # ollama) and submits. Injected in tests (fake transport); real on disk.
+        if submit_service is None:
+            from ..chat.service import build_default_service
+
+            submit_service = build_default_service()
+        self._submit_service = submit_service
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -220,6 +228,10 @@ class ForgekitConsoleApp(App):
 
     def _execute(self, raw: str) -> None:
         parsed = parse_input(raw)
+        if not parsed.is_slash:
+            # FREE TEXT → live provider submit (NOT the slash command path).
+            self._submit_free_text(raw)
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -245,6 +257,55 @@ class ForgekitConsoleApp(App):
             self._refresh_issue()
         # keep the inline composer in view as the session grows (Claude-style tail)
         self._follow_tail()
+
+    # --- free-text live submit ----------------------------------------------
+
+    def _submit_free_text(self, raw: str) -> None:
+        """Echo the user message, then submit to the resolved provider in a worker.
+
+        The submit (HTTP / resolution) runs OFF the event loop so an LLM call never
+        freezes the UI; the result is appended back on the main thread. Free text is
+        a strictly separate path from slash commands.
+        """
+
+        text = raw.strip()
+        if not text:
+            return
+        self._transcript.write_echo(text)  # the user's message
+        self._follow_tail()
+        self.run_worker(
+            lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
+        )
+
+    def _submit_blocking(self, text: str) -> None:
+        result = self._submit_service.submit(text)  # blocking IO (worker thread)
+        self.call_from_thread(self._on_submit_result, result)
+
+    def _on_submit_result(self, result) -> None:
+        log = self._transcript
+        for line in result.to_lines():
+            log.write(line)
+        if not result.ok:
+            self._record_submit_failure(result)
+        self._follow_tail()
+        try:
+            self.query_one("#prompt", Input).focus()
+        except Exception:  # noqa: BLE001 - prompt may be transiently unavailable
+            pass
+
+    def _record_submit_failure(self, result) -> None:
+        """A non-live submit (no provider / auth / unsupported / transport) → escalation."""
+
+        from ..lifecycle.failure_escalation import FailureSignature, KIND_DEPENDENCY
+
+        signature = FailureSignature(
+            KIND_DEPENDENCY, f"submit:{result.category}", result.provider_id or "free-text"
+        )
+        outcome = self._escalator.record_failure(
+            signature, symptom=result.text, evidence=result.receipt(),
+            attempted_fix=result.next_action,
+        )
+        self._surface_escalation(outcome)
 
     def _record_failure(self, parsed, result) -> None:
         """Feed a failed command into the escalator; surface advisory or full RCA."""
