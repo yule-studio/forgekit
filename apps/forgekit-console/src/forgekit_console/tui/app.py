@@ -42,7 +42,7 @@ from ..models import (
     KIND_QUIT,
     MODE_OPERATOR,
 )
-from . import keymap, render, theme
+from . import intro_state, keymap, render, theme
 from .composer import Composer
 from .header import IntroHeader
 from .main_panel import MainPanel
@@ -141,6 +141,7 @@ class ForgekitConsoleApp(App):
         # hint row, so the welcome line was redundant and showed as a stray band.
         self._refresh_issue()
         self._refresh_chrome()
+        self._sync_intro()  # empty + idle → wide hero art; working state → compact
         self.query_one("#prompt", Input).focus()
         self._follow_tail()
 
@@ -154,6 +155,7 @@ class ForgekitConsoleApp(App):
         self._palette = palette_state.refilter(event.value, self.context.commands)
         self._render_palette()
         self._refresh_chrome()  # typing reduces the secondary mode line below the bar
+        self._sync_intro()  # typing (or opening the palette) → fold the hero to compact
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value
@@ -214,6 +216,7 @@ class ForgekitConsoleApp(App):
         else:
             widget.hide()
         self._refresh_chrome()
+        self._sync_intro()  # opening the palette folds a fresh hero to compact
 
     def _close_palette(self) -> None:
         self._palette = palette_state.close()
@@ -241,7 +244,8 @@ class ForgekitConsoleApp(App):
             self._main.show_transcript()
             return
         if result.kind in (KIND_HELP, KIND_LAYOUT):
-            self._open_help()  # /layout also routes to help in this flow
+            # /about · /welcome route here with title "about" → hero + About tab.
+            self._open_help(about=(result.title == "about"))
             return
         log = self._transcript
         log.write_echo(raw)
@@ -255,6 +259,8 @@ class ForgekitConsoleApp(App):
             self._observe_render()  # repeated blocked render → escalate w/ alternatives
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
+        # transcript now has content → fold the hero to the compact working header.
+        self._sync_intro()
         # keep the inline composer in view as the session grows (Claude-style tail)
         self._follow_tail()
 
@@ -272,6 +278,7 @@ class ForgekitConsoleApp(App):
         if not text:
             return
         self._transcript.write_echo(text)  # the user's message
+        self._sync_intro()  # transcript now has content → compact working header
         self._follow_tail()
         self.run_worker(
             lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
@@ -380,16 +387,22 @@ class ForgekitConsoleApp(App):
         else:
             self._open_help()
 
-    def _open_help(self) -> None:
+    def _open_help(self, *, about: bool = False) -> None:
         # Switch the whole main area to the dedicated help view (transcript hidden).
         # Nothing is appended to the transcript — opening/switching tabs re-renders
         # the help panel in place. Claude-style: the composer BAR is HIDDEN in the
         # help/tab view (the Esc/Tab guidance lives in the help body), so help reads
         # as its own mode rather than "help with an input bar still stuck below".
+        # `about=True` (/about, /welcome) jumps to the About tab AND shows the wide
+        # hero art in the header (the 56-col art's proper home).
         self._close_palette()
-        self._main.show_help(self.context.commands, self.context.agents)
+        self._main.show_help(
+            self.context.commands, self.context.agents,
+            focus_title="About" if about else None,
+        )
         self.query_one("#composer", Composer).display = False
         self._refresh_chrome()
+        self._sync_intro()  # About → hero; plain /help → compact
 
     def _close_help(self) -> None:
         # Switch back to the transcript exactly as it was (nothing left behind) and
@@ -397,6 +410,7 @@ class ForgekitConsoleApp(App):
         self._main.show_transcript()
         self.query_one("#composer", Composer).display = True
         self._refresh_chrome()
+        self._sync_intro()  # leaving About/help → recompute hero vs compact
         self.query_one("#prompt", Input).focus()
 
     @property
@@ -408,6 +422,42 @@ class ForgekitConsoleApp(App):
 
         # call_after_refresh so the layout (new content height) is settled first.
         self.call_after_refresh(self._flow.follow_tail)
+
+    @property
+    def _intro(self) -> IntroHeader:
+        return self.query_one("#intro", IntroHeader)
+
+    def _about_open(self) -> bool:
+        """True when the help view is open ON the About tab (drives the hero)."""
+
+        if not self._main.help_open:
+            return False
+        sections = render.help_sections(self.context.commands, self.context.agents)
+        idx = self._main.help_panel.active_tab
+        return 0 <= idx < len(sections) and sections[idx].title == "About"
+
+    def _sync_intro(self) -> None:
+        """Recompute the intro mode (hero vs compact) from the live state + env.
+
+        Hero on a fresh, idle, empty session and on the /about surface; compact the
+        moment real work starts (typing, palette, agent mode, or transcript content)
+        — the "big first impression, small while working" rule.
+        """
+
+        try:
+            intro = self._intro
+        except Exception:  # noqa: BLE001 - intro not mounted yet
+            return
+        mode = intro_state.resolve_intro_mode(
+            hero_available=intro.hero_available(),
+            transcript_empty=len(self._transcript.lines) == 0,
+            typing=bool((self._prompt_value() or "").strip()),
+            palette_open=self._palette.is_open,
+            in_agent=self.mode != MODE_OPERATOR,
+            help_open=self._main.help_open,
+            about_open=self._about_open(),
+        )
+        intro.set_mode(mode)
 
     @property
     def _main(self) -> MainPanel:
