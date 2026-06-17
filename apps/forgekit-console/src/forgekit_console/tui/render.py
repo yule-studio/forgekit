@@ -57,6 +57,34 @@ def intro_meta_lines(
     )
 
 
+def renderer_debug_line(diag) -> str:
+    """A small dim diagnostic line: SELECTED→REALIZED avatar/brand renderers.
+
+    Only shown when ``FORGEKIT_DEBUG_RENDERERS`` is set. When the realized tier
+    differs from the selected one (a silent degrade) it is shown as
+    ``selected→realized`` so the operator immediately sees the real image did NOT
+    render. The terminal's capability reason and (if the real raster is
+    unavailable) the import failure are appended — that splits "asset problem"
+    from "renderer/terminal path problem" at a glance. Pure: takes a
+    :class:`tui.image_renderer.RendererDiagnostics`-shaped object, returns markup.
+    """
+
+    def tier(selected: str, realized: str) -> str:
+        return realized if selected == realized else f"{selected}→{realized}"
+
+    parts = [
+        f"avatar={tier(diag.avatar_selected, diag.avatar_realized)}",
+        f"brand={tier(diag.brand_selected, diag.brand_realized)}",
+        f"cap={diag.capability_reason}",
+    ]
+    if not diag.raster_ok:
+        reason = diag.raster_reason
+        if len(reason) > 56:
+            reason = reason[:55] + "…"
+        parts.append(f"raster✗ {reason}")
+    return f"[dim]renderers · {' · '.join(parts)}[/dim]"
+
+
 def issue_line(summary: StatusSummary) -> str:
     """The compact setup/status line under the intro — text-first, one line.
 
@@ -295,7 +323,7 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 
 __all__ = (
     "BRAND", "TAGLINE",
-    "welcome_banner", "intro_meta_lines", "issue_line", "agent_pane_lines",
+    "welcome_banner", "intro_meta_lines", "renderer_debug_line", "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",

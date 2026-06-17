@@ -59,6 +59,12 @@ RENDERER_TEXT = "text-mark"  # tier 3 — last-resort text/logo mark
 #   FORGEKIT_AVATAR=text   → force text mark
 _FORCE_ENV = "FORGEKIT_AVATAR"
 
+# Diagnostic flag: when set, the intro shows the SELECTED→REALIZED renderer ids so
+# an operator can tell at a glance whether the real inline image actually rendered
+# or silently degraded. Off by default (no chrome).
+#   FORGEKIT_DEBUG_RENDERERS=1
+_DEBUG_ENV = "FORGEKIT_DEBUG_RENDERERS"
+
 # Terminals/protocols known to support inline graphics. Detection is heuristic
 # (textual-image does the real protocol probing at render time); this gates the
 # *attempt* so a plain terminal never even tries.
@@ -372,6 +378,93 @@ def make_renderer(
     return TextMarkRenderer()
 
 
+# --- diagnostics (FORGEKIT_DEBUG_RENDERERS) --------------------------------
+#
+# Why selected≠realized matters: detection/selection can pick ``real-image`` while
+# the actual ``renderable()`` silently degrades a tier (textual-image missing/
+# incompatible, asset unreadable, raster construction fails). The selected id alone
+# would mislead — these helpers expose what is REALLY on screen vs what was chosen,
+# so an operator can split "asset problem" from "renderer/terminal path problem".
+
+
+def debug_renderers_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
+    """True when ``FORGEKIT_DEBUG_RENDERERS`` is set truthy. Pure given *env*."""
+
+    environ = os.environ if env is None else env
+    return (environ.get(_DEBUG_ENV) or "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def real_image_support() -> Tuple[bool, str]:
+    """Probe whether ``textual-image`` can actually import its inline raster.
+
+    Returns ``(ok, reason)``. This is the import that the real renderers attempt at
+    render time; when it fails (e.g. textual-image needs Python ≥3.10 for
+    ``types.NoneType``) EVERY terminal degrades regardless of its graphics support.
+    """
+
+    try:
+        from textual_image.renderable import Image as _Probe  # noqa: F401,WPS433
+    except Exception as exc:  # noqa: BLE001 - any import failure → no real raster
+        return False, f"{type(exc).__name__}: {exc}"
+    return True, "textual-image import ok"
+
+
+def realized_avatar_id(renderable) -> str:
+    """Classify an avatar ``renderable()`` result back into its actual tier."""
+
+    from rich.text import Text  # noqa: WPS433 - rich is a textual dep, always present
+
+    if isinstance(renderable, str):
+        return RENDERER_TEXT  # tier 3 text mark
+    if isinstance(renderable, Text):
+        return RENDERER_HALFBLOCK  # tier 2 image-derived half-block
+    return RENDERER_REAL  # a textual-image Image renderable (tier 1)
+
+
+def realized_brand_id(renderable) -> str:
+    """Classify a brand ``renderable()`` result back into its actual tier."""
+
+    # brand has no half-block tier: a str is the text wordmark, anything else is
+    # the real inline banner image.
+    return RENDERER_BRAND_TEXT if isinstance(renderable, str) else RENDERER_BRAND_IMAGE
+
+
+@dataclass(frozen=True)
+class RendererDiagnostics:
+    """What was selected vs what actually rendered, for the debug line."""
+
+    avatar_selected: str
+    avatar_realized: str
+    brand_selected: str
+    brand_realized: str
+    capability_reason: str
+    raster_ok: bool
+    raster_reason: str
+
+
+def diagnose_renderers(env: Optional[Mapping[str, str]] = None) -> RendererDiagnostics:
+    """Build the renderer diagnostics for *env* (defaults to the live environment).
+
+    Mirrors exactly what the intro panels do (same ``make_renderer`` /
+    ``make_brand_renderer`` selection), then renders once more to capture the
+    REALIZED tier — so the debug line reflects the real screen, not just intent.
+    """
+
+    cap = detect_image_capability(env)
+    avatar = make_renderer(env=env)
+    brand = make_brand_renderer(env=env)
+    raster_ok, raster_reason = real_image_support()
+    return RendererDiagnostics(
+        avatar_selected=avatar.renderer_id,
+        avatar_realized=realized_avatar_id(avatar.renderable()),
+        brand_selected=brand.renderer_id,
+        brand_realized=realized_brand_id(brand.renderable()),
+        capability_reason=cap.reason,
+        raster_ok=raster_ok,
+        raster_reason=raster_reason,
+    )
+
+
 __all__ = (
     "RENDERER_REAL",
     "RENDERER_HALFBLOCK",
@@ -389,6 +482,12 @@ __all__ = (
     "select_renderer",
     "make_renderer",
     "make_brand_renderer",
+    "debug_renderers_enabled",
+    "real_image_support",
+    "realized_avatar_id",
+    "realized_brand_id",
+    "RendererDiagnostics",
+    "diagnose_renderers",
     "text_mark_lines",
     "brand_wordmark_lines",
     "assets_dir",

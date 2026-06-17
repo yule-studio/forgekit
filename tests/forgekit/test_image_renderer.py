@@ -203,6 +203,51 @@ class FallbackTests(unittest.TestCase):
             ir.best_image_path = orig  # type: ignore[assignment]
 
 
+class DiagnosticsTests(unittest.TestCase):
+    """FORGEKIT_DEBUG_RENDERERS — selected vs realized renderer ids."""
+
+    def test_debug_flag_reads_env(self) -> None:
+        self.assertFalse(ir.debug_renderers_enabled({}))
+        self.assertFalse(ir.debug_renderers_enabled({"FORGEKIT_DEBUG_RENDERERS": "0"}))
+        for on in ("1", "true", "on", "yes", "TRUE"):
+            self.assertTrue(ir.debug_renderers_enabled({"FORGEKIT_DEBUG_RENDERERS": on}), on)
+
+    def test_realized_avatar_classifies_each_tier(self) -> None:
+        from rich.text import Text
+
+        self.assertEqual(ir.realized_avatar_id("forge\nkit"), ir.RENDERER_TEXT)
+        self.assertEqual(ir.realized_avatar_id(Text("▀▀")), ir.RENDERER_HALFBLOCK)
+        # any non-str/non-Text object is treated as the real inline raster
+        self.assertEqual(ir.realized_avatar_id(object()), ir.RENDERER_REAL)
+
+    def test_realized_brand_classifies_text_vs_image(self) -> None:
+        self.assertEqual(ir.realized_brand_id("forgekit"), ir.RENDERER_BRAND_TEXT)
+        self.assertEqual(ir.realized_brand_id(object()), ir.RENDERER_BRAND_IMAGE)
+
+    def test_real_image_support_returns_reason(self) -> None:
+        ok, reason = ir.real_image_support()
+        self.assertIsInstance(ok, bool)
+        self.assertTrue(reason)  # always explains, pass or fail
+
+    def test_diagnose_renderers_fields_are_known_ids(self) -> None:
+        # env-portable: don't assert raster_ok (python-version dependent), only that
+        # the structure is coherent and ids are from the known vocabulary.
+        diag = ir.diagnose_renderers({"TERM_PROGRAM": "iterm.app"})
+        self.assertIn(diag.avatar_selected, (ir.RENDERER_REAL, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT))
+        self.assertIn(diag.avatar_realized, (ir.RENDERER_REAL, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT))
+        self.assertIn(diag.brand_selected, (ir.RENDERER_BRAND_IMAGE, ir.RENDERER_BRAND_TEXT))
+        self.assertIn(diag.brand_realized, (ir.RENDERER_BRAND_IMAGE, ir.RENDERER_BRAND_TEXT))
+        self.assertTrue(diag.capability_reason)
+
+    def test_diagnose_reflects_forced_text_selection(self) -> None:
+        diag = ir.diagnose_renderers({"FORGEKIT_AVATAR": "text"})
+        # forced text → selection is the half-block tier (the not-capable branch),
+        # and it realizes as half-block (asset present) — never the real raster.
+        self.assertEqual(diag.avatar_selected, ir.RENDERER_HALFBLOCK)
+        self.assertEqual(diag.brand_selected, ir.RENDERER_BRAND_TEXT)
+        self.assertNotEqual(diag.avatar_realized, ir.RENDERER_REAL)
+
+
 class BrandBannerTests(unittest.TestCase):
     """The intro brand mark: REAL inline banner image first, else text wordmark."""
 
