@@ -421,6 +421,20 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     return (help_tab, general, commands_tab, agents_tab, about)
 
 
+def source_status_lines(registry) -> Tuple[str, ...]:
+    """Render the source registry — LIVE (free-first) vs PLANNED (no fake live)."""
+
+    lines = [f"[b {_ACCENT}]» source registry[/b {_ACCENT}]", "  [b]live (no-cost first)[/b]"]
+    for c in registry.cost_ordered_live():
+        s = c.spec
+        lines.append(f"    [{_OK}]●[/{_OK}] {s.id:<12} [dim]{s.cost_class}·{s.ingest_method}·{s.trust_level}[/dim]")
+    lines.append(f"  [b]planned (미연결 — fake-live 아님)[/b]")
+    for c in registry.planned():
+        s = c.spec
+        lines.append(f"    [{_WARN}]○[/{_WARN}] {s.id:<12} [dim]{s.status} — {s.legal_note}[/dim]")
+    return tuple(lines)
+
+
 def auto_decision_lines(decision) -> Tuple[str, ...]:
     """Render an auto orchestration decision (recommend / switch-safe / escalate)."""
 
@@ -522,5 +536,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "result_block",
 )

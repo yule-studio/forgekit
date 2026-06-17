@@ -277,6 +277,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "auto":
             self._run_auto(raw)
             return
+        if parsed.name == "sources":
+            self._show_sources()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -340,6 +343,19 @@ class ForgekitConsoleApp(App):
         if pol is not None and pol.holds_all_actions():
             return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
         return None, ""
+
+    def _show_sources(self) -> None:
+        """`/sources` — the source registry status (live free-first vs planned). No network."""
+
+        from ..sources import default_registry
+
+        log = self._transcript
+        log.write_echo("/sources")
+        registry = default_registry(self.repo_root)
+        for line in render.source_status_lines(registry):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
 
     def _run_auto(self, raw: str) -> None:
         """`/auto <ask>` — classify → recommend, and safe-switch the mode if allowed.
