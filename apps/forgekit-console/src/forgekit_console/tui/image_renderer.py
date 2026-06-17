@@ -458,19 +458,25 @@ class HalfBlockRenderer:
     """
 
     renderer_id: str = RENDERER_HALFBLOCK
-    cols: int = 10  # cells wide — compact intro icon (~5 rows, near the 3-line meta)
+    cols: int = 12  # cells wide — braille avatar (~6 rows) reads the figure clearly
     portrait: bool = False
 
     def _resolve(self):
         from . import halfblock  # local import keeps Pillow optional at import time
 
         path = best_portrait_path() if self.portrait else best_image_path()
-        # the small pixel avatar gets a mild autocontrast so the figure reads better
-        # at compact sizes; the opt-in detailed portrait keeps its tuned bake as-is.
-        rendered = (
-            halfblock.render_halfblock(path, cols=self.cols, contrast=not self.portrait)
-            if path else None
-        )
+        if path is None:
+            rendered = None
+        elif self.portrait:
+            # opt-in detailed portrait → the grayscale half-block (keeps tone).
+            rendered = halfblock.render_halfblock(path, cols=self.cols)
+        else:
+            # the small PIXEL avatar → BRAILLE (2x4 dots/cell, ~8x resolution) so the
+            # headphone / head / face figure reads at this compact size (render spike
+            # result). Falls back to the grayscale half-block if braille can't build.
+            rendered = halfblock.render_braille(
+                path, cols=self.cols, threshold=95
+            ) or halfblock.render_halfblock(path, cols=self.cols, contrast=True)
         if rendered is None:
             # last resort ONLY (no Pillow / asset): the brand badge, then bare text.
             return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()

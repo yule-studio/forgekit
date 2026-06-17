@@ -84,6 +84,57 @@ def render_halfblock(
     return text
 
 
+# Braille cells pack 2 (cols) x 4 (rows) dots → 8x the half-block resolution. For a
+# small line-art pixel avatar that extra resolution recovers the figure (headphone /
+# head / face edges) far better than the 2x1 half-block — at the cost of being mono.
+# Dot → bit map, indexed [row][col]; the glyph is chr(0x2800 + bitmask).
+_BRAILLE_DOT = ((0x01, 0x08), (0x02, 0x10), (0x04, 0x20), (0x40, 0x80))
+
+
+def render_braille(
+    image_path: Path,
+    *,
+    cols: int = 14,
+    threshold: int = 110,
+    color: str = "#e8eaf0",
+):
+    """Return a Rich ``Text`` braille render of *image_path*, or ``None``.
+
+    Higher-resolution monochrome render (2x4 dots/cell): a mild ``autocontrast`` then
+    a threshold lights the brighter pixels (the figure's highlights / line art). Pure
+    given the file; ``None`` when Pillow/rich/asset is unavailable (caller degrades).
+    """
+
+    try:
+        from PIL import Image, ImageOps  # noqa: WPS433 - optional console extra
+        from rich.text import Text  # noqa: WPS433
+    except Exception:  # noqa: BLE001 - Pillow/rich missing → caller falls back
+        return None
+    try:
+        img = ImageOps.autocontrast(Image.open(image_path).convert("L"), cutoff=2)
+    except Exception:  # noqa: BLE001 - unreadable asset → caller falls back
+        return None
+
+    cols = max(4, int(cols))
+    px_w = cols * 2
+    rows = max(2, round(px_w * (img.height / img.width) / 4))
+    img = img.resize((px_w, rows * 4), Image.LANCZOS)
+    px = img.load()
+
+    text = Text(no_wrap=True, end="")
+    for cy in range(rows):
+        for cx in range(cols):
+            bits = 0
+            for ry in range(4):
+                for rx in range(2):
+                    if px[cx * 2 + rx, cy * 4 + ry] >= threshold:
+                        bits |= _BRAILLE_DOT[ry][rx]
+            text.append(chr(0x2800 + bits), style=color)
+        if cy != rows - 1:
+            text.append("\n")
+    return text
+
+
 def halfblock_available(image_path: Optional[Path]) -> bool:
     """True if a half-block render can be produced (Pillow present + asset readable)."""
 
