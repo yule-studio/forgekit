@@ -7,6 +7,11 @@ honest about macOS TCC blocking — never a fake read, raw never copied into rep
 
 from __future__ import annotations
 
+from .discomfort import (
+    DesignDiscomfort,
+    analyze_discomfort,
+    promote_to_packet,
+)
 from .packet import (
     DesignReferencePacket,
     build_reference_packet,
@@ -30,4 +35,5 @@ __all__ = (
     "RAW_DESIGN_BACKUP_PATH", "RestrictedDesignSource",
     "access_request", "access_runbook", "probe_access", "register_design_backup",
     "DesignReferencePacket", "build_reference_packet", "project_for",
+    "DesignDiscomfort", "analyze_discomfort", "promote_to_packet",
 )
