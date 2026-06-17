@@ -323,6 +323,11 @@ ready · /status                        ← issue line (텍스트 1줄, 조용)
   import 가능하면 거기에도 bridge(best-effort).
 - **확인**: 콘솔에서 **`/blocked`** — 열린 반복 실패를 signature·횟수·다음 단계·대안과 함께 본다.
   retry/fallback 으로 결국 성공하더라도 반복 구조가 있으면 ledger 에 남는다(조용한 반복 금지).
+- **wired producer (UI/render)**: 실패 명령(`KIND_ERROR`)은 `command`/`status-surface` kind 로,
+  **`/render` 를 돌렸는데 계속 true-raster 가 아니면** `renderer` kind(reason=`no-true-raster`/
+  `lib-unavailable`/`terminal-no-graphics`)로 자동 기록 — 임계값 도달 시 "왜 fallback 인지 +
+  대안(그래픽 터미널 / Python 3.10+)" 을 RCA 로 띄우고 issue line 을 `● blocked` 배너로 전환.
+  composer/palette 위젯 오류는 명령 실패 경로(`KIND_ERROR`)로 동일하게 capture 된다.
 
 > 경로: ledger/inbox 는 `~/.forgekit/state/`(또는 `$FORGEKIT_HOME/state/`). 모든 IO 는 guarded —
 > 알림/bridge/파일 실패가 에스컬레이션 코어를 절대 깨지 않는다. 순수·stdlib 라 bare CI 에서도 동작.

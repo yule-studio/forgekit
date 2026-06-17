@@ -446,6 +446,30 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             issue = str(app.query_one("#issue", Static).render())
             self.assertIn("blocked", issue)
 
+    async def test_repeated_render_fallback_escalates(self) -> None:
+        """Running /render repeatedly while still on a fallback (headless test env is
+        never true-raster) escalates after the threshold with render alternatives."""
+        from forgekit_console.lifecycle import failure_escalation as fe
+
+        esc = self._tempdir_escalator(threshold=3)
+        app = self._app(escalator=esc)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._execute("/render")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 1/3 — advisory only
+            app._execute("/render")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 2/3
+            app._execute("/render")
+            await pilot.pause()
+            # 3/3 → escalated as a renderer issue with alternatives
+            self.assertTrue(app._blocked)
+            records = fe.read_escalations(esc.ledger_path)
+            self.assertTrue(records)
+            self.assertEqual(records[-1]["kind"], fe.KIND_RENDERER)
+            self.assertTrue(records[-1]["alternatives"])  # alternatives investigated
+
     async def test_blocked_command_lists_escalation(self) -> None:
         """After an escalation, /blocked surfaces the open repeated-failure."""
         app = self._app(escalator=self._tempdir_escalator(threshold=1))
