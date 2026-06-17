@@ -22,6 +22,7 @@ from ..models import (
     StatusSummary,
 )
 from .registry import (
+    H_ABOUT,
     H_AGENT_ENTER,
     H_AGENTS,
     H_CLEAR,
@@ -115,6 +116,14 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     handler = cmd.handler
     if handler == H_HELP:
         return _help_result(ctx)
+    if handler == H_ABOUT:
+        # KIND_HELP with title "about" → the TUI opens the help view on the About
+        # tab AND shows the wide hero art in the header (the 56-col art's home).
+        return CommandResult(
+            kind=KIND_HELP,
+            title="about",
+            lines=("forgekit — about / welcome", "와이드 hero 아트 + 브랜드 정보."),
+        )
     if handler == H_AGENTS:
         return _agents_result(ctx)
     if handler == H_STATUS or handler == H_HARNESS:

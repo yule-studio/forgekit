@@ -370,7 +370,20 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
         "",
         "전체 레지스트리는 `/agents` 로 봅니다.",
     ))
-    return (help_tab, general, commands_tab, agents_tab)
+    about = HelpSection("About", (
+        f"{theme.wordmark('forgekit')} — provider-agnostic 운영자 콘솔.",
+        "",
+        "위 와이드 hero 아트는 첫 진입(빈 세션)과 이 /about 화면에서 보이고,",
+        "작업을 시작하면 상단은 작은 compact 헤더로 접힙니다 (Claude 스타일).",
+        "",
+        "[b]intro 모드[/b]",
+        "  hero      큰 아트 (첫인상 · /about · /welcome)",
+        "  compact   작은 헤더 (typing · palette · transcript 있음)",
+        "  override  FORGEKIT_INTRO_MODE=hero|compact|auto · FORGEKIT_HERO_ART=on|off|auto",
+        "",
+        "[dim]Esc 로 닫고 작업을 계속하면 헤더가 compact 로 접힙니다.[/dim]",
+    ))
+    return (help_tab, general, commands_tab, agents_tab, about)
 
 
 def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:

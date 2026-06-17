@@ -16,6 +16,7 @@ from ..models import AgentInfo
 
 # Handler keys the router dispatches on (kept stable; the router maps these).
 H_HELP = "help"
+H_ABOUT = "about"
 H_AGENTS = "agents"
 H_STATUS = "status"
 H_RUNTIME = "runtime"
@@ -58,6 +59,8 @@ _AGENTS: Tuple[AgentInfo, ...] = (
 # --- Slash commands ---------------------------------------------------------
 _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("help", "이 콘솔의 명령 목록", H_HELP),
+    SlashCommand("about", "forgekit hero/소개 — 와이드 아트 + 브랜드 정보", H_ABOUT),
+    SlashCommand("welcome", "환영 화면 (/about alias)", H_ABOUT),
     SlashCommand("agents", "에이전트 레지스트리 표시", H_AGENTS),
     SlashCommand("status", "운영 대시보드 요약 (provider/eval/self-improve/token)", H_STATUS, "status"),
     SlashCommand("runtime", "runtime status 요약", H_RUNTIME, "status"),

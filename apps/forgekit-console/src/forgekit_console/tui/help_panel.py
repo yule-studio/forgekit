@@ -79,6 +79,16 @@ class HelpPanel(Vertical):
         self._active = render.default_help_tab(sections)
         self._render_active()
 
+    def focus_tab(self, title: str) -> None:
+        """Jump the active tab to the section whose title matches *title* (if any)."""
+
+        sections = render.help_sections(self._commands, self._agents)
+        for i, section in enumerate(sections):
+            if section.title == title:
+                self._active = i
+                self._render_active()
+                return
+
     def switch_tab(self, direction: int) -> None:
         """Move the active tab by *direction* and re-render the SAME widget in place."""
 
