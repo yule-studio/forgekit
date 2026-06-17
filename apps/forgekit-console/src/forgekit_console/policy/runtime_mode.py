@@ -66,6 +66,12 @@ MODE_WATCH = "watch"
 MODE_ALWAYS_ON = "always-on"
 MODE_COST_SAVE = "cost-save"
 MODE_APPROVAL_WAIT = "approval-wait"
+# discovery / self-improve / security / orchestration (stacked on the base 7)
+MODE_AUTO = "auto"
+MODE_IDEA_DISCOVERY = "idea-discovery"
+MODE_VIDEO_WATCH = "video-watch"
+MODE_SELF_IMPROVEMENT = "self-improvement"
+MODE_RED_BLUE = "red-blue"
 
 
 @dataclass(frozen=True)
@@ -141,6 +147,36 @@ RUNTIME_MODES: Tuple[RuntimeMode, ...] = (
         routing_policy=ROUTING_FROM_PROFILE, autonomy=AUTONOMY_MANUAL,
         approval=APPROVAL_HOLD, usage_bias=USAGE_BIAS_STRICT,
         background_loop=False, note_write=False, budget_posture=BUDGET_STRICT,
+    ),
+    RuntimeMode(
+        MODE_AUTO, "Auto", "상황 분류 → 모드 추천/안전 전환/에스컬레이션",
+        routing_policy=ROUTING_FROM_PROFILE, autonomy=AUTONOMY_ASSISTED,
+        approval=APPROVAL_ALL_WRITES, usage_bias=USAGE_BIAS_PROFILE,
+        background_loop=False, note_write=True, budget_posture=BUDGET_NORMAL,
+    ),
+    RuntimeMode(
+        MODE_IDEA_DISCOVERY, "Idea-discovery", "신호 수집 → 경쟁 gap → 아이디어 브리프",
+        routing_policy=pp.POLICY_OPTIMIZED, autonomy=AUTONOMY_ASSISTED,
+        approval=APPROVAL_ALL_WRITES, usage_bias=USAGE_BIAS_ADAPTIVE,
+        background_loop=False, note_write=True, budget_posture=BUDGET_RELAXED,
+    ),
+    RuntimeMode(
+        MODE_VIDEO_WATCH, "Video-watch", "수동 링크/전사/노트 ingest → 요약 → 아이디어 (저비용)",
+        routing_policy=pp.POLICY_STRICT_SINGLE, autonomy=AUTONOMY_ASSISTED,
+        approval=APPROVAL_ALL_WRITES, usage_bias=USAGE_BIAS_ADAPTIVE,
+        background_loop=False, note_write=True, budget_posture=BUDGET_NORMAL,
+    ),
+    RuntimeMode(
+        MODE_SELF_IMPROVEMENT, "Self-improvement", "관측→분류→패킷→위임→대기 (bounded)",
+        routing_policy=pp.POLICY_HYBRID, autonomy=AUTONOMY_BOUNDED,
+        approval=APPROVAL_DESTRUCTIVE, usage_bias=USAGE_BIAS_ADAPTIVE,
+        background_loop=True, note_write=True, budget_posture=BUDGET_STRICT,
+    ),
+    RuntimeMode(
+        MODE_RED_BLUE, "Red-blue", "내 자산 한정 보안 드릴 — plan-first, 승인 필수",
+        routing_policy=pp.POLICY_STRICT_SINGLE, autonomy=AUTONOMY_OBSERVE,
+        approval=APPROVAL_HOLD, usage_bias=USAGE_BIAS_STRICT,
+        background_loop=False, note_write=True, budget_posture=BUDGET_STRICT,
     ),
 )
 
@@ -275,6 +311,8 @@ __all__ = (
     "ROUTING_FROM_PROFILE",
     "MODE_INTERACTIVE", "MODE_DELIVERY", "MODE_RESEARCH", "MODE_WATCH",
     "MODE_ALWAYS_ON", "MODE_COST_SAVE", "MODE_APPROVAL_WAIT",
+    "MODE_AUTO", "MODE_IDEA_DISCOVERY", "MODE_VIDEO_WATCH",
+    "MODE_SELF_IMPROVEMENT", "MODE_RED_BLUE",
     "RuntimeMode", "RUNTIME_MODES", "DEFAULT_MODE",
     "all_modes", "get_mode", "cycle_mode",
     "EffectivePolicy", "resolve_effective_policy",
