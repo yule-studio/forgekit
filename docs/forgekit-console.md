@@ -322,7 +322,34 @@ ready · /status                        ← issue line (텍스트 1줄, 조용)
 | `/clear` | 로그 지우기 |
 | `/quit` · **`/exit`** | 종료 (`/exit` 는 `/quit` alias) |
 
-일반 텍스트는 아직 **live submit 미연결** — 안내만 표시한다.
+### 일반 텍스트 live-submit (slash 가 아닌 입력)
+
+슬래시가 아닌 자유 입력은 **실제 provider 로 live-submit** 된다 — slash 명령과는
+완전히 분리된 경로다. 코드 SSoT 는
+[`chat/service.py`](../apps/forgekit-console/src/forgekit_console/chat/service.py)
+(`SubmitService`) + [`chat/models.py`](../apps/forgekit-console/src/forgekit_console/chat/models.py)
+(`SubmitResult`). 흐름은 TUI 자유 입력 → `app._submit_free_text` (worker thread, UI 비차단)
+→ provider 해석(config 또는 zero-config 로컬 ollama) → `submit_compat` 별 어댑터 →
+transcript append.
+
+provider 상태는 operator 에게 **구분돼서** 표면화된다:
+
+| 상태 | category | 표시 |
+| --- | --- | --- |
+| **live 성공** | `ok` | assistant 응답 + receipt(`↳ provider · model · live · ok`), 입력 비움·포커스 유지 |
+| provider 미설정 | `no_provider_configured` | setup 안내(`~/.forgekit/config.json` 또는 로컬 ollama 실행) |
+| 설정됐으나 auth 누락 | `auth_missing` | 어떤 키(`<ID>_API_KEY`)가 필요한지 + 다음 단계 |
+| 콘솔 미구현 provider | `unsupported_in_console` | live 처럼 보이지 않게 — 왜 안 되는지 + 대안 |
+| endpoint 도달 불가 / 전송 오류 | `endpoint_unreachable` · `transport_error` | 실패 분류 + `/doctor`·`/render` 안내 |
+
+비-live 결과(설정/auth/unsupported/transport)는 **반복 실패 에스컬레이션**(아래)으로도
+넘어가 같은 실패가 임계값 이상이면 operator inbox 로 표면화된다.
+
+**현재 live 인 provider**: openai-compatible HTTP 어댑터 하나가 실제 동작한다 —
+로컬 **ollama**(`auth_kind=none`, `http://localhost:11434`)가 zero-config 로 이를 만족한다.
+**stub/미구현**: CLI provider(`claude`/`codex`, `submit_compat=cli`)와 native/custom-http 는
+콘솔 live-submit 미구현 → `unsupported_in_console` 로 정직하게 보고한다. API-key provider
+(`gemini` 등)는 키가 있으면 같은 openai-compatible 경로를 타고, 없으면 `auth_missing`.
 
 ### 반복 실패 에스컬레이션 (조용한 실패 금지)
 
