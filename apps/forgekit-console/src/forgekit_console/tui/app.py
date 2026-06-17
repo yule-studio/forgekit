@@ -291,6 +291,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "self-improve":
             self._run_self_improve()
             return
+        if parsed.name == "red-blue":
+            self._run_red_blue(raw)
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -394,6 +397,27 @@ class ForgekitConsoleApp(App):
         ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_red_blue(self, raw: str) -> None:
+        """`/red-blue <target>` — build a PLAN-ONLY drill for an allowlisted own asset.
+
+        Never executes: the console only ever builds a dry-run plan (+ defense runbook).
+        Non-allowlisted / public / third-party targets are BLOCKED. An active drill needs
+        a separate explicit operator approval path (not auto-triggered here)."""
+
+        from ..security import build_drill
+
+        target = raw.strip()
+        if target.startswith("/red-blue"):
+            target = target[len("/red-blue"):].strip()
+        target = target or "k3s-isolated"  # default to the isolated own k3s namespace
+        log = self._transcript
+        log.write_echo(raw.strip())
+        packet = build_drill(target, approved=False)  # console NEVER approves active
+        for line in render.security_drill_lines(packet):
             log.write(line)
         self._sync_intro()
         self._follow_tail()

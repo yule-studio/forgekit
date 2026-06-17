@@ -840,6 +840,20 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_red_blue_plan_only_and_blocks_public(self) -> None:
+        """/red-blue is plan-only for an own asset; a public target is BLOCKED."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/red-blue k3s-isolated")     # own isolated asset
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("plan-only", joined)
+            app._execute("/red-blue example.com")      # public → blocked
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("blocked", joined)
+
     async def test_self_improve_scans_and_classifies(self) -> None:
         """/self-improve surfaces risk-classified packets (no execution)."""
         app = self._ready_app("claude")

@@ -435,6 +435,31 @@ def source_status_lines(registry) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def security_drill_lines(packet) -> Tuple[str, ...]:
+    """Render a red/blue drill packet — plan-only / blocked, never auto-executed."""
+
+    t = packet.target
+    if packet.status == "blocked":
+        return (
+            f"[b {_ACCENT}]» red/blue drill[/b {_ACCENT}]",
+            f"  [{_ERR}]blocked[/{_ERR}] [dim]{packet.refusal_reason}[/dim]",
+            f"  [dim]대상 '{t.id}' 은 allowlist 의 격리된 내 자산이 아님 — 공용/3rd-party 금지[/dim]",
+        )
+    lines = [
+        f"[b {_ACCENT}]» red/blue drill — {t.id} ({t.kind})[/b {_ACCENT}]",
+        f"  status: [{_WARN}]{packet.status}[/{_WARN}] · dry_run={packet.attack_plan.dry_run} · "
+        f"approval 필요={packet.requires_approval}",
+        "  [b]red 계획(plan-only, 읽기 점검)[/b]",
+    ]
+    for h in packet.attack_plan.hypotheses:
+        lines.append(f"    · {h}")
+    lines.append("  [b]blue 방어 runbook[/b]")
+    for h in packet.defense_runbook.hardening[:3]:
+        lines.append(f"    · {h}")
+    lines.append(f"  [dim]active 드릴은 operator 승인 후에만 — 지금은 실행되지 않음. 내 자산만.[/dim]")
+    return tuple(lines)
+
+
 def self_improve_lines(result) -> Tuple[str, ...]:
     """Render a self-improvement scan — packets by risk class (no execution)."""
 
@@ -591,5 +616,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "result_block",
 )

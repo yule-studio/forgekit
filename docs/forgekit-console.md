@@ -484,6 +484,22 @@ risk/proposed_change/confidence/owner) 로 패킷화 — 코드 SSoT 는
 - 예시: [`examples/selfimprove/scan.json`](../apps/forgekit-console/examples/selfimprove/scan.json) ·
   회귀: `tests/forgekit/test_selfimprove.py`.
 
+## 2k. red/blue security mode — 내 자산만, plan-first (discovery WT5)
+
+`red-blue` 모드 / `/red-blue <target>`: 보안 드릴을 **내 자산 allowlist + 격리 환경**에만,
+**plan-first(dry-run)** 로 — 코드 SSoT 는
+[`security/`](../apps/forgekit-console/src/forgekit_console/security/). 하드레일이 타입/게이트에 박힘:
+
+- 대상은 allowlist 의 격리된 own asset(own-server / k3s-namespace / localhost)만 **eligible**.
+  공용 인터넷 / 3rd-party / 비격리 → **BLOCKED**(쓸 수 있는 plan 자체를 안 만듦).
+- 기본 **plan-only(dry-run)** — active 드릴은 operator 명시 승인 후에만(콘솔은 절대 자동 승인 안 함).
+- offensive tooling 미생성 — red 가설 + 읽기 점검 + **blue DefenseRunbook(하드닝/탐지/완화)** + purple 합성만.
+- red-blue 런타임 모드는 `approval=hold-all`(최대 게이팅). k3s 격리 runbook:
+  [`examples/security/k3s-isolation-runbook.md`](../apps/forgekit-console/examples/security/k3s-isolation-runbook.md).
+- 예시: [`examples/security/drill-plan.json`](../apps/forgekit-console/examples/security/drill-plan.json)(plan-only) ·
+  [`examples/security/blocked-public.json`](../apps/forgekit-console/examples/security/blocked-public.json)(공용 거부) ·
+  회귀: `tests/forgekit/test_security_redblue.py`.
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**
