@@ -317,11 +317,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 (ir.RENDERER_REAL, ir.RENDERER_AVATAR_MARK, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
-    async def test_composer_is_a_contained_bar(self) -> None:
-        """The composer reads as ONE input BAR: a neat full (rounded) rule around the
-        input row + hint, with a small top gap from the transcript — more than a thin
-        separator, lighter than a heavy box. The input row is the star (accent ›).
-        """
+    async def test_composer_shell_is_a_contained_bar(self) -> None:
+        """The input BAR is the bordered ``#composer-shell`` — a neat full (rounded)
+        rule around the input row + hint, with a top gap from the transcript. More
+        than a thin separator, lighter than a heavy box. Input row is the star (›)."""
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
 
@@ -329,20 +328,21 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            # a full border on all four edges → one contained bar (not a 1-line rule)
-            for edge in (composer.styles.border_top, composer.styles.border_bottom,
-                         composer.styles.border_left, composer.styles.border_right):
+            shell = app.query_one("#composer-shell")
+            # the SHELL carries the full 4-edge border → one contained input bar
+            for edge in (shell.styles.border_top, shell.styles.border_bottom,
+                         shell.styles.border_left, shell.styles.border_right):
                 self.assertNotIn((edge[0] or "").lower(), ("", "none"))
                 self.assertNotEqual((edge[0] or "").lower(), "heavy")  # not a heavy box
-            # a small top margin separates the bar from the transcript above
+            # a top margin separates the bar from the transcript above
             self.assertGreaterEqual(composer.styles.margin.top, 1)
             # left accent prompt marker present
             marker = str(app.query_one("#marker", Static).render())
             self.assertIn("›", marker)
 
-    async def test_slash_palette_opens_below_input_inside_bar(self) -> None:
-        """Slash palette opens DIRECTLY BELOW the input row, inside the composer bar —
-        not above it and not in the transcript (the key Claude-style fix)."""
+    async def test_slash_palette_is_separate_surface_below_the_bar(self) -> None:
+        """Slash palette is a SEPARATE surface BELOW the composer-shell (bar) — not
+        inside the input box, not in the transcript. The key Claude-style fix."""
         from textual.widgets import Input
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
@@ -354,13 +354,16 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
             composer = app.query_one("#composer", Composer).region
+            shell = app.query_one("#composer-shell").region
             inputrow = app.query_one("#inputrow").region
             palette = app.query_one("#palette", CommandPalette).region
-            # palette sits BELOW the input row …
+            # palette is BELOW the whole bar (separate surface, not inside the box)
+            self.assertGreaterEqual(palette.y, shell.bottom)
             self.assertGreaterEqual(palette.y, inputrow.bottom)
-            # … and INSIDE the composer bar (not floating in the transcript)
-            self.assertGreaterEqual(palette.y, composer.y)
+            # still part of the composer wrapper (connected), never in the transcript
             self.assertLessEqual(palette.bottom, composer.bottom)
+            # compact: capped height so it never becomes a giant box
+            self.assertLessEqual(palette.height, 8)
 
     async def test_intro_shows_brand_banner_mark(self) -> None:
         """The intro shows the forgekit BRAND mark (banner image-first / text wordmark)."""
