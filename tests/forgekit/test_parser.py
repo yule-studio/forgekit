@@ -51,7 +51,7 @@ class PaletteTests(unittest.TestCase):
 
     def test_prefix_multiple(self) -> None:
         names = {c.name for c in palette_matches("/a")}
-        self.assertEqual(names, {"agents", "about", "always-on", "auto"})
+        self.assertEqual(names, {"agents", "about", "always-on", "auto", "autopilot"})
 
 
 if __name__ == "__main__":

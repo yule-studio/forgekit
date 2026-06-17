@@ -840,6 +840,21 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_autopilot_allowlist_and_single_executor(self) -> None:
+        """/autopilot runs on an allowlisted repo (executes safe) but refuses others."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/autopilot forgekit")        # allowlisted
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("repo-autopilot", joined)
+            self.assertIn("executor", joined)
+            app._execute("/autopilot random-repo")     # not allowlisted → refused
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("repo 거부", joined)
+
     async def test_red_blue_plan_only_and_blocks_public(self) -> None:
         """/red-blue is plan-only for an own asset; a public target is BLOCKED."""
         app = self._ready_app("claude")

@@ -294,6 +294,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "red-blue":
             self._run_red_blue(raw)
             return
+        if parsed.name == "autopilot":
+            self._run_autopilot(raw)
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -397,6 +400,37 @@ class ForgekitConsoleApp(App):
         ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_autopilot(self, raw: str) -> None:
+        """`/autopilot <repo>` — one bounded repo-autopilot cycle (internal approval chain).
+
+        Repo must be on the allowlist; safe-class findings execute one-executor-at-a-time
+        (internal-approved, no user); risky/restricted are proposed-only."""
+
+        from ..autopilot import AutopilotOrchestrator, RepoFinding
+        from ..sources import RepoLocalCollector
+
+        repo = raw.strip()
+        if repo.startswith("/autopilot"):
+            repo = repo[len("/autopilot"):].strip()
+        repo = repo or "forgekit"
+        log = self._transcript
+        log.write_echo(raw.strip())
+        # observe: derive findings from a repo-local scan (offline)
+        findings = []
+        try:
+            for it in RepoLocalCollector(self.repo_root).collect(limit=6):
+                kind = "docs" if "TODO" in it.title else "gap"
+                findings.append(RepoFinding(repo, it.title, kind=kind))
+        except Exception:  # noqa: BLE001
+            pass
+        findings = findings or [RepoFinding(repo, "docs 보강 필요", kind="docs")]
+        result = AutopilotOrchestrator().run_cycle(
+            repo, findings, risk_of=lambda f: "safe")
+        for line in render.autopilot_lines(result):
             log.write(line)
         self._sync_intro()
         self._follow_tail()
