@@ -51,6 +51,14 @@ class ReadinessReportTests(unittest.TestCase):
         self.assertFalse(rep.true_raster_ready)
         self.assertFalse(ir.is_true_raster(rep.avatar_backend))
 
+    def test_report_surfaces_avatar_asset_mode(self) -> None:
+        # operator can tell terminal-icon (default) vs portrait (opt-in)
+        default = rr.render_readiness_report({"TERM": "xterm-256color"})
+        self.assertEqual(default.avatar_asset, ir.ASSET_TERMINAL_ICON)
+        portrait = rr.render_readiness_report({"FORGEKIT_AVATAR": "portrait"})
+        self.assertEqual(portrait.avatar_asset, ir.ASSET_PORTRAIT)
+        self.assertIn("terminal-icon", "\n".join(rr.render_readiness_lines(env={"TERM": "xterm"})))
+
     def test_readiness_lines_mention_recommendation_when_not_ready(self) -> None:
         lines = rr.render_readiness_lines(env={"TERM": "xterm-256color"})
         joined = "\n".join(lines)

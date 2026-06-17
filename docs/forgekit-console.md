@@ -67,25 +67,28 @@ master 를 크게 띄우지 않는다.
 
 ### 아바타 — 이미지가 1순위, 3-tier 우선순위 (image FIRST)
 
-대표 이미지는 **헤드폰 girl 라인아트 portrait** 다. **source(master)와 display(표시용)를
-분리**하고, 파일명은 **보관용 / master alias / canonical display / runtime alias** 4 갈래로
-정리한다(`assets/avatar/`).
+**방향: 터미널 기본값은 단순화한 "터미널 아이콘", 상세 portrait 는 보관/향후 GUI 자산.**
+작은 터미널 intro slot 에 detail portrait 를 넣으면(true raster 라도) 너무 busy 하고, half-block
+이면 도트로 뭉개진다. 그래서 콘솔 **기본 avatar 는 simplified terminal icon**(헤드폰 girl 의
+정체성은 남기되 2-tone bold 실루엣으로 단순화 — Claude 아이콘처럼 작아도 또렷). detail portrait
+는 archive / 향후 더 큰 surface / opt-in `FORGEKIT_AVATAR=portrait` 용으로 남긴다.
 
 | 분류 | 파일 | 용도 |
 | --- | --- | --- |
-| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-33.png` | **채택** 후보(가장 밝고 또렷) |
-| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-38.png` | 후보(그늘 많음) |
-| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-15-original.png` | 후보(33 보다 부드러움) |
+| 보관용 원본(archive) | `forgekit-avatar-source-2026-06-17-33.png` (+ `-38` · `-2026-06-15-original`) | 채택 후보 3종 |
 | master alias | `avatar-source.png` | bake 입력 master = **채택 원본(33) 과 byte 동일** |
-| canonical display | `forgekit-avatar-display-128.png` / `forgekit-avatar-display-96.png` | 의미 있는 산출물 이름 |
-| **runtime alias** | `forgekit-avatar.png` / `forgekit-avatar-96.png` | **렌더가 실제로 읽는 파일**(canonical 과 byte 동일) |
+| **terminal icon (기본)** | `forgekit-terminal-icon-master.png` / `-128` / `-96` | **단순화 아이콘 — 콘솔 기본 렌더** |
+| **runtime alias** | `forgekit-avatar.png` / `forgekit-avatar-96.png` | **렌더가 실제로 읽는 파일**(terminal-icon-128/96 과 byte 동일) |
+| detail portrait (opt-in/archive) | `forgekit-avatar-display-128.png` / `-96` | 상세 portrait — 향후 GUI / `FORGEKIT_AVATAR=portrait` |
 
-콘솔이 실제로 렌더하는 건 master 가 아니라 그걸 **얼굴/헤드폰 중심으로 crop → contrast 보정
-→ 약한 sharpen → resize** 한 작은 **display** PNG 다 — 코드(`image_renderer`)는 runtime alias
-`forgekit-avatar.png`(= `forgekit-avatar-display-128.png`)를 1순위로 읽는다. master 를 그대로
-무식하게 축소(raw downscale)하면 회로 테두리까지 줄어 작은 셀에서 얼굴이 뭉개지므로 crop+보정
-display asset 을 따로 둔다. `python -m forgekit_console.assets.avatar.bake` 로 재생성하면
-canonical + runtime alias 가 함께(byte 동일하게) 갱신된다 — 결정적.
+콘솔의 **tiny-intro 기본 렌더 = terminal icon** 이다 — 코드(`image_renderer`)는 runtime alias
+`forgekit-avatar.png`(= `forgekit-terminal-icon-128.png`)를 1순위로 읽는다(`display_png_path()`).
+상세 portrait 는 `portrait_png_path()`(`forgekit-avatar-display-128.png`)로 분리되어 opt-in
+portrait 모드(`HalfBlockRenderer`)에서만 쓰인다. terminal icon 은 `bake.py` 의 `_simplify_icon`
+(grayscale→autocontrast→blur→2-tone threshold)로, portrait 는 `_tune_portrait`(crop+contrast+
+sharpen)로 만든다 — `python -m forgekit_console.assets.avatar.bake` 한 번에 둘 다 결정적 생성,
+runtime alias 는 icon 과 byte 동일. operator 는 `/render` 의 `avatar asset` 줄로 지금 terminal-icon
+인지 portrait 인지 본다.
 
 > master 채택: 후보 3개(2026-06-17 33/38 · 2026-06-15 original) 중 얼굴이 가장 밝고 또렷한
 > **33** 을 채택. 작은 크기와 **Python 3.10+ real-image** 양쪽에서 가장 잘 읽힌다. 나머지 2개는

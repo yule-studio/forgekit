@@ -156,27 +156,46 @@ class BakedDisplayAssetTests(unittest.TestCase):
 
         self.assertEqual(bake.SOURCE, ir.source_image_path())
 
-    def test_runtime_alias_is_the_render_path(self) -> None:
-        # the renderer loads the runtime alias (forgekit-avatar.png == display-128).
+    def test_runtime_alias_is_the_terminal_icon(self) -> None:
+        # the DEFAULT render path is the simplified terminal icon (runtime alias).
         from forgekit_console.assets.avatar import bake
 
         self.assertEqual(bake.ALIAS_PRIMARY, ir.display_png_path())
         self.assertEqual(bake.ALIAS_PRIMARY.name, "forgekit-avatar.png")
 
-    def test_canonical_display_assets_present(self) -> None:
+    def test_terminal_icon_assets_present(self) -> None:
         from forgekit_console.assets.avatar import bake
 
-        self.assertTrue(bake.DISPLAY_128.is_file(), "canonical 128 display missing")
-        self.assertTrue(bake.DISPLAY_96.is_file(), "canonical 96 display missing")
-        self.assertEqual(bake.DISPLAY_128.name, "forgekit-avatar-display-128.png")
-        self.assertEqual(bake.DISPLAY_96.name, "forgekit-avatar-display-96.png")
+        self.assertTrue(bake.ICON_MASTER.is_file(), "terminal-icon master missing")
+        self.assertTrue(bake.ICON_128.is_file(), "terminal-icon 128 missing")
+        self.assertTrue(bake.ICON_96.is_file(), "terminal-icon 96 missing")
+        self.assertEqual(bake.ICON_128.name, "forgekit-terminal-icon-128.png")
 
-    def test_aliases_are_byte_identical_to_canonical(self) -> None:
-        # alias == canonical (git dedups the blob); they must never drift.
+    def test_portrait_assets_kept_for_optin_mode(self) -> None:
+        # the detailed portrait is kept (archive / future GUI / FORGEKIT_AVATAR=portrait)
         from forgekit_console.assets.avatar import bake
 
-        self.assertEqual(bake.ALIAS_PRIMARY.read_bytes(), bake.DISPLAY_128.read_bytes())
-        self.assertEqual(bake.ALIAS_SMALL.read_bytes(), bake.DISPLAY_96.read_bytes())
+        self.assertTrue(bake.DISPLAY_128.is_file(), "portrait 128 missing")
+        self.assertTrue(bake.DISPLAY_96.is_file(), "portrait 96 missing")
+        self.assertEqual(ir.portrait_png_path().name, "forgekit-avatar-display-128.png")
+
+    def test_icon_is_simpler_and_lighter_than_portrait(self) -> None:
+        # the 2-tone icon compresses far smaller than the detailed portrait — proof
+        # it is a simplified asset, not the portrait shipped as the default.
+        from forgekit_console.assets.avatar import bake
+
+        self.assertLess(bake.ICON_128.stat().st_size, bake.DISPLAY_128.stat().st_size)
+
+    def test_runtime_aliases_are_byte_identical_to_icon(self) -> None:
+        # alias == canonical ICON (git dedups the blob); they must never drift.
+        from forgekit_console.assets.avatar import bake
+
+        self.assertEqual(bake.ALIAS_PRIMARY.read_bytes(), bake.ICON_128.read_bytes())
+        self.assertEqual(bake.ALIAS_SMALL.read_bytes(), bake.ICON_96.read_bytes())
+
+    def test_default_asset_mode_is_terminal_icon(self) -> None:
+        self.assertEqual(ir.avatar_asset_mode({}), ir.ASSET_TERMINAL_ICON)
+        self.assertEqual(ir.avatar_asset_mode({"FORGEKIT_AVATAR": "portrait"}), ir.ASSET_PORTRAIT)
 
     def test_three_source_archives_preserved(self) -> None:
         # all three candidates are kept in-repo so a human can re-pick later.
@@ -265,15 +284,15 @@ class FallbackTests(unittest.TestCase):
             self.assertTrue(ir.is_true_raster(backend))
 
     def test_halfblock_with_missing_asset_uses_text(self) -> None:
-        # ONLY when the image asset is missing does tier 2 fall through to text.
-        orig = ir.best_image_path
-        ir.best_image_path = lambda: None  # type: ignore[assignment]
+        # ONLY when the portrait asset is missing does the half-block fall to text.
+        orig = ir.best_portrait_path
+        ir.best_portrait_path = lambda: None  # type: ignore[assignment]
         try:
             out = ir.HalfBlockRenderer().renderable()
             self.assertIsInstance(out, str)
             self.assertIn("forge", out)
         finally:
-            ir.best_image_path = orig  # type: ignore[assignment]
+            ir.best_portrait_path = orig  # type: ignore[assignment]
 
 
 _ALL_BACKENDS = (
