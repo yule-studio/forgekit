@@ -325,6 +325,11 @@ class DiagnosticsTests(unittest.TestCase):
         for on in ("1", "true", "on", "yes", "TRUE"):
             self.assertTrue(ir.debug_renderers_enabled({"FORGEKIT_DEBUG_RENDERERS": on}), on)
 
+    def test_prime_image_backend_never_raises_and_returns_label(self) -> None:
+        # early-probe entrypoint: returns a backend label (none when absent), no throw.
+        be = ir.prime_image_backend()
+        self.assertIn(be, _ALL_BACKENDS)
+
     def test_image_library_status_separates_import_from_raster(self) -> None:
         ok, reason, backend = ir.image_library_status()
         self.assertIsInstance(ok, bool)
