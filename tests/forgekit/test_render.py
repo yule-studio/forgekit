@@ -146,11 +146,13 @@ class HelpPanelDocumentTests(unittest.TestCase):
         self.assertIn("단축키", joined)
         self.assertNotIn("/quit", joined)
 
-    def test_document_keeps_composer_note(self) -> None:
-        # The help view reminds the operator the input stays open (composer fixed)
+    def test_document_has_esc_close_hint(self) -> None:
+        # The help view (composer hidden in help mode) gives the Esc/Tab guidance.
         secs = self._secs()
         joined = "\n".join(render.help_panel_document(secs, render.default_help_tab(secs)))
-        self.assertIn("입력창", joined)
+        self.assertIn("Esc", joined)
+        self.assertIn("Tab", joined)
+        self.assertNotIn("입력창", joined)  # no stale "input stays open" note
 
     def test_commands_tab_lists_exit_alias(self) -> None:
         secs = self._secs()

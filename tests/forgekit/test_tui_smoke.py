@@ -123,30 +123,29 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(composer.region.y, short_y)
             self.assertTrue(composer.display)
 
-    async def test_composer_below_help_panel_when_help_open(self) -> None:
-        """When help is open the composer still sits right BELOW the help view."""
+    async def test_composer_hidden_in_help_mode_restored_on_close(self) -> None:
+        """Claude-style: the composer BAR is HIDDEN while the help/tab view is open
+        (help reads as its own mode), and restored + focused when help closes."""
         from textual.widgets import Input
         from forgekit_console.tui.composer import Composer
-        from forgekit_console.tui.main_panel import MainPanel
 
         app = self._app()
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
+            self.assertTrue(composer.display)  # visible in normal mode
             app._execute("/help")
             await pilot.pause()
             await pilot.pause()
             self.assertTrue(app._main.help_open)
-            self.assertTrue(composer.display)
-            self.assertTrue(app.query_one("#prompt", Input).display)
-            # composer is below the help content (active content), not at viewport bottom
-            main = app.query_one("#main", MainPanel)
-            self.assertGreaterEqual(composer.region.y, main.region.bottom)
-            # close help → transcript restored, composer still visible below it
+            # composer BAR is hidden in help mode (no stray input bar below help)
+            self.assertFalse(composer.display)
+            # close help → transcript restored, composer bar visible again
             await pilot.press("escape")
             await pilot.pause()
             self.assertFalse(app._main.help_open)
             self.assertTrue(composer.display)
+            self.assertTrue(app.query_one("#prompt", Input).display)
 
     async def test_help_is_view_switch_not_transcript_append(self) -> None:
         """/help switches the main area to the help view; the transcript is hidden,

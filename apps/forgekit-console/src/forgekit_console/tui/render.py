@@ -200,7 +200,7 @@ def help_panel_document(sections: Sequence[HelpSection], active: int) -> Tuple[s
         )
     return (
         theme.wordmark("forgekit") + " [dim]help[/dim]   " + "  ".join(chips),
-        "[dim]Tab 탭 전환 · Esc 로 transcript 로 돌아갑니다 · 입력창은 그대로 열려 있습니다[/dim]",
+        "[dim]Tab 탭 전환 · Esc 로 닫고 transcript 로 돌아가기[/dim]",
         "[dim]" + "─" * 48 + "[/dim]",
         "",
         *sections[active].lines,

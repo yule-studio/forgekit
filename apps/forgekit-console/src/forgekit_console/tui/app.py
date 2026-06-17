@@ -311,15 +311,21 @@ class ForgekitConsoleApp(App):
     def _open_help(self) -> None:
         # Switch the whole main area to the dedicated help view (transcript hidden).
         # Nothing is appended to the transcript — opening/switching tabs re-renders
-        # the help panel in place.
+        # the help panel in place. Claude-style: the composer BAR is HIDDEN in the
+        # help/tab view (the Esc/Tab guidance lives in the help body), so help reads
+        # as its own mode rather than "help with an input bar still stuck below".
         self._close_palette()
         self._main.show_help(self.context.commands, self.context.agents)
+        self.query_one("#composer", Composer).display = False
         self._refresh_chrome()
 
     def _close_help(self) -> None:
-        # Switch back to the transcript exactly as it was (nothing left behind).
+        # Switch back to the transcript exactly as it was (nothing left behind) and
+        # restore the composer bar + focus the input.
         self._main.show_transcript()
+        self.query_one("#composer", Composer).display = True
         self._refresh_chrome()
+        self.query_one("#prompt", Input).focus()
 
     @property
     def _flow(self) -> SessionFlow:
