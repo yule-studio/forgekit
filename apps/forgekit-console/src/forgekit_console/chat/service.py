@@ -1,0 +1,216 @@
+"""Submit service — resolve a provider and submit free text. One live path: ollama.
+
+The seam, top→bottom: TUI free-text → :meth:`SubmitService.submit` → provider
+resolution (config or zero-config local ollama) → a submit adapter keyed by the
+provider's ``submit_compat`` → :class:`SubmitResult`. Exactly ONE adapter is truly
+live in this work tree — **openai-compatible HTTP**, which a local **ollama**
+(``auth_kind=none``) satisfies with zero config. Every other provider/compat is
+reported honestly (auth missing / unsupported in console / unreachable), never a
+"works-like" stub.
+
+Transport is injected (:class:`Transport`) so the resolution + branching logic is
+unit-testable with a fake — and the real :class:`DefaultTransport` uses only stdlib
+``urllib`` (no new dependency).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass, field
+from typing import List, Mapping, Optional, Protocol, Tuple
+
+from ..providers import builtins
+from ..providers.contract import (
+    AUTH_API_KEY,
+    AUTH_NONE,
+    SUBMIT_OPENAI,
+    ProviderSpec,
+)
+from ..providers.registry import build_provider, no_provider_configured
+from ..runtime_paths import config_path
+from . import models as m
+
+
+class Transport(Protocol):
+    """Pluggable IO — real (urllib) in production, fake in tests."""
+
+    def openai_chat(self, *, endpoint: str, model: str, prompt: str, api_key: str = "") -> str:
+        """POST an openai-compatible chat completion; return the assistant text. Raises on failure."""
+
+    def ollama_reachable(self, endpoint: str) -> bool:
+        """True if a local ollama (or compatible) server answers at *endpoint*."""
+
+    def ollama_models(self, endpoint: str) -> Tuple[str, ...]:
+        """Model names the server advertises (best-effort; empty on failure)."""
+
+
+def load_config(env: Optional[Mapping[str, str]] = None) -> dict:
+    """Read ``~/.forgekit/config.json`` (or ``$FORGEKIT_HOME/config.json``). {} if absent."""
+
+    try:
+        raw = config_path(env).read_text(encoding="utf-8")
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+@dataclass
+class SubmitService:
+    """Resolve a provider and submit free text → one honest :class:`SubmitResult`."""
+
+    transport: Transport
+    env: Optional[Mapping[str, str]] = None
+    config: Optional[dict] = None
+
+    def __post_init__(self) -> None:
+        if self.config is None:
+            self.config = load_config(self.env)
+
+    # --- resolution ---------------------------------------------------------
+    def resolve(self) -> Tuple[Optional[ProviderSpec], str]:
+        """Return ``(spec, source)``. Configured provider, else zero-config local ollama."""
+
+        main = str((self.config or {}).get("main_provider", "")
+                   or (self.config or {}).get("id", "")).strip()
+        if main:
+            if builtins.is_builtin(main):
+                return builtins.BUILTIN_PROVIDERS[main], m.SOURCE_CONFIGURED
+            try:  # a custom/enterprise provider config
+                spec = build_provider({**(self.config or {}), "id": main})
+                return spec, m.SOURCE_CONFIGURED
+            except Exception:  # noqa: BLE001 - invalid config → treat as unconfigured
+                pass
+        # nothing configured → a reachable LOCAL ollama is the zero-config live path.
+        if no_provider_configured(self.config) and self.transport.ollama_reachable(builtins.OLLAMA.endpoint):
+            return builtins.OLLAMA, m.SOURCE_LOCAL_DEFAULT
+        return None, m.SOURCE_NONE
+
+    # --- submit -------------------------------------------------------------
+    def submit(self, prompt: str) -> m.SubmitResult:
+        spec, source = self.resolve()
+        if spec is None:
+            return m.SubmitResult(
+                ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=source,
+                text="provider 가 아직 설정되지 않았습니다 — free-text 를 보낼 대상이 없습니다.",
+                next_action="`forgekit` setup 으로 provider 를 설정하거나, 로컬 ollama 를 실행하세요 "
+                            "(http://localhost:11434).",
+            )
+        if spec.submit_compat == SUBMIT_OPENAI:
+            return self._submit_openai(prompt, spec, source)
+        # CLI / native / custom-http → honestly not wired for console live-submit.
+        return m.SubmitResult(
+            ok=False, mode=m.MODE_ERROR, category=m.CAT_UNSUPPORTED, source=source,
+            provider_id=spec.id, provider_label=spec.label,
+            text=f"{spec.label} 는 콘솔 live-submit 이 아직 구현되지 않았습니다 "
+                 f"(submit_compat={spec.submit_compat}).",
+            next_action="로컬 ollama 또는 openai-compatible provider 를 설정하면 free-text 가 live 로 동작합니다.",
+        )
+
+    def _submit_openai(self, prompt: str, spec: ProviderSpec, source: str) -> m.SubmitResult:
+        # auth is the first precondition the operator must satisfy — check it before
+        # the endpoint so an api-key provider reports the actionable "auth_missing".
+        api_key = ""
+        if spec.auth_kind == AUTH_API_KEY:
+            env = os.environ if self.env is None else self.env
+            key_name = f"{spec.id.upper()}_API_KEY"
+            api_key = str(env.get(key_name, "") or "").strip()
+            if not api_key:
+                return m.SubmitResult(
+                    ok=False, mode=m.MODE_ERROR, category=m.CAT_AUTH_MISSING, source=source,
+                    provider_id=spec.id, provider_label=spec.label,
+                    text=f"{spec.label} 는 API 키가 필요합니다 ({key_name} 미설정).",
+                    next_action=f"환경변수 {key_name} 를 설정한 뒤 다시 시도하세요.",
+                )
+        if not spec.endpoint:
+            return m.SubmitResult(
+                ok=False, mode=m.MODE_ERROR, category=m.CAT_TRANSPORT, source=source,
+                provider_id=spec.id, provider_label=spec.label,
+                text=f"{spec.label} endpoint 가 비어 있습니다.",
+                next_action="provider config 의 endpoint 를 설정하세요.",
+            )
+        model = str((self.config or {}).get("model", "")).strip()
+        if not model and spec.auth_kind == AUTH_NONE:  # ollama: pick an installed model
+            models = self.transport.ollama_models(spec.endpoint)
+            model = models[0] if models else ""
+        if not model:
+            model = spec.id  # last-ditch; the server will reject if unknown
+        try:
+            reply = self.transport.openai_chat(
+                endpoint=spec.endpoint, model=model, prompt=prompt, api_key=api_key
+            )
+        except Exception as exc:  # noqa: BLE001 - any transport failure → honest error
+            cat = m.CAT_UNREACHABLE if spec.auth_kind == AUTH_NONE else m.CAT_TRANSPORT
+            return m.SubmitResult(
+                ok=False, mode=m.MODE_ERROR, category=cat, source=source,
+                provider_id=spec.id, provider_label=spec.label, model=model,
+                text=f"{spec.label} 요청 실패: {type(exc).__name__}: {exc}",
+                next_action="endpoint/health 를 `/render` 또는 `/doctor` 로 확인하세요.",
+            )
+        return m.SubmitResult(
+            ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, source=source,
+            provider_id=spec.id, provider_label=spec.label, model=model,
+            text=(reply or "").strip() or "(빈 응답)",
+        )
+
+
+@dataclass
+class DefaultTransport:
+    """Real transport — stdlib ``urllib`` only (no new dependency)."""
+
+    timeout: float = 60.0
+    probe_timeout: float = 2.0
+
+    def openai_chat(self, *, endpoint: str, model: str, prompt: str, api_key: str = "") -> str:
+        import urllib.request
+
+        url = endpoint.rstrip("/") + "/v1/chat/completions"
+        body = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"]
+
+    def ollama_reachable(self, endpoint: str) -> bool:
+        import urllib.request
+
+        try:
+            req = urllib.request.Request(endpoint.rstrip("/") + "/api/tags")
+            with urllib.request.urlopen(req, timeout=self.probe_timeout) as resp:
+                return 200 <= resp.status < 300
+        except Exception:  # noqa: BLE001
+            return False
+
+    def ollama_models(self, endpoint: str) -> Tuple[str, ...]:
+        import urllib.request
+
+        try:
+            req = urllib.request.Request(endpoint.rstrip("/") + "/api/tags")
+            with urllib.request.urlopen(req, timeout=self.probe_timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            return tuple(str(mm.get("name", "")) for mm in data.get("models", []) if mm.get("name"))
+        except Exception:  # noqa: BLE001
+            return ()
+
+
+def build_default_service(env: Optional[Mapping[str, str]] = None) -> SubmitService:
+    """The production submit service (real transport + config from disk)."""
+
+    return SubmitService(transport=DefaultTransport(), env=env)
+
+
+__all__ = (
+    "Transport",
+    "SubmitService",
+    "DefaultTransport",
+    "load_config",
+    "build_default_service",
+)
