@@ -48,6 +48,15 @@ ALIAS_SMALL = _HERE / "forgekit-avatar-96.png"  # runtime alias == ICON_96
 DISPLAY_128 = _HERE / "forgekit-avatar-display-128.png"
 DISPLAY_96 = _HERE / "forgekit-avatar-display-96.png"
 
+# --- ANSI icon (non-raster avatar) ------------------------------------------
+# The RAW source archive (lossless original) and the RUNTIME asset, which is the
+# source run through the sanitizer and re-serialized to the safe SGR-only subset —
+# so the shipped file can never carry an OSC / cursor / private-mode escape no
+# matter what the raw source held. (A future ``-light`` variant could be pre-baked
+# here too; today the light theme is a render-time remap.)
+ANSI_SOURCE = _HERE / "forgekit-avatar-ansi-source.ansi"
+ANSI_DARK = _HERE / "forgekit-avatar-ansi-dark.ansi"
+
 ICON_MASTER_PX = 256
 PRIMARY_PX = 128
 SMALL_PX = 96
@@ -118,6 +127,32 @@ def bake(*, source: Path = SOURCE, icon_source: Path = ICON_SOURCE) -> tuple:
     return tuple(written)
 
 
+def bake_ansi(*, source: Path = ANSI_SOURCE, dark: Path = ANSI_DARK) -> tuple:
+    """Bake the runtime ANSI asset = sanitize(source) re-serialized to safe SGR.
+
+    Pure stdlib (no Pillow) — reads the raw ANSI archive, runs it through the
+    allowlist sanitizer, and writes the canonical SGR-only re-serialization as the
+    runtime ``-dark`` asset. Returns the written paths (empty when the source is
+    absent, so a build without the archive is a no-op rather than an error).
+    """
+
+    if not source.is_file():
+        return ()
+    from ...tui.ansi_icon.sanitizer import sanitize, serialize_clean
+
+    raw = source.read_text(encoding="utf-8", errors="replace")
+    result = sanitize(raw)
+    dark.parent.mkdir(parents=True, exist_ok=True)
+    dark.write_text(serialize_clean(result.doc), encoding="utf-8")
+    return (dark,)
+
+
 if __name__ == "__main__":  # pragma: no cover - build-time tool
-    for p in bake():
+    written = []
+    try:
+        written.extend(bake())  # PNG families (needs Pillow + image sources)
+    except Exception as exc:  # noqa: BLE001 - allow ANSI-only bakes without Pillow
+        print(f"skip PNG bake: {type(exc).__name__}: {exc}")
+    written.extend(bake_ansi())  # ANSI runtime asset (pure stdlib)
+    for p in written:
         print(f"baked {p.name} ({p.stat().st_size} bytes)")
