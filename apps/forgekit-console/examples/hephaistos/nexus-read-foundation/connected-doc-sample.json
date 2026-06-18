@@ -1,0 +1,58 @@
+[
+  {
+    "source_ref": {
+      "kind": "area",
+      "ref": "20-areas/backend/java-spring.md",
+      "status": "exists",
+      "note": "",
+      "title_hint": "",
+      "tags": [],
+      "priority": 0,
+      "restricted": false,
+      "required_for_skill": "",
+      "source_repo": "nexus"
+    },
+    "title": "Java Spring",
+    "summary": "Spring 핵심 area. 에러: bean cycle 주의",
+    "key_points": [
+      "controller 비즈니스 로직 금지",
+      "트랜잭션 경계 service 에 필수"
+    ],
+    "rules": [
+      "controller 비즈니스 로직 금지",
+      "트랜잭션 경계 service 에 필수"
+    ],
+    "snippets": [
+      "@Service\nclass S {}"
+    ],
+    "troubleshooting_signals": [
+      "에러: bean cycle 주의"
+    ],
+    "decision_notes": [],
+    "read_status": "exists",
+    "read_mode": "raw"
+  },
+  {
+    "source_ref": {
+      "kind": "pattern",
+      "ref": "70-restricted/design.md",
+      "status": "restricted",
+      "note": "",
+      "title_hint": "",
+      "tags": [],
+      "priority": 0,
+      "restricted": true,
+      "required_for_skill": "",
+      "source_repo": "nexus"
+    },
+    "title": "70-restricted/design.md",
+    "summary": "restricted source — pattern (raw 비공개, projection only)",
+    "key_points": [],
+    "rules": [],
+    "snippets": [],
+    "troubleshooting_signals": [],
+    "decision_notes": [],
+    "read_status": "restricted",
+    "read_mode": "projection_only"
+  }
+]

@@ -24,6 +24,12 @@ NEXUS_DECISION = "decision"
 SRC_AVAILABLE = "available"
 SRC_NOT_CONNECTED = "not_connected"   # Nexus mount/config absent (planned seam)
 SRC_PLANNED = "planned"
+# exists_status values used by the read path (PR1):
+SRC_UNKNOWN = "unknown"               # not yet resolved
+SRC_EXISTS = "exists"                 # the file is present + readable
+SRC_MISSING = "missing"              # Nexus connected but the path is absent
+SRC_BLOCKED = "blocked"              # present but unreadable (permission/TCC/sandbox)
+SRC_RESTRICTED = "restricted"        # present but raw read gated → projection only
 
 # weapon safety class
 WEAPON_SAFE = "safe"
@@ -33,12 +39,25 @@ WEAPON_RISKY = "risky"
 @dataclass(frozen=True)
 class NexusSourceRef:
     kind: str            # NEXUS_*
-    ref: str             # e.g. "20-areas/backend/java-spring"
-    status: str = SRC_NOT_CONNECTED
+    ref: str             # e.g. "20-areas/backend/java-spring"  (the path)
+    status: str = SRC_NOT_CONNECTED   # exists_status (SRC_*) — resolved by the read path
     note: str = ""
+    title_hint: str = ""
+    tags: Tuple[str, ...] = ()
+    priority: int = 0
+    restricted: bool = False
+    required_for_skill: str = ""
+    source_repo: str = "nexus"
+
+    @property
+    def path(self) -> str:           # spec alias — ``ref`` IS the path
+        return self.ref
 
     def to_dict(self) -> dict:
-        return {"kind": self.kind, "ref": self.ref, "status": self.status, "note": self.note}
+        return {"kind": self.kind, "ref": self.ref, "status": self.status, "note": self.note,
+                "title_hint": self.title_hint, "tags": list(self.tags), "priority": self.priority,
+                "restricted": self.restricted, "required_for_skill": self.required_for_skill,
+                "source_repo": self.source_repo}
 
 
 @dataclass(frozen=True)
