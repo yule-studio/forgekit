@@ -503,6 +503,9 @@ class ForgekitConsoleApp(App):
                       + (" — 초과" if st.over else "") + "[/dim]")
         else:
             log.write("  [dim]budget: 미설정(config 의 daily_token_budget) — unbounded[/dim]")
+        # WT1 #239: honestly surface which live path can yield NATIVE usage vs estimate.
+        log.write("  [dim]usage 정확도: openai-compatible(ollama 등)=native live 가능, "
+                  "그 외 provider=estimate(콘솔 live-submit 미연결)[/dim]")
         # also persist regenerable reports next to the ledger evidence
         try:
             out = self.repo_root / "runs" / "forgekit" / "usage"

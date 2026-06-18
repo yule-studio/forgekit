@@ -35,8 +35,11 @@ from . import models as m
 class Transport(Protocol):
     """Pluggable IO — real (urllib) in production, fake in tests."""
 
-    def openai_chat(self, *, endpoint: str, model: str, prompt: str, api_key: str = "") -> str:
-        """POST an openai-compatible chat completion; return the assistant text. Raises on failure."""
+    def openai_chat(self, *, endpoint: str, model: str, prompt: str, api_key: str = "") -> "m.ChatResult":
+        """POST an openai-compatible chat completion; return a :class:`ChatResult`
+        (assistant text + native ``usage`` when the provider reports it). Raises on
+        failure. A transport MAY still return a bare ``str`` (legacy/fake) — the
+        service normalises that to text-only (usage_basis=estimate)."""
 
     def ollama_reachable(self, endpoint: str) -> bool:
         """True if a local ollama (or compatible) server answers at *endpoint*."""
@@ -185,9 +188,23 @@ class SubmitService:
                 text=f"{spec.label} 요청 실패: {type(exc).__name__}: {exc}",
                 next_action="endpoint/health 를 `/render` 또는 `/doctor` 로 확인하세요.",
             )
-        text = (reply or "").strip() or "(빈 응답)"
-        # usage_basis is ESTIMATE: our openai transport returns only the content, not a
-        # usage block, so token counts are length-estimated (honest — never faked live).
+        # normalise: a transport may return a ChatResult (text + native usage) or a
+        # bare str (legacy/fake → text only, no native usage).
+        if isinstance(reply, m.ChatResult):
+            text, usage = reply.text, reply.usage
+        else:
+            text, usage = reply, None
+        text = (text or "").strip() or "(빈 응답)"
+        # WT1 #239: prefer the provider's NATIVE usage when present; otherwise degrade
+        # to an honest length estimate. live and estimate are never mixed in one row.
+        if usage is not None and usage.usable:
+            return m.SubmitResult(
+                ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, source=source,
+                provider_id=spec.id, provider_label=spec.label, model=model,
+                runtime_mode=runtime_mode, usage_basis=m.USAGE_LIVE,
+                input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens, text=text,
+            )
         in_tok = _estimate_tokens(prompt)
         out_tok = _estimate_tokens(text)
         return m.SubmitResult(
@@ -206,8 +223,10 @@ class DefaultTransport:
     timeout: float = 60.0
     probe_timeout: float = 2.0
 
-    def openai_chat(self, *, endpoint: str, model: str, prompt: str, api_key: str = "") -> str:
+    def openai_chat(self, *, endpoint: str, model: str, prompt: str, api_key: str = "") -> m.ChatResult:
         import urllib.request
+
+        from .usage_parse import parse_openai_usage
 
         url = endpoint.rstrip("/") + "/v1/chat/completions"
         body = json.dumps({
@@ -221,7 +240,10 @@ class DefaultTransport:
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"]
+        text = data["choices"][0]["message"]["content"]
+        # WT1 #239: ollama's /v1/chat/completions (and OpenAI/gemini compat) return a
+        # native usage block on the SAME response — parse it so usage_basis=live.
+        return m.ChatResult(text=text, usage=parse_openai_usage(data))
 
     def ollama_reachable(self, endpoint: str) -> bool:
         import urllib.request

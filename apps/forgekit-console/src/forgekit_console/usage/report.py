@@ -46,7 +46,8 @@ def to_md(roll) -> str:
         "",
         "## 이상 징후 / 절감 포인트",
         f"- throttled {d['throttled']} · fallback {d['fallback']}",
-        "- estimate 비중이 높으면 vendor-native usage 연결 시 정확도↑ (현재 honest estimate)",
+        "- openai-compatible(ollama 등)은 native usage 를 파싱해 **live** 로 기록(#239). "
+        "usage 블록이 없는 응답은 honest estimate 로 degrade — 둘은 합산하지 않음",
     ]) + "\n"
 
 
