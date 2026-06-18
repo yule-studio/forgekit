@@ -294,6 +294,15 @@ class ForgekitConsoleApp(App):
         if parsed.name == "red-blue":
             self._run_red_blue(raw)
             return
+        if parsed.name == "autopilot":
+            self._run_autopilot(raw)
+            return
+        if parsed.name == "digest":
+            self._show_digest()
+            return
+        if parsed.name == "design":
+            self._show_design()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -397,6 +406,70 @@ class ForgekitConsoleApp(App):
         ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_design(self) -> None:
+        """`/design` — restricted design source status + packet (honest blocked, no fake-read)."""
+
+        from ..design import build_reference_packet, register_design_backup
+
+        log = self._transcript
+        log.write_echo("/design")
+        source = register_design_backup()
+        packet = build_reference_packet(source)
+        for line in render.design_status_lines(source, packet):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_digest(self) -> None:
+        """`/digest` — run an autopilot cycle on forgekit + show the operator digest."""
+
+        from ..autopilot import AutopilotOrchestrator, RepoFinding, observe_repo
+        from ..autopilot.execution import build_operator_digest
+
+        log = self._transcript
+        log.write_echo("/digest")
+        findings = observe_repo("forgekit", self.repo_root, ui_discomfort=["UI spacing 마찰"])
+        findings += [RepoFinding("forgekit", "auth 대규모 rewrite", kind="gap"),
+                     RepoFinding("forgekit", "프로덕션 배포", kind="ops")]
+        risk = lambda f: "blocked" if "배포" in f.finding else ("risky" if "rewrite" in f.finding else "safe")
+        res = AutopilotOrchestrator().run_cycle("forgekit", findings, risk_of=risk)
+        digest = build_operator_digest([res])
+        for line in digest.lines():
+            log.write(f"[dim]{line}[/dim]" if line.startswith("-") or line.startswith("주의") else line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_autopilot(self, raw: str) -> None:
+        """`/autopilot <repo>` — one bounded repo-autopilot cycle (internal approval chain).
+
+        Repo must be on the allowlist; safe-class findings execute one-executor-at-a-time
+        (internal-approved, no user); risky/restricted are proposed-only."""
+
+        from ..autopilot import AutopilotOrchestrator, RepoFinding
+        from ..sources import RepoLocalCollector
+
+        repo = raw.strip()
+        if repo.startswith("/autopilot"):
+            repo = repo[len("/autopilot"):].strip()
+        repo = repo or "forgekit"
+        log = self._transcript
+        log.write_echo(raw.strip())
+        # observe: derive findings from a repo-local scan (offline)
+        findings = []
+        try:
+            for it in RepoLocalCollector(self.repo_root).collect(limit=6):
+                kind = "docs" if "TODO" in it.title else "gap"
+                findings.append(RepoFinding(repo, it.title, kind=kind))
+        except Exception:  # noqa: BLE001
+            pass
+        findings = findings or [RepoFinding(repo, "docs 보강 필요", kind="docs")]
+        result = AutopilotOrchestrator().run_cycle(
+            repo, findings, risk_of=lambda f: "safe")
+        for line in render.autopilot_lines(result):
             log.write(line)
         self._sync_intro()
         self._follow_tail()

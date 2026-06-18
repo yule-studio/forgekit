@@ -522,6 +522,58 @@ authored vault note(WT5). 모든 mutation/active 는 gated, planned/blocked 는 
 - end-to-end 회귀: `tests/forgekit/test_discovery_e2e.py` (sources→idea→handoff→self-improve→red/blue).
 - evidence: `examples/discovery/` · `examples/selfimprove/` · `examples/security/` · `examples/sources/`.
 
+## 2m. repo-autopilot — 내부 승인 체계 기반 팀형 자율 (autopilot WT1–6)
+
+`repo-autopilot` 모드 / `/autopilot <repo>`: 특정 레포(allowlist: forgekit/bkurs-fe/bkurs-be)를
+팀처럼 운영한다 — 코드 SSoT 는
+[`autopilot/`](../apps/forgekit-console/src/forgekit_console/autopilot/) +
+[`uiref/`](../apps/forgekit-console/src/forgekit_console/uiref/).
+
+핵심 규칙(하드레일):
+- **user 승인 없음 ≠ internal 승인 없음**: user 없이 돌 수 있지만 **PM→gateway→tech-lead**
+  체계를 거친 `TechLeadDecision` 없이는 specialist 가 실행 불가(`can_specialist_execute`).
+- **approval level**: L0_collect / L1_propose / L2_internal_approve(safe, 자동 가능) /
+  L3_user_approve(risky → 사용자) / L4_restricted(deploy/secret/infra → operator+runbook).
+- **한 번에 한 executor**: `ExecutorArbiter` 단일 슬롯 락 — 나머지는 read/review/queue.
+- **8 phase**: observe→classify→pm_structure→gateway_route→tech_lead_signoff→execute→verify→record.
+- **safe-class만 자동 실행**(allowlist 고정), risky→approval-wait, restricted→runbook. 실행 전
+  `validate_execution`(내부 signoff+diff/file/risk limit) 재검증. failure threshold/kill switch.
+- **UI 불편**: design reference 가 연결됐을 때만 비교, 아니면 **figma_not_connected**(가짜 read 없음, uiref).
+- **operator digest**(`/digest`): 발견/자동실행(내부승인)/승인필요/차단 — "내 승인 없이 가능"=safe뿐 명시.
+- **vault trace**: 누가/왜/무엇/어느 승인 체계로(authorship frontmatter 재사용).
+
+관계: `auto` 가 상황을 repo-autopilot 로 추천 → autopilot 이 관측·패킷화·내부승인·safe 실행 →
+risky/restricted 는 approval-wait/runbook + operator 알림(WT4). `always-on` 은 더 일반적 bounded
+루프, `repo-autopilot` 은 레포-한정 팀형 실행 버전.
+
+- e2e: `tests/forgekit/test_autopilot_e2e.py` · 단위: `test_autopilot_chain/_mode/_observe/_execution`,
+  `test_uiref`. evidence: [`examples/autopilot/`](../apps/forgekit-console/examples/autopilot/).
+
+## 2n. restricted design source + design role split (design WT1–6)
+
+데스크탑 Figma 백업(`/Users/masterway/Desktop/마스터웨이 피그마 백업`, repo 밖·민감)을
+**design role 만** 읽는 read-only restricted source 로 다룬다 — 코드 SSoT 는
+[`design/`](../apps/forgekit-console/src/forgekit_console/design/) (+ vault authorship/uiref 재사용).
+
+- **restricted source gate**: `register_design_backup` 이 access 를 정직하게 probe —
+  macOS TCC 차단 → `blocked`(=`design_source_blocked`, **fake-read 없음**), 없음 → `missing`.
+  non-design role 은 raw 접근 거부 → **projection/packet** 만. raw `.fig`/export 는 repo/vault
+  본문에 **복사 안 함**. `/design` 으로 상태(ok/blocked/missing)+allowed roles+packet 확인.
+- **design role split**: `ux-ui-designer`(흐름/IA/spacing/a11y) · `design-systems-designer`
+  (components/tokens/design-to-code) · `illustration-brand-designer`(hero/brand) ·
+  `design-lead`(종합/handoff). 책임 비겹침, FE 구현은 design 이 안 먹음(명세까지).
+- **DesignReferencePacket + projection**: design role 이 raw 를 압축 → packet(screen/layout/
+  component/spacing/typography/color/interaction/ux_risks/do_not_change/…). 역할별 projection
+  (UX/DesignSystem/Illustration/Frontend/PM/QA)만 노출. blocked → honest scaffold.
+- **discomfort → packet**: UX/시스템/브랜드 불편을 "왜 사용자 문제인지"로 구조화 → owner 별
+  FrontendImplementation/DesignSystemFix/PM packet 으로 승격(reference-aware via uiref).
+- **vault restricted note**: `visibility: restricted`/`publish: false`/`design_source_id`/
+  authorship(cssclass) frontmatter + packet links — raw 미저장("raw=private, vault=index").
+- Figma/MCP live 연결 시 활용, 미연결이면 `figma_not_connected`/`reference_missing` 로 정직.
+- e2e: `tests/forgekit/test_design_e2e.py` · 단위: `test_design_source/_roles/_packet/_discomfort/_vault_note` ·
+  evidence: [`examples/design/`](../apps/forgekit-console/examples/design/)(source-status/reference-packet/
+  discomfort-packet/restricted-note/access-runbook).
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**

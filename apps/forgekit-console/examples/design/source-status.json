@@ -1,0 +1,16 @@
+{
+  "source_id": "figma-backup",
+  "source_path": "/Users/masterway/Desktop/마스터웨이 피그마 백업",
+  "source_type": "figma-backup",
+  "visibility": "restricted",
+  "allowed_roles": [
+    "ux-ui-designer",
+    "design-systems-designer",
+    "illustration-brand-designer",
+    "design-lead"
+  ],
+  "ingest_mode": "read-only",
+  "publishable": false,
+  "last_scanned_at": "",
+  "access_state": "blocked"
+}

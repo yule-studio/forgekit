@@ -72,6 +72,7 @@ MODE_IDEA_DISCOVERY = "idea-discovery"
 MODE_VIDEO_WATCH = "video-watch"
 MODE_SELF_IMPROVEMENT = "self-improvement"
 MODE_RED_BLUE = "red-blue"
+MODE_REPO_AUTOPILOT = "repo-autopilot"
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,12 @@ RUNTIME_MODES: Tuple[RuntimeMode, ...] = (
         routing_policy=pp.POLICY_STRICT_SINGLE, autonomy=AUTONOMY_OBSERVE,
         approval=APPROVAL_HOLD, usage_bias=USAGE_BIAS_STRICT,
         background_loop=False, note_write=True, budget_posture=BUDGET_STRICT,
+    ),
+    RuntimeMode(
+        MODE_REPO_AUTOPILOT, "Repo-autopilot", "내부 승인 체계 기반 팀형 자율 — safe-class만 실행",
+        routing_policy=pp.POLICY_HYBRID, autonomy=AUTONOMY_BOUNDED,
+        approval=APPROVAL_DESTRUCTIVE, usage_bias=USAGE_BIAS_ADAPTIVE,
+        background_loop=True, note_write=True, budget_posture=BUDGET_STRICT,
     ),
 )
 
@@ -312,7 +319,7 @@ __all__ = (
     "MODE_INTERACTIVE", "MODE_DELIVERY", "MODE_RESEARCH", "MODE_WATCH",
     "MODE_ALWAYS_ON", "MODE_COST_SAVE", "MODE_APPROVAL_WAIT",
     "MODE_AUTO", "MODE_IDEA_DISCOVERY", "MODE_VIDEO_WATCH",
-    "MODE_SELF_IMPROVEMENT", "MODE_RED_BLUE",
+    "MODE_SELF_IMPROVEMENT", "MODE_RED_BLUE", "MODE_REPO_AUTOPILOT",
     "RuntimeMode", "RUNTIME_MODES", "DEFAULT_MODE",
     "all_modes", "get_mode", "cycle_mode",
     "EffectivePolicy", "resolve_effective_policy",

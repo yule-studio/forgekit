@@ -44,6 +44,13 @@ AGENT_IDENTITIES: Mapping[str, AgentIdentity] = {
     "qa": AgentIdentity("qa", "QA", "fk-qa", "#9b8cf0", "fk-qa"),
     "security": AgentIdentity("security", "Security", "fk-security", "#ff8c42", "fk-security"),
     "ops-observer": AgentIdentity("ops-observer", "Ops Observer", "fk-ops", "#2f6f7a", "fk-ops"),
+    # design-family roles (design source/role split program)
+    "ux-ui-designer": AgentIdentity("ux-ui-designer", "UX/UI Designer", "fk-ux", "#7dd3fc", "fk-ux"),
+    "design-systems-designer": AgentIdentity("design-systems-designer", "Design Systems",
+                                             "fk-dsys", "#a78bfa", "fk-dsys"),
+    "illustration-brand-designer": AgentIdentity("illustration-brand-designer", "Illustration/Brand",
+                                                 "fk-illus", "#fb7185", "fk-illus"),
+    "design-lead": AgentIdentity("design-lead", "Design Lead", "fk-design-lead", "#22d3ee", "fk-design-lead"),
 }
 
 _FALLBACK = AgentIdentity("forgekit", "forgekit", "fk-agent", "#8b90a0", "fk-agent")

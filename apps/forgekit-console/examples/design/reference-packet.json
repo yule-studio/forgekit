@@ -1,0 +1,22 @@
+{
+  "design_source_id": "figma-backup",
+  "source_type": "backup-asset",
+  "visibility": "restricted",
+  "raw_source_path": "/Users/masterway/Desktop/마스터웨이 피그마 백업",
+  "access_state": "blocked",
+  "screen_list": [],
+  "layout_rules": [],
+  "component_inventory": [],
+  "spacing_scale": [],
+  "typography_rules": [],
+  "color_tokens": [],
+  "interaction_notes": [],
+  "ux_risks": [],
+  "do_not_change": [],
+  "implementation_notes": [],
+  "open_questions": [
+    "raw 접근 허용 또는 export 제공 필요"
+  ],
+  "publishable": false,
+  "note": "design_source_blocked — raw 접근 불가(TCC). design role 이 export 후 채워야 함 (fake 디자인 데이터 없음)."
+}

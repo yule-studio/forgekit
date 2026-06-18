@@ -435,6 +435,52 @@ def source_status_lines(registry) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def design_status_lines(source, packet) -> Tuple[str, ...]:
+    """Render the restricted design source status — access state, roles, packet."""
+
+    state_color = {"ok": _OK, "blocked": _ERR, "missing": _WARN}.get(source.access_state, _MUTED)
+    lines = [
+        f"[b {_ACCENT}]» design source (restricted)[/b {_ACCENT}]",
+        f"  source : {source.source_id} [dim]({source.source_type})[/dim]",
+        f"  access : [{state_color}]{source.access_state}[/{state_color}]"
+        + (" [dim]— design_source_blocked: macOS TCC, fake-read 없음[/dim]"
+           if source.access_state == "blocked" else ""),
+        f"  roles  : {', '.join(source.allowed_roles)} [dim](그 외는 projection)[/dim]",
+        f"  packet : access_state={packet.access_state} · publishable={packet.publishable}",
+    ]
+    if source.access_state != "ok":
+        lines.append("  [dim]raw 미접근 → packet 은 honest scaffold. operator 가 Full Disk Access 부여 또는 export 제공.[/dim]")
+    return tuple(lines)
+
+
+def autopilot_lines(result) -> Tuple[str, ...]:
+    """Render a repo-autopilot cycle — allowlist/halt, executed (1 executor), proposed."""
+
+    if result.blocked_repo:
+        return (
+            f"[b {_ACCENT}]» repo-autopilot[/b {_ACCENT}]",
+            f"  [{_ERR}]repo 거부[/{_ERR}] [dim]{result.halt_reason}[/dim]",
+        )
+    if result.halted:
+        return (
+            f"[b {_ACCENT}]» repo-autopilot — {result.repo}[/b {_ACCENT}]",
+            f"  [{_WARN}]halted[/{_WARN}] [dim]{result.halt_reason}[/dim]",
+        )
+    lines = [
+        f"[b {_ACCENT}]» repo-autopilot — {result.repo}[/b {_ACCENT}]",
+        f"  실행(safe, 내부승인): {len(result.executed)} · 제안(user/operator 필요): {len(result.proposed)}",
+        "  [b]executed (한 번에 한 executor)[/b]",
+    ]
+    for e in result.executed[:5]:
+        lines.append(f"    [{_OK}]●[/{_OK}] {e['executor']:<10} {e['finding'][:44]} [dim](verified)[/dim]")
+    for p in result.proposed[:4]:
+        cls = p.get("decision_class") or p.get("queued_for", "queued")
+        lines.append(f"    [{_WARN}]⏸[/{_WARN}] {p['finding'][:44]} [dim]→ {cls}[/dim]")
+    lines.append(f"  [dim]executor log: {' '.join(result.executor_log) or '—'}[/dim]")
+    lines.append("  [dim]safe-class만 내부승인(PM→gateway→tech-lead)으로 실행 · risky→user · restricted→runbook[/dim]")
+    return tuple(lines)
+
+
 def security_drill_lines(packet) -> Tuple[str, ...]:
     """Render a red/blue drill packet — plan-only / blocked, never auto-executed."""
 
@@ -616,5 +662,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block",
 )
