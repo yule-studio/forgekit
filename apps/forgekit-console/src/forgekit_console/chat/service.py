@@ -69,9 +69,17 @@ class SubmitService:
             self.config = load_config(self.env)
 
     # --- resolution ---------------------------------------------------------
-    def resolve(self) -> Tuple[Optional[ProviderSpec], str]:
-        """Return ``(spec, source)``. Configured provider, else zero-config local ollama."""
+    def resolve(self, *, prefer_provider: str = "") -> Tuple[Optional[ProviderSpec], str]:
+        """Return ``(spec, source)``. Configured provider, else zero-config local ollama.
 
+        ``prefer_provider`` (the runtime mode's routing target, WT-auto) selects that
+        provider when it is a configured/builtin option — so a mode's routing actually
+        steers the live submit, not just the display. Unknown preference → ignored.
+        """
+
+        prefer = (prefer_provider or "").strip()
+        if prefer and builtins.is_builtin(prefer):
+            return builtins.BUILTIN_PROVIDERS[prefer], m.SOURCE_CONFIGURED
         main = str((self.config or {}).get("main_provider", "")
                    or (self.config or {}).get("id", "")).strip()
         if main:
@@ -88,8 +96,8 @@ class SubmitService:
         return None, m.SOURCE_NONE
 
     # --- submit -------------------------------------------------------------
-    def submit(self, prompt: str) -> m.SubmitResult:
-        spec, source = self.resolve()
+    def submit(self, prompt: str, *, prefer_provider: str = "") -> m.SubmitResult:
+        spec, source = self.resolve(prefer_provider=prefer_provider)
         if spec is None:
             return m.SubmitResult(
                 ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=source,

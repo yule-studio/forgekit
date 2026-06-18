@@ -112,6 +112,7 @@ class ForgekitConsoleApp(App):
         self._config = load_config() if config is None else config
         self._setup = resolve_setup_state(self._config)
         self._runtime_mode = _rm.DEFAULT_MODE
+        self._mode_pinned = False  # True once the operator explicitly sets the mode
         self._effective_policy = None
         self._recompute_policy()
         # Operator notifications (WT4): desktop is opt-in (FORGEKIT_NOTIFY, same as the
@@ -258,10 +259,18 @@ class ForgekitConsoleApp(App):
     def _execute(self, raw: str) -> None:
         parsed = parse_input(raw)
         if not parsed.is_slash:
+            from ..policy import runtime_mode as _rm
+
             if self.mode == "agent:product-agent":
                 # In PM mode, free text is a PRODUCT ASK → run the intake→handoff
                 # path (structured packet + role split), NOT a raw live submit.
                 self._run_pm_intake(raw)
+                return
+            if self._runtime_mode == _rm.MODE_IDEA_DISCOVERY:
+                self._run_idea_discovery(raw)
+                return
+            if self._runtime_mode == _rm.MODE_VIDEO_WATCH:
+                self._run_video_watch(raw)
                 return
             # FREE TEXT → live provider submit (NOT the slash command path).
             self._submit_free_text(raw)
@@ -272,6 +281,18 @@ class ForgekitConsoleApp(App):
             return
         if parsed.name == "always-on":
             self._run_always_on_cycle()
+            return
+        if parsed.name == "auto":
+            self._run_auto(raw)
+            return
+        if parsed.name == "sources":
+            self._show_sources()
+            return
+        if parsed.name == "self-improve":
+            self._run_self_improve()
+            return
+        if parsed.name == "red-blue":
+            self._run_red_blue(raw)
             return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
@@ -336,6 +357,122 @@ class ForgekitConsoleApp(App):
         if pol is not None and pol.holds_all_actions():
             return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
         return None, ""
+
+    def _run_idea_discovery(self, raw: str) -> None:
+        """Idea-discovery mode: free text (+ repo-local signals) → briefs, top→handoff hint."""
+
+        from ..discovery import run_idea_discovery
+        from ..sources import RepoLocalCollector
+
+        text = raw.strip()
+        if not text:
+            return
+        log = self._transcript
+        log.write_echo(text)
+        # seed signals = operator ask + a few offline repo-local signals (free)
+        seeds = [s for s in text.replace("\n", ". ").split(".") if len(s.strip()) >= 6] or [text]
+        try:
+            seeds += RepoLocalCollector(self.repo_root).collect(limit=3)
+        except Exception:  # noqa: BLE001
+            pass
+        result = run_idea_discovery(seeds, title="idea-discovery")
+        for line in render.discovery_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_video_watch(self, raw: str) -> None:
+        """Video-watch mode: free text = transcript/notes (or a bare link → reference_only)."""
+
+        from ..discovery import summarize_ingest
+        from ..discovery.video_watch import VideoIngest
+
+        text = raw.strip()
+        if not text:
+            return
+        log = self._transcript
+        log.write_echo(text)
+        # a bare URL → link only (honest reference_only); otherwise treat as transcript/notes
+        is_link = text.startswith("http") and " " not in text
+        ingest = VideoIngest(link=text) if is_link else VideoIngest(notes=text)
+        result = summarize_ingest(ingest)
+        for line in render.video_watch_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_red_blue(self, raw: str) -> None:
+        """`/red-blue <target>` — build a PLAN-ONLY drill for an allowlisted own asset.
+
+        Never executes: the console only ever builds a dry-run plan (+ defense runbook).
+        Non-allowlisted / public / third-party targets are BLOCKED. An active drill needs
+        a separate explicit operator approval path (not auto-triggered here)."""
+
+        from ..security import build_drill
+
+        target = raw.strip()
+        if target.startswith("/red-blue"):
+            target = target[len("/red-blue"):].strip()
+        target = target or "k3s-isolated"  # default to the isolated own k3s namespace
+        log = self._transcript
+        log.write_echo(raw.strip())
+        packet = build_drill(target, approved=False)  # console NEVER approves active
+        for line in render.security_drill_lines(packet):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_self_improve(self) -> None:
+        """`/self-improve` — scan repo for gaps → risk-classified packets (no execution)."""
+
+        from ..selfimprove import run_self_improvement
+
+        log = self._transcript
+        log.write_echo("/self-improve")
+        result = run_self_improvement(self.repo_root, limit=8)
+        for line in render.self_improve_lines(result):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_sources(self) -> None:
+        """`/sources` — the source registry status (live free-first vs planned). No network."""
+
+        from ..sources import default_registry
+
+        log = self._transcript
+        log.write_echo("/sources")
+        registry = default_registry(self.repo_root)
+        for line in render.source_status_lines(registry):
+            log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_auto(self, raw: str) -> None:
+        """`/auto <ask>` — classify → recommend, and safe-switch the mode if allowed.
+
+        Never overrides an explicit operator pin; never auto-switches INTO a gated
+        mode (red-blue / approval-wait) — those are recommend-only. Reason is shown.
+        """
+
+        from ..policy.auto_mode import auto_switch_safe
+
+        ask = raw.strip()
+        if ask.startswith("/auto"):
+            ask = ask[len("/auto"):].strip()
+        log = self._transcript
+        log.write_echo(raw.strip())
+        decision = auto_switch_safe(ask, current_mode=self._runtime_mode,
+                                    operator_pinned=self._mode_pinned)
+        for line in render.auto_decision_lines(decision):
+            log.write(line)
+        if decision.switched:
+            self._runtime_mode = decision.recommended_mode  # auto switch (NOT a pin)
+            self._recompute_policy()
+            self._refresh_issue()
+            self._refresh_chrome()
+        self._sync_intro()
+        self._follow_tail()
 
     def _run_always_on_cycle(self) -> None:
         """Run ONE bounded always-on cycle (observe→classify→packet→handoff→wait).
@@ -424,8 +561,21 @@ class ForgekitConsoleApp(App):
             return None
 
     def _submit_blocking(self, text: str) -> None:
-        result = self._submit_service.submit(text)  # blocking IO (worker thread)
+        # EffectivePolicy enforcement: the mode's routing target steers the provider
+        # (not just display). Resolved on the main thread state, passed into the worker.
+        prefer = self._policy_routing_target()
+        result = self._submit_service.submit(text, prefer_provider=prefer)
         self.call_from_thread(self._on_submit_result, result)
+
+    def _policy_routing_target(self) -> str:
+        pol = self._effective_policy
+        if pol is None:
+            return ""
+        target = pol.routing_target()
+        # only steer when the target is a builtin (a real configured option)
+        from ..providers import builtins as _b
+
+        return target if _b.is_builtin(target) else ""
 
     def _on_submit_result(self, result) -> None:
         log = self._transcript
@@ -663,6 +813,7 @@ class ForgekitConsoleApp(App):
             self._follow_tail()
             return
         self._runtime_mode = rm.cycle_mode(self._runtime_mode, direction)
+        self._mode_pinned = True  # explicit operator action → auto won't override
         self._recompute_policy()
         pol = self._effective_policy
         if pol is not None:

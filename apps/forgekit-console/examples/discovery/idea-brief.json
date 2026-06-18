@@ -1,0 +1,108 @@
+{
+  "reference_bundle": {
+    "title": "SaaS 아이디어",
+    "items": [
+      {
+        "source_id": "operator",
+        "title": "노트 앱 동기화가 느려서 불편하다",
+        "url": ""
+      },
+      {
+        "source_id": "operator",
+        "title": "AI 메모 정리 트렌드가 급상승",
+        "url": ""
+      },
+      {
+        "source_id": "operator",
+        "title": "기존 제품 Notion 은 오프라인이 약함",
+        "url": ""
+      },
+      {
+        "source_id": "operator",
+        "title": "forgekit 콘솔 자체 도움말이 부족하다",
+        "url": ""
+      }
+    ],
+    "summary": "4개 참고 신호 수집"
+  },
+  "gap_map": {
+    "competitors": [
+      "기존 제품 Notion 은 오프라인이 약함"
+    ],
+    "gaps": [
+      "노트 앱 동기화가 느려서 불편하다"
+    ]
+  },
+  "idea_briefs": [
+    {
+      "title": "아이디어: 노트 앱 동기화가 느려서 불편하다",
+      "problem": "노트 앱 동기화가 느려서 불편하다",
+      "target_user": "일반 사용자",
+      "differentiation": {
+        "hypothesis": "'노트 앱 동기화가 느려서 불편하다' 를 기존 대체재보다 더 단순/저비용으로 해결",
+        "rationale": "경쟁 1개 대비 gap 1개 관측"
+      },
+      "next_experiment": {
+        "experiment": "'노트 앱 동기화가 느려서 불편하다' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰",
+        "success_metric": "핵심 작업 완료율 / 재방문 의향"
+      },
+      "references": [
+        {
+          "source_id": "operator",
+          "title": "노트 앱 동기화가 느려서 불편하다",
+          "url": ""
+        },
+        {
+          "source_id": "operator",
+          "title": "AI 메모 정리 트렌드가 급상승",
+          "url": ""
+        },
+        {
+          "source_id": "operator",
+          "title": "기존 제품 Notion 은 오프라인이 약함",
+          "url": ""
+        }
+      ],
+      "score": 0.5
+    },
+    {
+      "title": "아이디어: AI 메모 정리 트렌드가 급상승",
+      "problem": "AI 메모 정리 트렌드가 급상승",
+      "target_user": "일반 사용자",
+      "differentiation": {
+        "hypothesis": "'AI 메모 정리 트렌드가 급상승' 를 기존 대체재보다 더 단순/저비용으로 해결",
+        "rationale": "경쟁 1개 대비 gap 1개 관측"
+      },
+      "next_experiment": {
+        "experiment": "'AI 메모 정리 트렌드가 급상승' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰",
+        "success_metric": "핵심 작업 완료율 / 재방문 의향"
+      },
+      "references": [
+        {
+          "source_id": "operator",
+          "title": "노트 앱 동기화가 느려서 불편하다",
+          "url": ""
+        },
+        {
+          "source_id": "operator",
+          "title": "AI 메모 정리 트렌드가 급상승",
+          "url": ""
+        },
+        {
+          "source_id": "operator",
+          "title": "기존 제품 Notion 은 오프라인이 약함",
+          "url": ""
+        }
+      ],
+      "score": 0.5
+    }
+  ],
+  "self_improve_signals": [
+    {
+      "text": "forgekit 콘솔 자체 도움말이 부족하다",
+      "source_id": "operator",
+      "kind": "self-improve",
+      "score": 0.0
+    }
+  ]
+}

@@ -421,6 +421,115 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     return (help_tab, general, commands_tab, agents_tab, about)
 
 
+def source_status_lines(registry) -> Tuple[str, ...]:
+    """Render the source registry — LIVE (free-first) vs PLANNED (no fake live)."""
+
+    lines = [f"[b {_ACCENT}]» source registry[/b {_ACCENT}]", "  [b]live (no-cost first)[/b]"]
+    for c in registry.cost_ordered_live():
+        s = c.spec
+        lines.append(f"    [{_OK}]●[/{_OK}] {s.id:<12} [dim]{s.cost_class}·{s.ingest_method}·{s.trust_level}[/dim]")
+    lines.append(f"  [b]planned (미연결 — fake-live 아님)[/b]")
+    for c in registry.planned():
+        s = c.spec
+        lines.append(f"    [{_WARN}]○[/{_WARN}] {s.id:<12} [dim]{s.status} — {s.legal_note}[/dim]")
+    return tuple(lines)
+
+
+def security_drill_lines(packet) -> Tuple[str, ...]:
+    """Render a red/blue drill packet — plan-only / blocked, never auto-executed."""
+
+    t = packet.target
+    if packet.status == "blocked":
+        return (
+            f"[b {_ACCENT}]» red/blue drill[/b {_ACCENT}]",
+            f"  [{_ERR}]blocked[/{_ERR}] [dim]{packet.refusal_reason}[/dim]",
+            f"  [dim]대상 '{t.id}' 은 allowlist 의 격리된 내 자산이 아님 — 공용/3rd-party 금지[/dim]",
+        )
+    lines = [
+        f"[b {_ACCENT}]» red/blue drill — {t.id} ({t.kind})[/b {_ACCENT}]",
+        f"  status: [{_WARN}]{packet.status}[/{_WARN}] · dry_run={packet.attack_plan.dry_run} · "
+        f"approval 필요={packet.requires_approval}",
+        "  [b]red 계획(plan-only, 읽기 점검)[/b]",
+    ]
+    for h in packet.attack_plan.hypotheses:
+        lines.append(f"    · {h}")
+    lines.append("  [b]blue 방어 runbook[/b]")
+    for h in packet.defense_runbook.hardening[:3]:
+        lines.append(f"    · {h}")
+    lines.append(f"  [dim]active 드릴은 operator 승인 후에만 — 지금은 실행되지 않음. 내 자산만.[/dim]")
+    return tuple(lines)
+
+
+def self_improve_lines(result) -> Tuple[str, ...]:
+    """Render a self-improvement scan — packets by risk class (no execution)."""
+
+    lines = [
+        f"[b {_ACCENT}]» self-improvement (bounded)[/b {_ACCENT}]",
+        f"  packets: {len(result.packets)} · safe {len(result.safe)} · "
+        f"risky {len(result.risky)} · blocked {len(result.blocked)}",
+    ]
+    for p in result.packets[:6]:
+        tag = {"safe": _OK, "risky": _WARN, "blocked": _ERR}.get(p.risk, _MUTED)
+        lines.append(f"    [{tag}]{p.risk:<7}[/{tag}] {p.finding[:54]}")
+        lines.append(f"        [dim]불편: {p.user_discomfort} · owner {p.recommended_owner}[/dim]")
+    lines.append("  [dim]safe 만 승인 체계 내 자동 가능 · risky→approval-wait · blocked→runbook (자동 실행 없음)[/dim]")
+    return tuple(lines)
+
+
+def discovery_lines(result) -> Tuple[str, ...]:
+    """Render an idea-discovery result — bundle + gap map + top idea briefs."""
+
+    gm = result.gap_map
+    lines = [
+        f"[b {_ACCENT}]» idea-discovery[/b {_ACCENT}]",
+        f"  참고 신호: {len(result.reference_bundle.items)}개  ·  경쟁: {len(gm.competitors)}  ·  gap: {len(gm.gaps)}",
+    ]
+    if result.self_improve_signals:
+        lines.append(f"  [{_WARN}]forgekit 자체 개선 신호 {len(result.self_improve_signals)}개[/{_WARN}] [dim]→ self-improvement 로 분기 가능[/dim]")
+    lines.append("  [b]아이디어 브리프[/b]")
+    for b in result.idea_briefs[:3]:
+        lines.append(f"    [{_OK}]●[/{_OK}] {b.title}  [dim](score {b.score})[/dim]")
+        lines.append(f"        차별화: {b.differentiation.hypothesis}")
+        lines.append(f"        실험: {b.next_experiment.experiment}")
+    if result.idea_briefs:
+        lines.append("  [dim]상위 브리프는 `/pm-agent` 핸드오프로 승격 가능[/dim]")
+    return tuple(lines)
+
+
+def video_watch_lines(result) -> Tuple[str, ...]:
+    """Render a video-watch ingest result — live summary or honest reference_only."""
+
+    if result.status == "reference_only":
+        return (
+            f"[b {_ACCENT}]» video-watch[/b {_ACCENT}]",
+            f"  [{_WARN}]reference_only[/{_WARN}] [dim]{result.note}[/dim]",
+            f"  [dim]ref: {result.reference.get('link','')}[/dim]",
+        )
+    lines = [
+        f"[b {_ACCENT}]» video-watch (저비용 ingest)[/b {_ACCENT}]",
+        f"  요약: {result.summary}",
+        f"  [dim]{result.note}[/dim]",
+    ]
+    for b in result.ideas[:3]:
+        lines.append(f"    [{_OK}]●[/{_OK}] {b.title} [dim](score {b.score})[/dim]")
+    return tuple(lines)
+
+
+def auto_decision_lines(decision) -> Tuple[str, ...]:
+    """Render an auto orchestration decision (recommend / switch-safe / escalate)."""
+
+    lines = [
+        f"[b {_ACCENT}]» auto orchestration[/b {_ACCENT}]",
+        f"  분류: [b]{decision.recommended_mode}[/b]  ·  {decision.decision}",
+        f"  이유: {decision.reason}",
+    ]
+    if decision.switched:
+        lines.append(f"  [{_OK}]→ 모드 전환됨[/{_OK}]")
+    if decision.requires_operator:
+        lines.append(f"  [{_WARN}]⏸ gated 모드 — 자동 전환 안 함, operator 승인 필요[/{_WARN}]")
+    return tuple(lines)
+
+
 def loop_summary_lines(result, *, note: str = "") -> Tuple[str, ...]:
     """Render a bounded always-on LoopResult — phases, handoffs, runbooks, wait state.
 
@@ -507,5 +616,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "result_block",
 )

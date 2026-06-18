@@ -38,6 +38,9 @@ yule --help                   # 기존 engineering CLI (runtime/harness/engineer
 - **알림** — 승인/결정 필요 시 operator inbox + (opt-in `FORGEKIT_NOTIFY`) macOS/Windows desktop.
 - **운영 절차(runbook)** — [docs/forgekit-console.md §2g](docs/forgekit-console.md) · end-to-end 예시
   [`apps/forgekit-console/examples/e2e/bkurs/`](apps/forgekit-console/examples/e2e/bkurs/).
+- **discovery/보안 모드** — `/auto`(상황 분류·안전 전환) · `/sources`(무료 우선 수집원, YouTube/IG/Google은 planned) ·
+  `idea-discovery`(아이디어 브리프) · `video-watch`(저비용 transcript ingest) · `/self-improve`(repo gap→risk 패킷) ·
+  `/red-blue`(내 자산 한정 plan-only 보안 드릴). 관계: [docs/forgekit-console.md §2l](docs/forgekit-console.md).
 
 ### 터미널별 이미지 렌더 (true raster vs fallback)
 

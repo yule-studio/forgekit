@@ -563,7 +563,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self) -> None:
                 self.prompts = []
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.prompts.append(text)
                 return m.SubmitResult(
                     ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
@@ -600,7 +600,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         from forgekit_console.chat import models as m
 
         class FailingService:
-            def submit(self, text):
+            def submit(self, text, **_):
                 return m.SubmitResult(
                     ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER,
                     text="provider 가 아직 설정되지 않았습니다.",
@@ -628,7 +628,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self) -> None:
                 self.calls = 0
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.calls += 1
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
 
@@ -737,7 +737,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         from forgekit_console.tui.header import IntroHeader
 
         class FakeLive:
-            def submit(self, text):
+            def submit(self, text, **_):
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
                                       text="live reply", provider_id="ollama",
                                       provider_label="Ollama", model="x")
@@ -840,6 +840,99 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
 
+    async def test_red_blue_plan_only_and_blocks_public(self) -> None:
+        """/red-blue is plan-only for an own asset; a public target is BLOCKED."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/red-blue k3s-isolated")     # own isolated asset
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("plan-only", joined)
+            app._execute("/red-blue example.com")      # public → blocked
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("blocked", joined)
+
+    async def test_self_improve_scans_and_classifies(self) -> None:
+        """/self-improve surfaces risk-classified packets (no execution)."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/self-improve")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("self-improvement", joined)
+            self.assertIn("packets:", joined)  # scan ran (bounded; no-exec covered by unit test)
+
+    async def test_idea_discovery_mode_produces_briefs(self) -> None:
+        """In idea-discovery mode, free text yields a reference bundle + idea briefs."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._runtime_mode = rm.MODE_IDEA_DISCOVERY
+            app._recompute_policy()
+            app._execute("노트앱 동기화가 느려서 불편하다. 경쟁 제품은 오프라인이 약하다.")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("idea-discovery", joined)
+            self.assertIn("아이디어 브리프", joined)
+
+    async def test_video_watch_link_only_is_reference_only(self) -> None:
+        """Video-watch on a bare link is reference_only (no fake crawl)."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._runtime_mode = rm.MODE_VIDEO_WATCH
+            app._recompute_policy()
+            app._execute("https://youtube.com/watch?v=abc")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("reference_only", joined)
+
+    async def test_auto_recommends_and_safe_switches_mode(self) -> None:
+        """/auto classifies the ask and safely switches the runtime mode (with reason)."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/auto SaaS 아이디어 수집해줘")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("auto orchestration", joined)
+            self.assertIn("이유", joined)
+            self.assertEqual(app._runtime_mode, rm.MODE_IDEA_DISCOVERY)  # safe switch happened
+
+    async def test_auto_does_not_enter_gated_mode(self) -> None:
+        """/auto recommends red-blue but NEVER auto-switches into it (gated)."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            before = app._runtime_mode
+            app._execute("/auto red team 보안 드릴 돌려줘")
+            await pilot.pause()
+            self.assertEqual(app._runtime_mode, before)  # NOT switched into red-blue
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("gated", joined)
+
+    async def test_auto_respects_operator_pin(self) -> None:
+        """An explicit Shift+Tab pin → /auto won't override it."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("shift+tab")  # operator pins a mode
+            pinned = app._runtime_mode
+            app._execute("/auto SaaS 아이디어 수집")
+            await pilot.pause()
+            self.assertEqual(app._runtime_mode, pinned)  # pin respected
+
     async def test_always_on_runs_bounded_cycle_with_runbook(self) -> None:
         """/always-on runs the bounded loop and surfaces a runbook for the privileged
         (infra) area + an operator-wait — never an execution."""
@@ -864,7 +957,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self):
                 self.calls = 0
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.calls += 1
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
 
@@ -893,7 +986,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self):
                 self.calls = 0
 
-            def submit(self, text):
+            def submit(self, text, **_):
                 self.calls += 1
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
 

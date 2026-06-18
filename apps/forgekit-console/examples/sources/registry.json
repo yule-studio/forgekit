@@ -1,0 +1,83 @@
+{
+  "live": [
+    {
+      "id": "repo-local",
+      "label": "Repo-local scan",
+      "source_type": "repo-local",
+      "cost_class": "free",
+      "freshness": "on-demand",
+      "trust_level": "high",
+      "ingest_method": "repo-scan",
+      "legal_note": "own repo — no external call",
+      "status": "live"
+    },
+    {
+      "id": "hackernews",
+      "label": "Hacker News",
+      "source_type": "hackernews",
+      "cost_class": "free",
+      "freshness": "hourly",
+      "trust_level": "medium",
+      "ingest_method": "api",
+      "legal_note": "Algolia HN API — free, attribution friendly",
+      "status": "live"
+    },
+    {
+      "id": "reddit",
+      "label": "r/SaaS",
+      "source_type": "reddit",
+      "cost_class": "free",
+      "freshness": "realtime",
+      "trust_level": "low",
+      "ingest_method": "public-json",
+      "legal_note": "public .json — respect rate limits / no auth-walled data",
+      "status": "live"
+    },
+    {
+      "id": "github",
+      "label": "GitHub search",
+      "source_type": "github",
+      "cost_class": "low",
+      "freshness": "on-demand",
+      "trust_level": "high",
+      "ingest_method": "api",
+      "legal_note": "GitHub REST search — unauth rate-limited; respect ToS",
+      "status": "live"
+    }
+  ],
+  "planned": [
+    {
+      "id": "youtube",
+      "label": "YouTube",
+      "source_type": "youtube",
+      "cost_class": "paid",
+      "freshness": "n/a",
+      "trust_level": "medium",
+      "ingest_method": "future-adapter",
+      "legal_note": "Data API 비용/쿼터 + ToS — 이번 단계 미연결, video-watch 는 수동 ingest",
+      "status": "planned"
+    },
+    {
+      "id": "instagram",
+      "label": "Instagram",
+      "source_type": "instagram",
+      "cost_class": "paid",
+      "freshness": "n/a",
+      "trust_level": "medium",
+      "ingest_method": "future-adapter",
+      "legal_note": "Graph API 승인/ToS 제약 — 미연결",
+      "status": "planned"
+    },
+    {
+      "id": "google",
+      "label": "Google search (paid)",
+      "source_type": "google",
+      "cost_class": "paid",
+      "freshness": "n/a",
+      "trust_level": "medium",
+      "ingest_method": "future-adapter",
+      "legal_note": "유료 search/API 비용 — 미연결, 무료 소스 우선",
+      "status": "planned"
+    }
+  ]
+}
