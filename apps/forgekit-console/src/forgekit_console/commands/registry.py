@@ -26,6 +26,10 @@ H_DOCTOR = "doctor"
 H_RENDER = "render"
 H_BLOCKED = "blocked"
 H_WHOAMI = "whoami"
+H_RESOLVE = "resolve"
+H_HEPHAISTOS = "hephaistos"
+H_SKILLS = "skills"
+H_LOADOUT = "loadout"
 H_AGENT_ENTER = "agent_enter"
 H_LAYOUT = "layout"
 H_QUIT = "quit"
@@ -81,6 +85,10 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("usage", "토큰 사용량 — today rollup(provider/mode/live·estimate) + budget", H_MODE, "status"),
     SlashCommand("blocked", "반복 실패 에스컬레이션 목록 (왜·대안·다음 단계)", H_BLOCKED, "status"),
     SlashCommand("whoami", "agent identity — git author / vault / GitHub App 자격 (`/whoami <agent>`)", H_WHOAMI, "status"),
+    SlashCommand("resolve", "Hephaistos — 요청을 skill/loadout/weapon/source/packet 으로 resolve (`/resolve <요청>`)", H_RESOLVE, "status"),
+    SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
+    SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
+    SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),

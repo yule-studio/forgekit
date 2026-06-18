@@ -23,8 +23,13 @@ class RefilterTests(unittest.TestCase):
         self.assertEqual(s.index, -1)
 
     def test_prefix_filters(self) -> None:
-        s = P.refilter("/he", _CMDS)
+        s = P.refilter("/hel", _CMDS)
         self.assertEqual([c.name for c in s.matches], ["help"])
+
+    def test_prefix_filters_multiple(self) -> None:
+        # /he now matches both help and hephaistos (the skill-forge surface)
+        s = P.refilter("/he", _CMDS)
+        self.assertEqual([c.name for c in s.matches], ["help", "hephaistos"])
 
 
 class CycleTests(unittest.TestCase):
