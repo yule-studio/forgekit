@@ -23,8 +23,16 @@ class AuthorshipMetaTests(unittest.TestCase):
         colors = {i.color for i in A.AGENT_IDENTITIES.values()}
         self.assertEqual(len(css), len(A.AGENT_IDENTITIES))      # unique css classes
         self.assertGreaterEqual(len(colors), 6)                  # visually distinct
-        for key in ("product-agent", "tech-lead", "fe", "be", "devops", "qa", "security"):
+        # AGENT_IDENTITIES is keyed by CANONICAL id (registry SSoT), not abbreviations
+        for key in ("product-manager", "tech-lead", "frontend-engineer",
+                    "backend-engineer", "devops-engineer", "qa-engineer", "security-engineer"):
             self.assertIn(key, A.AGENT_IDENTITIES)
+
+    def test_alias_input_normalizes_to_canonical(self) -> None:
+        # an abbreviation input yields the canonical identity (single SSoT via registry)
+        self.assertEqual(A.identity_for("fe").agent_id, "frontend-engineer")
+        self.assertEqual(A.identity_for("product-agent").agent_id, "product-manager")
+        self.assertEqual(A.identity_for("fe").cssclass, "fk-fe")
 
     def test_frontmatter_carries_authorship_and_handoff(self) -> None:
         note = vault.build_authored_note(
@@ -32,7 +40,7 @@ class AuthorshipMetaTests(unittest.TestCase):
             handoff_from="operator", handoff_to="gateway", phase="intake",
             source_flow="pm-intake", created_at="2026-06-17",
         )
-        for token in ("agent_author: product-agent", "agent_role: Product (PM)",
+        for token in ("agent_author: product-manager", "agent_role: Product (PM)",
                       "handoff_from: operator", "handoff_to: gateway",
                       "phase: intake", "source_flow: pm-intake",
                       "cssclasses: [fk-pm]", "created_at: 2026-06-17"):
@@ -46,7 +54,7 @@ class AuthorshipMetaTests(unittest.TestCase):
         # the colour comes from a cssclass snippet the user adds — real Obsidian
         self.assertIn(".fk-pm", snippet)
         self.assertIn("data-callout", snippet)   # callout theming too
-        self.assertIn(A.AGENT_IDENTITIES["product-agent"].color, snippet)
+        self.assertIn(A.AGENT_IDENTITIES["product-manager"].color, snippet)
 
 
 class HandoffNoteTests(unittest.TestCase):
@@ -68,7 +76,7 @@ class HandoffNoteTests(unittest.TestCase):
         path = vault.write_note(note, tmp, "10-projects/bkurs/be-note.md")
         self.assertIsNotNone(path)
         self.assertTrue(path.exists())
-        self.assertIn("agent_author: be", path.read_text(encoding="utf-8"))
+        self.assertIn("agent_author: backend-engineer", path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
