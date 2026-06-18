@@ -32,6 +32,10 @@ from .registry import (
     H_MODE,
     H_BLOCKED,
     H_WHOAMI,
+    H_RESOLVE,
+    H_HEPHAISTOS,
+    H_SKILLS,
+    H_LOADOUT,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -143,6 +147,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         )
     if handler == H_WHOAMI:
         return _whoami_result(parsed)
+    if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
+        return _hephaistos_result(handler, parsed)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -167,6 +173,26 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     lines.append("")
     lines.append("일반 텍스트는 provider 로 live-submit 됩니다 (provider 미설정 시 setup 안내).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
+
+
+def _hephaistos_result(handler, parsed) -> CommandResult:
+    # Hephaistos operator surfaces — projection over resolver/verifier/nexus_read (pure core).
+    from ..hephaistos import projection as proj
+
+    args = getattr(parsed, "args", ()) or ()
+    request = " ".join(args).strip()
+    if handler == H_HEPHAISTOS:
+        return CommandResult.info("hephaistos", proj.hephaistos_status_lines())
+    if handler == H_LOADOUT:
+        return CommandResult.info("loadout", proj.loadout_lines(args[0] if args else "backend-java-local"))
+    if not request:
+        which = "/resolve" if handler == H_RESOLVE else "/skills"
+        return CommandResult.info(handler, (f"요청을 입력하세요 — `{which} <요청>` "
+                                            "(예: `/resolve Spring Boot JWT refresh token`).",))
+    plan, read = proj.resolve_with_sources(request)
+    if handler == H_RESOLVE:
+        return CommandResult.info("resolve", proj.resolve_summary_lines(plan, read))
+    return CommandResult.info("skills", proj.skills_lines(plan, read))
 
 
 def _whoami_result(parsed) -> CommandResult:
