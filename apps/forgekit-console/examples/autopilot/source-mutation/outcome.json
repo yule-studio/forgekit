@@ -1,0 +1,10 @@
+{
+  "executed": true,
+  "action": "source-format",
+  "path": "apps/forgekit-console/src/forgekit_console/autopilot/runner.py",
+  "lines_changed": 36,
+  "verified": true,
+  "refused_reason": "",
+  "before_hash": "f76b753cc539",
+  "after_hash": "5f8ce8b56eb5"
+}

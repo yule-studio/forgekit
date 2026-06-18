@@ -1,0 +1,12 @@
+"""Bounded execution runner (WT3) — REAL safe-class mutation, hard-capped + verified.   
+
+This is the teeth: autopilot's "execute" actually changes a file (it is NOT a no-op).
+But it is bounded by construction:
+
+* only **safe-class** actions (note / docs-stub / trailing-whitespace format),
+* only paths under an **allowed write prefix** (``runs/`` / ``docs/`` / ``examples/``) —
+  source trees and anything with ``..`` / absolute paths are rejected,   
+* **file + diff caps** enforced before the write,
+* every write is **verified** (re-read) — verify fail → halt, do NOT report success.
+
+It never auto-commits, never touches deploy/secret/infra, never writes outside the
