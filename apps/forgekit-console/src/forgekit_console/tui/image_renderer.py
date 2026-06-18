@@ -386,18 +386,23 @@ _TEXT_MARK: Tuple[str, ...] = (
     "[dim]operator console[/dim]",
 )
 
-# The DEFAULT non-raster avatar: a crisp, brand-safe badge. A detailed portrait
-# cannot survive a ~14-col half-block (it turns to dotty mush), so instead of
-# forcing a muddy portrait we show a clean framed "fk" monogram in the cyan→magenta
-# brand split (forge=f=cyan, kit=k=magenta). Pure box-drawing + markup → crisp at
-# any size, in any terminal, with zero dithering.
+# The DEFAULT non-raster fallback avatar: a crisp, brand-safe badge. A detailed
+# portrait cannot survive a ~14-col half-block (it turns to dotty mush), so instead
+# of forcing a muddy portrait we show a clean SILHOUETTE mark — a headphone arc over
+# a framed "fk" face (forge=f=cyan, kit=k=magenta). Pure box-drawing + markup → crisp
+# at any size, in any terminal, with zero dithering, and the three avatar cues
+# (headphone / face / frame) all read. The brand split is preserved.
+_C1 = theme.ACCENT_PRIMARY      # cyan — forge / left
+_C2 = theme.ACCENT_SECONDARY    # magenta — kit / right
 _AVATAR_MARK: Tuple[str, ...] = (
-    f"[{theme.ACCENT_PRIMARY}]╭──╮[/{theme.ACCENT_PRIMARY}]",
-    f"[{theme.ACCENT_PRIMARY}]│[/{theme.ACCENT_PRIMARY}]"
-    f"[b {theme.ACCENT_PRIMARY}]f[/b {theme.ACCENT_PRIMARY}]"
-    f"[b {theme.ACCENT_SECONDARY}]k[/b {theme.ACCENT_SECONDARY}]"
-    f"[{theme.ACCENT_SECONDARY}]│[/{theme.ACCENT_SECONDARY}]",
-    f"[{theme.ACCENT_SECONDARY}]╰──╯[/{theme.ACCENT_SECONDARY}]",
+    # headphone band (cyan arc → magenta arc)
+    f"[{_C1}]╭─[/{_C1}][{_C2}]─╮[/{_C2}]",
+    # ear-cups hugging the framed face with the fk monogram
+    f"[{_C1}]◖[/{_C1}][{_C1}]▕[/{_C1}]"
+    f"[b {_C1}]f[/b {_C1}][b {_C2}]k[/b {_C2}]"
+    f"[{_C2}]▏[/{_C2}][{_C2}]◗[/{_C2}]",
+    # jaw / frame base
+    f"[{_C1}]╰─[/{_C1}][{_C2}]─╯[/{_C2}]",
 )
 
 
@@ -468,7 +473,8 @@ class HalfBlockRenderer:
     """
 
     renderer_id: str = RENDERER_HALFBLOCK
-    cols: int = 12  # cells wide — braille avatar (~6 rows) reads the figure clearly
+    cols: int = 16  # cells wide — braille avatar; 16 (was 12) resolves the frame +
+                    # head/headphone silhouette instead of a 12-col dotty blob.
     portrait: bool = False
 
     def _resolve(self):
