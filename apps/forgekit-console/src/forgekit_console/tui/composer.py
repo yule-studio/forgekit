@@ -1,22 +1,25 @@
-"""Composer — the SESSION-FOLLOWING inline chat input (mode pill + input + palette).
+"""Composer — a Claude-Code-style input BAR with secondary info BELOW it.
 
-This is the key Claude-Code fix. The composer is **part of the top-aligned
-session flow**, not a footer docked to the viewport bottom. It renders IMMEDIATELY
-AFTER the active content (transcript OR help view) and follows it: a short session
-leaves it near the top with empty space below; as the transcript grows it is
-pushed down (the enclosing :class:`tui.session_flow.SessionFlow` scroll keeps it
-in view). It is ``height: auto`` and carries NO ``dock`` — that is what makes it
-flow inline instead of pinning to the bottom.
+Spec = the Claude Code terminal composer:
 
-The chrome is intentionally minimal (Claude-Code restraint): a single THIN, subtle
-top rule (``border-top: solid $brand-border`` — not a heavy/full box), a left
-prompt marker ``›`` in the accent cyan, and an understated muted mode pill. The
-input row itself is the star — nothing competes with it as a box. The slash
-palette opens inline just above the input (still inside the composer), so it reads
-as part of the input flow rather than a floating dialog.
+    ──────────────────────────────────────────  ← top rule (light grey, full width)
+     > (your input)                              ← the input row (marker + input ONLY)
+    ──────────────────────────────────────────  ← bottom rule (light grey, full width)
+     ▶▶ operator · /help · / palette · ^C quit    ← #hint   (secondary, BELOW the bar)
+       (mode pill / palette list also live below)
 
-The widget owns no command logic; the app drives it (focus, value, palette
-show/hide, mode pill). Pure render strings come from :mod:`tui.render`.
+Key points (Claude fidelity):
+
+* The input bar is bounded by a **light/near-white** top + bottom rule (``$input-rule``)
+  so it reads clearly as the input — full width, no side box.
+* NOTHING sits ABOVE the bar. The mode indicator (``#modepill``) and the shortcut /
+  mode-switch line (``#hint``) are SECONDARY and live BELOW the bar. In the default
+  idle (operator, empty input) state only the ``#hint`` mode line shows; while the
+  user is typing it is reduced; when the slash palette is open the palette takes the
+  space. The app drives that visibility.
+* The slash palette (``#palette``) is a separate flat surface below — no left rule.
+
+It owns no command logic — the app drives ``#modepill`` / ``#hint`` / palette / focus.
 """
 
 from __future__ import annotations
@@ -29,20 +32,21 @@ from .palette import CommandPalette
 
 
 class Composer(Vertical):
-    """Inline session-following composer: palette (top) + mode pill + input (bottom)."""
+    """Input bar (light rules) + secondary mode/hint/palette BELOW it."""
 
     DEFAULT_CSS = """
     Composer {
-        /* NO dock — the composer flows inline right after the active content. */
         height: auto;
+        margin: 1 0 0 0;   /* a clear gap above; FULL width (no side inset) */
         background: $background;
-        /* a single THIN subtle rule (not a heavy/full box) so the bar reads as a
-           quiet separator, letting the input row be the star — Claude restraint. */
-        border-top: solid $brand-border;
         padding: 0;
     }
-    Composer #inputrow {
-        height: 1;
+    /* THE input bar — bounded by a light/near-white top + bottom rule (Claude). */
+    Composer #composer-input-shell {
+        height: auto;
+        background: $background;
+        border-top: solid $input-rule;
+        border-bottom: solid $input-rule;
         padding: 0 1;
     }
     Composer #marker {
@@ -50,25 +54,35 @@ class Composer(Vertical):
         padding: 0 1 0 0;
         color: $accent;
     }
-    Composer #modepill {
-        width: auto;
-        padding: 0 1 0 0;
-    }
     Composer #prompt {
+        width: 1fr;
         border: none;
         background: $background;
         height: 1;
         padding: 0;
     }
+    /* secondary — BELOW the bar. mode pill (agent/palette only) then the hint line. */
+    Composer #modepill {
+        height: auto;
+        padding: 0 0 0 1;
+    }
+    Composer #hint {
+        height: auto;
+        padding: 0 0 0 1;
+        color: $text-muted;
+    }
     """
 
     def compose(self):
+        # the input BAR first — full-width rule strip, marker `>` + input only.
+        with Horizontal(id="composer-input-shell"):
+            yield Static(f"[{theme.ACCENT_PRIMARY}]>[/{theme.ACCENT_PRIMARY}]", id="marker")
+            yield Input(placeholder="", id="prompt")
+        # SECONDARY rows — BELOW the bar (never above it).
+        yield Static(id="modepill")   # mode indicator (agent/palette); hidden in idle operator
+        yield Static(id="hint")       # the shortcut / mode-switch line (idle only)
+        # the slash palette — a separate flat surface below (no left rule).
         yield CommandPalette(id="palette")
-        with Horizontal(id="inputrow"):
-            # left prompt marker (accent cyan) — Claude-style "›" cursor lead-in
-            yield Static(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}]", id="marker")
-            yield Static(id="modepill")
-            yield Input(placeholder="명령 입력 — `/help` 로 시작", id="prompt")
 
 
 __all__ = ("Composer",)

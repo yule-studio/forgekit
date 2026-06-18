@@ -33,6 +33,7 @@ ACCENT_PRIMARY = "#00d8f0"  # cyan / aqua — the "forge" half of the wordmark
 ACCENT_SECONDARY = "#f23ccf"  # magenta / pink — the "kit" half
 ACCENT_DIM = "#2f6f7a"  # desaturated cyan — quiet accents
 BORDER = "#262a36"  # subtle borders / separators / rules
+INPUT_RULE = "#aeb4c0"  # light/near-white grey — the composer input bar rules (Claude)
 
 WARNING = "#e0b020"  # amber
 SUCCESS = "#3ddc97"  # green
@@ -53,6 +54,7 @@ def css_variables() -> dict:
         "accent-secondary": ACCENT_SECONDARY,
         "accent-dim": ACCENT_DIM,
         "brand-border": BORDER,
+        "input-rule": INPUT_RULE,
         "warning": WARNING,
         "success": SUCCESS,
         "error": ERROR,

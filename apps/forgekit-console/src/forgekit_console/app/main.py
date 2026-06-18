@@ -69,6 +69,17 @@ def launch_console(*, repo_root: Path) -> int:
             sys.stderr.write(_INSTALL_HINT)
             return EXIT_MISSING_TUI
         raise
+
+    # Prime textual-image's backend BEFORE Textual starts: its sixel/TGP probe only
+    # works while stdin is free, so this is what lets a capable terminal resolve to a
+    # true raster instead of halfcell. Best-effort — never blocks launch.
+    try:
+        from ..tui import image_renderer
+
+        image_renderer.prime_image_backend()
+    except Exception:  # noqa: BLE001 - diagnostics priming must never break launch
+        pass
+
     ForgekitConsoleApp(repo_root=repo_root).run()
     return EXIT_OK
 

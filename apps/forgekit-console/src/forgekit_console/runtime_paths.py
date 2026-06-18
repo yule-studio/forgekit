@@ -47,6 +47,24 @@ def config_path(env: Optional[Mapping[str, str]] = None) -> Path:
     return forgekit_home(env) / "config.json"
 
 
+def state_dir(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Local runtime state (escalation ledger / operator inbox). Caller creates it."""
+
+    return forgekit_home(env) / "state"
+
+
+def escalation_ledger_path(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Repeated-failure escalation ledger (JSON). One of the ≥2 surfaces."""
+
+    return state_dir(env) / "failure_escalations.json"
+
+
+def operator_inbox_path(env: Optional[Mapping[str, str]] = None) -> Path:
+    """Operator action inbox (JSON) — escalations that need a human surface here."""
+
+    return state_dir(env) / "operator_inbox.json"
+
+
 __all__ = (
     "ENV_HOME",
     "forgekit_home",
@@ -54,4 +72,7 @@ __all__ = (
     "personal_brain_dir",
     "starter_pack_dir",
     "config_path",
+    "state_dir",
+    "escalation_ledger_path",
+    "operator_inbox_path",
 )

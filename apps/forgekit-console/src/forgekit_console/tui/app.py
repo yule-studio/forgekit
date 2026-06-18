@@ -36,12 +36,13 @@ from ..commands.router import ConsoleContext, build_default_context, route
 from ..models import (
     KIND_AGENT_MODE,
     KIND_CLEAR,
+    KIND_ERROR,
     KIND_HELP,
     KIND_LAYOUT,
     KIND_QUIT,
     MODE_OPERATOR,
 )
-from . import keymap, render, theme
+from . import intro_state, keymap, render, theme
 from .composer import Composer
 from .header import IntroHeader
 from .main_panel import MainPanel
@@ -68,7 +69,14 @@ class ForgekitConsoleApp(App):
         Binding("escape", "dismiss", "dismiss", show=False, priority=True),
     ]
 
-    def __init__(self, *, repo_root: Path, context: Optional[ConsoleContext] = None) -> None:
+    def __init__(
+        self,
+        *,
+        repo_root: Path,
+        context: Optional[ConsoleContext] = None,
+        escalator=None,
+        submit_service=None,
+    ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
         self.context = context or build_default_context(self.repo_root)
@@ -76,6 +84,22 @@ class ForgekitConsoleApp(App):
         self.mode = MODE_OPERATOR
         self._palette = palette_state.CLOSED
         self._suppress_refilter = False
+        # Repeated-failure escalation: same blocked signature past the threshold
+        # (default 3) auto-surfaces a mini-RCA instead of failing silently. Injected
+        # in tests (tempdir paths / fake notifier); built from env in production.
+        if escalator is None:
+            from ..lifecycle.failure_escalation import FailureEscalator
+
+            escalator = FailureEscalator()
+        self._escalator = escalator
+        self._blocked = False
+        # Free-text live-submit: resolves a provider (config or zero-config local
+        # ollama) and submits. Injected in tests (fake transport); real on disk.
+        if submit_service is None:
+            from ..chat.service import build_default_service
+
+            submit_service = build_default_service()
+        self._submit_service = submit_service
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -105,19 +129,19 @@ class ForgekitConsoleApp(App):
             yield Static(id="issue")
             # main area — a transcript XOR help-view state machine (mutually exclusive)
             yield MainPanel(id="main")
-            # session-following inline composer (palette inline, mode pill, input)
+            # session-following inline composer BAR — input row + inline palette
+            # (opens below the input) + the sub-hint row, all inside one bar.
             yield Composer(id="composer")
-            # one-line hint follows the composer
-            yield Static(id="hint")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
         self.sub_title = render.TAGLINE
-        log = self._transcript
-        for line in render.welcome_banner(str(self.repo_root), self.context.profile):
-            log.write(line)
+        # Claude-style idle: the transcript starts EMPTY (no pre-filled welcome
+        # banner). The same `/help · / palette · …` guidance lives in the composer
+        # hint row, so the welcome line was redundant and showed as a stray band.
         self._refresh_issue()
         self._refresh_chrome()
+        self._sync_intro()  # empty + idle → wide hero art; working state → compact
         self.query_one("#prompt", Input).focus()
         self._follow_tail()
 
@@ -126,9 +150,12 @@ class ForgekitConsoleApp(App):
     def on_input_changed(self, event: Input.Changed) -> None:
         if self._suppress_refilter:
             self._suppress_refilter = False
+            self._refresh_chrome()  # keep the below-bar hint in sync (typing vs idle)
             return
         self._palette = palette_state.refilter(event.value, self.context.commands)
         self._render_palette()
+        self._refresh_chrome()  # typing reduces the secondary mode line below the bar
+        self._sync_intro()  # typing (or opening the palette) → fold the hero to compact
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value
@@ -189,6 +216,7 @@ class ForgekitConsoleApp(App):
         else:
             widget.hide()
         self._refresh_chrome()
+        self._sync_intro()  # opening the palette folds a fresh hero to compact
 
     def _close_palette(self) -> None:
         self._palette = palette_state.close()
@@ -203,6 +231,10 @@ class ForgekitConsoleApp(App):
 
     def _execute(self, raw: str) -> None:
         parsed = parse_input(raw)
+        if not parsed.is_slash:
+            # FREE TEXT → live provider submit (NOT the slash command path).
+            self._submit_free_text(raw)
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -212,7 +244,8 @@ class ForgekitConsoleApp(App):
             self._main.show_transcript()
             return
         if result.kind in (KIND_HELP, KIND_LAYOUT):
-            self._open_help()  # /layout also routes to help in this flow
+            # /about · /welcome route here with title "about" → hero + About tab.
+            self._open_help(about=(result.title == "about"))
             return
         log = self._transcript
         log.write_echo(raw)
@@ -220,10 +253,131 @@ class ForgekitConsoleApp(App):
         if result.kind == KIND_AGENT_MODE:
             self.mode = result.title  # router titles agent results as "agent:<id>"
             self._refresh_chrome()
+        if result.kind == KIND_ERROR:
+            self._record_failure(parsed, result)
+        if (parsed.name or "") == "render":
+            self._observe_render()  # repeated blocked render → escalate w/ alternatives
         if parsed.name in _STATUS_COMMANDS:
             self._refresh_issue()
+        # transcript now has content → fold the hero to the compact working header.
+        self._sync_intro()
         # keep the inline composer in view as the session grows (Claude-style tail)
         self._follow_tail()
+
+    # --- free-text live submit ----------------------------------------------
+
+    def _submit_free_text(self, raw: str) -> None:
+        """Echo the user message, then submit to the resolved provider in a worker.
+
+        The submit (HTTP / resolution) runs OFF the event loop so an LLM call never
+        freezes the UI; the result is appended back on the main thread. Free text is
+        a strictly separate path from slash commands.
+        """
+
+        text = raw.strip()
+        if not text:
+            return
+        self._transcript.write_echo(text)  # the user's message
+        self._sync_intro()  # transcript now has content → compact working header
+        self._follow_tail()
+        self.run_worker(
+            lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
+        )
+
+    def _submit_blocking(self, text: str) -> None:
+        result = self._submit_service.submit(text)  # blocking IO (worker thread)
+        self.call_from_thread(self._on_submit_result, result)
+
+    def _on_submit_result(self, result) -> None:
+        log = self._transcript
+        for line in result.to_lines():
+            log.write(line)
+        if not result.ok:
+            self._record_submit_failure(result)
+        self._follow_tail()
+        try:
+            self.query_one("#prompt", Input).focus()
+        except Exception:  # noqa: BLE001 - prompt may be transiently unavailable
+            pass
+
+    def _record_submit_failure(self, result) -> None:
+        """A non-live submit (no provider / auth / unsupported / transport) → escalation."""
+
+        from ..lifecycle.failure_escalation import FailureSignature, KIND_DEPENDENCY
+
+        signature = FailureSignature(
+            KIND_DEPENDENCY, f"submit:{result.category}", result.provider_id or "free-text"
+        )
+        outcome = self._escalator.record_failure(
+            signature, symptom=result.text, evidence=result.receipt(),
+            attempted_fix=result.next_action,
+        )
+        self._surface_escalation(outcome)
+
+    def _record_failure(self, parsed, result) -> None:
+        """Feed a failed command into the escalator; surface advisory or full RCA."""
+
+        from ..lifecycle.failure_escalation import FailureSignature, KIND_COMMAND, KIND_STATUS_SURFACE
+
+        kind = KIND_STATUS_SURFACE if (parsed.name or "") in _STATUS_COMMANDS else KIND_COMMAND
+        signature = FailureSignature(kind, result.title or "error", parsed.name or "")
+        outcome = self._escalator.record_failure(
+            signature, symptom=result.title or "", evidence="\n".join(result.lines)
+        )
+        self._surface_escalation(outcome)
+
+    def _observe_render(self) -> None:
+        """Treat a repeated NON-true-raster render as a blocked UI/render issue.
+
+        The operator ran ``/render`` and it is still a fallback. That is fine ONCE
+        (managed fallback is intentional), but if the same render limitation persists
+        across repeated checks it should not stay silent — past the threshold it
+        escalates with render-specific alternatives (a graphics terminal / Python
+        3.10+) and a blocked banner, so "why won't the real image show" is answered.
+        """
+
+        from ..lifecycle.failure_escalation import FailureSignature, KIND_RENDERER
+        from .render_readiness import render_readiness_report
+
+        from .ansi_icon import render as ar
+
+        report = render_readiness_report()
+        if report.true_raster_ready:
+            return  # real raster — nothing blocked
+        # An UNSAFE/INVALID/missing ANSI asset is a distinct, actionable cause: the
+        # non-raster default could not use the ANSI icon, so name it in the signature.
+        if report.ansi_status in (ar.STATUS_UNSAFE, ar.STATUS_INVALID, ar.STATUS_NO_ASSET):
+            reason = f"ansi-{report.ansi_status}"
+        elif not report.lib_ok:
+            reason = "lib-unavailable"
+        elif "no known" in (report.capability_reason or ""):
+            reason = "terminal-no-graphics"
+        else:
+            reason = "no-true-raster"
+        signature = FailureSignature(KIND_RENDERER, reason, report.avatar_backend)
+        outcome = self._escalator.record_failure(
+            signature,
+            symptom=f"avatar/brand 가 fallback({report.avatar_backend})로 반복 렌더됨",
+            evidence=(
+                f"cap={report.capability_reason} · lib_ok={report.lib_ok} · "
+                f"backend={report.lib_backend} · ansi={report.ansi_status}/{report.ansi_theme}"
+            ),
+            attempted_fix="prime_image_backend (앱 시작 전 early probe)",
+        )
+        self._surface_escalation(outcome)
+
+    def _surface_escalation(self, outcome) -> None:
+        """Surface an escalation outcome: advisory below threshold, full RCA + blocked
+        banner once it crosses it — never a silent repeated failure."""
+
+        log = self._transcript
+        if outcome.escalated and outcome.report is not None:
+            for line in outcome.report.to_lines():
+                log.write(line)
+            self._blocked = True
+            self._refresh_issue()  # flip the issue line to a blocked banner
+        else:
+            log.write(outcome.advisory)
 
     # --- help (a VIEW SWITCH, not a transcript append; composer stays visible) --
 
@@ -233,18 +387,31 @@ class ForgekitConsoleApp(App):
         else:
             self._open_help()
 
-    def _open_help(self) -> None:
+    def _open_help(self, *, about: bool = False) -> None:
         # Switch the whole main area to the dedicated help view (transcript hidden).
         # Nothing is appended to the transcript — opening/switching tabs re-renders
-        # the help panel in place.
+        # the help panel in place. Claude-style: the composer BAR is HIDDEN in the
+        # help/tab view (the Esc/Tab guidance lives in the help body), so help reads
+        # as its own mode rather than "help with an input bar still stuck below".
+        # `about=True` (/about, /welcome) jumps to the About tab AND shows the wide
+        # hero art in the header (the 56-col art's proper home).
         self._close_palette()
-        self._main.show_help(self.context.commands, self.context.agents)
+        self._main.show_help(
+            self.context.commands, self.context.agents,
+            focus_title="About" if about else None,
+        )
+        self.query_one("#composer", Composer).display = False
         self._refresh_chrome()
+        self._sync_intro()  # About → hero; plain /help → compact
 
     def _close_help(self) -> None:
-        # Switch back to the transcript exactly as it was (nothing left behind).
+        # Switch back to the transcript exactly as it was (nothing left behind) and
+        # restore the composer bar + focus the input.
         self._main.show_transcript()
+        self.query_one("#composer", Composer).display = True
         self._refresh_chrome()
+        self._sync_intro()  # leaving About/help → recompute hero vs compact
+        self.query_one("#prompt", Input).focus()
 
     @property
     def _flow(self) -> SessionFlow:
@@ -255,6 +422,42 @@ class ForgekitConsoleApp(App):
 
         # call_after_refresh so the layout (new content height) is settled first.
         self.call_after_refresh(self._flow.follow_tail)
+
+    @property
+    def _intro(self) -> IntroHeader:
+        return self.query_one("#intro", IntroHeader)
+
+    def _about_open(self) -> bool:
+        """True when the help view is open ON the About tab (drives the hero)."""
+
+        if not self._main.help_open:
+            return False
+        sections = render.help_sections(self.context.commands, self.context.agents)
+        idx = self._main.help_panel.active_tab
+        return 0 <= idx < len(sections) and sections[idx].title == "About"
+
+    def _sync_intro(self) -> None:
+        """Recompute the intro mode (hero vs compact) from the live state + env.
+
+        Hero on a fresh, idle, empty session and on the /about surface; compact the
+        moment real work starts (typing, palette, agent mode, or transcript content)
+        — the "big first impression, small while working" rule.
+        """
+
+        try:
+            intro = self._intro
+        except Exception:  # noqa: BLE001 - intro not mounted yet
+            return
+        mode = intro_state.resolve_intro_mode(
+            hero_available=intro.hero_available(),
+            transcript_empty=len(self._transcript.lines) == 0,
+            typing=bool((self._prompt_value() or "").strip()),
+            palette_open=self._palette.is_open,
+            in_agent=self.mode != MODE_OPERATOR,
+            help_open=self._main.help_open,
+            about_open=self._about_open(),
+        )
+        intro.set_mode(mode)
 
     @property
     def _main(self) -> MainPanel:
@@ -274,19 +477,39 @@ class ForgekitConsoleApp(App):
         self._refresh_issue()
 
     def _refresh_issue(self) -> None:
+        if self._blocked:
+            # a repeated failure crossed the threshold — surface a blocked banner
+            # over the normal status line so it can't be missed (details: `/blocked`).
+            self.query_one("#issue", Static).update(render.blocked_banner())
+            return
         summary = self.context.load_operator()
         self.query_one("#issue", Static).update(render.issue_line(summary))
 
     def _refresh_chrome(self) -> None:
         mode = "palette" if self._palette.is_open else self.mode
-        self.query_one("#modepill", Static).update(render.mode_pill(mode, self.context.agents))
+        # Both the mode pill and the hint are SECONDARY rows BELOW the input bar
+        # (Claude-style). The mode pill only appears for agent / palette states; in
+        # the default operator state it is hidden. The hint is the bottom mode line.
+        modepill = self.query_one("#modepill", Static)
+        show_mode = self._palette.is_open or self.mode != MODE_OPERATOR
+        modepill.display = show_mode
+        if show_mode:
+            modepill.update(render.mode_pill(mode, self.context.agents))
+        typing = bool((self._prompt_value() or "").strip())
         self.query_one("#hint", Static).update(
             render.hint_line(
                 palette_open=self._palette.is_open,
                 help_open=self._main.help_open,
                 in_agent=self.mode != MODE_OPERATOR,
+                typing=typing,
             )
         )
+
+    def _prompt_value(self) -> str:
+        try:
+            return self.query_one("#prompt", Input).value
+        except Exception:  # noqa: BLE001 - prompt not mounted yet
+            return ""
 
 
 __all__ = ("ForgekitConsoleApp",)

@@ -32,6 +32,19 @@ terminal:
 
 Nothing here imports textual's App; the widget wiring lives in
 :mod:`tui.avatar_panel`.
+
+Module size
+-----------
+~840 lines (over the 700 warn line, under the 1000 split line). It is intentionally
+kept whole for now: every part shares one tightly-coupled domain — capability →
+backend classification → renderer → policy → diagnostics — and the renderers depend
+on the backend/policy helpers, so splitting would mean a circular seam. The ANSI
+icon path is the one piece that IS split out: its parsing/sanitizing/rendering lives
+in the :mod:`tui.ansi_icon` subpackage and this module only holds the thin selection
+wiring (``RENDERER_ANSI_ICON`` → :class:`~tui.ansi_icon.render.AnsiIconRenderer`).
+The natural future split, if it grows past ~1000, is to lift the diagnostics surface
+(``RendererDiagnostics`` / ``diagnose_renderers`` / ``image_library_status``) into a
+``render_diagnostics`` module while leaving the backend+policy primitives here.
 """
 
 from __future__ import annotations
@@ -42,26 +55,35 @@ from pathlib import Path
 from typing import Mapping, Optional, Protocol, Tuple
 
 from . import theme
+from .ansi_icon import render as ansi_render
+from .ansi_icon.render import AnsiIconRenderer
 
-# The asset the console RENDERS: the baked small display PNG (Claude-icon scale).
-# This is the stable RUNTIME ALIAS, written byte-identical to the canonical
-# `forgekit-avatar-display-128.png` by assets/avatar/bake.py. The renderer loads
-# the alias (not the dated/canonical name) so this constant never churns; it is
-# never the raw master. (Secondary: `forgekit-avatar-96.png` == display-96.)
-_DISPLAY_PNG = "forgekit-avatar.png"
+# The DEFAULT asset the console renders: the simplified TERMINAL ICON (a bold
+# 2-tone headphone silhouette — Claude-icon scale, crisp on black). This is the
+# stable RUNTIME ALIAS, written byte-identical to the canonical
+# `forgekit-terminal-icon-128.png` by assets/avatar/bake.py, so this constant never
+# churns. The detailed portrait is intentionally NOT the tiny-intro default.
+_DISPLAY_PNG = "forgekit-avatar.png"  # == forgekit-terminal-icon-128.png
+# The DETAILED PORTRAIT — kept for a larger/GUI surface and the opt-in portrait mode
+# (`FORGEKIT_AVATAR=portrait`), NOT the terminal default. (Secondary: -96.)
+_PORTRAIT_PNG = "forgekit-avatar-display-128.png"
 # The portrait MASTER alias (human-replaceable; == the adopted source archive,
-# byte-for-byte). Used ONLY if the baked display PNG is somehow absent — the
-# master is never the normal render path.
+# byte-for-byte). Used ONLY if a baked asset is somehow absent — never the normal
+# render path.
 _SOURCE_JPG = "avatar-source.png"
 
 # Renderer identifiers (returned by select_renderer; stable for tests).
-RENDERER_REAL = "real-image"  # tier 1 — inline raster
-RENDERER_HALFBLOCK = "half-block"  # tier 2 — image-derived unicode half-block
-RENDERER_TEXT = "text-mark"  # tier 3 — last-resort text/logo mark
+RENDERER_REAL = "real-image"  # primary — true inline raster (tgp/sixel)
+RENDERER_ANSI_ICON = "ansi-icon"  # DEFAULT non-raster avatar — sanitized ANSI icon
+RENDERER_AVATAR_MARK = "avatar-mark"  # crisp brand badge (last-resort managed fallback)
+RENDERER_HALFBLOCK = "half-block"  # pixel braille/half-block (ANSI's fallback; portrait opt-in)
+RENDERER_TEXT = "text-mark"  # hard fallback — last-resort text/logo mark
 
 # Env var to force a path regardless of detection (operator/testing override).
 #   FORGEKIT_AVATAR=image  → force real image
+#   FORGEKIT_AVATAR=ansi   → force the full sanitized ANSI icon (no width cap)
 #   FORGEKIT_AVATAR=text   → force text mark
+# (also: portrait / halfblock / braille / mark / badge — see make_renderer)
 _FORCE_ENV = "FORGEKIT_AVATAR"
 
 # Diagnostic flag: when set, the intro shows the SELECTED→REALIZED renderer ids so
@@ -120,7 +142,15 @@ def best_banner_path() -> Optional[Path]:
 
 
 def display_png_path() -> Path:
+    """The DEFAULT render asset — the simplified terminal icon (runtime alias)."""
+
     return assets_dir() / _DISPLAY_PNG
+
+
+def portrait_png_path() -> Path:
+    """The DETAILED portrait — for the opt-in portrait mode / a larger surface."""
+
+    return assets_dir() / _PORTRAIT_PNG
 
 
 def source_image_path() -> Path:
@@ -128,7 +158,7 @@ def source_image_path() -> Path:
 
 
 def best_image_path() -> Optional[Path]:
-    """The image to render: the baked small PNG, else the source, else None."""
+    """The default image to render: the terminal icon, else the source, else None."""
 
     png = display_png_path()
     if png.is_file():
@@ -137,6 +167,15 @@ def best_image_path() -> Optional[Path]:
     if src.is_file():
         return src
     return None
+
+
+def best_portrait_path() -> Optional[Path]:
+    """The detailed portrait to render (portrait mode): portrait, else icon, else source."""
+
+    portrait = portrait_png_path()
+    if portrait.is_file():
+        return portrait
+    return best_image_path()
 
 
 @dataclass(frozen=True)
@@ -201,7 +240,11 @@ def select_renderer(capability) -> str:
     """
 
     capable = capability.capable if isinstance(capability, ImageCapability) else bool(capability)
-    return RENDERER_REAL if capable else RENDERER_HALFBLOCK
+    # Non-raster default is the sanitized ANSI ICON (the better same-tier choice the
+    # operator sees). The ANSI renderer degrades at render time to the pixel braille
+    # half-block (then badge/text) when the asset is missing / unsafe / too wide, so
+    # the existing fallback chain is preserved. Portrait stays opt-in.
+    return RENDERER_REAL if capable else RENDERER_ANSI_ICON
 
 
 # --- textual-image backend classification ----------------------------------
@@ -222,9 +265,12 @@ BACKEND_TGP = "tgp"
 BACKEND_SIXEL = "sixel"
 BACKEND_HALFCELL = "halfcell"
 BACKEND_UNICODE = "unicode"
-BACKEND_HALFBLOCK = "half-block"  # OUR image-derived rich-Text raster (tier 2)
-BACKEND_TEXT = "text-mark"        # OUR text/logo mark (tier 3, a str)
-BACKEND_NONE = "none"             # textual-image not importable at all
+BACKEND_HALFBLOCK = "half-block"   # OUR image-derived rich-Text raster (portrait, opt-in)
+BACKEND_ANSI_ICON = "ansi-icon"    # OUR sanitized ANSI icon — DEFAULT non-raster avatar
+BACKEND_AVATAR_MARK = "avatar-mark"  # OUR crisp brand badge — last-resort managed fallback
+BACKEND_BRAND_TEXT = "brand-text"  # OUR cyan→magenta wordmark (brand fallback)
+BACKEND_TEXT = "text-mark"         # OUR last-resort text/logo mark (a str)
+BACKEND_NONE = "none"              # textual-image not importable at all
 BACKEND_UNKNOWN = "unknown"
 
 _TEXTUAL_IMAGE_BACKENDS = frozenset(
@@ -232,11 +278,40 @@ _TEXTUAL_IMAGE_BACKENDS = frozenset(
 )
 _TRUE_RASTER_BACKENDS = frozenset({BACKEND_TGP, BACKEND_SIXEL})
 
+# --- render policy state (3 explicit levels) -------------------------------
+#
+# Operators (and doctor/debug) must be able to tell, without guessing, WHY the
+# screen looks the way it does. Three states, derived purely from the realized
+# backend:
+#   * true-raster      — a real pixel image (tgp/sixel). Only graphics terminals.
+#   * managed-fallback — forgekit DELIBERATELY chose a clean fallback because true
+#     raster is unavailable: the crisp avatar BADGE / brand WORDMARK (and the opt-in
+#     portrait half-block). Intentional, product-quality — NOT a degraded accident.
+#   * hard-fallback    — pushed all the way down to the bare text mark because a
+#     dependency / asset / the environment was missing. Something is wrong.
+POLICY_TRUE_RASTER = "true-raster"
+POLICY_MANAGED_FALLBACK = "managed-fallback"
+POLICY_HARD_FALLBACK = "hard-fallback"
+
+_MANAGED_FALLBACK_BACKENDS = frozenset(
+    {BACKEND_ANSI_ICON, BACKEND_AVATAR_MARK, BACKEND_BRAND_TEXT, BACKEND_HALFBLOCK}
+)
+
 
 def is_true_raster(backend: str) -> bool:
     """Only TGP/Sixel are real pixel rasters; everything else is a fallback."""
 
     return backend in _TRUE_RASTER_BACKENDS
+
+
+def policy_state(backend: str) -> str:
+    """Map a realized backend → its render-policy state (the 3 levels above)."""
+
+    if is_true_raster(backend):
+        return POLICY_TRUE_RASTER
+    if backend in _MANAGED_FALLBACK_BACKENDS:
+        return POLICY_MANAGED_FALLBACK
+    return POLICY_HARD_FALLBACK  # text-mark / none / unknown
 
 
 def _module_backend(cls_or_obj) -> str:
@@ -285,94 +360,179 @@ def _textual_image_class():
     return Image
 
 
-# --- text/symbol fallback mark (SECONDARY) ---------------------------------
+def prime_image_backend() -> str:
+    """Resolve textual-image's backend EARLY, before Textual starts. Returns it.
 
-# A small, crisp brand mark — two short lines, no per-pixel colour spans (those
-# are what pixelate in a poor terminal). This is the fallback only; the real
-# image is the default when the terminal supports inline graphics.
+    ``textual-image`` probes the terminal for sixel/TGP support the first time
+    ``textual_image.renderable`` is imported — and that probe only works while stdin
+    is free. Once Textual's app starts it owns stdin, so a lazy import at render time
+    resolves to ``halfcell`` even on a sixel/TGP-capable terminal. Calling this from
+    the entrypoint (before ``App.run()``) primes the import so the cached backend is
+    the CORRECT one. Safe and idempotent: returns the chosen backend label (``none``
+    if textual-image is absent); never raises.
+    """
+
+    image_cls = _textual_image_class()
+    return _module_backend(image_cls) if image_cls is not None else BACKEND_NONE
+
+
+# --- text/symbol fallback marks --------------------------------------------
+
+# Last-resort text mark — two short lines, no per-pixel colour spans (those are
+# what pixelate in a poor terminal). Only reached when even the brand badge can't
+# render (essentially never — it is pure markup).
 _TEXT_MARK: Tuple[str, ...] = (
     theme.wordmark("forgekit"),
     "[dim]operator console[/dim]",
 )
 
+# The DEFAULT non-raster avatar: a crisp, brand-safe badge. A detailed portrait
+# cannot survive a ~14-col half-block (it turns to dotty mush), so instead of
+# forcing a muddy portrait we show a clean framed "fk" monogram in the cyan→magenta
+# brand split (forge=f=cyan, kit=k=magenta). Pure box-drawing + markup → crisp at
+# any size, in any terminal, with zero dithering.
+_AVATAR_MARK: Tuple[str, ...] = (
+    f"[{theme.ACCENT_PRIMARY}]╭──╮[/{theme.ACCENT_PRIMARY}]",
+    f"[{theme.ACCENT_PRIMARY}]│[/{theme.ACCENT_PRIMARY}]"
+    f"[b {theme.ACCENT_PRIMARY}]f[/b {theme.ACCENT_PRIMARY}]"
+    f"[b {theme.ACCENT_SECONDARY}]k[/b {theme.ACCENT_SECONDARY}]"
+    f"[{theme.ACCENT_SECONDARY}]│[/{theme.ACCENT_SECONDARY}]",
+    f"[{theme.ACCENT_SECONDARY}]╰──╯[/{theme.ACCENT_SECONDARY}]",
+)
+
 
 def text_mark_lines() -> Tuple[str, ...]:
-    """The fallback text mark (Rich-markup lines). Always available."""
+    """The last-resort text mark (Rich-markup lines). Always available."""
 
     return _TEXT_MARK
 
 
+def avatar_mark_lines() -> Tuple[str, ...]:
+    """The crisp brand badge used as the DEFAULT non-raster avatar (markup lines)."""
+
+    return _AVATAR_MARK
+
+
 class AvatarRenderer(Protocol):
-    """Common shape: produce a renderable for a textual widget."""
+    """Common shape: a renderable for a textual widget + its realized backend."""
 
     renderer_id: str
 
     def renderable(self):  # pragma: no cover - protocol
         ...
 
+    def realized_backend(self) -> str:  # pragma: no cover - protocol
+        ...
+
 
 @dataclass(frozen=True)
 class TextMarkRenderer:
-    """TIER 3 (last resort) — a small clean text/symbol mark (no image at all)."""
+    """HARD fallback — a small clean text/symbol mark (no image at all)."""
 
     renderer_id: str = RENDERER_TEXT
 
     def renderable(self) -> str:
         return "\n".join(text_mark_lines())
 
+    def realized_backend(self) -> str:
+        return BACKEND_TEXT
+
+
+@dataclass(frozen=True)
+class AvatarMarkRenderer:
+    """MANAGED fallback (default non-raster avatar) — the crisp brand badge.
+
+    Always renders (pure markup), so it is the clean stand-in whenever a true
+    raster portrait is unavailable. Replaces the old muddy half-block-portrait
+    default; the portrait is still available via :class:`HalfBlockRenderer` for
+    operators who opt in (``FORGEKIT_AVATAR=portrait``).
+    """
+
+    renderer_id: str = RENDERER_AVATAR_MARK
+
+    def renderable(self) -> str:
+        return "\n".join(avatar_mark_lines())
+
+    def realized_backend(self) -> str:
+        return BACKEND_AVATAR_MARK
+
 
 @dataclass(frozen=True)
 class HalfBlockRenderer:
-    """TIER 2 — an image-DERIVED half-block render of the baked PNG (Pillow).
+    """DEFAULT non-raster avatar — an image-DERIVED half-block of the PIXEL icon.
 
-    Shown when inline graphics aren't available: still a real *image* of the
-    portrait (downscaled half-block raster, ~12-16 cols), not typed text. Degrades
-    to the text mark (tier 3) only when Pillow / the asset is missing.
+    A genuine small image of the pixel avatar (grayscale half-block raster), so the
+    non-raster fallback the operator actually sees is the PIXEL IMAGE family — NOT
+    the ``fk`` badge. The badge is only the LAST resort (Pillow / the asset missing).
+    ``FORGEKIT_AVATAR=portrait`` swaps the source to the detailed portrait.
     """
 
     renderer_id: str = RENDERER_HALFBLOCK
-    cols: int = 14  # cells wide; small & clean
+    cols: int = 12  # cells wide — braille avatar (~6 rows) reads the figure clearly
+    portrait: bool = False
 
-    def renderable(self):
+    def _resolve(self):
         from . import halfblock  # local import keeps Pillow optional at import time
 
-        path = best_image_path()
-        rendered = halfblock.render_halfblock(path, cols=self.cols) if path else None
+        path = best_portrait_path() if self.portrait else best_image_path()
+        if path is None:
+            rendered = None
+        elif self.portrait:
+            # opt-in detailed portrait → the grayscale half-block (keeps tone).
+            rendered = halfblock.render_halfblock(path, cols=self.cols)
+        else:
+            # the small PIXEL avatar → BRAILLE (2x4 dots/cell, ~8x resolution) so the
+            # headphone / head / face figure reads at this compact size (render spike
+            # result). Falls back to the grayscale half-block if braille can't build.
+            rendered = halfblock.render_braille(
+                path, cols=self.cols, threshold=95
+            ) or halfblock.render_halfblock(path, cols=self.cols, contrast=True)
         if rendered is None:
-            return TextMarkRenderer().renderable()
-        return rendered
+            # last resort ONLY (no Pillow / asset): the brand badge, then bare text.
+            return BACKEND_AVATAR_MARK, AvatarMarkRenderer().renderable()
+        return BACKEND_HALFBLOCK, rendered
+
+    def renderable(self):
+        return self._resolve()[1]
+
+    def realized_backend(self) -> str:
+        return self._resolve()[0]
 
 
 @dataclass(frozen=True)
 class RealImageRenderer:
-    """TIER 1 (primary) — a real inline image raster via ``textual-image``.
+    """PRIMARY — a real inline image raster via ``textual-image``.
 
     Uses textual-image ONLY when it resolved to a TRUE-raster backend (TGP/Sixel).
-    When textual-image would instead pick its own cell fallback (halfcell/unicode —
-    which looks worse than our tuned, image-derived half-block), or when the lib /
-    asset is unavailable, we fall to OUR half-block (tier 2), then the text mark
-    (tier 3). So we never render textual-image's muddy cell fallback in place of a
-    cleaner one we control.
+    When textual-image would instead pick its own cell fallback (halfcell/unicode),
+    or the lib / asset is unavailable, we fall to the crisp brand BADGE
+    (:class:`AvatarMarkRenderer`) — a clean managed fallback, never a muddy cell
+    render. The dotty portrait half-block is no longer an automatic step (opt-in).
     """
 
     renderer_id: str = RENDERER_REAL
-    width: int = 14  # cells; small Claude-icon scale, aligned with the half-block tier
+    width: int = 14  # cells; small Claude-icon scale
+
+    def _resolve(self):
+        path = best_image_path()
+        image_cls = _textual_image_class()
+        if path is not None and image_cls is not None:
+            backend = _module_backend(image_cls)
+            if is_true_raster(backend):  # tgp/sixel → the real pixel image raster
+                try:
+                    return backend, image_cls(str(path), width=self.width)
+                except Exception:  # noqa: BLE001 - construction failed → pixel half-block
+                    pass
+        # not a true raster (VS Code etc.) → the sanitized ANSI ICON (the non-raster
+        # default), which itself degrades to the pixel half-block / badge / text.
+        outcome, rendered = AnsiIconRenderer().resolve()
+        return outcome.backend, rendered
 
     def renderable(self):
-        path = best_image_path()
-        if path is None:
-            return TextMarkRenderer().renderable()
-        image_cls = _textual_image_class()
-        if image_cls is None:  # textual-image absent → our image-derived tier 2
-            return HalfBlockRenderer().renderable()
-        if not is_true_raster(_module_backend(image_cls)):
-            # textual-image resolved to halfcell/unicode (not a real raster) — prefer
-            # OUR cleaner half-block over its cell fallback.
-            return HalfBlockRenderer().renderable()
-        try:
-            return image_cls(str(path), width=self.width)
-        except Exception:  # noqa: BLE001 - raster construction failed → tier 2
-            return HalfBlockRenderer().renderable()
+        return self._resolve()[1]
+
+    def realized_backend(self) -> str:
+        return self._resolve()[0]
 
 
 # --- brand banner (intro brand mark) ---------------------------------------
@@ -391,43 +551,52 @@ def brand_wordmark_lines() -> Tuple[str, ...]:
 
 @dataclass(frozen=True)
 class BrandTextRenderer:
-    """Fallback brand mark — the cyan→magenta text wordmark (no image)."""
+    """Managed brand fallback — the cyan→magenta text wordmark (no image)."""
 
     renderer_id: str = RENDERER_BRAND_TEXT
 
     def renderable(self) -> str:
         return "\n".join(brand_wordmark_lines())
 
+    def realized_backend(self) -> str:
+        return BACKEND_BRAND_TEXT
+
 
 @dataclass(frozen=True)
 class BrandBannerRenderer:
-    """TIER 1 — the forgekit wordmark banner as a real inline image.
+    """PRIMARY brand — the forgekit wordmark banner as a real inline image.
 
     Renders the small baked intro banner via ``textual-image`` ONLY when it
     resolved to a TRUE-raster backend (TGP/Sixel). Otherwise — textual-image cell
     fallback, missing lib, or unreadable asset — it degrades to the compact TEXT
     wordmark (the cyan→magenta gradient), which is far cleaner than a halfcell/
-    unicode banner. The wordmark is the intended fallback, so there is no half-block
-    tier here.
+    unicode banner. The wordmark is the intended managed fallback.
     """
 
     renderer_id: str = RENDERER_BRAND_IMAGE
     width: int = 28  # cells; compact, small banner — not the full 1916px master
 
-    def renderable(self):
+    def _resolve(self):
         path = best_banner_path()
         if path is None:
-            return BrandTextRenderer().renderable()
+            return BACKEND_BRAND_TEXT, BrandTextRenderer().renderable()
         image_cls = _textual_image_class()
         if image_cls is None:  # textual-image absent → text wordmark
-            return BrandTextRenderer().renderable()
-        if not is_true_raster(_module_backend(image_cls)):
+            return BACKEND_BRAND_TEXT, BrandTextRenderer().renderable()
+        backend = _module_backend(image_cls)
+        if not is_true_raster(backend):
             # not a true raster (halfcell/unicode) → the clean text wordmark wins.
-            return BrandTextRenderer().renderable()
+            return BACKEND_BRAND_TEXT, BrandTextRenderer().renderable()
         try:
-            return image_cls(str(path), width=self.width)
+            return backend, image_cls(str(path), width=self.width)
         except Exception:  # noqa: BLE001 - raster construction failed → text wordmark
-            return BrandTextRenderer().renderable()
+            return BACKEND_BRAND_TEXT, BrandTextRenderer().renderable()
+
+    def renderable(self):
+        return self._resolve()[1]
+
+    def realized_backend(self) -> str:
+        return self._resolve()[0]
 
 
 def make_brand_renderer(
@@ -451,23 +620,69 @@ def make_brand_renderer(
     return BrandTextRenderer()
 
 
+def _avatar_force_mode(env: Optional[Mapping[str, str]] = None) -> str:
+    """The ``FORGEKIT_AVATAR`` override value, lowercased ("" if unset)."""
+
+    environ = os.environ if env is None else env
+    return (environ.get(_FORCE_ENV) or "").strip().lower()
+
+
+# Asset-mode labels (which avatar ASSET the path uses, separate from the backend).
+ASSET_TERMINAL_ICON = "terminal-icon"  # simplified icon (default tiny-intro asset)
+ASSET_PORTRAIT = "portrait"            # detailed portrait (opt-in / larger surface)
+
+
+def avatar_asset_mode(env: Optional[Mapping[str, str]] = None) -> str:
+    """Which avatar ASSET the default path renders: terminal-icon vs portrait.
+
+    The console's tiny-intro DEFAULT is the simplified terminal icon; the detailed
+    portrait is opt-in (``FORGEKIT_AVATAR=portrait``). This reports that policy so
+    debug/readiness can say "tiny icon policy" vs "portrait mode".
+    """
+
+    if _avatar_force_mode(env) in ("portrait", "halfblock", "half-block"):
+        return ASSET_PORTRAIT
+    return ASSET_TERMINAL_ICON
+
+
 def make_renderer(
     capability=None,
     *,
     width: int = 12,
     env: Optional[Mapping[str, str]] = None,
 ) -> AvatarRenderer:
-    """Build the renderer chosen by *capability* (detected from *env* if None).
+    """Build the avatar renderer for *capability* / *env*.
 
-    Image-first: capable → real raster (tier 1), not-capable → image-derived
-    half-block (tier 2). Both degrade to the text mark (tier 3) at render time.
+    Default policy: a true-raster terminal → real pixel image; otherwise the
+    sanitized ANSI ICON, which degrades to the pixel braille half-block → badge →
+    text. Operators can override via ``FORGEKIT_AVATAR``: ``image`` (force raster
+    attempt), ``ansi`` (the full ANSI icon, no width cap), ``portrait`` (the DETAILED
+    portrait half-block), ``halfblock``/``braille`` (the pixel half-block),
+    ``mark``/``badge`` (the brand badge), ``text`` (the bare text mark).
     """
+
+    mode = _avatar_force_mode(env)
+    if mode == "portrait":
+        return HalfBlockRenderer(portrait=True)
+    if mode in ("halfblock", "half-block", "braille"):
+        return HalfBlockRenderer()
+    if mode in ("ansi", "ansi-icon"):
+        # force the FULL ANSI icon (no width cap) — operator opt-in even if wide.
+        return AnsiIconRenderer(env=env, max_cols=0)
+    if mode in ("mark", "badge"):
+        return AvatarMarkRenderer()
+    if mode in ("text", "none"):
+        return TextMarkRenderer()
 
     if capability is None:
         capability = detect_image_capability(env)
     renderer_id = select_renderer(capability)
     if renderer_id == RENDERER_REAL:
         return RealImageRenderer(width=width)
+    if renderer_id == RENDERER_ANSI_ICON:
+        return AnsiIconRenderer(env=env)
+    if renderer_id == RENDERER_AVATAR_MARK:
+        return AvatarMarkRenderer()
     if renderer_id == RENDERER_HALFBLOCK:
         return HalfBlockRenderer()
     return TextMarkRenderer()
@@ -517,51 +732,64 @@ def image_library_status() -> Tuple[bool, str, str]:
 
 @dataclass(frozen=True)
 class RendererDiagnostics:
-    """What was selected vs the REAL backend rendered, for the debug line."""
+    """What was selected, the REAL backend rendered, and the POLICY state."""
 
-    avatar_selected: str       # our tier choice: real-image / half-block / text-mark
-    avatar_backend: str        # realized backend (tgp/sixel/halfcell/unicode/half-block/text-mark)
+    avatar_selected: str       # our renderer choice: real-image / avatar-mark / half-block / text-mark
+    avatar_backend: str        # realized backend (tgp/sixel/avatar-mark/half-block/text-mark)
     avatar_true_raster: bool   # is the avatar an actual pixel raster?
+    avatar_policy: str         # true-raster / managed-fallback / hard-fallback
     brand_selected: str        # brand-image / brand-text
     brand_backend: str
     brand_true_raster: bool
+    brand_policy: str
     capability_reason: str
     lib_ok: bool               # textual-image importable (NOT the same as true raster)
     lib_reason: str
     lib_backend: str           # backend textual-image WOULD use (tgp/sixel/halfcell/unicode/none)
+    ansi_status: str = ansi_render.STATUS_NO_ASSET  # ok / unsafe-ansi / invalid-ansi / no-ansi-asset / too-wide
+    ansi_theme: str = ansi_render.THEME_DARK        # resolved dark/light
+    ansi_theme_source: str = ansi_render.THEME_SRC_DEFAULT  # explicit / auto:COLORFGBG / auto:default-dark
 
 
 def diagnose_renderers(env: Optional[Mapping[str, str]] = None) -> RendererDiagnostics:
     """Build the renderer diagnostics for *env* (defaults to the live environment).
 
     Mirrors what the intro panels do (same ``make_renderer`` / ``make_brand_renderer``
-    selection), renders once to capture the REALIZED backend, and separately records
-    the backend textual-image itself resolved — so the debug line reflects the real
-    screen, not just intent, and never calls halfcell/unicode a "real image".
+    selection), asks each renderer for its REALIZED backend, and derives the policy
+    state — so debug/doctor reflect the real screen and the deliberate policy, never
+    calling a managed fallback a "real image".
     """
 
     cap = detect_image_capability(env)
     avatar = make_renderer(env=env)
     brand = make_brand_renderer(env=env)
     lib_ok, lib_reason, lib_backend = image_library_status()
-    avatar_backend = renderable_backend(avatar.renderable())
-    brand_backend = renderable_backend(brand.renderable())
+    avatar_backend = avatar.realized_backend()
+    brand_backend = brand.realized_backend()
+    ansi = ansi_render.probe_outcome(env)  # ANSI path state regardless of selection
     return RendererDiagnostics(
         avatar_selected=avatar.renderer_id,
         avatar_backend=avatar_backend,
         avatar_true_raster=is_true_raster(avatar_backend),
+        avatar_policy=policy_state(avatar_backend),
         brand_selected=brand.renderer_id,
         brand_backend=brand_backend,
         brand_true_raster=is_true_raster(brand_backend),
+        brand_policy=policy_state(brand_backend),
         capability_reason=cap.reason,
         lib_ok=lib_ok,
         lib_reason=lib_reason,
         lib_backend=lib_backend,
+        ansi_status=ansi.status,
+        ansi_theme=ansi.theme,
+        ansi_theme_source=ansi_render.theme_source(env),
     )
 
 
 __all__ = (
     "RENDERER_REAL",
+    "RENDERER_ANSI_ICON",
+    "RENDERER_AVATAR_MARK",
     "RENDERER_HALFBLOCK",
     "RENDERER_TEXT",
     "RENDERER_BRAND_IMAGE",
@@ -569,6 +797,8 @@ __all__ = (
     "ImageCapability",
     "AvatarRenderer",
     "RealImageRenderer",
+    "AnsiIconRenderer",
+    "AvatarMarkRenderer",
     "HalfBlockRenderer",
     "TextMarkRenderer",
     "BrandBannerRenderer",
@@ -579,25 +809,37 @@ __all__ = (
     "make_brand_renderer",
     "debug_renderers_enabled",
     "image_library_status",
+    "prime_image_backend",
     "is_true_raster",
+    "policy_state",
     "renderable_backend",
+    "POLICY_TRUE_RASTER",
+    "POLICY_MANAGED_FALLBACK",
+    "POLICY_HARD_FALLBACK",
     "BACKEND_TGP",
     "BACKEND_SIXEL",
     "BACKEND_HALFCELL",
     "BACKEND_UNICODE",
     "BACKEND_HALFBLOCK",
+    "BACKEND_ANSI_ICON",
+    "BACKEND_AVATAR_MARK",
+    "BACKEND_BRAND_TEXT",
     "BACKEND_TEXT",
     "BACKEND_NONE",
     "BACKEND_UNKNOWN",
     "RendererDiagnostics",
     "diagnose_renderers",
+    "avatar_mark_lines",
     "text_mark_lines",
     "brand_wordmark_lines",
     "assets_dir",
     "brand_dir",
     "display_png_path",
+    "portrait_png_path",
     "source_image_path",
     "best_image_path",
+    "best_portrait_path",
+    "avatar_asset_mode",
     "banner_intro_path",
     "banner_master_path",
     "best_banner_path",

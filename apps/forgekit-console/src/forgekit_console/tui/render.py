@@ -45,33 +45,34 @@ def intro_meta_lines(
 ) -> Tuple[str, ...]:
     """The right-hand meta column of the intro (beside the avatar).
 
-    Claude-style: brand + version on top, then provider/profile, then the repo
-    path — a few quiet lines. Pure so it's unit-testable without a terminal.
+    Claude-style: a SHORT product header — brand+version, then provider·profile,
+    then the repo path. Three quiet lines (the redundant "operator console" tagline
+    line is dropped so the intro reads fast and the issue line sits closer). Pure so
+    it's unit-testable without a terminal.
     """
 
     return (
         f"{theme.wordmark(BRAND)} [dim]v{version}[/dim]",
-        f"[dim]{TAGLINE}[/dim]",
-        f"[dim]provider[/dim] {provider}   [dim]profile[/dim] {profile}",
+        f"[dim]provider[/dim] {provider}  [dim]·[/dim]  [dim]profile[/dim] {profile}",
         f"[dim]{repo}[/dim]",
     )
 
 
 def renderer_debug_line(diag) -> str:
-    """A small dim diagnostic line: the REAL backend behind avatar/brand.
+    """A small dim diagnostic line: the REAL backend + POLICY state per surface.
 
     Only shown when ``FORGEKIT_DEBUG_RENDERERS`` is set. Each side shows the
-    realized backend with a ``(raster)`` / ``(fallback)`` tag so the operator can
-    tell at a glance whether the screen is a true pixel image (TGP/Sixel) or a
-    cell/text fallback (halfcell/unicode/half-block/text-mark). ``cap`` is the
+    realized backend with its policy state — ``true-raster`` (a real pixel image,
+    TGP/Sixel), ``managed-fallback`` (a deliberate clean stand-in: brand badge /
+    wordmark / opt-in portrait), or ``hard-fallback`` (degraded to bare text). So
+    the operator never mistakes a managed fallback for a real raster. ``cap`` is the
     capability guess; ``lib`` separates "textual-image importable" (and which
-    backend it WOULD use) from the realized result — import success is NOT a real
-    raster. Pure: takes a :class:`tui.image_renderer.RendererDiagnostics`-shaped
-    object, returns markup.
+    backend it WOULD use) from the realized result. Pure: takes a
+    :class:`tui.image_renderer.RendererDiagnostics`-shaped object, returns markup.
     """
 
-    def side(label: str, backend: str, raster: bool) -> str:
-        return f"{label}={backend}({'raster' if raster else 'fallback'})"
+    def side(label: str, backend: str, policy: str) -> str:
+        return f"{label}={backend} ({policy})"
 
     if diag.lib_ok:
         lib = f"lib=ok:{diag.lib_backend}"  # importable + which backend it WOULD use
@@ -82,12 +83,22 @@ def renderer_debug_line(diag) -> str:
         lib = f"lib=✗ {reason}"
 
     parts = [
-        side("avatar", diag.avatar_backend, diag.avatar_true_raster),
-        side("brand", diag.brand_backend, diag.brand_true_raster),
+        side("avatar", diag.avatar_backend, diag.avatar_policy),
+        side("brand", diag.brand_backend, diag.brand_policy),
+        f"ansi={getattr(diag, 'ansi_status', '?')}/{getattr(diag, 'ansi_theme', '?')}",
         f"cap={diag.capability_reason}",
         lib,
     ]
     return f"[dim]renderers · {' · '.join(parts)}[/dim]"
+
+
+def blocked_banner() -> str:
+    """The issue-line banner shown when a repeated failure crossed the threshold."""
+
+    return (
+        f"[{_ERR}]● blocked[/{_ERR}] [dim]반복 실패가 에스컬레이션됨 — `/blocked` 로 "
+        f"원인·대안·다음 단계 확인[/dim]"
+    )
 
 
 def issue_line(summary: StatusSummary) -> str:
@@ -146,16 +157,30 @@ def mode_pill(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
     return f"[dim]●[/dim] {mode}"
 
 
-def hint_line(*, palette_open: bool = False, help_open: bool = False, in_agent: bool = False) -> str:
-    """Contextual one-line shortcut hint (replaces the thick footer)."""
+def hint_line(
+    *,
+    palette_open: bool = False,
+    help_open: bool = False,
+    in_agent: bool = False,
+    typing: bool = False,
+) -> str:
+    """The secondary mode/shortcut line shown BELOW the input bar (Claude-style).
 
+    Claude shows a quiet mode line under the input (``▶▶ auto mode on …``) only at
+    idle. So: while TYPING (non-empty input) this line is empty — the input is the
+    star and clutter drops. When the palette is open the palette owns the space
+    (also empty here). At idle it shows the mode + key shortcuts with a small accent
+    ``▶▶`` marker, like Claude's bottom mode line.
+    """
+
+    if typing or palette_open:
+        return ""  # reduce clutter while typing / let the palette own the space
+    marker = f"[{_ACCENT}]▶▶[/{_ACCENT}]"
     if help_open:
-        return "[dim]Tab 탭 · Esc 닫기[/dim]"
-    if palette_open:
-        return "[dim]Tab 순환 · Enter 실행 · Esc 닫기[/dim]"
+        return f"{marker} [dim]Tab 탭 전환 · Esc 로 닫기[/dim]"
     if in_agent:
-        return "[dim]/help · Esc operator · ^C quit[/dim]"
-    return "[dim]/help · / palette · Tab 완성 · ^C quit[/dim]"
+        return f"{marker} [dim]Esc 로 operator · /help · ^C quit[/dim]"
+    return f"{marker} [dim]operator · /help · / palette · ^C quit[/dim]"
 
 
 def default_help_tab(sections: Sequence[HelpSection]) -> int:
@@ -179,20 +204,43 @@ def help_panel_document(sections: Sequence[HelpSection], active: int) -> Tuple[s
     at the bottom throughout.
     """
 
+    # Text fallback (non-TUI / tests): tab strip then body. The full-width blue
+    # divider between them is drawn by the HelpPanel widget's CSS (border-bottom),
+    # not by a fixed-length string, so it spans the real terminal width.
     if not sections:
         return ("[dim]no help[/dim]",)
+    return (help_tab_strip(sections, active), *help_body(sections, active))
+
+
+def help_tab_strip(sections: Sequence[HelpSection], active: int) -> str:
+    """The help TAB ROW — read first, no 'forgekit help' branding (Claude-style).
+
+    The active tab is bold brand-cyan (a POINT use of accent), inactive tabs are
+    muted. ``Help`` is the first tab, so the strip reads ``Help  General  …`` as
+    the top hierarchy of the help screen.
+    """
+
+    if not sections:
+        return "[dim]no help[/dim]"
     active = max(0, min(active, len(sections) - 1))
     chips = []
     for i, s in enumerate(sections):
         chips.append(
-            f"[reverse {_ACCENT}] {s.title} [/reverse {_ACCENT}]"
+            f"[b {_ACCENT}]{s.title}[/b {_ACCENT}]"
             if i == active
-            else f"[dim]{s.title}[/dim]"
+            else f"[{_MUTED}]{s.title}[/{_MUTED}]"
         )
+    return "   ".join(chips)
+
+
+def help_body(sections: Sequence[HelpSection], active: int) -> Tuple[str, ...]:
+    """The active help tab's body — the Esc/Tab hint then the tab's content lines."""
+
+    if not sections:
+        return ("[dim]no help[/dim]",)
+    active = max(0, min(active, len(sections) - 1))
     return (
-        theme.wordmark("forgekit") + " [dim]help[/dim]   " + "  ".join(chips),
-        "[dim]Tab 탭 전환 · Esc 로 transcript 로 돌아갑니다 · 입력창은 그대로 열려 있습니다[/dim]",
-        "[dim]" + "─" * 48 + "[/dim]",
+        "[dim]Tab 탭 전환 · Esc 로 닫기[/dim]",
         "",
         *sections[active].lines,
     )
@@ -241,16 +289,22 @@ def palette_lines(commands: Sequence) -> Tuple[str, ...]:
 
 
 def palette_panel_lines(commands: Sequence, selected: int = -1) -> Tuple[str, ...]:
-    """Palette overlay body: candidates with the selected row highlighted."""
+    """Palette body — a FLAT 2-column list (command · summary), Claude-style.
+
+    No left rule / side bar and no reverse-cyan block: the selected row is just the
+    command in bold accent (others bold foreground), separated by whitespace +
+    alignment. Keeps the list clean and easy to scan.
+    """
 
     if not commands:
         return ("[dim]일치하는 명령이 없습니다[/dim]",)
     out = []
     for i, c in enumerate(commands):
+        name = f"/{c.name}"
         if i == selected:
-            out.append(f"[reverse {_ACCENT}] ▸ /{c.name} [/reverse {_ACCENT}] [dim]{c.summary}[/dim]")
+            out.append(f"  [b {_ACCENT}]{name:<16}[/b {_ACCENT}] [dim]{c.summary}[/dim]")
         else:
-            out.append(f"   [b]/{c.name}[/b] [dim]{c.summary}[/dim]")
+            out.append(f"  [b]{name:<16}[/b] [dim]{c.summary}[/dim]")
     return tuple(out)
 
 
@@ -300,7 +354,7 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
         "  F1         help",
         "  ^L         clear     ^R  refresh     ^C  quit",
         "",
-        "[dim]일반 텍스트 입력은 아직 stub 입니다 (live submit 범위 밖).[/dim]",
+        "[dim]일반 텍스트는 provider 로 live-submit 됩니다 (provider 없으면 setup 안내).[/dim]",
     ))
     cmd_lines = ["[b]commands[/b]  — `/` 로 시작하면 자동완성됩니다.", ""]
     for c in commands:
@@ -316,7 +370,20 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
         "",
         "전체 레지스트리는 `/agents` 로 봅니다.",
     ))
-    return (help_tab, general, commands_tab, agents_tab)
+    about = HelpSection("About", (
+        f"{theme.wordmark('forgekit')} — provider-agnostic 운영자 콘솔.",
+        "",
+        "위 와이드 hero 아트는 첫 진입(빈 세션)과 이 /about 화면에서 보이고,",
+        "작업을 시작하면 상단은 작은 compact 헤더로 접힙니다 (Claude 스타일).",
+        "",
+        "[b]intro 모드[/b]",
+        "  hero      큰 아트 (첫인상 · /about · /welcome)",
+        "  compact   작은 헤더 (typing · palette · transcript 있음)",
+        "  override  FORGEKIT_INTRO_MODE=hero|compact|auto · FORGEKIT_HERO_ART=on|off|auto",
+        "",
+        "[dim]Esc 로 닫고 작업을 계속하면 헤더가 compact 로 접힙니다.[/dim]",
+    ))
+    return (help_tab, general, commands_tab, agents_tab, about)
 
 
 def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
@@ -328,10 +395,11 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 
 __all__ = (
     "BRAND", "TAGLINE",
-    "welcome_banner", "intro_meta_lines", "renderer_debug_line", "issue_line", "agent_pane_lines",
+    "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
+    "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
-    "help_panel_document", "default_help_tab",
+    "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
     "result_block",
 )

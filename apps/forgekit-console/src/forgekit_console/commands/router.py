@@ -22,14 +22,17 @@ from ..models import (
     StatusSummary,
 )
 from .registry import (
+    H_ABOUT,
     H_AGENT_ENTER,
     H_AGENTS,
     H_CLEAR,
     H_DOCTOR,
     H_HARNESS,
     H_HELP,
+    H_BLOCKED,
     H_LAYOUT,
     H_QUIT,
+    H_RENDER,
     H_RUNTIME,
     H_STATUS,
     find_agent,
@@ -90,11 +93,14 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     if not parsed.is_slash:
         if not (parsed.raw or "").strip():
             return CommandResult.info("", ())
+        # NOTE: in the TUI, free text is intercepted by the app and sent to the live
+        # provider submit path (chat.service.SubmitService) — it does NOT reach here.
+        # The router is pure (no provider IO), so this is only the non-TUI fallback.
         return CommandResult.info(
             "free text",
             (
-                "일반 텍스트 입력은 아직 연결되지 않았습니다 (live submit 범위 밖).",
-                "슬래시 명령을 쓰세요 — `/help` 로 목록을 봅니다.",
+                "일반 텍스트는 콘솔(TUI)에서 provider 로 live-submit 됩니다.",
+                "이 순수 경로에서는 제출하지 않습니다 — 슬래시 명령은 `/help` 참고.",
             ),
         )
     if not parsed.name:
@@ -110,6 +116,14 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     handler = cmd.handler
     if handler == H_HELP:
         return _help_result(ctx)
+    if handler == H_ABOUT:
+        # KIND_HELP with title "about" → the TUI opens the help view on the About
+        # tab AND shows the wide hero art in the header (the 56-col art's home).
+        return CommandResult(
+            kind=KIND_HELP,
+            title="about",
+            lines=("forgekit — about / welcome", "와이드 hero 아트 + 브랜드 정보."),
+        )
     if handler == H_AGENTS:
         return _agents_result(ctx)
     if handler == H_STATUS or handler == H_HARNESS:
@@ -118,6 +132,10 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _summary_to_result(ctx.load_runtime())
     if handler == H_DOCTOR:
         return _summary_to_result(ctx.load_doctor())
+    if handler == H_RENDER:
+        return _render_readiness_result()
+    if handler == H_BLOCKED:
+        return _blocked_result()
     if handler == H_AGENT_ENTER:
         return _agent_enter_result(cmd, ctx)
     if handler == H_LAYOUT:
@@ -136,8 +154,24 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     for cmd in ctx.commands:
         lines.append(f"  /{cmd.name:<16} {cmd.summary}")
     lines.append("")
-    lines.append("일반 텍스트는 아직 echo/stub 입니다 (live submit 범위 밖).")
+    lines.append("일반 텍스트는 provider 로 live-submit 됩니다 (provider 미설정 시 setup 안내).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
+
+
+def _render_readiness_result() -> CommandResult:
+    # Render readiness is computed from the live environment (pure given env), not a
+    # runtime loader — so it works even with no yule_engineering install. Lazy import
+    # keeps the router free of any TUI/textual dependency at module load.
+    from ..tui.render_readiness import render_readiness_lines
+
+    return CommandResult.info("render readiness", render_readiness_lines())
+
+
+def _blocked_result() -> CommandResult:
+    # Reads the persistent escalation ledger (lazy import; stdlib-only, no textual).
+    from ..lifecycle.failure_escalation import open_escalation_lines
+
+    return CommandResult.info("blocked", open_escalation_lines())
 
 
 def _agents_result(ctx: ConsoleContext) -> CommandResult:

@@ -1,37 +1,28 @@
-"""Bake the console display avatar from the portrait master.
+"""Bake the console avatar assets — terminal ICON vs detailed PORTRAIT.
 
-**source / master vs display — why they're separate.** `avatar-source.png` is the
-human-replaceable portrait MASTER (a byte-for-byte copy of the adopted original
-archive, see below). The console NEVER renders the master directly: it is a large
-square with a decorative circuit border, and naively downscaling it to ~12-14
-terminal cells turns the face into a muddy blob. Instead this script crops to the
-face/headphones, squares it, lifts the black/white contrast, and mildly sharpens —
-producing small **display** PNGs whose silhouette reads first even when tiny.
+Two families, two sources:
 
-**Naming policy (canonical vs runtime alias).**
-* Canonical display outputs (meaningful, self-describing):
-  ``forgekit-avatar-display-128.png`` (primary) and ``forgekit-avatar-display-96.png``.
-* Runtime aliases the renderer actually loads (kept for code stability):
-  ``forgekit-avatar.png`` == display-128, ``forgekit-avatar-96.png`` == display-96.
-  Each alias is written byte-identical to its canonical file (git dedups the blob),
-  so "canonical" and "alias" never drift.
+* **TERMINAL ICON** (the runtime DEFAULT the console renders in true-raster
+  terminals): baked from ``forgekit-terminal-icon-source.png`` — a **provided
+  pixel-art** headphone-girl icon (the user's 2026-06-17 03:05 sheet, the 128/96
+  reference). We resize it (preserve the pixel art; no re-creation), NOT invent a
+  silhouette. Outputs ``forgekit-terminal-icon-master.png`` (256) / ``-128`` /
+  ``-96``; the runtime alias ``forgekit-avatar.png`` is byte-identical to the 128.
+* **DETAILED PORTRAIT** (archive / future GUI / opt-in ``FORGEKIT_AVATAR=portrait``):
+  baked from the portrait master ``avatar-source.png`` (crop + contrast + sharpen)
+  → ``forgekit-avatar-display-128.png`` / ``-96``.
 
-**Source archive / adoption.** Three portrait candidates are preserved in this
-directory so a human can re-pick later:
-``forgekit-avatar-source-2026-06-17-33.png`` (ADOPTED — brightest, most defined
-face; reads best at small size and as a real inline image), ``…-2026-06-17-38.png``
-(more shadow, blobs at small size), ``…-2026-06-15-original.png`` (softer than 33).
-The adopted candidate is copied to ``avatar-source.png`` (the master alias this
-script reads). To adopt a different candidate, copy it over ``avatar-source.png``
-and re-bake.
+Non-raster terminals (e.g. VS Code) don't render an image at all — they show the
+``fk`` brand badge — because a ~14-col half-block of the pixel icon is muddy. So the
+pixel icon is the **true-raster** asset; the badge stays the non-raster fallback.
 
-Re-bake after replacing the master::
+Re-bake after replacing a source::
 
     python -m forgekit_console.assets.avatar.bake
 
 Pure build-time tool (Pillow, the ``image`` extra). The console ships the
-already-baked PNGs, so runtime needs no Pillow. Deterministic: same master in →
-same display bytes out.
+already-baked PNGs, so runtime needs no Pillow. Deterministic: same sources in →
+same bytes out.
 """
 
 from __future__ import annotations
@@ -41,22 +32,36 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 
-# Master alias the bake reads (== the adopted source archive, byte-for-byte).
+# Portrait master (detailed portrait family).
 SOURCE = _HERE / "avatar-source.png"
+# Terminal-icon source — the PROVIDED pixel-art icon (resized, not re-created).
+ICON_SOURCE = _HERE / "forgekit-terminal-icon-source.png"
 
-# Canonical display outputs — meaningful, self-describing names.
-DISPLAY_128 = _HERE / "forgekit-avatar-display-128.png"  # primary — what the console renders
-DISPLAY_96 = _HERE / "forgekit-avatar-display-96.png"    # secondary candidate
+# --- terminal ICON (the runtime DEFAULT, true-raster) ----------------------
+ICON_MASTER = _HERE / "forgekit-terminal-icon-master.png"  # 256px
+ICON_128 = _HERE / "forgekit-terminal-icon-128.png"        # canonical 128
+ICON_96 = _HERE / "forgekit-terminal-icon-96.png"          # canonical 96
+ALIAS_PRIMARY = _HERE / "forgekit-avatar.png"   # runtime alias == ICON_128
+ALIAS_SMALL = _HERE / "forgekit-avatar-96.png"  # runtime alias == ICON_96
 
-# Runtime aliases the renderer loads (byte-identical to the canonical files above).
-ALIAS_PRIMARY = _HERE / "forgekit-avatar.png"    # == display-128
-ALIAS_SMALL = _HERE / "forgekit-avatar-96.png"   # == display-96
+# --- detailed PORTRAIT (archive / future GUI / opt-in portrait mode) --------
+DISPLAY_128 = _HERE / "forgekit-avatar-display-128.png"
+DISPLAY_96 = _HERE / "forgekit-avatar-display-96.png"
 
+# --- ANSI icon (non-raster avatar) ------------------------------------------
+# The RAW source archive (lossless original) and the RUNTIME asset, which is the
+# source run through the sanitizer and re-serialized to the safe SGR-only subset —
+# so the shipped file can never carry an OSC / cursor / private-mode escape no
+# matter what the raw source held. (A future ``-light`` variant could be pre-baked
+# here too; today the light theme is a render-time remap.)
+ANSI_SOURCE = _HERE / "forgekit-avatar-ansi-source.ansi"
+ANSI_DARK = _HERE / "forgekit-avatar-ansi-dark.ansi"
+
+ICON_MASTER_PX = 256
 PRIMARY_PX = 128
 SMALL_PX = 96
 
-# Crop the head/headphones out of the bordered square master. Drop the circuit
-# border + chest so the subject fills the frame at small sizes.
+# Crop the head/headphones out of the bordered square portrait master.
 _CROP = (0.11, 0.06, 0.89, 0.86)  # left, top, right, bottom (fractions)
 
 
@@ -70,8 +75,8 @@ def _crop_head_square(img):
     return head.crop((left, 0, left + side, side))
 
 
-def _tune(img):
-    """Lift B/W contrast + mild sharpen so the silhouette reads when tiny."""
+def _tune_portrait(img):
+    """Detailed portrait: lift B/W contrast + mild sharpen (keeps the detail)."""
 
     from PIL import ImageFilter, ImageOps
 
@@ -79,31 +84,75 @@ def _tune(img):
     return img.filter(ImageFilter.UnsharpMask(radius=1.2, percent=80, threshold=2))
 
 
-def bake(*, source: Path = SOURCE) -> tuple:
-    """Produce the display PNGs (canonical + runtime alias) from the master.
+# Image is imported lazily inside bake() so runtime never needs Pillow.
+Image = None  # noqa: N816 - rebound from PIL inside bake()
 
-    Returns every written path. Deterministic; aliases are byte-identical copies
-    of their canonical file so the renderer's alias and the canonical name never
-    diverge.
+
+def bake(*, source: Path = SOURCE, icon_source: Path = ICON_SOURCE) -> tuple:
+    """Produce the terminal icon (+runtime alias) and the portrait display PNGs.
+
+    The terminal icon is the PROVIDED pixel art resized (no re-creation). Returns
+    every written path. Deterministic; runtime aliases are byte-identical copies of
+    their canonical icon file so the alias and canonical never drift.
     """
 
+    global Image
     from PIL import Image  # noqa: WPS433 (build-time optional dep)
 
-    img = Image.open(source).convert("RGB")
-    head = _crop_head_square(img)
     written = []
+
+    # 1) terminal ICON family — resize the provided pixel art (preserve it).
+    pix = Image.open(icon_source).convert("RGB")
+    ICON_MASTER.parent.mkdir(parents=True, exist_ok=True)
+    pix.resize((ICON_MASTER_PX, ICON_MASTER_PX), Image.LANCZOS).save(
+        ICON_MASTER, format="PNG", optimize=True
+    )
+    written.append(ICON_MASTER)
     for canonical, alias, px in (
-        (DISPLAY_128, ALIAS_PRIMARY, PRIMARY_PX),
-        (DISPLAY_96, ALIAS_SMALL, SMALL_PX),
+        (ICON_128, ALIAS_PRIMARY, PRIMARY_PX),
+        (ICON_96, ALIAS_SMALL, SMALL_PX),
     ):
-        baked = _tune(head.resize((px, px), Image.LANCZOS))
-        canonical.parent.mkdir(parents=True, exist_ok=True)
-        baked.save(canonical, format="PNG", optimize=True)
+        pix.resize((px, px), Image.LANCZOS).save(canonical, format="PNG", optimize=True)
         shutil.copyfile(canonical, alias)  # runtime alias == canonical (git dedups)
         written.extend((canonical, alias))
+
+    # 2) detailed PORTRAIT display (archive / future GUI / opt-in portrait mode).
+    img = Image.open(source).convert("RGB")
+    head = _crop_head_square(img)
+    for canonical, px in ((DISPLAY_128, PRIMARY_PX), (DISPLAY_96, SMALL_PX)):
+        portrait = _tune_portrait(head.resize((px, px), Image.LANCZOS))
+        portrait.save(canonical, format="PNG", optimize=True)
+        written.append(canonical)
+
     return tuple(written)
 
 
+def bake_ansi(*, source: Path = ANSI_SOURCE, dark: Path = ANSI_DARK) -> tuple:
+    """Bake the runtime ANSI asset = sanitize(source) re-serialized to safe SGR.
+
+    Pure stdlib (no Pillow) — reads the raw ANSI archive, runs it through the
+    allowlist sanitizer, and writes the canonical SGR-only re-serialization as the
+    runtime ``-dark`` asset. Returns the written paths (empty when the source is
+    absent, so a build without the archive is a no-op rather than an error).
+    """
+
+    if not source.is_file():
+        return ()
+    from ...tui.ansi_icon.sanitizer import sanitize, serialize_clean
+
+    raw = source.read_text(encoding="utf-8", errors="replace")
+    result = sanitize(raw)
+    dark.parent.mkdir(parents=True, exist_ok=True)
+    dark.write_text(serialize_clean(result.doc), encoding="utf-8")
+    return (dark,)
+
+
 if __name__ == "__main__":  # pragma: no cover - build-time tool
-    for p in bake():
+    written = []
+    try:
+        written.extend(bake())  # PNG families (needs Pillow + image sources)
+    except Exception as exc:  # noqa: BLE001 - allow ANSI-only bakes without Pillow
+        print(f"skip PNG bake: {type(exc).__name__}: {exc}")
+    written.extend(bake_ansi())  # ANSI runtime asset (pure stdlib)
+    for p in written:
         print(f"baked {p.name} ({p.stat().st_size} bytes)")

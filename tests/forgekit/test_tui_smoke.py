@@ -44,10 +44,26 @@ def _fake_context():
 
 @unittest.skipUnless(_TEXTUAL, "textual not installed")
 class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
-    def _app(self):
+    def _app(self, *, escalator=None, submit_service=None):
         from forgekit_console.tui.app import ForgekitConsoleApp
 
-        return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context())
+        return ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(),
+            escalator=escalator, submit_service=submit_service,
+        )
+
+    def _tempdir_escalator(self, *, threshold=3):
+        """A FailureEscalator writing to a tempdir (cleaned at test teardown)."""
+        import tempfile
+        from forgekit_console.lifecycle.failure_escalation import FailureEscalator
+
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp, ignore_errors=True))
+        return FailureEscalator(
+            env={}, threshold=threshold,
+            ledger_path=tmp / "led.json", inbox_path=tmp / "inbox.json",
+            notifier=lambda t, b: True, bridge_troubleshooting=False,
+        )
 
     async def test_mounts_intro_issue_main_composer_topdown(self) -> None:
         from textual.widgets import Input, Static
@@ -67,7 +83,8 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(app._main.help_open)
             self.assertIsNotNone(app.query_one("#composer", Composer))
             self.assertIsNotNone(app.query_one("#prompt", Input))
-            self.assertIn("operator", str(app.query_one("#modepill", Static).render()))
+            # Claude-style idle: the mode pill is hidden (no `● operator` row)
+            self.assertFalse(app.query_one("#modepill", Static).display)
 
     async def test_composer_is_inline_not_docked_bottom(self) -> None:
         """Composer is NOT dock:bottom — it flows inline right after the content.
@@ -108,30 +125,52 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(composer.region.y, short_y)
             self.assertTrue(composer.display)
 
-    async def test_composer_below_help_panel_when_help_open(self) -> None:
-        """When help is open the composer still sits right BELOW the help view."""
+    async def test_help_tabs_first_with_cyan_divider_no_branding(self) -> None:
+        """Help reads tabs-first (Help General …, no 'forgekit help' header) with a
+        full-width cyan divider under the tab strip."""
+        from textual.widgets import Static
+        from forgekit_console.tui import theme
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/help")
+            await pilot.pause()
+            await pilot.pause()
+            tabs = app.query_one("#help-tabs", Static)
+            strip = str(tabs.render())
+            self.assertIn("Help", strip)
+            self.assertNotIn("forgekit", strip)  # no branding header in the strip
+            # a full-width divider = the tab strip's bottom border (a cyan accent rule)
+            from textual.color import Color
+
+            edge = tabs.styles.border_bottom
+            self.assertNotIn((edge[0] or "").lower(), ("", "none"))
+            self.assertEqual(edge[1], Color.parse(theme.ACCENT_PRIMARY))  # cyan accent
+
+    async def test_composer_hidden_in_help_mode_restored_on_close(self) -> None:
+        """Claude-style: the composer BAR is HIDDEN while the help/tab view is open
+        (help reads as its own mode), and restored + focused when help closes."""
         from textual.widgets import Input
         from forgekit_console.tui.composer import Composer
-        from forgekit_console.tui.main_panel import MainPanel
 
         app = self._app()
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
+            self.assertTrue(composer.display)  # visible in normal mode
             app._execute("/help")
             await pilot.pause()
             await pilot.pause()
             self.assertTrue(app._main.help_open)
-            self.assertTrue(composer.display)
-            self.assertTrue(app.query_one("#prompt", Input).display)
-            # composer is below the help content (active content), not at viewport bottom
-            main = app.query_one("#main", MainPanel)
-            self.assertGreaterEqual(composer.region.y, main.region.bottom)
-            # close help → transcript restored, composer still visible below it
+            # composer BAR is hidden in help mode (no stray input bar below help)
+            self.assertFalse(composer.display)
+            # close help → transcript restored, composer bar visible again
             await pilot.press("escape")
             await pilot.pause()
             self.assertFalse(app._main.help_open)
             self.assertTrue(composer.display)
+            self.assertTrue(app.query_one("#prompt", Input).display)
 
     async def test_help_is_view_switch_not_transcript_append(self) -> None:
         """/help switches the main area to the help view; the transcript is hidden,
@@ -278,12 +317,14 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             log = app.query_one("#main", MainPanel).region
             composer = app.query_one("#composer", Composer).region
             hint = app.query_one("#hint", Static).region
-            # top → down: intro · issue · content · composer · hint (composer inline)
+            # top → down: intro · issue · content · composer-bar (inline)
             self.assertLessEqual(intro.y, issue.y)
             self.assertLessEqual(issue.y, log.y)
             self.assertLessEqual(log.bottom, composer.y)
-            self.assertLessEqual(composer.bottom, hint.y)
-            # composer is NOT pinned to the viewport bottom on a short session
+            # the hint is now the FOOT of the composer bar (inside it), not a stray line
+            self.assertGreaterEqual(hint.y, composer.y)
+            self.assertLessEqual(hint.bottom, composer.bottom)
+            # composer bar is NOT pinned to the viewport bottom on a short session
             self.assertLess(composer.bottom, app.size.height - 2)
 
     async def test_intro_avatar_renderer_selected(self) -> None:
@@ -294,19 +335,17 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test() as pilot:
             await pilot.pause()
             intro = app.query_one("#intro", IntroHeader)
-            # whichever the headless terminal selected, it is one of the three tiers
+            # whichever the headless terminal selected, it is one of the known tiers
             self.assertIn(
                 intro.avatar_renderer_id,
-                (ir.RENDERER_REAL, ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
+                (ir.RENDERER_REAL, ir.RENDERER_ANSI_ICON, ir.RENDERER_AVATAR_MARK,
+                 ir.RENDERER_HALFBLOCK, ir.RENDERER_TEXT),
             )
 
-    async def test_composer_is_thin_no_heavy_box(self) -> None:
-        """The composer is a THIN bar: a single subtle top rule, no full/heavy box.
-
-        Claude-Code restraint — the input row is the star. We assert the composer
-        carries only a top border (no left/right/bottom box) and a left accent
-        prompt marker ``›``.
-        """
+    async def test_input_bar_clean_mode_hidden_in_idle_hint_outside(self) -> None:
+        """The input BAR (#composer-input-shell) holds ONLY the marker + input, with
+        full-width top+bottom rules. In the default operator (idle) state the mode row
+        is HIDDEN (Claude-style), and the hints (#hint) are a row BELOW the bar."""
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
 
@@ -314,37 +353,105 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            # border-top only — left/right/bottom edges are NOT a box
-            edges = composer.styles.border
-            top_edge = composer.styles.border_top
-            self.assertIsNotNone(top_edge)
-            self.assertNotEqual((top_edge[0] or "").lower(), "")
-            # the top rule is a THIN style (solid), not heavy
-            self.assertNotEqual((top_edge[0] or "").lower(), "heavy")
-            # no left/right/bottom border (a thin separator, not a full box)
-            self.assertIn((composer.styles.border_left[0] or "").lower(), ("", "none"))
-            self.assertIn((composer.styles.border_bottom[0] or "").lower(), ("", "none"))
-            # left accent prompt marker present
-            marker = str(app.query_one("#marker", Static).render())
-            self.assertIn("›", marker)
+            box = app.query_one("#composer-input-shell")
+            # full-width input strip = top + bottom rules (no heavy box)
+            for edge in (box.styles.border_top, box.styles.border_bottom):
+                self.assertNotIn((edge[0] or "").lower(), ("", "none"))
+                self.assertNotEqual((edge[0] or "").lower(), "heavy")
+            # idle: the mode row is HIDDEN (no `● operator` above the bar)
+            self.assertFalse(app.query_one("#modepill", Static).display)
+            # marker inside the bar; hint OUTSIDE (below) the bar
+            box_region = box.region
+            self.assertTrue(box_region.contains_region(app.query_one("#marker", Static).region))
+            self.assertGreaterEqual(app.query_one("#hint", Static).region.y, box_region.bottom)
+            self.assertGreaterEqual(composer.styles.margin.top, 1)
+            self.assertIn(">", str(app.query_one("#marker", Static).render()))
 
-    async def test_intro_shows_brand_banner_mark(self) -> None:
-        """The intro shows the forgekit BRAND mark (banner image-first / text wordmark)."""
-        from forgekit_console.tui.brand_panel import BrandPanel
+    async def test_actual_typing_focus_value_and_submit(self) -> None:
+        """REAL interaction (not existence): the prompt is focused on mount, typed
+        characters land in Input.value, `/he` opens the palette, and Enter submits."""
+        from textual.widgets import Input
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            prompt = app.query_one("#prompt", Input)
+            # 1) the prompt has focus on mount
+            self.assertIs(app.focused, prompt)
+            # 2) typing real keys lands in Input.value
+            await pilot.press("a", "b", "c")
+            await pilot.pause()
+            self.assertEqual(prompt.value, "abc")
+            # 3) clear, then a slash query opens the palette with the typed value kept
+            prompt.value = ""
+            await pilot.press("slash", "h", "e")
+            await pilot.pause()
+            self.assertEqual(prompt.value, "/he")
+            self.assertTrue(app._palette.is_open)
+            # 4) Enter submits — palette closes and the prompt resets (submit flow ran)
+            await pilot.press("enter")
+            await pilot.pause()
+            self.assertFalse(app._palette.is_open)
+            self.assertEqual(app.query_one("#prompt", Input).value, "")
+
+    async def test_input_is_clean_hints_live_in_hint_row(self) -> None:
+        """The input field carries NO in-field guidance (clean, Claude-style); the
+        `/help · / palette · Tab · quit` hints live in the #hint row below it."""
+        from textual.widgets import Input, Static
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            prompt = app.query_one("#prompt", Input)
+            self.assertEqual((prompt.placeholder or ""), "")  # no placeholder clutter
+            hint = str(app.query_one("#hint", Static).render())
+            self.assertIn("/help", hint)  # guidance in the hint row (outside the box)
+            self.assertIn("palette", hint)
+
+    async def test_slash_palette_is_separate_surface_below_the_box(self) -> None:
+        """Slash palette is a SEPARATE surface BELOW the input box + hint — not inside
+        the input box, not in the transcript. The key Claude-style fix."""
+        from textual.widgets import Input
+        from forgekit_console.tui.composer import Composer
+        from forgekit_console.tui.palette import CommandPalette
+
+        app = self._app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app.query_one("#prompt", Input).value = "/he"
+            await pilot.pause()
+            self.assertTrue(app._palette.is_open)
+            composer = app.query_one("#composer", Composer).region
+            box = app.query_one("#composer-input-shell").region
+            palette = app.query_one("#palette", CommandPalette).region
+            # palette is BELOW the input box (separate surface, not inside it)
+            self.assertGreaterEqual(palette.y, box.bottom)
+            # still part of the composer wrapper (connected), never in the transcript
+            self.assertLessEqual(palette.bottom, composer.bottom)
+            # compact: capped height so it never becomes a giant box
+            self.assertLessEqual(palette.height, 8)
+
+    async def test_intro_is_compact_branding_in_meta_no_separate_wordmark(self) -> None:
+        """The intro is a COMPACT product header: the standalone wordmark banner line
+        is gone (Claude-style), branding lives in the meta's `forgekit v0.1.0`, and
+        there is no `#intro-brand` widget any more."""
+        from textual.widgets import Static
+        from textual.css.query import NoMatches
         from forgekit_console.tui.header import IntroHeader
-        from forgekit_console.tui import image_renderer as ir
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
             intro = app.query_one("#intro", IntroHeader)
-            brand = intro.query_one("#intro-brand", BrandPanel)
-            self.assertIsNotNone(brand)
-            # whichever the headless terminal selected, it's the image or text tier
-            self.assertIn(
-                intro.brand_renderer_id,
-                (ir.RENDERER_BRAND_IMAGE, ir.RENDERER_BRAND_TEXT),
-            )
+            # the separate brand wordmark line is removed
+            with self.assertRaises(NoMatches):
+                intro.query_one("#intro-brand")
+            # branding is the meta's wordmark; meta is a short 3-line header
+            meta = str(app.query_one("#intro-meta", Static).render())
+            self.assertIn("forge", meta)
+            self.assertIn("v0.1.0", meta)
+            self.assertNotIn("operator console", meta)  # redundant tagline dropped
+            self.assertLessEqual(len([l for l in meta.split("\n") if l.strip()]), 3)
 
     async def test_intro_brand_image_first_selection(self) -> None:
         """Image-first: a graphics-capable terminal selects the REAL banner image;
@@ -386,6 +493,281 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("renderers", line)
                 self.assertIn("avatar=", line)
                 self.assertIn("brand=", line)
+
+    async def test_repeated_failure_advisory_then_blocked_banner(self) -> None:
+        """3 same-signature failures → advisory below threshold, then a blocked banner
+        + RCA in the transcript (never a silent repeated failure)."""
+        from textual.widgets import Static
+
+        app = self._app(escalator=self._tempdir_escalator(threshold=3))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            # /nope is an unknown command → KIND_ERROR, same signature each time
+            app._execute("/nope")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 1/3 — advisory only
+            app._execute("/nope")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 2/3 — still advisory
+            app._execute("/nope")
+            await pilot.pause()
+            # 3/3 → escalated: blocked flag set + issue line is the blocked banner
+            self.assertTrue(app._blocked)
+            issue = str(app.query_one("#issue", Static).render())
+            self.assertIn("blocked", issue)
+
+    async def test_repeated_render_fallback_escalates(self) -> None:
+        """Running /render repeatedly while still on a fallback (headless test env is
+        never true-raster) escalates after the threshold with render alternatives."""
+        from forgekit_console.lifecycle import failure_escalation as fe
+
+        esc = self._tempdir_escalator(threshold=3)
+        app = self._app(escalator=esc)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._execute("/render")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 1/3 — advisory only
+            app._execute("/render")
+            await pilot.pause()
+            self.assertFalse(app._blocked)  # 2/3
+            app._execute("/render")
+            await pilot.pause()
+            # 3/3 → escalated as a renderer issue with alternatives
+            self.assertTrue(app._blocked)
+            records = fe.read_escalations(esc.ledger_path)
+            self.assertTrue(records)
+            self.assertEqual(records[-1]["kind"], fe.KIND_RENDERER)
+            self.assertTrue(records[-1]["alternatives"])  # alternatives investigated
+
+    async def test_blocked_command_lists_escalation(self) -> None:
+        """After an escalation, /blocked surfaces the open repeated-failure."""
+        app = self._app(escalator=self._tempdir_escalator(threshold=1))
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app._execute("/nope")  # threshold 1 → immediate escalation
+            await pilot.pause()
+            self.assertTrue(app._blocked)
+            # the escalation RCA block was written to the transcript
+            n_before = len(app._transcript.lines)
+            self.assertGreater(n_before, 0)
+
+    async def test_free_text_live_submit_appends_assistant_reply(self) -> None:
+        """A non-slash line goes to the injected submit service (NOT the slash path):
+        the user echo + the assistant reply land in the transcript, the input is
+        cleared, and focus returns to the prompt — no escalation on a live result."""
+        from textual.widgets import Input
+        from forgekit_console.chat import models as m
+
+        class FakeService:
+            def __init__(self) -> None:
+                self.prompts = []
+
+            def submit(self, text):
+                self.prompts.append(text)
+                return m.SubmitResult(
+                    ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
+                    text="안녕하세요 — 라이브 응답입니다", provider_id="ollama",
+                    provider_label="Ollama", source=m.SOURCE_LOCAL_DEFAULT, model="gemma3:latest",
+                )
+
+        svc = FakeService()
+        app = self._app(submit_service=svc)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            n_before = len(app._transcript.lines)
+            prompt = app.query_one("#prompt", Input)
+            prompt.value = "프로젝트 상태 알려줘"
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()  # the threaded submit worker
+            await pilot.pause()
+            # the free text reached the live submit service (slash path NOT taken)
+            self.assertEqual(svc.prompts, ["프로젝트 상태 알려줘"])
+            # echo + assistant reply both appended
+            self.assertGreater(len(app._transcript.lines), n_before)
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("라이브 응답", joined)
+            # input cleared, focus kept on the prompt, no escalation
+            self.assertEqual(app.query_one("#prompt", Input).value, "")
+            self.assertIs(app.focused, app.query_one("#prompt", Input))
+            self.assertFalse(app._blocked)
+
+    async def test_free_text_failure_records_escalation(self) -> None:
+        """A non-live submit (e.g. no provider) is surfaced honestly AND, after the
+        threshold, escalates as a repeated failure (never silently swallowed)."""
+        from textual.widgets import Input
+        from forgekit_console.chat import models as m
+
+        class FailingService:
+            def submit(self, text):
+                return m.SubmitResult(
+                    ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER,
+                    text="provider 가 아직 설정되지 않았습니다.",
+                    next_action="로컬 ollama 를 실행하거나 provider 를 설정하세요.",
+                )
+
+        app = self._app(escalator=self._tempdir_escalator(threshold=1), submit_service=FailingService())
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app.query_one("#prompt", Input).value = "hello?"
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("다음 단계", joined)  # the next-action guidance is shown
+            self.assertTrue(app._blocked)  # threshold 1 → escalated
+
+    async def test_slash_command_not_routed_to_submit_service(self) -> None:
+        """Slash commands must NEVER hit the live submit service — they stay on the
+        pure router path."""
+        from forgekit_console.chat import models as m
+
+        class TrackingService:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def submit(self, text):
+                self.calls += 1
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
+
+        svc = TrackingService()
+        app = self._app(submit_service=svc)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            n_before = len(app._transcript.lines)
+            app._execute("/status")
+            await pilot.pause()
+            self.assertEqual(svc.calls, 0)  # the slash path never calls submit
+            # /status still routed normally → its result reached the transcript
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertGreater(len(app._transcript.lines), n_before)
+            self.assertIn("operator dashboard", joined)
+
+    def _hero_app(self, hero_text: str = "HERO ART LINE 1\nHERO ART LINE 2", **env):
+        """An app whose hero asset is a temp file (so hero mode is exercisable)."""
+        import os
+        import tempfile
+        from unittest import mock
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        p = d / "hero.txt"
+        p.write_text(hero_text, encoding="utf-8")
+        patch_env = {"FORGEKIT_HERO_PATH": str(p), **env}
+        ctx = mock.patch.dict(os.environ, patch_env)
+        ctx.start()
+        self.addCleanup(ctx.stop)
+        return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context())
+
+    async def test_empty_session_shows_hero_then_folds_to_compact(self) -> None:
+        """Fresh empty session → HERO art visible; typing/submit → COMPACT header."""
+        from textual.widgets import Input
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._hero_app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            intro = app.query_one("#intro", IntroHeader)
+            self.assertEqual(intro.mode, "hero")  # big first impression
+            self.assertTrue(app.query_one("#intro-hero-wrap").display)
+            self.assertFalse(app.query_one("#intro-body").display)
+            # type a character → folds to compact (working state)
+            await pilot.press("h")
+            await pilot.pause()
+            self.assertEqual(intro.mode, "compact")
+            self.assertFalse(app.query_one("#intro-hero-wrap").display)
+            self.assertTrue(app.query_one("#intro-body").display)
+
+    async def test_no_hero_asset_stays_compact(self) -> None:
+        """Without an asset the intro is always compact (no empty hero box)."""
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._app()  # no FORGEKIT_HERO_PATH
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
+
+    async def test_about_command_shows_hero_and_about_tab(self) -> None:
+        """/about → hero art in the header + the About help tab."""
+        from forgekit_console.tui.header import IntroHeader
+        from forgekit_console.tui import render
+
+        app = self._hero_app()
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/about")
+            await pilot.pause()
+            self.assertTrue(app._main.help_open)
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
+            secs = render.help_sections(app.context.commands, app.context.agents)
+            self.assertEqual(secs[app._main.help_panel.active_tab].title, "About")
+            # Esc closes help → back to compact (transcript empty but help was the hero)
+            await pilot.press("escape")
+            await pilot.pause()
+            self.assertFalse(app._main.help_open)
+
+    async def test_intro_mode_override_compact_forces_small(self) -> None:
+        """FORGEKIT_INTRO_MODE=compact keeps the small header even on an empty session."""
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._hero_app(FORGEKIT_INTRO_MODE="compact")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
+
+    async def test_intro_mode_override_hero_forces_big_while_working(self) -> None:
+        """FORGEKIT_INTRO_MODE=hero keeps the big art even after typing."""
+        from textual.widgets import Input
+        from forgekit_console.tui.header import IntroHeader
+
+        app = self._hero_app(FORGEKIT_INTRO_MODE="hero")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("h", "i")
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
+
+    async def test_live_submit_still_works_with_hero(self) -> None:
+        """Regression: free-text live-submit still appends + folds hero to compact."""
+        from textual.widgets import Input
+        from forgekit_console.chat import models as m
+        from forgekit_console.tui.header import IntroHeader
+
+        class FakeLive:
+            def submit(self, text):
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
+                                      text="live reply", provider_id="ollama",
+                                      provider_label="Ollama", model="x")
+
+        import os
+        import tempfile
+        from unittest import mock
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        d = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+        p = d / "hero.txt"
+        p.write_text("HERO", encoding="utf-8")
+        ctx = mock.patch.dict(os.environ, {"FORGEKIT_HERO_PATH": str(p)})
+        ctx.start()
+        self.addCleanup(ctx.stop)
+        app = ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(), submit_service=FakeLive()
+        )
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
+            app.query_one("#prompt", Input).value = "hello"
+            await pilot.press("enter")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("live reply", joined)
+            self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
 
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
