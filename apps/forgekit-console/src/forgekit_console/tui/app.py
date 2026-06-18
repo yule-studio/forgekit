@@ -78,6 +78,7 @@ class ForgekitConsoleApp(App):
         submit_service=None,
         config: Optional[dict] = None,
         notifier=None,
+        usage_ledger_path=None,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
@@ -123,6 +124,13 @@ class ForgekitConsoleApp(App):
 
             notifier = NotificationService(desktop_enabled=notify_enabled())
         self._notifier = notifier
+        # Token usage ledger (WT2): append-only JSONL SSoT. Feeds the WT1 submit gate's
+        # budget snapshot (real throttle teeth) + /usage + budget alerts.
+        from ..usage import new_session_id, usage_ledger_path as _ulp
+
+        self._session_id = new_session_id()
+        self._usage_ledger_path = usage_ledger_path if usage_ledger_path is not None else _ulp()
+        self._budget_alerted = 0.0  # highest budget threshold already alerted (no spam)
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -303,6 +311,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "design":
             self._show_design()
             return
+        if parsed.name == "usage":
+            self._show_usage()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -358,6 +369,7 @@ class ForgekitConsoleApp(App):
             result = decision.held_result(ctx.runtime_mode)
             for line in result.to_lines():
                 self._transcript.write(line)
+            self._record_usage(result)  # held/throttled events are in the ledger too
             self._follow_tail()
             return
         self._follow_tail()
@@ -376,12 +388,58 @@ class ForgekitConsoleApp(App):
                              usage=self._usage_snapshot())
 
     def _usage_snapshot(self):
-        """Current usage vs budget for the gate. WT1: empty; the token ledger (WT2)
-        fills spent/budget so budget-throttle gains real teeth."""
+        """Today's spent tokens (from the ledger) vs the config budget → gate teeth (WT2)."""
 
         from ..chat.policy_gate import UsageSnapshot
+        from ..usage import budget_from_config, read_events, rollup, today
 
-        return UsageSnapshot()
+        try:
+            rows = read_events(path=self._usage_ledger_path, day=today())
+            spent = rollup(rows).total_tokens
+        except Exception:  # noqa: BLE001 - ledger read must never break submit
+            spent = 0
+        return UsageSnapshot(spent_tokens=spent, budget_tokens=budget_from_config(self._config))
+
+    def _record_usage(self, result) -> None:
+        """Append a usage event for a submit result (WT2 ledger)."""
+
+        from ..usage import UsageEvent, append_event, now_ts
+
+        ev = UsageEvent(
+            ts=now_ts(), session_id=self._session_id, mode=result.runtime_mode,
+            provider=result.provider_id, model=result.model, category=result.category,
+            input_tokens=result.input_tokens, output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens, usage_basis=result.usage_basis,
+            success=result.ok, throttled=result.throttled,
+        )
+        append_event(ev, path=self._usage_ledger_path)
+        self._check_budget_alert()
+
+    def _check_budget_alert(self) -> None:
+        """Budget threshold crossing → inbox + console (≥2 surfaces). No spam (track last)."""
+
+        from ..usage import budget_from_config, evaluate_budget, read_events, rollup, today, alert_message
+
+        budget = budget_from_config(self._config)
+        if budget <= 0:
+            return
+        spent = rollup(read_events(path=self._usage_ledger_path, day=today())).total_tokens
+        state = evaluate_budget(spent, budget)
+        if not state.crossed or state.highest_crossed <= self._budget_alerted:
+            return
+        self._budget_alerted = state.highest_crossed
+        msg = alert_message(state)
+        # surface 1: console
+        self._transcript.write(f"[{theme.WARNING}]⚠ budget {int(state.ratio*100)}%[/{theme.WARNING}] [dim]{msg}[/dim]")
+        # surface 2: operator inbox (+ desktop when FORGEKIT_NOTIFY)
+        try:
+            from ..notify.events import EVENT_INFO_REQUIRED, NotificationEvent
+
+            self._notifier.notify(NotificationEvent(
+                EVENT_INFO_REQUIRED, "forgekit budget 임계 도달",
+                why=f"오늘 토큰 {int(state.ratio*100)}% 사용", action=msg, source="budget"))
+        except Exception:  # noqa: BLE001
+            pass
 
     def _run_idea_discovery(self, raw: str) -> None:
         """Idea-discovery mode: free text (+ repo-local signals) → briefs, top→handoff hint."""
@@ -423,6 +481,36 @@ class ForgekitConsoleApp(App):
         result = summarize_ingest(ingest)
         for line in render.video_watch_lines(result):
             log.write(line)
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_usage(self) -> None:
+        """`/usage` — today rollup (provider/mode, live vs estimate) + budget + report files."""
+
+        from ..usage import (budget_from_config, evaluate_budget, read_events, rollup,
+                             today, to_txt, top_by_tokens, write_reports)
+
+        log = self._transcript
+        log.write_echo("/usage")
+        rows = read_events(path=self._usage_ledger_path, day=today())
+        roll = rollup(rows, scope=f"today({today()})")
+        for line in to_txt(roll, top_by_tokens(rows, limit=3)).splitlines():
+            log.write(f"[dim]{line}[/dim]" if line.startswith("  ") else line)
+        budget = budget_from_config(self._config)
+        if budget > 0:
+            st = evaluate_budget(roll.total_tokens, budget)
+            log.write(f"  [dim]budget: {st.spent}/{st.budget}tok ({int(st.ratio*100)}%)"
+                      + (" — 초과" if st.over else "") + "[/dim]")
+        else:
+            log.write("  [dim]budget: 미설정(config 의 daily_token_budget) — unbounded[/dim]")
+        # also persist regenerable reports next to the ledger evidence
+        try:
+            out = self.repo_root / "runs" / "forgekit" / "usage"
+            paths = write_reports(roll, out, top=top_by_tokens(rows, limit=5))
+            if paths:
+                log.write(f"[dim]↳ report: {paths[0].parent}/ (txt/md/json)[/dim]")
+        except Exception:  # noqa: BLE001
+            pass
         self._sync_intro()
         self._follow_tail()
 
@@ -659,6 +747,8 @@ class ForgekitConsoleApp(App):
         log = self._transcript
         for line in result.to_lines():
             log.write(line)
+        # WT2: record the usage event (live or estimate basis) to the ledger.
+        self._record_usage(result)
         # held/throttled are intentional POLICY decisions, not failures → no escalation.
         if not result.ok and not result.held:
             self._record_submit_failure(result)

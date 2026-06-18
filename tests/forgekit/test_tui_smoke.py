@@ -781,6 +781,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             kw["notifier"] = NotificationService(
                 inbox_path=tmp / "inbox.json", desktop_enabled=False
             )
+        if "usage_ledger_path" not in kw:
+            d = Path(tempfile.mkdtemp())
+            self.addCleanup(lambda: __import__("shutil").rmtree(d, ignore_errors=True))
+            kw["usage_ledger_path"] = d / "usage.jsonl"  # isolate (no ~/.forgekit writes)
         return ForgekitConsoleApp(
             repo_root=Path("/tmp/repo"), context=_fake_context(),
             config={"main_provider": main}, **kw,
@@ -839,6 +843,76 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("shift+tab")
             await pilot.pause()
             self.assertEqual(app._runtime_mode, before)  # no fake switch
+
+    async def test_usage_ledger_records_and_surface(self) -> None:
+        """A live submit records a usage row; /usage shows the today rollup."""
+        from forgekit_console.chat import models as m
+
+        class FakeLive:
+            def submit(self, text, **_):
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
+                                      text="reply", provider_id="ollama", provider_label="Ollama",
+                                      model="gemma3", runtime_mode="Interactive",
+                                      usage_basis=m.USAGE_ESTIMATE, input_tokens=5,
+                                      output_tokens=3, total_tokens=8)
+
+        app = self._ready_app("claude", submit_service=FakeLive())
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._submit_free_text("질문")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            # the ledger got a row
+            from forgekit_console.usage import read_events
+            rows = read_events(path=app._usage_ledger_path)
+            self.assertTrue(rows)
+            self.assertEqual(rows[-1]["total_tokens"], 8)
+            self.assertEqual(rows[-1]["usage_basis"], "estimate")
+            # /usage surfaces it
+            app._execute("/usage")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("forgekit usage", joined)
+            self.assertIn("live vs estimate", joined)
+
+    async def test_budget_crossing_alerts_two_surfaces(self) -> None:
+        """Budget threshold crossing → console line + operator inbox (≥2 surfaces)."""
+        import json
+        import tempfile
+        from forgekit_console.chat import models as m
+        from forgekit_console.notify.service import NotificationService
+
+        inbox = Path(tempfile.mkdtemp()) / "inbox.json"
+        self.addCleanup(lambda: __import__("shutil").rmtree(inbox.parent, ignore_errors=True))
+
+        class FakeLive:
+            def submit(self, text, **_):
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
+                                      text="r", provider_id="ollama", model="g",
+                                      runtime_mode="Interactive", usage_basis=m.USAGE_ESTIMATE,
+                                      total_tokens=900)
+
+        # tiny budget so one submit crosses 70/85%
+        from forgekit_console.tui.app import ForgekitConsoleApp
+        led = Path(tempfile.mkdtemp()) / "u.jsonl"
+        self.addCleanup(lambda: __import__("shutil").rmtree(led.parent, ignore_errors=True))
+        app = ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(),
+            config={"main_provider": "claude", "daily_token_budget": 1000},
+            submit_service=FakeLive(),
+            notifier=NotificationService(inbox_path=inbox, desktop_enabled=False),
+            usage_ledger_path=led)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._submit_free_text("질문")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("budget", joined)                 # surface 1: console
+            self.assertTrue(inbox.exists())                 # surface 2: inbox
+            self.assertIn("budget", json.loads(inbox.read_text(encoding="utf-8"))[-1]["source"])
 
     async def test_design_surface_shows_restricted_status(self) -> None:
         """/design shows the restricted source status (blocked/honest, design roles)."""
