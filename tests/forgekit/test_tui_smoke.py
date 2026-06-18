@@ -410,9 +410,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("/help", hint)  # guidance in the hint row (outside the box)
             self.assertIn("palette", hint)
 
-    async def test_slash_palette_is_separate_surface_below_the_box(self) -> None:
-        """Slash palette is a SEPARATE surface BELOW the input box + hint — not inside
-        the input box, not in the transcript. The key Claude-style fix."""
+    async def test_slash_palette_opens_above_the_input_bar(self) -> None:
+        """Slash palette is a SEPARATE surface that opens ABOVE the input bar (Claude
+        upward palette) — not inside the input box, not in the transcript, and never
+        pushed below the bar where the operator would have to scroll to it."""
         from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
@@ -426,12 +427,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             composer = app.query_one("#composer", Composer).region
             box = app.query_one("#composer-input-shell").region
             palette = app.query_one("#palette", CommandPalette).region
-            # palette is BELOW the input box (separate surface, not inside it)
-            self.assertGreaterEqual(palette.y, box.bottom)
+            # palette opens ABOVE the input bar (its bottom is at/above the bar top)
+            self.assertLessEqual(palette.bottom, box.y + 1)
             # still part of the composer wrapper (connected), never in the transcript
-            self.assertLessEqual(palette.bottom, composer.bottom)
-            # compact: capped height so it never becomes a giant box
-            self.assertLessEqual(palette.height, 8)
+            self.assertGreaterEqual(palette.y, composer.y)
+            # compact: capped height (MAX_ROWS + header/hint) so it never becomes a giant box
+            self.assertLessEqual(palette.height, 11)
 
     async def test_intro_is_compact_branding_in_meta_no_separate_wordmark(self) -> None:
         """The intro is a COMPACT product header: the standalone wordmark banner line

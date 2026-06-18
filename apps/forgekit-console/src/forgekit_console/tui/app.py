@@ -88,6 +88,9 @@ class ForgekitConsoleApp(App):
         self.context.profile = self.context.profile or "operator"
         self.mode = MODE_OPERATOR
         self._palette = palette_state.CLOSED
+        self._palette_was_open = False  # tracks open transitions for the auto-reveal policy
+        self._last_response = ""        # plain-text snapshot of the last response (for /copy)
+        self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
         self._suppress_refilter = False
         # Repeated-failure escalation: same blocked signature past the threshold
         # (default 3) auto-surfaces a mini-RCA instead of failing silently. Injected
@@ -162,8 +165,12 @@ class ForgekitConsoleApp(App):
             yield Static(id="issue")
             # main area — a transcript XOR help-view state machine (mutually exclusive)
             yield MainPanel(id="main")
-            # session-following inline composer BAR — input row + inline palette
-            # (opens below the input) + the sub-hint row, all inside one bar.
+            # live status line — a TRANSIENT stage marker (thinking → generating) shown
+            # right under the conversation while a response is being produced/revealed,
+            # then cleared. Empty (height collapses) when idle.
+            yield Static(id="livestatus")
+            # session-following inline composer BAR — slash palette (opens ABOVE the
+            # input) + input row + the sub-hint row, all inside one bar.
             yield Composer(id="composer")
 
     def on_mount(self) -> None:
@@ -260,16 +267,39 @@ class ForgekitConsoleApp(App):
 
     def _render_palette(self) -> None:
         widget = self.query_one("#palette", CommandPalette)
-        if self._palette.is_open:
+        is_open = self._palette.is_open
+        if is_open:
             widget.show(self._palette)
         else:
             widget.hide()
         self._refresh_chrome()
         self._sync_intro()  # opening the palette folds a fresh hero to compact
+        # Auto-reveal policy (Claude-style): when the palette OPENS — or while it is
+        # open and the operator is already at the tail — bring the composer + palette
+        # block into view so they never have to scroll down to see the candidates.
+        # If they are browsing history (not at tail) we do NOT yank the viewport,
+        # UNLESS this is the open transition (explicit command-entry intent).
+        opening = is_open and not self._palette_was_open
+        if is_open and (opening or self._at_tail()):
+            self._follow_tail()
+        self._palette_was_open = is_open
+
+    def _at_tail(self) -> bool:
+        """True when the session flow is scrolled at (or within 2 rows of) the tail."""
+
+        try:
+            flow = self._flow
+            return (flow.max_scroll_y - flow.scroll_offset.y) <= 2
+        except Exception:  # noqa: BLE001 - flow not mounted yet
+            return True
 
     def _close_palette(self) -> None:
         self._palette = palette_state.close()
         self.query_one("#palette", CommandPalette).hide()
+        # these close paths (Esc / submit) bypass _render_palette, so reset the
+        # open-transition flag here — otherwise the NEXT `/` isn't seen as an OPENING
+        # and the auto-reveal would skip a browsing operator.
+        self._palette_was_open = False
         self._refresh_chrome()
 
     def _reset_input(self) -> None:
@@ -347,9 +377,10 @@ class ForgekitConsoleApp(App):
             self._open_help(about=(result.title == "about"))
             return
         log = self._transcript
+        log.begin_turn()   # vertical breathing room between turns (Claude cadence)
         log.write_echo(raw)
         log.write_result(result.title, result.lines)
-        self._last_response = "\n".join(result.lines)   # copyable via /copy
+        self._last_response = self._plain_from_lines(result.lines)   # copyable via /copy
         if result.kind == KIND_AGENT_MODE:
             self.mode = result.title  # router titles agent results as "agent:<id>"
             self._refresh_chrome()
@@ -377,7 +408,8 @@ class ForgekitConsoleApp(App):
         text = raw.strip()
         if not text:
             return
-        self._transcript.write_echo(text)  # the user's message
+        self._transcript.begin_turn()       # vertical breathing room between turns
+        self._transcript.write_echo(text)   # the user's message
         self._sync_intro()  # transcript now has content → compact working header
         # RUNTIME-TEETH (WT1): enforce the EffectivePolicy via the chat policy gate
         # BEFORE any provider call. hold-all (approval-wait) / budget throttle → no
@@ -393,6 +425,9 @@ class ForgekitConsoleApp(App):
             self._record_usage(result)  # held/throttled events are in the ledger too
             self._follow_tail()
             return
+        # stage 1 — THINKING: a transient status line under the conversation while the
+        # provider call runs off the event loop (real stage, cleared when the reply lands).
+        self._set_live_status("[dim]● 생각 중…[/dim]")
         self._follow_tail()
         self.run_worker(
             lambda: self._submit_blocking(text, ctx), thread=True, group="submit", exclusive=False
@@ -784,10 +819,15 @@ class ForgekitConsoleApp(App):
 
         from . import clipboard
 
+        self._transcript.begin_turn()
         self._transcript.write_echo("/copy")
         text = getattr(self, "_last_response", "") or ""
         if not text.strip():
-            self._transcript.write("[dim]복사할 최근 응답이 없습니다 — 먼저 질문/명령을 실행하세요.[/dim]")
+            # empty payload is a FAILURE, not a quiet note — never claim a copy happened.
+            self._transcript.write(
+                f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] "
+                "[dim]복사할 최근 응답이 없습니다 — 먼저 질문/명령을 실행하세요.[/dim]"
+            )
         else:
             ok, msg = clipboard.copy_text(text)
             self._transcript.write((f"[{theme.SUCCESS}]✓ 복사됨[/{theme.SUCCESS}] [dim]{msg}[/dim]")
@@ -799,6 +839,7 @@ class ForgekitConsoleApp(App):
         """`/attach` — honest blocked seam. The console submits TEXT ONLY to providers;
         there is no upload transport, so we say so plainly instead of faking an upload."""
 
+        self._transcript.begin_turn()
         self._transcript.write_echo(raw)
         self._transcript.write(
             f"[{theme.WARNING}]⚠ 첨부 미지원[/{theme.WARNING}] "
@@ -811,17 +852,74 @@ class ForgekitConsoleApp(App):
         self._follow_tail()
 
     def _on_submit_result(self, result) -> None:
-        log = self._transcript
-        # line-by-line append (chunked render feel — each line written separately).
-        for line in result.to_lines():
-            log.write(line)
-        self._last_response = result.text or "\n".join(result.to_lines())   # copyable
+        # plain-text snapshot for /copy — the reply TEXT only (no markup, no receipt).
+        self._last_response = result.text or self._plain_from_lines(result.to_lines())
         # WT2: record the usage event (live or estimate basis) to the ledger.
         self._record_usage(result)
         # held/throttled are intentional POLICY decisions, not failures → no escalation.
         if not result.ok and not result.held:
             self._record_submit_failure(result)
+        # stage 2 — GENERATING: reveal the body progressively (paragraph/line-group
+        # chunks), then the receipt, then clear the live status. NOT fake typing — real
+        # content revealed in chunks so it accumulates instead of one giant frame.
+        self._reveal_result(result)
+
+    def _reveal_result(self, result) -> None:
+        lines = list(result.to_lines())
+        receipt = lines.pop() if lines else ""   # the trailing dim receipt line
+        chunks = list(render.chunk_result_lines(lines))
+        self._set_live_status("[dim]● 생성 중…[/dim]")
+        # the FIRST chunk lands immediately (snappy); the rest reveal on a timer.
+        if chunks:
+            self._write_chunk(chunks.pop(0))
+            self._follow_tail()
+        self._reveal_rest(chunks, receipt)
+
+    def _reveal_rest(self, chunks, receipt: str) -> None:
+        """Reveal remaining chunks on a timer, then the receipt, then clear status."""
+
+        if not chunks:
+            self._finish_reveal(receipt)
+            return
+
+        def step() -> None:
+            if chunks:
+                self._write_chunk(chunks.pop(0))
+                self._follow_tail()
+            if not chunks:
+                timer.stop()
+                self._finish_reveal(receipt)
+
+        timer = self.set_interval(self._reveal_interval, step)
+
+    def _finish_reveal(self, receipt: str) -> None:
+        if receipt:
+            self._transcript.write(receipt)   # stage 3 — RECEIPT (who/usage/mode)
+        self._clear_live_status()
         self._follow_tail()
+        self._refocus_prompt()
+
+    def _write_chunk(self, chunk) -> None:
+        for line in chunk:
+            self._transcript.write(line)
+
+    @staticmethod
+    def _plain_from_lines(lines) -> str:
+        """Plain-text snapshot from transcript lines (drops the dim receipt line)."""
+
+        body = [ln for ln in lines if not (ln or "").lstrip().startswith("[dim]↳")]
+        return "\n".join(body).strip()
+
+    def _set_live_status(self, markup: str) -> None:
+        try:
+            self.query_one("#livestatus", Static).update(markup)
+        except Exception:  # noqa: BLE001 - livestatus not mounted yet
+            pass
+
+    def _clear_live_status(self) -> None:
+        self._set_live_status("")
+
+    def _refocus_prompt(self) -> None:
         try:
             self.query_one("#prompt", PromptArea).focus()
         except Exception:  # noqa: BLE001 - prompt may be transiently unavailable
