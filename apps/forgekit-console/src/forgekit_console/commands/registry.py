@@ -25,6 +25,7 @@ H_HARNESS = "harness"
 H_DOCTOR = "doctor"
 H_RENDER = "render"
 H_BLOCKED = "blocked"
+H_WHOAMI = "whoami"
 H_AGENT_ENTER = "agent_enter"
 H_LAYOUT = "layout"
 H_QUIT = "quit"
@@ -79,6 +80,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("design", "restricted design source 상태 — design role만 raw, 그외 projection", H_MODE, "status"),
     SlashCommand("usage", "토큰 사용량 — today rollup(provider/mode/live·estimate) + budget", H_MODE, "status"),
     SlashCommand("blocked", "반복 실패 에스컬레이션 목록 (왜·대안·다음 단계)", H_BLOCKED, "status"),
+    SlashCommand("whoami", "agent identity — git author / vault / GitHub App 자격 (`/whoami <agent>`)", H_WHOAMI, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),

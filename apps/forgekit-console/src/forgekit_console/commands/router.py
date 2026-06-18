@@ -31,6 +31,7 @@ from .registry import (
     H_HELP,
     H_MODE,
     H_BLOCKED,
+    H_WHOAMI,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -140,6 +141,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
             "mode",
             ("런타임 모드는 콘솔(TUI)에서 Shift+Tab 으로 순환되고 `/mode` 로 표시됩니다.",),
         )
+    if handler == H_WHOAMI:
+        return _whoami_result(parsed)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -164,6 +167,17 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     lines.append("")
     lines.append("일반 텍스트는 provider 로 live-submit 됩니다 (provider 미설정 시 setup 안내).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
+
+
+def _whoami_result(parsed) -> CommandResult:
+    # agent identity surface — registry-backed git author / vault / GitHub App status.
+    # `/whoami <agent>` = one agent's detail; `/whoami` = the audit across all agents.
+    from ..identity import attribution as attr
+
+    args = getattr(parsed, "args", ()) or ()
+    if args:
+        return CommandResult.info("whoami", attr.render_whoami_lines(args[0]))
+    return CommandResult.info("whoami", attr.identity_audit_lines())
 
 
 def _render_readiness_result() -> CommandResult:
