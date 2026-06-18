@@ -574,6 +574,27 @@ risky/restricted 는 approval-wait/runbook + operator 알림(WT4). `always-on` �
   evidence: [`examples/design/`](../apps/forgekit-console/examples/design/)(source-status/reference-packet/
   discomfort-packet/restricted-note/access-runbook).
 
+## 2o. always-on 데몬 — long-running bounded runtime (WT4)
+
+forgekit 가 세션이 아니라 **자체 데몬**으로 장시간 돈다 — 코드 SSoT 는
+[`runtime/daemon.py`](../apps/forgekit-console/src/forgekit_console/runtime/daemon.py) ·
+[`runtime/heartbeat.py`](../apps/forgekit-console/src/forgekit_console/runtime/heartbeat.py) ·
+[`cli/runtime_cmd.py`](../apps/forgekit-console/src/forgekit_console/cli/runtime_cmd.py).
+
+```
+forgekit runtime serve [--interval 300] [--max-ticks 0]   # 장시간 bounded loop
+forgekit runtime once | status | stop
+```
+
+- tick = 관측(repo-local) → 분류 → 패킷 → handoff → 대기 (BoundedRuntimeLoop, **execute phase 없음**).
+  privileged(deploy/secret/infra)는 runbook + approval-wait — **자동 실행 안 함**.
+- 매 tick **heartbeat**($FORGEKIT_HOME/state) + approval-needed → operator 알림(inbox + opt-in desktop, 2 surface).
+  종료: kill switch / SIGTERM·SIGINT / `--max-ticks`.
+- **운영 경로**: Linux/homeserver/systemd = **1급**(`examples/runtime/forgekit-runtime.service`).
+  macOS launchd 지원(`com.forgekit.runtime.plist`)하나 **lid-close+sleep 시 프로세스 suspend** —
+  "덮어도 계속"은 불가(정직). 상시 가동은 홈서버 권장.
+- 회귀: `tests/forgekit/test_runtime_daemon.py` · evidence: [`examples/runtime/`](../apps/forgekit-console/examples/runtime/).
+
 ## 3. 화면 구성 (Claude Code chat-first 위→아래 흐름)
 
 Claude Code 터미널 UI 처럼 **intro → issue line → 본문(main panel) → inline composer → hint**

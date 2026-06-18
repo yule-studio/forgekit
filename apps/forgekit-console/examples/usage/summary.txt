@@ -1,0 +1,11 @@
+forgekit usage — today(2026-06-18)
+  events            : 4
+  total tokens      : 160  (in 80 / out 80)
+  live vs estimate  : live 120 / estimate 40 (live ratio 0.75)
+  throttled / fallback: 1 / 0
+  by provider       : ollama=40, gemini=120
+  by mode           : Interactive=40, Research=120, Cost-save=0, Approval-wait=0
+  top by tokens     :
+    - 120tok gemini/Research (live)
+    - 40tok ollama/Interactive (estimate)
+    - 0tok ollama/Cost-save (unknown)

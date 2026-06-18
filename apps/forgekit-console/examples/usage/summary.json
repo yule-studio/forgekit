@@ -1,0 +1,27 @@
+{
+  "scope": "today(2026-06-18)",
+  "events": 4,
+  "total_tokens": 160,
+  "input_tokens": 80,
+  "output_tokens": 80,
+  "live_tokens": 120,
+  "estimate_tokens": 40,
+  "live_ratio": 0.75,
+  "by_provider": {
+    "ollama": 40,
+    "gemini": 120
+  },
+  "by_model": {
+    "gemma3": 40,
+    "gemini-pro": 120
+  },
+  "by_mode": {
+    "Interactive": 40,
+    "Research": 120,
+    "Cost-save": 0,
+    "Approval-wait": 0
+  },
+  "throttled": 1,
+  "fallback": 0,
+  "cost_usd": 0.0
+}

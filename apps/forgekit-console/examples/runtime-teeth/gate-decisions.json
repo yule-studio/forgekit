@@ -1,0 +1,20 @@
+[
+  {
+    "mode": "Interactive",
+    "gate": "allow",
+    "routing_target": "ollama",
+    "reason": "ok"
+  },
+  {
+    "mode": "Approval-wait",
+    "gate": "hold",
+    "routing_target": "",
+    "reason": "Approval-wait — 모든 행동 보류(hold-all)"
+  },
+  {
+    "mode": "Cost-save",
+    "gate": "throttle",
+    "routing_target": "",
+    "reason": "budget posture(strict) — 1000/1000tok 사용, reserve 진입 → throt"
+  }
+]

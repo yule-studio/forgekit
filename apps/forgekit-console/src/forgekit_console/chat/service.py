@@ -45,6 +45,12 @@ class Transport(Protocol):
         """Model names the server advertises (best-effort; empty on failure)."""
 
 
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate (~4 chars/token). Honest heuristic — usage_basis=estimate."""
+
+    return max(1, len((text or "")) // 4)
+
+
 def load_config(env: Optional[Mapping[str, str]] = None) -> dict:
     """Read ``~/.forgekit/config.json`` (or ``$FORGEKIT_HOME/config.json``). {} if absent."""
 
@@ -96,27 +102,49 @@ class SubmitService:
         return None, m.SOURCE_NONE
 
     # --- submit -------------------------------------------------------------
-    def submit(self, prompt: str, *, prefer_provider: str = "") -> m.SubmitResult:
+    def submit(self, prompt: str, *, prefer_provider: str = "", context=None) -> m.SubmitResult:
+        # WT1 runtime-teeth: enforce the EffectivePolicy BEFORE touching a provider.
+        runtime_mode = getattr(context, "runtime_mode", "") if context else ""
+        if context is not None:
+            from .policy_gate import GATE_HOLD, GATE_THROTTLE, evaluate_gate
+
+            gate = evaluate_gate(context)
+            if gate.action == GATE_HOLD:
+                return m.SubmitResult(
+                    ok=False, mode=m.MODE_HELD, category=m.CAT_POLICY_HELD,
+                    runtime_mode=runtime_mode, text=gate.reason, next_action=gate.next_action,
+                )
+            if gate.action == GATE_THROTTLE:
+                return m.SubmitResult(
+                    ok=False, mode=m.MODE_HELD, category=m.CAT_BUDGET_THROTTLED,
+                    runtime_mode=runtime_mode, throttled=True,
+                    text=gate.reason, next_action=gate.next_action,
+                )
+            # the mode's routing target steers the provider (gate wins over the arg).
+            prefer_provider = gate.routing_target or prefer_provider
+
         spec, source = self.resolve(prefer_provider=prefer_provider)
         if spec is None:
             return m.SubmitResult(
                 ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=source,
+                runtime_mode=runtime_mode,
                 text="provider 가 아직 설정되지 않았습니다 — free-text 를 보낼 대상이 없습니다.",
                 next_action="`forgekit` setup 으로 provider 를 설정하거나, 로컬 ollama 를 실행하세요 "
                             "(http://localhost:11434).",
             )
         if spec.submit_compat == SUBMIT_OPENAI:
-            return self._submit_openai(prompt, spec, source)
+            return self._submit_openai(prompt, spec, source, runtime_mode=runtime_mode)
         # CLI / native / custom-http → honestly not wired for console live-submit.
         return m.SubmitResult(
             ok=False, mode=m.MODE_ERROR, category=m.CAT_UNSUPPORTED, source=source,
-            provider_id=spec.id, provider_label=spec.label,
+            provider_id=spec.id, provider_label=spec.label, runtime_mode=runtime_mode,
             text=f"{spec.label} 는 콘솔 live-submit 이 아직 구현되지 않았습니다 "
                  f"(submit_compat={spec.submit_compat}).",
             next_action="로컬 ollama 또는 openai-compatible provider 를 설정하면 free-text 가 live 로 동작합니다.",
         )
 
-    def _submit_openai(self, prompt: str, spec: ProviderSpec, source: str) -> m.SubmitResult:
+    def _submit_openai(self, prompt: str, spec: ProviderSpec, source: str,
+                       *, runtime_mode: str = "") -> m.SubmitResult:
         # auth is the first precondition the operator must satisfy — check it before
         # the endpoint so an api-key provider reports the actionable "auth_missing".
         api_key = ""
@@ -153,13 +181,21 @@ class SubmitService:
             return m.SubmitResult(
                 ok=False, mode=m.MODE_ERROR, category=cat, source=source,
                 provider_id=spec.id, provider_label=spec.label, model=model,
+                runtime_mode=runtime_mode,
                 text=f"{spec.label} 요청 실패: {type(exc).__name__}: {exc}",
                 next_action="endpoint/health 를 `/render` 또는 `/doctor` 로 확인하세요.",
             )
+        text = (reply or "").strip() or "(빈 응답)"
+        # usage_basis is ESTIMATE: our openai transport returns only the content, not a
+        # usage block, so token counts are length-estimated (honest — never faked live).
+        in_tok = _estimate_tokens(prompt)
+        out_tok = _estimate_tokens(text)
         return m.SubmitResult(
             ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, source=source,
             provider_id=spec.id, provider_label=spec.label, model=model,
-            text=(reply or "").strip() or "(빈 응답)",
+            runtime_mode=runtime_mode, usage_basis=m.USAGE_ESTIMATE,
+            input_tokens=in_tok, output_tokens=out_tok, total_tokens=in_tok + out_tok,
+            text=text,
         )
 
 

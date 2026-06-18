@@ -46,6 +46,12 @@ from .execution import (
     build_operator_digest,
     validate_execution,
 )
+from .runner import (
+    ACTION_NOTE,
+    BoundedMutator,
+    ExecOutcome,
+    ExecTask,
+)
 from .orchestrator import (
     DEFAULT_ALLOWLIST,
     AutopilotLimits,
@@ -65,4 +71,5 @@ __all__ = (
     "SAFE_CLASS_ALLOWLIST", "AUTO_FORBIDDEN", "OperatorDigest", "build_operator_digest", "validate_execution",
     "DEFAULT_ALLOWLIST", "AutopilotLimits", "AutopilotOrchestrator",
     "AutopilotRunResult", "ExecutorArbiter",
+    "ACTION_NOTE", "BoundedMutator", "ExecOutcome", "ExecTask",
 )

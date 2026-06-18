@@ -78,6 +78,7 @@ class ForgekitConsoleApp(App):
         submit_service=None,
         config: Optional[dict] = None,
         notifier=None,
+        usage_ledger_path=None,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
@@ -123,6 +124,13 @@ class ForgekitConsoleApp(App):
 
             notifier = NotificationService(desktop_enabled=notify_enabled())
         self._notifier = notifier
+        # Token usage ledger (WT2): append-only JSONL SSoT. Feeds the WT1 submit gate's
+        # budget snapshot (real throttle teeth) + /usage + budget alerts.
+        from ..usage import new_session_id, usage_ledger_path as _ulp
+
+        self._session_id = new_session_id()
+        self._usage_ledger_path = usage_ledger_path if usage_ledger_path is not None else _ulp()
+        self._budget_alerted = 0.0  # highest budget threshold already alerted (no spam)
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -303,6 +311,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "design":
             self._show_design()
             return
+        if parsed.name == "usage":
+            self._show_usage()
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -347,25 +358,88 @@ class ForgekitConsoleApp(App):
             return
         self._transcript.write_echo(text)  # the user's message
         self._sync_intro()  # transcript now has content → compact working header
-        # RUNTIME MODE ENFORCEMENT: a hold-all posture (approval-wait) does NOT send
-        # the submit live — the mode change has real teeth, not just a label.
-        held, action = self._submit_hold_reason()
-        if held is not None:
-            self._transcript.write(render.submit_held_line(held, action))
+        # RUNTIME-TEETH (WT1): enforce the EffectivePolicy via the chat policy gate
+        # BEFORE any provider call. hold-all (approval-wait) / budget throttle → no
+        # provider call; the held result is rendered. Logic lives in chat.policy_gate.
+        from ..chat.policy_gate import evaluate_gate
+
+        ctx = self._build_submit_context()
+        decision = evaluate_gate(ctx)
+        if not decision.allowed:
+            result = decision.held_result(ctx.runtime_mode)
+            for line in result.to_lines():
+                self._transcript.write(line)
+            self._record_usage(result)  # held/throttled events are in the ledger too
             self._follow_tail()
             return
         self._follow_tail()
         self.run_worker(
-            lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
+            lambda: self._submit_blocking(text, ctx), thread=True, group="submit", exclusive=False
         )
 
-    def _submit_hold_reason(self):
-        """``(mode_label, action)`` when the runtime mode holds actions, else ``(None, "")``."""
+    def _build_submit_context(self):
+        """Build the submit policy context from the live runtime state (WT1)."""
+
+        from ..chat.policy_gate import SubmitContext
 
         pol = self._effective_policy
-        if pol is not None and pol.holds_all_actions():
-            return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
-        return None, ""
+        label = getattr(pol, "mode_label", "") if pol is not None else ""
+        return SubmitContext(runtime_mode=label, effective_policy=pol,
+                             usage=self._usage_snapshot())
+
+    def _usage_snapshot(self):
+        """Today's spent tokens (from the ledger) vs the config budget → gate teeth (WT2)."""
+
+        from ..chat.policy_gate import UsageSnapshot
+        from ..usage import budget_from_config, read_events, rollup, today
+
+        try:
+            rows = read_events(path=self._usage_ledger_path, day=today())
+            spent = rollup(rows).total_tokens
+        except Exception:  # noqa: BLE001 - ledger read must never break submit
+            spent = 0
+        return UsageSnapshot(spent_tokens=spent, budget_tokens=budget_from_config(self._config))
+
+    def _record_usage(self, result) -> None:
+        """Append a usage event for a submit result (WT2 ledger)."""
+
+        from ..usage import UsageEvent, append_event, now_ts
+
+        ev = UsageEvent(
+            ts=now_ts(), session_id=self._session_id, mode=result.runtime_mode,
+            provider=result.provider_id, model=result.model, category=result.category,
+            input_tokens=result.input_tokens, output_tokens=result.output_tokens,
+            total_tokens=result.total_tokens, usage_basis=result.usage_basis,
+            success=result.ok, throttled=result.throttled,
+        )
+        append_event(ev, path=self._usage_ledger_path)
+        self._check_budget_alert()
+
+    def _check_budget_alert(self) -> None:
+        """Budget threshold crossing → inbox + console (≥2 surfaces). No spam (track last)."""
+
+        from ..usage import budget_from_config, evaluate_budget, read_events, rollup, today, alert_message
+
+        budget = budget_from_config(self._config)
+        if budget <= 0:
+            return
+        spent = rollup(read_events(path=self._usage_ledger_path, day=today())).total_tokens
+        state = evaluate_budget(spent, budget)
+        if not state.crossed or state.highest_crossed <= self._budget_alerted:
+            return
+        self._budget_alerted = state.highest_crossed
+        msg = alert_message(state)
+        # surface 1: console
+        self._transcript.write(f"[{theme.WARNING}]⚠ budget {int(state.ratio*100)}%[/{theme.WARNING}] [dim]{msg}[/dim]")
+        # surface 2: operator inbox (+ desktop when FORGEKIT_NOTIFY)
+        try:
+            from ..notify.events import EVENT_INFO_REQUIRED, NotificationEvent
+
+            self._notifier.notify(NotificationEvent(
+                EVENT_INFO_REQUIRED, "forgekit budget 임계 도달",
+                why=f"오늘 토큰 {int(state.ratio*100)}% 사용", action=msg, source="budget"))
+        except Exception:  # noqa: BLE001
+            pass
 
     def _run_idea_discovery(self, raw: str) -> None:
         """Idea-discovery mode: free text (+ repo-local signals) → briefs, top→handoff hint."""
@@ -410,6 +484,36 @@ class ForgekitConsoleApp(App):
         self._sync_intro()
         self._follow_tail()
 
+    def _show_usage(self) -> None:
+        """`/usage` — today rollup (provider/mode, live vs estimate) + budget + report files."""
+
+        from ..usage import (budget_from_config, evaluate_budget, read_events, rollup,
+                             today, to_txt, top_by_tokens, write_reports)
+
+        log = self._transcript
+        log.write_echo("/usage")
+        rows = read_events(path=self._usage_ledger_path, day=today())
+        roll = rollup(rows, scope=f"today({today()})")
+        for line in to_txt(roll, top_by_tokens(rows, limit=3)).splitlines():
+            log.write(f"[dim]{line}[/dim]" if line.startswith("  ") else line)
+        budget = budget_from_config(self._config)
+        if budget > 0:
+            st = evaluate_budget(roll.total_tokens, budget)
+            log.write(f"  [dim]budget: {st.spent}/{st.budget}tok ({int(st.ratio*100)}%)"
+                      + (" — 초과" if st.over else "") + "[/dim]")
+        else:
+            log.write("  [dim]budget: 미설정(config 의 daily_token_budget) — unbounded[/dim]")
+        # also persist regenerable reports next to the ledger evidence
+        try:
+            out = self.repo_root / "runs" / "forgekit" / "usage"
+            paths = write_reports(roll, out, top=top_by_tokens(rows, limit=5))
+            if paths:
+                log.write(f"[dim]↳ report: {paths[0].parent}/ (txt/md/json)[/dim]")
+        except Exception:  # noqa: BLE001
+            pass
+        self._sync_intro()
+        self._follow_tail()
+
     def _show_design(self) -> None:
         """`/design` — restricted design source status + packet (honest blocked, no fake-read)."""
 
@@ -436,7 +540,10 @@ class ForgekitConsoleApp(App):
         findings += [RepoFinding("forgekit", "auth 대규모 rewrite", kind="gap"),
                      RepoFinding("forgekit", "프로덕션 배포", kind="ops")]
         risk = lambda f: "blocked" if "배포" in f.finding else ("risky" if "rewrite" in f.finding else "safe")
-        res = AutopilotOrchestrator().run_cycle("forgekit", findings, risk_of=risk)
+        from ..autopilot import BoundedMutator
+
+        res = AutopilotOrchestrator(mutator=BoundedMutator(self.repo_root)).run_cycle(
+            "forgekit", findings, risk_of=risk)
         digest = build_operator_digest([res])
         for line in digest.lines():
             log.write(f"[dim]{line}[/dim]" if line.startswith("-") or line.startswith("주의") else line)
@@ -467,7 +574,12 @@ class ForgekitConsoleApp(App):
         except Exception:  # noqa: BLE001
             pass
         findings = findings or [RepoFinding(repo, "docs 보강 필요", kind="docs")]
-        result = AutopilotOrchestrator().run_cycle(
+        # WT3: a real bounded mutator → safe-class findings perform an actual verified
+        # write (note under runs/) — NOT a no-op. risky/restricted stay proposed/blocked.
+        from ..autopilot import BoundedMutator
+
+        mutator = BoundedMutator(self.repo_root)
+        result = AutopilotOrchestrator(mutator=mutator).run_cycle(
             repo, findings, risk_of=lambda f: "safe")
         for line in render.autopilot_lines(result):
             log.write(line)
@@ -633,28 +745,20 @@ class ForgekitConsoleApp(App):
         except Exception:  # noqa: BLE001 - vault write is best-effort, never fatal
             return None
 
-    def _submit_blocking(self, text: str) -> None:
-        # EffectivePolicy enforcement: the mode's routing target steers the provider
-        # (not just display). Resolved on the main thread state, passed into the worker.
-        prefer = self._policy_routing_target()
-        result = self._submit_service.submit(text, prefer_provider=prefer)
+    def _submit_blocking(self, text: str, ctx=None) -> None:
+        # The context carries the EffectivePolicy → the service re-enforces the gate
+        # (routing target / approval / budget) + records usage. Real teeth, not display.
+        result = self._submit_service.submit(text, context=ctx)
         self.call_from_thread(self._on_submit_result, result)
-
-    def _policy_routing_target(self) -> str:
-        pol = self._effective_policy
-        if pol is None:
-            return ""
-        target = pol.routing_target()
-        # only steer when the target is a builtin (a real configured option)
-        from ..providers import builtins as _b
-
-        return target if _b.is_builtin(target) else ""
 
     def _on_submit_result(self, result) -> None:
         log = self._transcript
         for line in result.to_lines():
             log.write(line)
-        if not result.ok:
+        # WT2: record the usage event (live or estimate basis) to the ledger.
+        self._record_usage(result)
+        # held/throttled are intentional POLICY decisions, not failures → no escalation.
+        if not result.ok and not result.held:
             self._record_submit_failure(result)
         self._follow_tail()
         try:
