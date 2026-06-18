@@ -40,27 +40,17 @@ def _repo_root(args) -> str:
 
 
 def _build_tick_fn(repo_root: str):
-    """A bounded tick: observe repo-local → always-on loop → TickOutcome."""
+    """A bounded tick that DRIVES autopilot execution (WT2 #241).
 
-    from ..runtime.daemon import TickOutcome
-    from ..runtime.loop import AUTONOMY_BOUNDED, BoundedRuntimeLoop, CAT_INFRA, Finding
-    from ..sources import RepoLocalCollector
+    observe repo-local → internal chain → safe-class real mutation (BoundedMutator) →
+    verify → record, with cross-tick dedupe + cooldown. risky/restricted stay surfaced.
+    """
 
-    def tick(n: int) -> TickOutcome:
-        findings = []
-        try:
-            for it in RepoLocalCollector(repo_root).collect(limit=4):
-                findings.append(Finding("forgekit", it.title,
-                                        category="product", privileged=False))
-        except Exception:  # noqa: BLE001
-            pass
-        # a representative privileged finding to prove the wait/notify path is bounded
-        findings.append(Finding("forgekit", "운영/배포 준비 점검", category=CAT_INFRA, privileged=True))
-        result = BoundedRuntimeLoop(autonomy=AUTONOMY_BOUNDED, max_iterations=8).run(findings)
-        return TickOutcome(summary=f"tick {n}: {len(findings)} findings, {result.blocked_count} blocked",
-                           waiting=result.waiting, blocked_count=result.blocked_count)
+    from pathlib import Path
 
-    return tick
+    from ..runtime.autopilot_tick import AutopilotTicker
+
+    return AutopilotTicker(repo_root=Path(repo_root)).tick_fn()
 
 
 def handle(args: argparse.Namespace) -> int:
@@ -74,6 +64,8 @@ def handle(args: argparse.Namespace) -> int:
     if cmd == "status":
         hb = HB.read_heartbeat()
         print(f"forgekit runtime: {hb.status} · tick {hb.tick} · ts {hb.ts or '-'} · pid {hb.pid}")
+        if hb.note:  # last tick: exec/propose/skip + written paths (WT2 #241)
+            print(f"  last tick: {hb.note}")
         print(f"  kill switch: {'SET' if HB.is_killed() else 'clear'}")
         return EXIT_OK
 
@@ -92,7 +84,9 @@ def handle(args: argparse.Namespace) -> int:
 
     if cmd == "once":
         out = daemon.once(tick_fn)
-        print(f"runtime once: {out.summary} · waiting={out.waiting}")
+        print(f"runtime once: {out.summary} · executed={out.executed} · waiting={out.waiting}")
+        if out.executed_paths:
+            print("  wrote: " + ", ".join(out.executed_paths))
         return EXIT_OK
 
     if cmd == "serve":
@@ -100,7 +94,8 @@ def handle(args: argparse.Namespace) -> int:
         print(f"forgekit runtime serve — interval {daemon.poll_interval}s, "
               f"max_ticks {daemon.max_ticks or '∞'} (Ctrl-C 또는 `forgekit runtime stop` 으로 종료)")
         res = daemon.serve(tick_fn)
-        print(f"stopped: {res.stopped_reason} · ticks {res.ticks} · waits {res.waits} · notified {res.notified}")
+        print(f"stopped: {res.stopped_reason} · ticks {res.ticks} · executed {res.executed} "
+              f"· waits {res.waits} · notified {res.notified}")
         return EXIT_OK
 
     return EXIT_ERROR

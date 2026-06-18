@@ -12,8 +12,12 @@ forgekit runtime stop                                                     # kill
 ```
 
 ## 무엇이 bounded autonomy 인가 (정직)
-- 각 tick = **관측(repo-local) → 분류 → 패킷 → handoff → 대기**(runtime/loop BoundedRuntimeLoop, execute phase 없음).
-- privileged(deploy/secret/infra)는 **runbook + approval-wait** — 데몬이 자동 실행 안 함.
+- 각 tick = **관측(repo-local) → 내부 승인 chain(PM→gateway→tech-lead) → safe-class 실제 실행
+  (BoundedMutator, write+verify) → 기록**(#241, `runtime/autopilot_tick.py`). 관측-only 가 아니다 —
+  실측: `daemon-execution/`.
+- 실행 클래스 = note/docs-stub/format + `runs/`·`docs/`·`examples/` prefix **만**(소스 코드 수정은 #240).
+  cross-tick **dedupe**(no-op churn 방지) + 반복 verify 실패 시 **cooldown**.
+- privileged(deploy/secret/infra) / risky / restricted 는 **runbook + approval-wait** — 데몬이 자동 실행 안 함, surface 만.
 - 매 tick **heartbeat** 기록(`$FORGEKIT_HOME/state/runtime-heartbeat.json`), approval-needed → **operator 알림**
   (inbox 항상 + desktop `FORGEKIT_NOTIFY` opt-in, 2 surface).
 - 종료: kill switch 파일 / SIGTERM·SIGINT / `--max-ticks`.
