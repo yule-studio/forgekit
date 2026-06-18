@@ -819,6 +819,24 @@ text), `/help` 를 **단일 패널 뷰 전환**(모달 아님, transcript 누적
 **범위 밖(후속):** brain/setup/provider 코어, 실제 live chat loop, Agent Town, macOS 알림,
 Discord push, approval inbox 조작, multi-provider session persistence.
 
+## 6b. agent identity registry (canonical SSoT)
+
+agent 의 정체성(role label / department / git author / GitHub App env prefix / Obsidian
+css·callout·color)은 **단일 canonical registry** 가 SSoT —
+[`identity/registry.py`](../apps/forgekit-console/src/forgekit_console/identity/registry.py).
+
+- **canonical id = 정식 id**(`frontend-engineer`), 축약(`fe`)·manifest 변형은 **alias** 로
+  registry 에서만 canonical 로 정규화(축약→정식 매핑이 vault/manifest/docs 에 흩어지지 않음).
+- 파생 규칙: `github_app_env_prefix = YULE_GITHUB_APP_<CANONICAL_UPPER_SNAKE>_`,
+  git author = `Forgekit <Role> <local@forgekit.local>`. vault css/callout/color 는 explicit.
+- projection seam: `vault_identity_for` / `git_identity_for` / `github_app_identity_for`
+  — vault/authorship·git attribution·doctor 가 이걸 읽도록 후속 통합(현재 `vault/authorship.py`
+  하드코딩 맵은 다음 단계에서 이 registry 기반 thin wrapper 로 교체 예정).
+- `scan_manifests(agents_root)` 가 on-disk manifest 와 registry drift(unknown / prefix_drift)를
+  **fail-loud 아닌 structured 결과**로 surface(실측: 25 matched / prefix-drift 0).
+- 정직: 실제 GitHub App 생성/설치는 org admin 작업 — registry 는 env contract + identity 까지,
+  live 생성은 runbook(후속).
+
 ## 7. 관련
 - [`runtime-operator-surfaces.md`](runtime-operator-surfaces.md) (재사용하는 surface) ·
   [`operations.md`](operations.md) · [`monorepo-structure.md`](monorepo-structure.md)
