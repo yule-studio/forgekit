@@ -116,5 +116,35 @@ class ResolverSeamTests(unittest.TestCase):
         self.assertTrue(res.resolved_docs or res.missing_refs)   # seam actually read/located
 
 
+class ConnectionStatusTests(unittest.TestCase):
+    def test_not_connected_default(self) -> None:
+        cs = nx.connection_status(env={}, config={})
+        self.assertEqual(cs["status"], models.SRC_NOT_CONNECTED)
+        self.assertFalse(cs["connected"])
+
+    def test_connected_when_root_exists(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        cs = nx.connection_status(env={"FORGEKIT_NEXUS_ROOT": str(root)}, config={})
+        self.assertTrue(cs["connected"])
+        self.assertEqual(cs["status"], models.SRC_EXISTS)
+
+    def test_missing_when_root_absent(self) -> None:
+        cs = nx.connection_status(env={"FORGEKIT_NEXUS_ROOT": "/no/such/nexus"}, config={})
+        self.assertEqual(cs["status"], models.SRC_MISSING)
+
+    def test_config_root_supported(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(root, ignore_errors=True))
+        self.assertTrue(nx.connection_status(env={}, config={"nexus_root": str(root)})["connected"])
+
+    def test_nexus_command_routes(self) -> None:
+        from forgekit_console.commands.parser import parse_input
+        from forgekit_console.commands.router import build_default_context, route
+
+        r = route(parse_input("/nexus"), build_default_context(Path(".")))
+        self.assertIn("nexus:", "\n".join(r.lines))
+
+
 if __name__ == "__main__":
     unittest.main()
