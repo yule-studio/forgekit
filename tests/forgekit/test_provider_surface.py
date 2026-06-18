@@ -58,14 +58,65 @@ class SurfaceTests(unittest.TestCase):
         self.assertIn("implicit local fallback: off", lines)
 
 
+class LinkRouteTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+        self.path = self.tmp / "config.json"
+        ps.apply_set_primary("ollama", path=self.path)   # a base config
+
+    def test_link_persists(self) -> None:
+        ok, _ = ps.apply_link("gemini", path=self.path)
+        self.assertTrue(ok)
+        self.assertIn("gemini", ops.load_raw_config(path=self.path)["linked_providers"])
+
+    def test_link_unknown_fails(self) -> None:
+        self.assertFalse(ps.apply_link("nope", path=self.path)[0])
+
+    def test_link_already_linked(self) -> None:
+        ps.apply_link("gemini", path=self.path)
+        self.assertFalse(ps.apply_link("gemini", path=self.path)[0])
+
+    def test_unlink_primary_refused(self) -> None:
+        ok, msg = ps.apply_unlink("ollama", path=self.path)
+        self.assertFalse(ok)
+        self.assertIn("primary", msg)
+
+    def test_unlink_linked(self) -> None:
+        ps.apply_link("gemini", path=self.path)
+        ok, _ = ps.apply_unlink("gemini", path=self.path)
+        self.assertTrue(ok)
+        self.assertNotIn("gemini", ops.load_raw_config(path=self.path)["linked_providers"])
+
+    def test_route_set_requires_linked(self) -> None:
+        # claude not linked → refused
+        self.assertFalse(ps.apply_route_set("research", "claude", path=self.path)[0])
+
+    def test_route_set_and_clear(self) -> None:
+        ps.apply_link("gemini", path=self.path)
+        ok, _ = ps.apply_route_set("research", "gemini", path=self.path)
+        self.assertTrue(ok)
+        self.assertEqual(ops.load_raw_config(path=self.path)["slot_routing"]["research"], "gemini")
+        ps.apply_route_clear("research", path=self.path)
+        self.assertNotIn("research", ops.load_raw_config(path=self.path).get("slot_routing", {}))
+
+    def test_unknown_slot_refused(self) -> None:
+        self.assertFalse(ps.apply_route_set("nonsense", "ollama", path=self.path)[0])
+
+    def test_route_show_lists_slots(self) -> None:
+        lines = "\n".join(ps.route_show_lines({"primary_provider": "ollama"}))
+        self.assertIn("default_chat", lines)
+        self.assertIn("implicit_local", lines)
+
+
 class RoutingTests(unittest.TestCase):
-    def test_provider_command_routes(self) -> None:
+    def test_provider_subcommands_route(self) -> None:
         from forgekit_console.commands.parser import parse_input
         from forgekit_console.commands.router import build_default_context, route
 
         ctx = build_default_context(Path("."))
-        r = route(parse_input("/provider list"), ctx)
-        self.assertIn("provider list", "\n".join(r.lines))
+        self.assertIn("provider list", "\n".join(route(parse_input("/provider list"), ctx).lines))
+        self.assertIn("slot routing", "\n".join(route(parse_input("/provider route show"), ctx).lines))
 
 
 if __name__ == "__main__":

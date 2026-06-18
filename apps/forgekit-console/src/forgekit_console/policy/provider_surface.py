@@ -111,6 +111,77 @@ def apply_set_primary(pid: str, *, env: Optional[Mapping[str, str]] = None,
     return True, f"primary provider = {pid} 저장됨{note}. `/provider` 로 확인, `/mode` 로 routing."
 
 
+def _persist(new_cfg, env, path):
+    ok, where = ops.persist_config(new_cfg, env=env, path=path)
+    return (True, "") if ok else (False, f"저장 실패: {where}")
+
+
+def apply_link(pid: str, *, env=None, path=None) -> Tuple[bool, str]:
+    """`/provider link <id>` — add to linked providers + persist."""
+
+    pid = (pid or "").strip()
+    if not builtins.is_builtin(pid):
+        return False, f"알 수 없는 provider: {pid} (built-in: {', '.join(builtins.BUILTIN_PROVIDERS)})."
+    cur = ops.load_raw_config(env=env, path=path)
+    if pid in (cur.get("linked_providers") or []):
+        return False, f"{pid} 는 이미 linked 입니다."
+    ok, msg = _persist(ops.link_provider(cur, pid), env, path)
+    return (True, f"{pid} linked ({_live_word(pid)}).") if ok else (False, msg)
+
+
+def apply_unlink(pid: str, *, env=None, path=None) -> Tuple[bool, str]:
+    """`/provider unlink <id>` — remove from linked (primary 는 안전하게 거부)."""
+
+    pid = (pid or "").strip()
+    cur = ops.load_raw_config(env=env, path=path)
+    parsed = pc.load_provider_config(cur)
+    if pid == parsed.primary_provider:
+        return False, f"{pid} 는 primary 입니다 — `/provider set <other>` 로 primary 변경 후 unlink 하세요."
+    if pid not in parsed.linked_providers:
+        return False, f"{pid} 는 linked 가 아닙니다."
+    ok, msg = _persist(ops.unlink_provider(cur, pid), env, path)
+    return (True, f"{pid} unlinked (해당 slot route 도 정리).") if ok else (False, msg)
+
+
+def route_show_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
+    """`/provider route show` — slot routing + fallback policy 가시화."""
+
+    parsed = pc.load_provider_config(cfg)
+    lines = ["slot routing (declared → primary if unset):"]
+    for slot in pc.ROUTING_SLOTS:
+        tgt = parsed.slot_target(slot)
+        lines.append(f"  {slot:<14} → {tgt} ({_live_word(tgt)})")
+    lines.append(f"  fallback: implicit_local={'on' if parsed.implicit_local_fallback else 'off (기본)'}")
+    return tuple(lines)
+
+
+def apply_route_set(slot: str, pid: str, *, env=None, path=None) -> Tuple[bool, str]:
+    """`/provider route set <slot> <provider>` — slot 을 linked provider 로 라우팅 + persist."""
+
+    slot, pid = (slot or "").strip(), (pid or "").strip()
+    if slot not in pc.ROUTING_SLOTS:
+        return False, f"알 수 없는 slot: {slot} (허용: {', '.join(pc.ROUTING_SLOTS)})."
+    cur = ops.load_raw_config(env=env, path=path)
+    if pid not in pc.load_provider_config(cur).linked_providers:
+        return False, f"{pid} 는 linked 가 아닙니다 — 먼저 `/provider link {pid}`."
+    ok, msg = _persist(ops.route_slot(cur, slot, pid), env, path)
+    return (True, f"route {slot} → {pid} 저장됨.") if ok else (False, msg)
+
+
+def apply_route_clear(slot: str, *, env=None, path=None) -> Tuple[bool, str]:
+    """`/provider route clear <slot>` — slot route 제거(→ primary 로 복귀)."""
+
+    slot = (slot or "").strip()
+    if slot not in pc.ROUTING_SLOTS:
+        return False, f"알 수 없는 slot: {slot}."
+    cur = ops.load_raw_config(env=env, path=path)
+    routes = {s: t for s, t in (cur.get("slot_routing") or {}).items() if s != slot}
+    cur = {**cur, "slot_routing": routes}
+    ok, msg = _persist(cur, env, path)
+    return (True, f"route {slot} 제거됨 (→ primary).") if ok else (False, msg)
+
+
 __all__ = (
     "provider_status_lines", "provider_list_lines", "provider_doctor_lines", "apply_set_primary",
+    "apply_link", "apply_unlink", "route_show_lines", "apply_route_set", "apply_route_clear",
 )
