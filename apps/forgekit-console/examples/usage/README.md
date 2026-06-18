@@ -10,9 +10,12 @@
 | `summary.json` | 기계 재사용용 rollup |
 
 ## 정직성
-- **live vs estimate 분리** — 합치지 않음(report 의 live/estimate 별도). ollama openai transport 는
-  usage 블록을 안 줘서 `usage_basis=estimate`(길이 기반). gemini 등 usage 반환 provider 는 `live`.
-  **fake-live 없음.**
+- **live vs estimate 분리** — 합치지 않음(report 의 live/estimate 별도).
+- **vendor-native usage (#239, WT1)**: openai-compatible transport 가 응답의 `usage` 블록
+  (`prompt_tokens`/`completion_tokens`/`total_tokens`)을 파싱 → **`usage_basis=live`**.
+  ollama `/v1/chat/completions` 가 실제로 usage 를 주므로 zero-config 로 live 기록됨
+  (실측: `native-usage-live/` 참조). usage 블록이 없거나 malformed 면 **honest estimate 로 degrade**
+  (길이 기반) — 둘은 절대 합산하지 않음. CLI provider(claude/codex)는 콘솔 live-submit 미연결이라 항상 estimate 대상조차 아님. **fake-live 없음.**
 - cost_usd 는 price proxy 없으면 `null`(정직).
 
 ## teeth (WT1 gate 연결)

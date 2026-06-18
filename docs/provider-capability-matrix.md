@@ -144,6 +144,21 @@ ollama=cheap/local/classification)에 실어 `strict-single`/`hybrid`/`optimized
 계약의 generic config seam 으로 들어온다. 코드 SSoT 는
 `apps/forgekit-console/src/forgekit_console/{providers,policy}/`.
 
+### 9a. usage 관측의 live vs estimate (forgekit #239)
+
+usage_basis 는 `submit_compat` 에 따라 갈린다 — 코드 SSoT 는
+`apps/forgekit-console/src/forgekit_console/chat/usage_parse.py`.
+
+| submit_compat | native usage | 결과 |
+| --- | --- | --- |
+| `openai_compatible` (ollama·OpenAI·gemini-compat) | 응답 `usage` 블록 파싱 | **live** (없으면 estimate degrade) |
+| `cli` (claude·codex) | 콘솔 live-submit 미연결 | 측정 대상 아님 (estimate 도 아님) |
+| `custom_http` / `native` | 파서 미연결 | estimate |
+
+핵심: **live = provider 가 실제 보고한 토큰**(추정/날조 아님). usage 블록이 없거나 malformed 면
+honest estimate(길이 기반)로 degrade 하며 live 와 절대 합산하지 않는다. ledger 가 `usage_basis`
+로 둘을 분리 기록하고 `/usage` rollup 이 live_ratio 로 표면화한다.
+
 ## 10. 관련
 - [`forgekit-provider-policy.md`](forgekit-provider-policy.md) · [`plugin-taxonomy.md`](plugin-taxonomy.md) · [`agent-slash-commands.md`](agent-slash-commands.md) · `GEMINI.md`
 - backend/runner: `agents/runners/` · 거버넌스 회귀: `tests/governance/test_provider_capability_taxonomy.py`

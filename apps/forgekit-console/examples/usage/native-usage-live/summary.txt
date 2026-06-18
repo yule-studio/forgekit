@@ -1,0 +1,10 @@
+forgekit usage — evidence(native-usage-live)
+  events            : 2
+  total tokens      : 35  (in 25 / out 10)
+  live vs estimate  : live 24 / estimate 11 (live ratio 0.686)
+  throttled / fallback: 0 / 0
+  by provider       : ollama=35
+  by mode           : interactive=35
+  top by tokens     :
+    - 24tok ollama/interactive (live)
+    - 11tok ollama/interactive (estimate)

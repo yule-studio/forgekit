@@ -1,0 +1,22 @@
+{
+  "scope": "evidence(native-usage-live)",
+  "events": 2,
+  "total_tokens": 35,
+  "input_tokens": 25,
+  "output_tokens": 10,
+  "live_tokens": 24,
+  "estimate_tokens": 11,
+  "live_ratio": 0.686,
+  "by_provider": {
+    "ollama": 35
+  },
+  "by_model": {
+    "gemma3:latest": 35
+  },
+  "by_mode": {
+    "interactive": 35
+  },
+  "throttled": 0,
+  "fallback": 0,
+  "cost_usd": 0.0
+}
