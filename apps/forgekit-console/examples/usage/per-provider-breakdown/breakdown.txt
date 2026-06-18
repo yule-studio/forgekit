@@ -1,0 +1,11 @@
+usage breakdown (live / estimate 분리):
+  by provider:
+    gemini               100tok (in 40/out 60) · live 100 / est 0 [live]
+    ollama                40tok (in 15/out 25) · live 30 / est 10 [live+estimate]
+  by model:
+    gemini-2.5           100tok (in 40/out 60) · live 100 / est 0 [live]
+    gemma3                40tok (in 15/out 25) · live 30 / est 10 [live+estimate]
+  by mode:
+    research             100tok (in 40/out 60) · live 100 / est 0 [live]
+    interactive           30tok (in 10/out 20) · live 30 / est 0 [live]
+    cost-save             10tok (in 5/out 5) · live 0 / est 10 [estimate]
