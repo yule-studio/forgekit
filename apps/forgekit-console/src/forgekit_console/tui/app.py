@@ -496,6 +496,10 @@ class ForgekitConsoleApp(App):
         roll = rollup(rows, scope=f"today({today()})")
         for line in to_txt(roll, top_by_tokens(rows, limit=3)).splitlines():
             log.write(f"[dim]{line}[/dim]" if line.startswith("  ") else line)
+        # WT3: per-provider / model / mode breakdown (live vs estimate kept separate)
+        from ..usage import breakdown_lines
+        for line in breakdown_lines(rows):
+            log.write(f"[dim]{line}[/dim]" if line.startswith("    ") or line.startswith("  ") else line)
         budget = budget_from_config(self._config)
         if budget > 0:
             st = evaluate_budget(roll.total_tokens, budget)
