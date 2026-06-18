@@ -1,0 +1,78 @@
+{
+  "by_provider": [
+    {
+      "key": "gemini",
+      "events": 1,
+      "input_tokens": 40,
+      "output_tokens": 60,
+      "total_tokens": 100,
+      "live_tokens": 100,
+      "estimate_tokens": 0,
+      "basis": "live"
+    },
+    {
+      "key": "ollama",
+      "events": 2,
+      "input_tokens": 15,
+      "output_tokens": 25,
+      "total_tokens": 40,
+      "live_tokens": 30,
+      "estimate_tokens": 10,
+      "basis": "live+estimate"
+    }
+  ],
+  "by_model": [
+    {
+      "key": "gemini-2.5",
+      "events": 1,
+      "input_tokens": 40,
+      "output_tokens": 60,
+      "total_tokens": 100,
+      "live_tokens": 100,
+      "estimate_tokens": 0,
+      "basis": "live"
+    },
+    {
+      "key": "gemma3",
+      "events": 2,
+      "input_tokens": 15,
+      "output_tokens": 25,
+      "total_tokens": 40,
+      "live_tokens": 30,
+      "estimate_tokens": 10,
+      "basis": "live+estimate"
+    }
+  ],
+  "by_mode": [
+    {
+      "key": "research",
+      "events": 1,
+      "input_tokens": 40,
+      "output_tokens": 60,
+      "total_tokens": 100,
+      "live_tokens": 100,
+      "estimate_tokens": 0,
+      "basis": "live"
+    },
+    {
+      "key": "interactive",
+      "events": 1,
+      "input_tokens": 10,
+      "output_tokens": 20,
+      "total_tokens": 30,
+      "live_tokens": 30,
+      "estimate_tokens": 0,
+      "basis": "live"
+    },
+    {
+      "key": "cost-save",
+      "events": 1,
+      "input_tokens": 5,
+      "output_tokens": 5,
+      "total_tokens": 10,
+      "live_tokens": 0,
+      "estimate_tokens": 10,
+      "basis": "estimate"
+    }
+  ]
+}
