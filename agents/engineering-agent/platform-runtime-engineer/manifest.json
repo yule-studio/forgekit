@@ -49,5 +49,12 @@
     "secret 값을 읽거나 기록하지 않는다(키 이름/wiring 만).",
     "사용자 승인 없이 runtime restart / destructive 작업 금지."
   ],
-  "phase": "role-contract-v1"
+  "phase": "role-contract-v1",
+  "git_author_name": "Forgekit Platform Runtime",
+  "git_author_email": "platform@forgekit.local",
+  "vault_agent_id": "platform-runtime-engineer",
+  "vault_css_class": "fk-platform",
+  "vault_callout": "fk-platform",
+  "vault_color_token": "#14b8a6",
+  "identity_aliases": []
 }

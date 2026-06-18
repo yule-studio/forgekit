@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_SEO_SPECIALIST_",
   "autonomy_level": "advisory",
   "risk_class": "LOW",
-  "module_path": "agents.marketing_agent.seo_specialist.runner"
+  "module_path": "agents.marketing_agent.seo_specialist.runner",
+  "git_author_name": "Forgekit SEO",
+  "git_author_email": "seo@forgekit.local",
+  "vault_agent_id": "seo-specialist",
+  "vault_css_class": "fk-seo",
+  "vault_callout": "fk-seo",
+  "vault_color_token": "#84cc16",
+  "identity_aliases": []
 }

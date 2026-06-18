@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_CULTURE_COACH_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.hr_agent.culture_coach.runner"
+  "module_path": "agents.hr_agent.culture_coach.runner",
+  "git_author_name": "Forgekit Culture Coach",
+  "git_author_email": "culture@forgekit.local",
+  "vault_agent_id": "culture-coach",
+  "vault_css_class": "fk-culture",
+  "vault_callout": "fk-culture",
+  "vault_color_token": "#a78bfa",
+  "identity_aliases": []
 }

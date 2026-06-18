@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_BUDGET_ANALYST_",
   "autonomy_level": "advisory",
   "risk_class": "HIGH",
-  "module_path": "agents.finance_agent.budget_analyst.runner"
+  "module_path": "agents.finance_agent.budget_analyst.runner",
+  "git_author_name": "Forgekit Budget Analyst",
+  "git_author_email": "budget@forgekit.local",
+  "vault_agent_id": "budget-analyst",
+  "vault_css_class": "fk-budget",
+  "vault_callout": "fk-budget",
+  "vault_color_token": "#fbbf24",
+  "identity_aliases": []
 }

@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_RECRUITER_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.hr_agent.recruiter.runner"
+  "module_path": "agents.hr_agent.recruiter.runner",
+  "git_author_name": "Forgekit Recruiter",
+  "git_author_email": "recruiter@forgekit.local",
+  "vault_agent_id": "recruiter",
+  "vault_css_class": "fk-recruiter",
+  "vault_callout": "fk-recruiter",
+  "vault_color_token": "#60a5fa",
+  "identity_aliases": []
 }

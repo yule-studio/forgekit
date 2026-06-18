@@ -33,12 +33,27 @@
     "budget/token 알림 임계 초과",
     "fallback spike / blocked queue / waiting approval 감지"
   ],
-  "inputs": ["runtime status / heartbeat / queue", "provider runtime / cost / fallback telemetry"],
-  "outputs": ["status summary + triage", "operator next-action", "alert note"],
+  "inputs": [
+    "runtime status / heartbeat / queue",
+    "provider runtime / cost / fallback telemetry"
+  ],
+  "outputs": [
+    "status summary + triage",
+    "operator next-action",
+    "alert note"
+  ],
   "boundaries": [
     "코드/커밋/배포 금지 — 관측·triage·status note 만.",
     "직접 조치 금지 — operator 에게 next-action 으로 surface.",
     "민감 값 read/write 금지."
   ],
-  "phase": "role-contract-v1"
+  "phase": "role-contract-v1",
+  "github_app_env_prefix": "YULE_GITHUB_APP_OPS_OBSERVER_",
+  "git_author_name": "Forgekit Ops Observer",
+  "git_author_email": "ops@forgekit.local",
+  "vault_agent_id": "ops-observer",
+  "vault_css_class": "fk-ops",
+  "vault_callout": "fk-ops",
+  "vault_color_token": "#2f6f7a",
+  "identity_aliases": []
 }

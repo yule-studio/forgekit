@@ -120,5 +120,14 @@
     "codex",
     "gemini"
   ],
-  "phase": "role-contract-v1"
+  "phase": "role-contract-v1",
+  "git_author_name": "Forgekit Security",
+  "git_author_email": "security@forgekit.local",
+  "vault_agent_id": "security-engineer",
+  "vault_css_class": "fk-security",
+  "vault_callout": "fk-security",
+  "vault_color_token": "#ff8c42",
+  "identity_aliases": [
+    "security"
+  ]
 }

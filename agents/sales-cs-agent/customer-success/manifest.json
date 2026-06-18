@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_CUSTOMER_SUCCESS_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.sales_cs_agent.customer_success.runner"
+  "module_path": "agents.sales_cs_agent.customer_success.runner",
+  "git_author_name": "Forgekit Customer Success",
+  "git_author_email": "cs@forgekit.local",
+  "vault_agent_id": "customer-success",
+  "vault_css_class": "fk-cs",
+  "vault_callout": "fk-cs",
+  "vault_color_token": "#06b6d4",
+  "identity_aliases": []
 }

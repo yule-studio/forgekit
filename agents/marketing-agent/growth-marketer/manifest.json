@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_GROWTH_MARKETER_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.marketing_agent.growth_marketer.runner"
+  "module_path": "agents.marketing_agent.growth_marketer.runner",
+  "git_author_name": "Forgekit Growth",
+  "git_author_email": "growth@forgekit.local",
+  "vault_agent_id": "growth-marketer",
+  "vault_css_class": "fk-growth",
+  "vault_callout": "fk-growth",
+  "vault_color_token": "#34d399",
+  "identity_aliases": []
 }

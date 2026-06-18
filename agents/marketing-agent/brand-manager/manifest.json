@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_BRAND_MANAGER_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.marketing_agent.brand_manager.runner"
+  "module_path": "agents.marketing_agent.brand_manager.runner",
+  "git_author_name": "Forgekit Brand Manager",
+  "git_author_email": "brand@forgekit.local",
+  "vault_agent_id": "brand-manager",
+  "vault_css_class": "fk-brand",
+  "vault_callout": "fk-brand",
+  "vault_color_token": "#ec4899",
+  "identity_aliases": []
 }

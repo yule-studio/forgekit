@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_PEOPLE_OPS_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.hr_agent.people_ops.runner"
+  "module_path": "agents.hr_agent.people_ops.runner",
+  "git_author_name": "Forgekit People Ops",
+  "git_author_email": "peopleops@forgekit.local",
+  "vault_agent_id": "people-ops",
+  "vault_css_class": "fk-peopleops",
+  "vault_callout": "fk-peopleops",
+  "vault_color_token": "#f472b6",
+  "identity_aliases": []
 }

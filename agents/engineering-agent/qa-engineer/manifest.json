@@ -12,11 +12,25 @@
     "quality_bar_enforcement"
   ],
   "council_role": {
-    "default_seats": ["owner", "challenger", "reviewer"],
+    "default_seats": [
+      "owner",
+      "challenger",
+      "reviewer"
+    ],
     "owner_focus": "acceptance criteria / 회귀 시나리오 / failure-edge case 1차 draft",
     "challenger_focus": "happy path 편향 / 권한·동시성 누락 / 재현 불가 결함 / 자동화 빠진 수동 케이스",
-    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "backend_handoff", "frontend_handoff"],
-    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "reviewer_decision_inputs": [
+      "owner_draft",
+      "challenger_draft",
+      "research_pack",
+      "backend_handoff",
+      "frontend_handoff"
+    ],
+    "produces": [
+      "RoleDraft",
+      "PeerReviewNote",
+      "RoleCouncilResult"
+    ],
     "verifies_approval_conditions": true,
     "design_doc": "../../../docs/engineering-role-council-runtime.md"
   },
@@ -412,5 +426,14 @@
       "flaky 가능성이 큰 시나리오는 자동화 후보에서 제외한다",
       "CI 시간이 늘어나는 변경은 devops와 합의한다"
     ]
-  }
+  },
+  "git_author_name": "Forgekit QA",
+  "git_author_email": "qa@forgekit.local",
+  "vault_agent_id": "qa-engineer",
+  "vault_css_class": "fk-qa",
+  "vault_callout": "fk-qa",
+  "vault_color_token": "#9b8cf0",
+  "identity_aliases": [
+    "qa"
+  ]
 }

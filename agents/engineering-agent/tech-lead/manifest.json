@@ -416,5 +416,12 @@
       "executor는 단일 role이어야 한다",
       "forbidden_scope를 빠뜨린 승인 제안은 승인 제안으로 보지 않는다"
     ]
-  }
+  },
+  "git_author_name": "Forgekit Tech Lead",
+  "git_author_email": "techlead@forgekit.local",
+  "vault_agent_id": "tech-lead",
+  "vault_css_class": "fk-techlead",
+  "vault_callout": "fk-techlead",
+  "vault_color_token": "#00d8f0",
+  "identity_aliases": []
 }

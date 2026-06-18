@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_PRIVACY_OFFICER_",
   "autonomy_level": "advisory",
   "risk_class": "HIGH",
-  "module_path": "agents.legal_agent.privacy_officer.runner"
+  "module_path": "agents.legal_agent.privacy_officer.runner",
+  "git_author_name": "Forgekit Privacy Officer",
+  "git_author_email": "privacy@forgekit.local",
+  "vault_agent_id": "privacy-officer",
+  "vault_css_class": "fk-privacy",
+  "vault_callout": "fk-privacy",
+  "vault_color_token": "#fb7185",
+  "identity_aliases": []
 }

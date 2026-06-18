@@ -19,5 +19,15 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_PRODUCT_MANAGER_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.product_agent.product_manager.runner"
+  "module_path": "agents.product_agent.product_manager.runner",
+  "git_author_name": "Forgekit Product (PM)",
+  "git_author_email": "pm@forgekit.local",
+  "vault_agent_id": "product-manager",
+  "vault_css_class": "fk-pm",
+  "vault_callout": "fk-pm",
+  "vault_color_token": "#f23ccf",
+  "identity_aliases": [
+    "product-agent",
+    "pm"
+  ]
 }

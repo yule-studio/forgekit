@@ -18,5 +18,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_USER_RESEARCHER_",
   "autonomy_level": "advisory",
   "risk_class": "LOW",
-  "module_path": "agents.product_agent.user_researcher.runner"
+  "module_path": "agents.product_agent.user_researcher.runner",
+  "git_author_name": "Forgekit User Researcher",
+  "git_author_email": "user-research@forgekit.local",
+  "vault_agent_id": "user-researcher",
+  "vault_css_class": "fk-user-research",
+  "vault_callout": "fk-user-research",
+  "vault_color_token": "#c084fc",
+  "identity_aliases": []
 }
