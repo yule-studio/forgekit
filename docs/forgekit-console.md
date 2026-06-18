@@ -542,6 +542,21 @@ authored vault note(WT5). 모든 mutation/active 는 gated, planned/blocked 는 
 - **operator digest**(`/digest`): 발견/자동실행(내부승인)/승인필요/차단 — "내 승인 없이 가능"=safe뿐 명시.
 - **vault trace**: 누가/왜/무엇/어느 승인 체계로(authorship frontmatter 재사용).
 
+### safe-class mutation taxonomy (`BoundedMutator`, #240)
+
+실제 파일을 바꾸는 자동 실행은 아래 action 으로 **한정**된다 — 코드 SSoT `autopilot/runner.py`.
+
+| action | 대상 경로 | 무엇 | 경계 |
+| --- | --- | --- | --- |
+| `note` / `docs-stub` | `runs/`·`docs/`·`examples/` | 관리형 note/문서 stub write·append | diff/line cap, write+verify |
+| `format` | `runs/`·`docs/`·`examples/` | trailing whitespace 정리 | 〃 |
+| `source-format` (#240) | **활성 source prefix 아래 `.py` 만** (기본 OFF) | **소스 파일 공백 전용 정규화** | semantics-preserving guard + 파싱 verify + **rollback**, cap |
+
+- `source-format` 는 **공백만** 이동(비공백 변경 감지 시 거부 → approval). 파싱 안 되는 파일 skip,
+  verify 실패 시 원본 정확 복원. **기본 OFF**(`source_prefixes` 주입해야 활성) — 소스 트리 기본 불가침.
+- 아직 **열지 않은 것**: import 정렬/타입·린트 자동수정 등 *의미 보존이 아닌* safe-class(테스트 verify 동반 후속),
+  daemon always-on 기본 경로에서의 source-format 자동화(자율 확대는 승인 사안). 실측: `examples/autopilot/source-mutation/`.
+
 관계: `auto` 가 상황을 repo-autopilot 로 추천 → autopilot 이 관측·패킷화·내부승인·safe 실행 →
 risky/restricted 는 approval-wait/runbook + operator 알림(WT4). `always-on` 은 더 일반적 bounded
 루프, `repo-autopilot` 은 레포-한정 팀형 실행 버전.
