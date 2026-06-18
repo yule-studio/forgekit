@@ -234,8 +234,33 @@ def read_plan_sources(plan, *, env: Optional[Mapping[str, str]] = None,
     return read_refs(getattr(plan, "nexus_refs", ()), nexus_root(env, config), role=role)
 
 
+def connection_status(env: Optional[Mapping[str, str]] = None,
+                      config: Optional[Mapping] = None) -> dict:
+    """Live Nexus connection status — connected only when a root is set AND readable.
+
+    This is what a `/nexus` surface shows so the operator knows whether Nexus is live
+    and, if not, why (not_connected / missing / blocked). Never claims a fake connection."""
+
+    root = nexus_root(env, config)
+    if root is None:
+        return {"status": SRC_NOT_CONNECTED, "root": "", "connected": False,
+                "reason": f"{ENV_NEXUS_ROOT} (env) / nexus_root (config) 미설정"}
+    try:
+        exists = root.exists()
+        readable = exists and os.access(root, os.R_OK)
+    except OSError:
+        exists = readable = False
+    if not exists:
+        return {"status": SRC_MISSING, "root": str(root), "connected": False,
+                "reason": "설정된 root 경로가 존재하지 않음"}
+    if not readable:
+        return {"status": SRC_BLOCKED, "root": str(root), "connected": False,
+                "reason": "root 읽기 불가(permission/TCC)"}
+    return {"status": SRC_EXISTS, "root": str(root), "connected": True, "reason": "연결됨"}
+
+
 __all__ = (
     "ENV_NEXUS_ROOT", "READ_RAW", "READ_PROJECTION", "READ_NONE", "DEFAULT_RESTRICTED_ROLES",
     "NexusDocument", "NexusReadResult", "nexus_root", "resolve_ref", "normalize_markdown",
-    "read_ref", "read_refs", "read_plan_sources",
+    "read_ref", "read_refs", "read_plan_sources", "connection_status",
 )

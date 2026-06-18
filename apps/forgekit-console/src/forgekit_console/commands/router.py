@@ -37,6 +37,7 @@ from .registry import (
     H_SKILLS,
     H_LOADOUT,
     H_PROVIDER,
+    H_NEXUS,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -152,6 +153,9 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _hephaistos_result(handler, parsed)
     if handler == H_PROVIDER:
         return _provider_result(parsed)
+    if handler == H_NEXUS:
+        from ..hephaistos import projection as _proj
+        return CommandResult.info("nexus", _proj.nexus_surface_lines())
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
