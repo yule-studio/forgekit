@@ -1,0 +1,51 @@
+{
+  "repo": "forgekit",
+  "steps": [
+    "observe:docs 보강",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:safe",
+    "execute:tech-lead",
+    "verify",
+    "record",
+    "observe:auth rewrite",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:risky",
+    "observe:배포",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:blocked"
+  ],
+  "executed": [
+    {
+      "finding": "docs 보강",
+      "executor": "tech-lead",
+      "verified": true,
+      "path": "runs/forgekit/autopilot/forgekit-docs-보강.md",
+      "lines_changed": 7
+    }
+  ],
+  "proposed": [
+    {
+      "finding": "auth rewrite",
+      "decision_class": "risky",
+      "approval_level": "L3_user_approve"
+    },
+    {
+      "finding": "배포",
+      "decision_class": "blocked",
+      "approval_level": "L4_restricted"
+    }
+  ],
+  "executor_log": [
+    "grant:tech-lead",
+    "release:tech-lead"
+  ],
+  "blocked_repo": false,
+  "halted": false,
+  "halt_reason": ""
+}

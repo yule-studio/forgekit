@@ -54,7 +54,13 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(res.executed, [])
 
     def test_allowlisted_repo_executes_safe_only_one_executor(self) -> None:
-        orch = AutopilotOrchestrator()
+        import tempfile
+        from pathlib import Path
+        from forgekit_console.autopilot import BoundedMutator
+
+        repo = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(repo, ignore_errors=True))
+        orch = AutopilotOrchestrator(mutator=BoundedMutator(repo))  # real execution
         res = orch.run_cycle("forgekit", self._findings(), risk_of=self._risk)
         # safe findings executed; risky/restricted proposed-only
         self.assertTrue(res.executed)
@@ -74,7 +80,13 @@ class OrchestratorTests(unittest.TestCase):
         self.assertEqual(res.executed, [])
 
     def test_phases_present(self) -> None:
-        orch = AutopilotOrchestrator()
+        import tempfile
+        from pathlib import Path
+        from forgekit_console.autopilot import BoundedMutator
+
+        repo = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(repo, ignore_errors=True))
+        orch = AutopilotOrchestrator(mutator=BoundedMutator(repo))  # real exec → execute/verify
         res = orch.run_cycle("forgekit", [AP.RepoFinding("forgekit", "docs 보강", kind="docs")],
                              risk_of=self._risk)
         joined = " ".join(res.steps)

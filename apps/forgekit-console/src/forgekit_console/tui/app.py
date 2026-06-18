@@ -540,7 +540,10 @@ class ForgekitConsoleApp(App):
         findings += [RepoFinding("forgekit", "auth 대규모 rewrite", kind="gap"),
                      RepoFinding("forgekit", "프로덕션 배포", kind="ops")]
         risk = lambda f: "blocked" if "배포" in f.finding else ("risky" if "rewrite" in f.finding else "safe")
-        res = AutopilotOrchestrator().run_cycle("forgekit", findings, risk_of=risk)
+        from ..autopilot import BoundedMutator
+
+        res = AutopilotOrchestrator(mutator=BoundedMutator(self.repo_root)).run_cycle(
+            "forgekit", findings, risk_of=risk)
         digest = build_operator_digest([res])
         for line in digest.lines():
             log.write(f"[dim]{line}[/dim]" if line.startswith("-") or line.startswith("주의") else line)
@@ -571,7 +574,12 @@ class ForgekitConsoleApp(App):
         except Exception:  # noqa: BLE001
             pass
         findings = findings or [RepoFinding(repo, "docs 보강 필요", kind="docs")]
-        result = AutopilotOrchestrator().run_cycle(
+        # WT3: a real bounded mutator → safe-class findings perform an actual verified
+        # write (note under runs/) — NOT a no-op. risky/restricted stay proposed/blocked.
+        from ..autopilot import BoundedMutator
+
+        mutator = BoundedMutator(self.repo_root)
+        result = AutopilotOrchestrator(mutator=mutator).run_cycle(
             repo, findings, risk_of=lambda f: "safe")
         for line in render.autopilot_lines(result):
             log.write(line)

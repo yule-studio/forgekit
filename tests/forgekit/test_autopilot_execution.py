@@ -52,7 +52,12 @@ class ValidateTests(unittest.TestCase):
 
 class DigestTests(unittest.TestCase):
     def test_digest_separates_auto_from_user_and_blocked(self) -> None:
-        orch = AP.AutopilotOrchestrator()
+        import tempfile
+        from pathlib import Path
+
+        repo = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(repo, ignore_errors=True))
+        orch = AP.AutopilotOrchestrator(mutator=AP.BoundedMutator(repo))
         findings = [
             AP.RepoFinding("forgekit", "docs 보강", kind="docs"),
             AP.RepoFinding("forgekit", "auth 대규모 rewrite", kind="gap"),

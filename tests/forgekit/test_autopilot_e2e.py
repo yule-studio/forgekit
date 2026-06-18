@@ -36,7 +36,8 @@ class AutopilotEndToEndTests(unittest.TestCase):
                      AP.RepoFinding("forgekit", "프로덕션 배포", kind="ops")]
         risk = lambda f: "blocked" if "배포" in f.finding else ("risky" if "rewrite" in f.finding else "safe")
 
-        res = AP.AutopilotOrchestrator().run_cycle("forgekit", findings, risk_of=risk)
+        res = AP.AutopilotOrchestrator(mutator=AP.BoundedMutator(self.tmp)).run_cycle(
+            "forgekit", findings, risk_of=risk)
         # safe executed; risky/restricted proposed; single executor serial
         self.assertTrue(res.executed)
         grants = [x for x in res.executor_log if x.startswith("grant:")]
