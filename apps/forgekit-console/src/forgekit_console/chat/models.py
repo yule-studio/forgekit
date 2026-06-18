@@ -20,6 +20,7 @@ SOURCE_NONE = "none"                  # nothing configured / reachable
 MODE_LIVE = "live"      # a real provider answered
 MODE_SETUP = "setup"    # setup incomplete — operator action required
 MODE_ERROR = "error"    # a configured provider failed / is unsupported
+MODE_HELD = "held"      # the runtime policy held the action (no provider call)
 
 # category — WHY (distinct provider states; drives the operator message).
 CAT_OK = "ok"
@@ -28,6 +29,14 @@ CAT_AUTH_MISSING = "auth_missing"
 CAT_UNSUPPORTED = "unsupported_in_console"
 CAT_UNREACHABLE = "endpoint_unreachable"
 CAT_TRANSPORT = "transport_error"
+CAT_POLICY_HELD = "policy_held"            # approval-wait / hold-all held the submit
+CAT_BUDGET_THROTTLED = "budget_throttled"  # budget posture throttled the submit
+
+# usage_basis — how the token numbers were obtained (NEVER mix live + estimate).
+USAGE_LIVE = "live"          # provider reported real usage
+USAGE_ESTIMATE = "estimate"  # forgekit estimated from text length (heuristic)
+USAGE_PROXY = "proxy"        # a price/usage proxy
+USAGE_UNKNOWN = "unknown"    # not measured
 
 
 @dataclass(frozen=True)
@@ -43,18 +52,34 @@ class SubmitResult:
     source: str = SOURCE_NONE
     model: str = ""
     next_action: str = ""     # what the operator should do next (non-live cases)
+    # --- runtime-teeth (WT1): the policy posture that produced this result ---
+    runtime_mode: str = ""    # the forgekit runtime mode (interactive/approval-wait/…)
+    usage_basis: str = USAGE_UNKNOWN
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    throttled: bool = False
 
     @property
     def is_live(self) -> bool:
         return self.ok and self.mode == MODE_LIVE
 
+    @property
+    def held(self) -> bool:
+        return self.mode == MODE_HELD
+
     def receipt(self) -> str:
-        """A one-line operator-facing execution receipt (which provider / live?)."""
+        """A one-line operator-facing execution receipt (mode / provider / usage)."""
 
         who = self.provider_label or self.provider_id or "—"
         tag = "live" if self.is_live else self.mode
         extra = f" · {self.model}" if self.model else ""
-        return f"[dim]↳ {who}{extra} · {tag} · {self.category}[/dim]"
+        mode = f" · mode={self.runtime_mode}" if self.runtime_mode else ""
+        usage = ""
+        if self.total_tokens or self.usage_basis not in ("", USAGE_UNKNOWN):
+            usage = f" · {self.total_tokens}tok({self.usage_basis})"
+        thr = " · throttled" if self.throttled else ""
+        return f"[dim]↳ {who}{extra} · {tag} · {self.category}{mode}{usage}{thr}[/dim]"
 
     def to_lines(self) -> Tuple[str, ...]:
         """Transcript lines for this result (assistant reply + receipt, or why-not)."""
@@ -73,8 +98,9 @@ class SubmitResult:
 
 __all__ = (
     "SOURCE_CONFIGURED", "SOURCE_LOCAL_DEFAULT", "SOURCE_NONE",
-    "MODE_LIVE", "MODE_SETUP", "MODE_ERROR",
+    "MODE_LIVE", "MODE_SETUP", "MODE_ERROR", "MODE_HELD",
     "CAT_OK", "CAT_NO_PROVIDER", "CAT_AUTH_MISSING", "CAT_UNSUPPORTED",
-    "CAT_UNREACHABLE", "CAT_TRANSPORT",
+    "CAT_UNREACHABLE", "CAT_TRANSPORT", "CAT_POLICY_HELD", "CAT_BUDGET_THROTTLED",
+    "USAGE_LIVE", "USAGE_ESTIMATE", "USAGE_PROXY", "USAGE_UNKNOWN",
     "SubmitResult",
 )
