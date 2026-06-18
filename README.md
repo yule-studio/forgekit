@@ -49,7 +49,7 @@ in [`docs/operator-surfaces.md`](docs/operator-surfaces.md) and [`docs/evidence-
 | Armory breadth (7 categories, 25 skills, 8 loadouts) | **working** | `/resolve` | `test_armory_breadth` |
 | Nexus read path (bounded, restricted-aware) | **partial** | `/resolve` nexus line | `examples/hephaistos/nexus-read-foundation/` |
 | Always-on bounded daemon + safe-class autopilot | **working** | `forgekit runtime serve` | `examples/runtime/`, `examples/autopilot/` |
-| Provider `/provider`·`/setup` console config | **planned** | — (engine merged; command not wired) | — |
+| Provider `/provider` console config (set primary / list / doctor) | **working** | `/provider` | `test_provider_surface` |
 | Nexus live repo connection | **planned** (`not_connected` until `FORGEKIT_NEXUS_ROOT` set) | — | — |
 | Live Figma / YouTube / Google / Instagram | **planned seam** (never live in this tree) | `/sources` shows planned | — |
 
@@ -130,7 +130,7 @@ Reading order for contributors/agents: [`AGENTS.md`](AGENTS.md) → [`CLAUDE.md`
 
 ## Roadmap / non-goals
 
-**Next:** `/provider`·`/setup` console config surface · Nexus live connection · per-provider usage
+**Next:** Nexus live connection · per-provider usage
 surface · GitHub-App doctor/commit-path. **Non-goals (now):** fully-autonomous unsupervised code
 mutation (safe-class only, operator-gated), live social/Figma scraping, "complete autonomous team".
 

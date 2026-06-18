@@ -17,7 +17,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | discovery collectors (free-first) | working; YouTube/IG/Google planned | `/sources` | `examples/sources/` |
 | design restricted source | blocked (real TCC) — honest | `/design` | `examples/design/` |
 | red/blue planning (owned assets) | working (plan-only) | `/red-blue` | `examples/security/` |
-| `/provider`·/setup console config | planned (engine merged, command not wired) | — | — |
+| `/provider` console config (set primary / list / doctor) | working | `/provider [set <id>\|list\|doctor]` | `test_provider_surface` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |
