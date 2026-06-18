@@ -36,6 +36,7 @@ from .registry import (
     H_HEPHAISTOS,
     H_SKILLS,
     H_LOADOUT,
+    H_PROVIDER,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -149,6 +150,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _whoami_result(parsed)
     if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed)
+    if handler == H_PROVIDER:
+        return _provider_result(parsed)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -173,6 +176,24 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     lines.append("")
     lines.append("일반 텍스트는 provider 로 live-submit 됩니다 (provider 미설정 시 setup 안내).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
+
+
+def _provider_result(parsed) -> CommandResult:
+    # /provider operator surface over policy.provider_surface (read) + provider_ops (persist).
+    from ..policy import provider_ops as ops
+    from ..policy import provider_surface as ps
+
+    args = list(getattr(parsed, "args", ()) or ())
+    sub = args[0].lower() if args else ""
+    cfg = ops.load_raw_config()
+    if sub == "set":
+        ok, msg = ps.apply_set_primary(args[1] if len(args) > 1 else "")
+        return (CommandResult.info if ok else CommandResult.error)("provider set", (msg,))
+    if sub == "list":
+        return CommandResult.info("provider list", ps.provider_list_lines(cfg))
+    if sub == "doctor":
+        return CommandResult.info("provider doctor", ps.provider_doctor_lines(cfg))
+    return CommandResult.info("provider", ps.provider_status_lines(cfg))
 
 
 def _hephaistos_result(handler, parsed) -> CommandResult:

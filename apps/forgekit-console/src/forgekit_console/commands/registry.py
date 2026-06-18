@@ -30,6 +30,7 @@ H_RESOLVE = "resolve"
 H_HEPHAISTOS = "hephaistos"
 H_SKILLS = "skills"
 H_LOADOUT = "loadout"
+H_PROVIDER = "provider"
 H_AGENT_ENTER = "agent_enter"
 H_LAYOUT = "layout"
 H_QUIT = "quit"
@@ -89,6 +90,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
+    SlashCommand("provider", "primary provider 설정/확인 — `/provider [set <id>|list|doctor]` (operator 주도, implicit ollama 없음)", H_PROVIDER, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),

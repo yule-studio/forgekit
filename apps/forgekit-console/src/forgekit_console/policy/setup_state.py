@@ -85,9 +85,10 @@ def resolve_setup_state(config: Optional[Mapping] = None) -> SetupState:
                 SetupCheck("brain/vault path", CHECK_UNKNOWN, "provider 후 확인"),
             ),
             next_actions=(
-                "최소 1개 main provider 를 설정하세요 — `~/.forgekit/config.json` 의 "
-                "`main_provider`, 또는 로컬 ollama 실행 (http://localhost:11434).",
-                "설정 후 `/doctor` 로 환경을 점검하세요.",
+                "primary provider 를 정하세요 — 콘솔에서 `/provider set <id>` "
+                "(claude/codex/gemini/ollama) 또는 `~/.forgekit/config.json` 의 `primary_provider`. "
+                "ForgeKit 은 자동으로 ollama 를 쓰지 않습니다(operator 주도).",
+                "설정 후 `/provider` / `/doctor` 로 점검, `/mode` 로 routing 확인.",
             ),
         )
 
