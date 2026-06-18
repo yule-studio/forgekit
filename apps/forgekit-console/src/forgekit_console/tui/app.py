@@ -347,25 +347,41 @@ class ForgekitConsoleApp(App):
             return
         self._transcript.write_echo(text)  # the user's message
         self._sync_intro()  # transcript now has content → compact working header
-        # RUNTIME MODE ENFORCEMENT: a hold-all posture (approval-wait) does NOT send
-        # the submit live — the mode change has real teeth, not just a label.
-        held, action = self._submit_hold_reason()
-        if held is not None:
-            self._transcript.write(render.submit_held_line(held, action))
+        # RUNTIME-TEETH (WT1): enforce the EffectivePolicy via the chat policy gate
+        # BEFORE any provider call. hold-all (approval-wait) / budget throttle → no
+        # provider call; the held result is rendered. Logic lives in chat.policy_gate.
+        from ..chat.policy_gate import evaluate_gate
+
+        ctx = self._build_submit_context()
+        decision = evaluate_gate(ctx)
+        if not decision.allowed:
+            result = decision.held_result(ctx.runtime_mode)
+            for line in result.to_lines():
+                self._transcript.write(line)
             self._follow_tail()
             return
         self._follow_tail()
         self.run_worker(
-            lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
+            lambda: self._submit_blocking(text, ctx), thread=True, group="submit", exclusive=False
         )
 
-    def _submit_hold_reason(self):
-        """``(mode_label, action)`` when the runtime mode holds actions, else ``(None, "")``."""
+    def _build_submit_context(self):
+        """Build the submit policy context from the live runtime state (WT1)."""
+
+        from ..chat.policy_gate import SubmitContext
 
         pol = self._effective_policy
-        if pol is not None and pol.holds_all_actions():
-            return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
-        return None, ""
+        label = getattr(pol, "mode_label", "") if pol is not None else ""
+        return SubmitContext(runtime_mode=label, effective_policy=pol,
+                             usage=self._usage_snapshot())
+
+    def _usage_snapshot(self):
+        """Current usage vs budget for the gate. WT1: empty; the token ledger (WT2)
+        fills spent/budget so budget-throttle gains real teeth."""
+
+        from ..chat.policy_gate import UsageSnapshot
+
+        return UsageSnapshot()
 
     def _run_idea_discovery(self, raw: str) -> None:
         """Idea-discovery mode: free text (+ repo-local signals) → briefs, top→handoff hint."""
@@ -633,28 +649,18 @@ class ForgekitConsoleApp(App):
         except Exception:  # noqa: BLE001 - vault write is best-effort, never fatal
             return None
 
-    def _submit_blocking(self, text: str) -> None:
-        # EffectivePolicy enforcement: the mode's routing target steers the provider
-        # (not just display). Resolved on the main thread state, passed into the worker.
-        prefer = self._policy_routing_target()
-        result = self._submit_service.submit(text, prefer_provider=prefer)
+    def _submit_blocking(self, text: str, ctx=None) -> None:
+        # The context carries the EffectivePolicy → the service re-enforces the gate
+        # (routing target / approval / budget) + records usage. Real teeth, not display.
+        result = self._submit_service.submit(text, context=ctx)
         self.call_from_thread(self._on_submit_result, result)
-
-    def _policy_routing_target(self) -> str:
-        pol = self._effective_policy
-        if pol is None:
-            return ""
-        target = pol.routing_target()
-        # only steer when the target is a builtin (a real configured option)
-        from ..providers import builtins as _b
-
-        return target if _b.is_builtin(target) else ""
 
     def _on_submit_result(self, result) -> None:
         log = self._transcript
         for line in result.to_lines():
             log.write(line)
-        if not result.ok:
+        # held/throttled are intentional POLICY decisions, not failures → no escalation.
+        if not result.ok and not result.held:
             self._record_submit_failure(result)
         self._follow_tail()
         try:
