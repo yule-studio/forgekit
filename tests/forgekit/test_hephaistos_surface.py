@@ -42,7 +42,7 @@ class RoutingTests(unittest.TestCase):
         self.assertTrue(any(s in joined for s in ("ready", "partial", "missing")))
 
     def test_skills_uncovered_is_honest(self) -> None:
-        r = route(parse_input("/skills Next.js dashboard spacing"), _ctx())
+        r = route(parse_input("/skills Rust 임베디드 펌웨어"), _ctx())
         self.assertIn("shallow", "\n".join(r.lines))   # honest, not dummy skills
 
     def test_resolve_without_arg_prompts(self) -> None:

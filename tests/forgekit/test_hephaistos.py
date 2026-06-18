@@ -42,10 +42,9 @@ class ResolveTests(unittest.TestCase):
         self.assertTrue(pk.nexus_refs)
 
     def test_uncovered_stack_resolves_shallow_honestly(self) -> None:
-        # armory is the java-spring MVP — a frontend request has no skills (not faked)
-        p = resolver.resolve("Next.js dashboard spacing 개선해줘")
-        self.assertEqual(p.domain, "frontend")
-        self.assertEqual(p.selected_skills, ())     # honest: no frontend skills yet
+        # a stack outside armory coverage (no Rust/embedded skill) stays honestly shallow
+        p = resolver.resolve("Rust 임베디드 펌웨어 인터럽트 핸들러")
+        self.assertEqual(p.selected_skills, ())     # honest: not_covered, not faked
         self.assertEqual(p.selected_loadout, "")
 
     def test_deterministic(self) -> None:
