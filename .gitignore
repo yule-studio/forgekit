@@ -9,6 +9,10 @@
 !.gemini/commands/
 runs/*
 !runs/.gitkeep
+# forgekit-console runtime output: the daemon/autopilot mutator writes safe-class
+# notes under <repo_root>/runs/ when repo_root resolves to the app dir (#241/#240).
+# That is runtime churn — never commit it (committed evidence lives in examples/).
+apps/forgekit-console/runs/
 
 # Secrets
 .env
