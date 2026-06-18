@@ -22,11 +22,19 @@ from . import heartbeat as HB
 
 @dataclass(frozen=True)
 class TickOutcome:
-    """What one tick produced — the daemon only needs to know if an operator is needed."""
+    """What one tick produced — the daemon only needs to know if an operator is needed.
+
+    The execution fields (WT2 #241) let ``forgekit runtime status`` surface what the
+    last tick actually DID: how many safe-class mutations executed, where, why a tick
+    skipped, and the next tick eligible to act (cooldown)."""
 
     summary: str = ""
     waiting: bool = False          # an approval-needed / blocked condition this tick
     blocked_count: int = 0
+    executed: int = 0              # safe-class mutations this tick actually performed+verified
+    executed_paths: tuple = ()     # repo-relative paths really written this tick
+    skipped_reason: str = ""       # why nothing executed (cooldown / dupes / halt)
+    next_eligible_tick: int = 0    # tick at which execution resumes (0 = no cooldown)
 
 
 @dataclass
@@ -36,10 +44,12 @@ class DaemonResult:
     waits: int = 0
     notified: int = 0
     heartbeats: int = 0
+    executed: int = 0              # total safe-class mutations across the run (WT2 #241)
 
     def to_dict(self) -> dict:
         return {"ticks": self.ticks, "stopped_reason": self.stopped_reason,
-                "waits": self.waits, "notified": self.notified, "heartbeats": self.heartbeats}
+                "waits": self.waits, "notified": self.notified,
+                "heartbeats": self.heartbeats, "executed": self.executed}
 
 
 @dataclass
@@ -111,6 +121,7 @@ class BoundedDaemon:
             tick += 1
             outcome = tick_fn(tick)
             res.ticks = tick
+            res.executed += outcome.executed
             if self._heartbeat(HB.STATUS_RUNNING, tick, outcome.summary):
                 res.heartbeats += 1
             if outcome.waiting:
