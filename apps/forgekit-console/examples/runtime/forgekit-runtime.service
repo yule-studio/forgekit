@@ -1,0 +1,19 @@
+# systemd unit — forgekit always-on bounded runtime (Linux / homeserver = 1st-class)
+# install: cp 이 파일 ~/.config/systemd/user/ → systemctl --user daemon-reload
+#          systemctl --user enable --now forgekit-runtime
+[Unit]
+Description=forgekit always-on bounded runtime
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=FORGEKIT_HOME=%h/.forgekit
+Environment=FORGEKIT_NOTIFY=1
+# 5분 간격 bounded loop (관측→분류→패킷→handoff→대기). privileged 작업 자동 안 함.
+ExecStart=/usr/bin/env forgekit runtime serve --interval 300
+ExecStop=/usr/bin/env forgekit runtime stop
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
