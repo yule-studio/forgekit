@@ -10,7 +10,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | forge status | working | `/hephaistos` | `test_hephaistos_surface` |
 | loadout verify (real env) | working | `/loadout <id>` | `test_hephaistos` |
 | Nexus read | partial (not_connected default) | `/resolve` nexus line | `examples/hephaistos/nexus-read-foundation/` |
+| Nexus connection status | working | `/nexus` | `test_nexus_read` |
 | usage ledger (live vs estimate) | working | `/usage` | `examples/usage/` |
+| per-provider/model/mode usage breakdown | working | `/usage` | `examples/usage/per-provider-breakdown/` |
 | runtime modes (real routing/budget/approval) | working | `/mode`, Shift+Tab | `examples/runtime-teeth/` |
 | always-on daemon + safe-class autopilot | working (bounded) | `forgekit runtime serve`, `/autopilot` | `examples/runtime/`, `examples/autopilot/` |
 | agent identity (git author / app status) | working | `/whoami` | `test_identity_attribution` |
@@ -18,6 +20,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | design restricted source | blocked (real TCC) — honest | `/design` | `examples/design/` |
 | red/blue planning (owned assets) | working (plan-only) | `/red-blue` | `examples/security/` |
 | `/provider` console config (set primary / list / doctor) | working | `/provider [set <id>\|list\|doctor]` | `test_provider_surface` |
+| provider link / unlink / slot route | working | `/provider [link\|unlink\|route show\|route set <slot> <id>]` | `test_provider_surface` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |
