@@ -7,6 +7,7 @@ Where each capability's evidence lives. Paths under `apps/forgekit-console/examp
 | --- | --- | --- | --- |
 | Hephaistos resolve (MVP) | `examples/hephaistos/` (+ `test_hephaistos`) | yes | `pytest`-style unittest |
 | Nexus read foundation | `examples/hephaistos/nexus-read-foundation/` | yes | see its README |
+| per-provider usage breakdown | `examples/usage/per-provider-breakdown/` | yes | `/usage` (breakdown lines) |
 | usage ledger / live vs estimate | `examples/usage/` (+ `native-usage-live/`) | yes | `/usage` writes `runs/forgekit/usage/` |
 | runtime-teeth (submit gate) | `examples/runtime-teeth/` | yes | — |
 | always-on daemon | `examples/runtime/` (`daemon-execution/`, heartbeat) | yes | `forgekit runtime serve --max-ticks N` |
