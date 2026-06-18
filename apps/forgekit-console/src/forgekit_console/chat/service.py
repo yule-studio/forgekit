@@ -27,7 +27,7 @@ from ..providers.contract import (
     SUBMIT_OPENAI,
     ProviderSpec,
 )
-from ..providers.registry import build_provider, no_provider_configured
+from ..providers.registry import build_provider
 from ..runtime_paths import config_path
 from . import models as m
 
@@ -86,11 +86,13 @@ class SubmitService:
         steers the live submit, not just the display. Unknown preference → ignored.
         """
 
+        from ..policy.provider_config import load_provider_config
+
         prefer = (prefer_provider or "").strip()
         if prefer and builtins.is_builtin(prefer):
             return builtins.BUILTIN_PROVIDERS[prefer], m.SOURCE_CONFIGURED
-        main = str((self.config or {}).get("main_provider", "")
-                   or (self.config or {}).get("id", "")).strip()
+        brain = load_provider_config(self.config)
+        main = brain.primary_provider
         if main:
             if builtins.is_builtin(main):
                 return builtins.BUILTIN_PROVIDERS[main], m.SOURCE_CONFIGURED
@@ -99,8 +101,10 @@ class SubmitService:
                 return spec, m.SOURCE_CONFIGURED
             except Exception:  # noqa: BLE001 - invalid config → treat as unconfigured
                 pass
-        # nothing configured → a reachable LOCAL ollama is the zero-config live path.
-        if no_provider_configured(self.config) and self.transport.ollama_reachable(builtins.OLLAMA.endpoint):
+        # NO implicit local fallback by default: a reachable ollama is NOT "configured".
+        # forgekit uses it only when the operator EXPLICITLY opts in
+        # (fallback_policy.implicit_local_fallback = true). Otherwise → setup required.
+        if brain.implicit_local_fallback and self.transport.ollama_reachable(builtins.OLLAMA.endpoint):
             return builtins.OLLAMA, m.SOURCE_LOCAL_DEFAULT
         return None, m.SOURCE_NONE
 
