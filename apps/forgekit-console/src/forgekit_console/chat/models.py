@@ -9,7 +9,7 @@ so the operator always knows what really happened.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 # How the provider was resolved.
 SOURCE_CONFIGURED = "configured"      # from ~/.forgekit/config.json (operator chose it)
@@ -37,6 +37,35 @@ USAGE_LIVE = "live"          # provider reported real usage
 USAGE_ESTIMATE = "estimate"  # forgekit estimated from text length (heuristic)
 USAGE_PROXY = "proxy"        # a price/usage proxy
 USAGE_UNKNOWN = "unknown"    # not measured
+
+
+@dataclass(frozen=True)
+class ProviderUsage:
+    """Native usage as the provider reported it (WT1 #239). ``usable`` only when the
+    provider actually gave a positive token total — otherwise the caller degrades to
+    an honest estimate (never faked live). ``raw_json`` keeps the original block for
+    evidence."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    raw_json: str = ""
+
+    @property
+    def usable(self) -> bool:
+        return self.total_tokens > 0
+
+
+@dataclass(frozen=True)
+class ChatResult:
+    """A transport's reply: assistant text + the provider's native usage (if any).
+
+    The transport returns BOTH from the SAME response so usage is real (same call that
+    produced the text), not a second guess. ``usage=None`` → no native usage block →
+    the submit path records ``usage_basis=estimate``."""
+
+    text: str = ""
+    usage: Optional[ProviderUsage] = None
 
 
 @dataclass(frozen=True)
@@ -102,5 +131,5 @@ __all__ = (
     "CAT_OK", "CAT_NO_PROVIDER", "CAT_AUTH_MISSING", "CAT_UNSUPPORTED",
     "CAT_UNREACHABLE", "CAT_TRANSPORT", "CAT_POLICY_HELD", "CAT_BUDGET_THROTTLED",
     "USAGE_LIVE", "USAGE_ESTIMATE", "USAGE_PROXY", "USAGE_UNKNOWN",
-    "SubmitResult",
+    "ProviderUsage", "ChatResult", "SubmitResult",
 )
