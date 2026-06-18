@@ -101,6 +101,41 @@ def blocked_banner() -> str:
     )
 
 
+def setup_required_banner() -> str:
+    """Issue-line banner when no provider is configured (forgekit can't run yet)."""
+
+    return (
+        f"[{_WARN}]● setup-required[/{_WARN}] [dim]main provider 미설정 — "
+        f"`/doctor` 로 점검, config 의 `main_provider` 설정 (또는 로컬 ollama)[/dim]"
+    )
+
+
+def submit_held_line(mode_label: str, action: str) -> str:
+    """Shown when the runtime mode HOLDS an action (e.g. approval-wait) — the submit
+    is not sent live; the operator is told why + what to do."""
+
+    return (
+        f"[{_WARN}]⏸ {mode_label} — 행동 보류(hold)[/{_WARN}] "
+        f"[dim]{action}[/dim]"
+    )
+
+
+def runtime_mode_line(
+    label: str, policy_mode: str, usage_mode: str, approval: str, *, loop: bool
+) -> str:
+    """A compact one-line summary of the current runtime mode + its real posture.
+
+    Shown on the operator surface (issue line / mode change) so Shift+Tab is never
+    "just a label" — the resolved routing / usage / approval / loop are visible.
+    """
+
+    loop_s = "loop on" if loop else "loop off"
+    return (
+        f"[{_ACCENT}]◆[/{_ACCENT}] [b]{label}[/b] "
+        f"[dim]· routing {policy_mode} · usage {usage_mode} · approval {approval} · {loop_s}[/dim]"
+    )
+
+
 def issue_line(summary: StatusSummary) -> str:
     """The compact setup/status line under the intro — text-first, one line.
 
@@ -386,6 +421,76 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
     return (help_tab, general, commands_tab, agents_tab, about)
 
 
+def loop_summary_lines(result, *, note: str = "") -> Tuple[str, ...]:
+    """Render a bounded always-on LoopResult — phases, handoffs, runbooks, wait state.
+
+    Makes the bounded autonomy visible: observe→classify→packet→handoff→wait, with
+    privileged areas turned into runbooks (never executed). Pure (duck-typed)."""
+
+    lines = [
+        f"[b {_ACCENT}]» always-on (bounded) — 관측→분류→패킷→handoff→대기[/b {_ACCENT}]",
+    ]
+    if note:
+        lines.append(f"  [dim]{note}[/dim]")
+    # compact phase trace grouped by iteration
+    by_iter: dict = {}
+    for s in result.steps:
+        by_iter.setdefault(s.iteration, []).append(s.phase)
+    for it, phases in by_iter.items():
+        lines.append(f"  [{it}] " + " → ".join(phases))
+    lines.append("")
+    lines.append(f"  packet/handoff : {len(result.handoffs)}개")
+    if result.runbooks:
+        lines.append(f"  [{_WARN}]runbook(권한 없음): {len(result.runbooks)}개[/{_WARN}]")
+        for n in result.runbooks:
+            lines.append(f"    ⏸ {n.title}  [dim]→ {n.area} runbook (operator 승인 필요)[/dim]")
+    if result.waiting:
+        lines.append(f"  [{_WARN}]상태: operator 응답/승인 대기[/{_WARN}] [dim]— 실행은 사람 승인 후[/dim]")
+    lines.append(f"  [dim]정지: {result.halt_reason} · destructive/deploy 는 구조적으로 차단(execute phase 없음)[/dim]")
+    return tuple(lines)
+
+
+def handoff_summary_lines(handoff) -> Tuple[str, ...]:
+    """Render a PM→gateway→tech-lead Handoff for the transcript (duck-typed).
+
+    Shows the shaped goal, how many implied features the PM added, the per-role task
+    split (ready vs blocked), and — honestly — the blocked areas needing an operator
+    + a runbook. Pure: reads attributes, returns markup lines.
+    """
+
+    packet = handoff.packet
+    goal = getattr(packet, "user_goal", "") or "(목표 미파악)"
+    implied = getattr(packet, "implied_features", ()) or ()
+    questions = getattr(packet, "decision_questions", ()) or ()
+    split = handoff.split
+    lines = [
+        f"[b {_ACCENT}]» PM intake → tech-lead handoff[/b {_ACCENT}]",
+        f"  goal       : {goal}",
+        f"  보강(implied): {len(implied)}개 자동 발견  ·  결정질문: {len(questions)}개",
+        "",
+        "  [b]role split[/b] (tech-lead):",
+    ]
+    for t in split.tasks:
+        if t.state == "blocked":
+            lines.append(
+                f"    [{_WARN}]⏸ {t.role_label:<10}[/{_WARN}] {t.title} "
+                f"[dim]— BLOCKED: {t.blocked_reason}[/dim]"
+            )
+        else:
+            lines.append(f"    [{_OK}]●[/{_OK}] {t.role_label:<10} {t.title}")
+    if handoff.has_blocked:
+        lines.append("")
+        lines.append(
+            f"  [{_WARN}]권한 없는 영역 {len(split.blocked)}개[/{_WARN}] "
+            f"[dim]— operator 승인 + Terraform/ops runbook 필요 (가짜 실행 없음).[/dim]"
+        )
+    lines.append("")
+    lines.append("  [dim]trace: " + " → ".join(
+        f"{t.author_role}" for t in handoff.trace
+    ) + "[/dim]")
+    return tuple(lines)
+
+
 def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
     """Frame a command result for the center log."""
 
@@ -396,10 +501,11 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 __all__ = (
     "BRAND", "TAGLINE",
     "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
+    "setup_required_banner", "runtime_mode_line", "submit_held_line",
     "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "result_block",
 )

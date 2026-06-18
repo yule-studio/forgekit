@@ -1,0 +1,16 @@
+[
+  {
+    "request_type": "ACCESS",
+    "event_type": "ACCESS_REQUIRED",
+    "title": "forgekit always-on: operator 승인 필요",
+    "why": "권한 없는 영역 1개에서 멈춤 (runbook 생성됨)",
+    "action": "runbook 확인 후 #승인-대기 에서 승인/거부",
+    "options": [
+      "승인",
+      "거부",
+      "보류"
+    ],
+    "source": "always-on",
+    "needs_operator": true
+  }
+]

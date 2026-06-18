@@ -29,6 +29,7 @@ from .registry import (
     H_DOCTOR,
     H_HARNESS,
     H_HELP,
+    H_MODE,
     H_BLOCKED,
     H_LAYOUT,
     H_QUIT,
@@ -132,6 +133,13 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _summary_to_result(ctx.load_runtime())
     if handler == H_DOCTOR:
         return _summary_to_result(ctx.load_doctor())
+    if handler == H_MODE:
+        # The live runtime mode lives in the app (TUI intercepts /mode). This pure
+        # fallback is for non-TUI callers / tests.
+        return CommandResult.info(
+            "mode",
+            ("런타임 모드는 콘솔(TUI)에서 Shift+Tab 으로 순환되고 `/mode` 로 표시됩니다.",),
+        )
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -204,7 +212,8 @@ def _agent_enter_result(cmd, ctx: ConsoleContext) -> CommandResult:
                 "예: '영상 업로드 구현' → 공개 정책·업로드 주체·노출 순서를 먼저 묻고,",
                 "    처리 상태·실패 재시도·썸네일 fallback 을 자동 보강합니다.",
                 "",
-                "[dim]live submit 은 아직 stub — 정책/패킷 코어는 agents/product_intake.[/dim]",
+                "[dim]이 모드에서 입력한 제품 요청은 실제 intake→gateway→tech-lead handoff 로 변환됩니다.[/dim]",
+                "[dim]역할 분배 + 권한 없는 영역은 BLOCKED + evidence 기록.[/dim]",
             ),
         )
     lines = [

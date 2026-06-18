@@ -769,6 +769,163 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("live reply", joined)
             self.assertEqual(app.query_one("#intro", IntroHeader).mode, "compact")
 
+    def _ready_app(self, main="claude", **kw):
+        import tempfile
+        from forgekit_console.tui.app import ForgekitConsoleApp
+        from forgekit_console.notify.service import NotificationService
+
+        # isolated notifier: tmp inbox + desktop OFF (no real toast / no home writes)
+        if "notifier" not in kw:
+            tmp = Path(tempfile.mkdtemp())
+            self.addCleanup(lambda: __import__("shutil").rmtree(tmp, ignore_errors=True))
+            kw["notifier"] = NotificationService(
+                inbox_path=tmp / "inbox.json", desktop_enabled=False
+            )
+        return ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=_fake_context(),
+            config={"main_provider": main}, **kw,
+        )
+
+    async def test_shift_tab_cycles_mode_with_real_policy_change(self) -> None:
+        """Shift+Tab advances the runtime mode AND changes the resolved EffectivePolicy
+        (provider-policy mode / usage / approval), not just a label."""
+        from forgekit_console.policy import runtime_mode as rm
+
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            first_mode = app._runtime_mode
+            first_pol = app._effective_policy
+            self.assertIsNotNone(first_pol)
+            seen_policy_modes = {first_pol.provider_policy_mode}
+            seen_usage = {first_pol.usage.usage_mode}
+            for _ in range(len(rm.RUNTIME_MODES) - 1):  # stop one short of a full wrap
+                await pilot.press("shift+tab")
+                await pilot.pause()
+                seen_policy_modes.add(app._effective_policy.provider_policy_mode)
+                seen_usage.add(app._effective_policy.usage.usage_mode)
+            # mode id moved and the resolved policy/usage took on MULTIPLE distinct
+            # values across the cycle → real policy change, not a label flip.
+            self.assertNotEqual(app._runtime_mode, first_mode)
+            self.assertGreater(len(seen_policy_modes), 1)
+            self.assertGreater(len(seen_usage), 1)
+
+    async def test_mode_command_shows_live_posture(self) -> None:
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            n_before = len(app._transcript.lines)
+            app._execute("/mode")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertGreater(len(app._transcript.lines), n_before)
+            self.assertIn("routing", joined)
+            self.assertIn("approval", joined)
+            self.assertIn(app._effective_policy.mode_label, joined)
+
+    async def test_no_provider_shows_setup_required_and_blocks_mode(self) -> None:
+        """No config → setup-required banner; Shift+Tab does NOT pretend to switch."""
+        from textual.widgets import Static
+        from forgekit_console.tui.app import ForgekitConsoleApp
+
+        app = ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context(), config={})
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            self.assertTrue(app._setup.blocked)
+            self.assertIsNone(app._effective_policy)
+            issue = str(app.query_one("#issue", Static).render())
+            self.assertIn("setup-required", issue)
+            before = app._runtime_mode
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            self.assertEqual(app._runtime_mode, before)  # no fake switch
+
+    async def test_always_on_runs_bounded_cycle_with_runbook(self) -> None:
+        """/always-on runs the bounded loop and surfaces a runbook for the privileged
+        (infra) area + an operator-wait — never an execution."""
+        app = self._ready_app("claude")
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/always-on")
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("always-on", joined)
+            self.assertIn("runbook", joined)        # privileged area → runbook
+            self.assertIn("대기", joined)            # operator-wait surfaced
+            self.assertIn("execute phase 없음", joined)  # destructive structurally blocked
+            self.assertIn("operator 알림", joined)   # WT4 notification fired (inbox)
+
+    async def test_pm_agent_mode_runs_intake_handoff_not_live_submit(self) -> None:
+        """In product-agent mode, a product ask runs PM intake→tech-lead split (with
+        BLOCKED infra surfaced) and does NOT hit the live-submit provider."""
+        from forgekit_console.chat import models as m
+
+        class TrackingService:
+            def __init__(self):
+                self.calls = 0
+
+            def submit(self, text):
+                self.calls += 1
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
+
+        svc = TrackingService()
+        app = self._ready_app("claude", submit_service=svc)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            app._execute("/pm-agent")  # enter PM mode
+            await pilot.pause()
+            self.assertEqual(app.mode, "agent:product-agent")
+            app._execute("영상 업로드 기능을 운영까지 완성해줘")  # a product ask
+            await pilot.pause()
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("handoff", joined)        # the intake→handoff ran
+            self.assertIn("BLOCKED", joined)         # infra surfaced honestly
+            self.assertIn("vault note", joined)      # WT5 authored note written
+            self.assertEqual(svc.calls, 0)           # NOT a raw live submit
+
+    async def test_approval_wait_holds_live_submit(self) -> None:
+        """approval-wait is REAL enforcement: free text is held, the provider is NOT
+        called, and the operator is told why + what to do."""
+        from forgekit_console.policy import runtime_mode as rm
+        from forgekit_console.chat import models as m
+
+        class TrackingService:
+            def __init__(self):
+                self.calls = 0
+
+            def submit(self, text):
+                self.calls += 1
+                return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK, text="x")
+
+        svc = TrackingService()
+        app = self._ready_app("claude", submit_service=svc)
+        async with app.run_test(size=(100, 40)) as pilot:
+            await pilot.pause()
+            # interactive mode → submit goes through
+            app._submit_free_text("hello")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            self.assertEqual(svc.calls, 1)
+            # switch to approval-wait → the next submit is HELD (no provider call)
+            app._runtime_mode = rm.MODE_APPROVAL_WAIT
+            app._recompute_policy()
+            app._submit_free_text("please run")
+            await pilot.pause()
+            await app.workers.wait_for_complete()
+            self.assertEqual(svc.calls, 1)  # NOT called again — held
+            joined = "\n".join(str(s) for s in app._transcript.lines)
+            self.assertIn("보류", joined)
+
+    async def test_main_provider_changes_routing_target(self) -> None:
+        claude = self._ready_app("claude")
+        async with claude.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(claude._effective_policy.routing_target(), "claude")
+        ollama = self._ready_app("ollama")
+        async with ollama.run_test() as pilot:
+            await pilot.pause()
+            self.assertEqual(ollama._effective_policy.routing_target(), "ollama")
+
     async def test_intro_block_renders_avatar_and_meta(self) -> None:
         """The compact intro block mounts: avatar column (left) + brand/version/
         provider/profile/repo meta (right)."""

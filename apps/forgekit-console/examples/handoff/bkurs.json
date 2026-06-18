@@ -1,0 +1,106 @@
+{
+  "raw_ask": "bkurs-fe와 bkurs-be를 완성해줘. 디자인, 간격, 운영도 부족한 것 같아.",
+  "project": "bkurs",
+  "packet": {
+    "user_goal": "bkurs-fe와 bkurs-be를 완성해줘. 디자인, 간격, 운영도 부족한 것 같아.",
+    "target_user": "일반 사용자",
+    "problem_statement": "요청 'bkurs-fe와 bkurs-be를 완성해줘. 디자인, 간격, 운영도 부족한 것 같아.' 의 제품 맥락이 아직 불명확 — 보강 필요",
+    "core_flow": [],
+    "required_features": [],
+    "implied_features": [],
+    "recommended_defaults": [
+      "로딩 / 빈 상태 / 에러 상태 처리",
+      "입력 검증(validation)",
+      "권한·노출 체크(permission/visibility guard)",
+      "모바일/반응형 고려"
+    ],
+    "assumptions": [],
+    "user_decisions_needed": [],
+    "decision_questions": [],
+    "non_goals": [
+      "결제/과금은 이번 범위 밖",
+      "알림/푸시는 이번 범위 밖",
+      "기존 화면 그대로 클론(미보강 복제)은 범위 밖"
+    ],
+    "acceptance_criteria": [],
+    "suggested_roles": [
+      "tech-lead"
+    ],
+    "detected_families": [],
+    "readiness": {
+      "readiness": "spec_ready",
+      "rationale": "spec 정리됨",
+      "source_signals": [
+        "families=[]",
+        "questions=0"
+      ]
+    }
+  },
+  "split": {
+    "tasks": [
+      {
+        "role": "devops",
+        "role_label": "DevOps",
+        "title": "배포/인프라 rollout (권한 필요)",
+        "detail": "",
+        "state": "blocked",
+        "blocked_reason": "실행 권한 없음 (infra/IAM/deploy/secret) — operator 승인 + Terraform/ops runbook 필요",
+        "needs_approval": true,
+        "runbook_hint": "Terraform/ops/approval runbook note 산출 (vault) 후 operator 승인 요청"
+      },
+      {
+        "role": "qa",
+        "role_label": "QA",
+        "title": "acceptance criteria 기반 회귀/스모크 테스트 작성",
+        "detail": "",
+        "state": "ready",
+        "blocked_reason": "",
+        "needs_approval": false,
+        "runbook_hint": ""
+      },
+      {
+        "role": "tech-lead",
+        "role_label": "Tech Lead",
+        "title": "범위/리스크/순서 조율 + role handoff 승인",
+        "detail": "",
+        "state": "ready",
+        "blocked_reason": "",
+        "needs_approval": false,
+        "runbook_hint": ""
+      }
+    ],
+    "roles": [
+      "devops",
+      "qa",
+      "tech-lead"
+    ],
+    "blocked_count": 1
+  },
+  "trace": [
+    {
+      "phase": "intake",
+      "author": "product-agent",
+      "author_role": "Product (PM)",
+      "handoff_from": "operator",
+      "handoff_to": "gateway",
+      "note": "raw ask → implied features 보강 + 결정/기본값 정리"
+    },
+    {
+      "phase": "gateway",
+      "author": "gateway",
+      "author_role": "Engineering Gateway",
+      "handoff_from": "product-agent",
+      "handoff_to": "tech-lead",
+      "note": "ProductIntentPacket 검증 후 tech-lead 로 전달"
+    },
+    {
+      "phase": "tech-lead",
+      "author": "tech-lead",
+      "author_role": "Tech Lead",
+      "handoff_from": "gateway",
+      "handoff_to": "engineers",
+      "note": "3 role tasks (1 blocked)"
+    }
+  ],
+  "has_blocked": true
+}

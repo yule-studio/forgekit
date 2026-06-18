@@ -76,6 +76,8 @@ class ForgekitConsoleApp(App):
         context: Optional[ConsoleContext] = None,
         escalator=None,
         submit_service=None,
+        config: Optional[dict] = None,
+        notifier=None,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
@@ -100,6 +102,26 @@ class ForgekitConsoleApp(App):
 
             submit_service = build_default_service()
         self._submit_service = submit_service
+        # Runtime MODE + provider posture (WT1): the on-disk config decides setup
+        # readiness; the runtime mode × main-provider profile resolves a concrete
+        # EffectivePolicy. Shift+Tab cycles the mode → a REAL policy change.
+        from ..chat.service import load_config
+        from ..policy import runtime_mode as _rm
+        from ..policy.setup_state import resolve_setup_state
+
+        self._config = load_config() if config is None else config
+        self._setup = resolve_setup_state(self._config)
+        self._runtime_mode = _rm.DEFAULT_MODE
+        self._effective_policy = None
+        self._recompute_policy()
+        # Operator notifications (WT4): desktop is opt-in (FORGEKIT_NOTIFY, same as the
+        # escalator) so the console never spams; the inbox record is always durable.
+        if notifier is None:
+            from ..lifecycle.failure_escalation import notify_enabled
+            from ..notify.service import NotificationService
+
+            notifier = NotificationService(desktop_enabled=notify_enabled())
+        self._notifier = notifier
 
     def get_css_variables(self) -> dict:
         # Merge the forgekit brand tokens into the global variable scope so the
@@ -178,6 +200,10 @@ class ForgekitConsoleApp(App):
             self._cycle(-1)
         elif self._main.help_open:
             self._main.switch_help_tab(-1)
+        else:
+            # idle (no palette / no help) → Shift+Tab cycles the RUNTIME MODE, which
+            # recomputes the EffectivePolicy (real routing/usage/approval change).
+            self._cycle_runtime_mode(1)
 
     def action_palette_next(self) -> None:
         if self._palette.is_open:
@@ -232,8 +258,20 @@ class ForgekitConsoleApp(App):
     def _execute(self, raw: str) -> None:
         parsed = parse_input(raw)
         if not parsed.is_slash:
+            if self.mode == "agent:product-agent":
+                # In PM mode, free text is a PRODUCT ASK → run the intake→handoff
+                # path (structured packet + role split), NOT a raw live submit.
+                self._run_pm_intake(raw)
+                return
             # FREE TEXT → live provider submit (NOT the slash command path).
             self._submit_free_text(raw)
+            return
+        if parsed.name == "mode":
+            # /mode renders the LIVE runtime-mode posture (app state, not pure router).
+            self._show_mode_surface()
+            return
+        if parsed.name == "always-on":
+            self._run_always_on_cycle()
             return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
@@ -279,10 +317,111 @@ class ForgekitConsoleApp(App):
             return
         self._transcript.write_echo(text)  # the user's message
         self._sync_intro()  # transcript now has content → compact working header
+        # RUNTIME MODE ENFORCEMENT: a hold-all posture (approval-wait) does NOT send
+        # the submit live — the mode change has real teeth, not just a label.
+        held, action = self._submit_hold_reason()
+        if held is not None:
+            self._transcript.write(render.submit_held_line(held, action))
+            self._follow_tail()
+            return
         self._follow_tail()
         self.run_worker(
             lambda: self._submit_blocking(text), thread=True, group="submit", exclusive=False
         )
+
+    def _submit_hold_reason(self):
+        """``(mode_label, action)`` when the runtime mode holds actions, else ``(None, "")``."""
+
+        pol = self._effective_policy
+        if pol is not None and pol.holds_all_actions():
+            return pol.mode_label, "Shift+Tab 으로 모드를 바꾸거나 승인 후 다시 시도하세요."
+        return None, ""
+
+    def _run_always_on_cycle(self) -> None:
+        """Run ONE bounded always-on cycle (observe→classify→packet→handoff→wait).
+
+        Bounded autonomy: privileged areas (deploy/IAM/infra/secret) become runbooks
+        + an operator-wait, never an execution. Repeated waits surface to escalation.
+        (A live project scanner is not wired yet, so this runs on a representative
+        finding set — labelled honestly — to exercise the real loop + runbook path.)
+        """
+
+        from ..runtime.loop import BoundedRuntimeLoop, Finding, CAT_DESIGN, CAT_INFRA, AUTONOMY_BOUNDED
+
+        log = self._transcript
+        log.write_echo("/always-on")
+        findings = [
+            Finding("bkurs-fe", "디자인/간격(spacing) 보강 필요 — UX 미완성", category=CAT_DESIGN),
+            Finding("bkurs-be", "운영/인프라 배포 준비 부족 (deploy apply 권한 필요)",
+                    category=CAT_INFRA, privileged=True),
+        ]
+        loop = BoundedRuntimeLoop(autonomy=AUTONOMY_BOUNDED, max_iterations=10,
+                                  escalator=self._escalator)
+        result = loop.run(findings)
+        for line in render.loop_summary_lines(
+            result, note="대표 finding 셋 기반 bounded 데모 사이클 — 실제 프로젝트 스캐너 연결은 후속.",
+        ):
+            log.write(line)
+        if result.escalated:
+            log.write("[dim]↳ operator inbox/ledger 에 대기 상태 기록됨[/dim]")
+        # WT4: a bounded loop parked on a privileged area → notify the operator
+        # (inbox always; desktop when FORGEKIT_NOTIFY is on). Action-oriented payload.
+        if result.waiting:
+            from ..notify.events import EVENT_ACCESS_REQUIRED, NotificationEvent
+
+            out = self._notifier.notify(NotificationEvent(
+                EVENT_ACCESS_REQUIRED,
+                title="forgekit always-on: operator 승인 필요",
+                why=f"권한 없는 영역 {result.blocked_count}개에서 멈춤 (runbook 생성됨)",
+                action="runbook 확인 후 `#승인-대기` 에서 승인/거부",
+                options=("승인", "거부", "보류"), source="always-on",
+            ))
+            log.write(
+                f"[dim]↳ operator 알림: inbox={'기록' if out.inbox_written else '실패'} · "
+                f"desktop={out.channel if out.desktop_delivered else 'off(FORGEKIT_NOTIFY)'}[/dim]"
+            )
+        self._sync_intro()
+        self._follow_tail()
+
+    def _run_pm_intake(self, raw: str) -> None:
+        """PM (product-agent) mode: a raw product ask → structured handoff packet.
+
+        Reuses the product-intake engine to find missing requirements, splits the
+        packet across roles (tech-lead), writes evidence JSON, and surfaces blocked
+        (no-permission) areas honestly. No raw live submit here.
+        """
+
+        text = raw.strip()
+        if not text:
+            return
+        self._transcript.write_echo(text)
+        from ..handoff import run_handoff
+        from ..handoff.evidence import write_handoff_evidence
+
+        handoff = run_handoff(text, project="")
+        for line in render.handoff_summary_lines(handoff):
+            self._transcript.write(line)
+        path = write_handoff_evidence(handoff, self.repo_root)
+        if path is not None:
+            self._transcript.write(f"[dim]↳ evidence: {path}[/dim]")
+        # WT5: also write an AUTHORED vault note (who/role/handoff phase metadata).
+        note_path = self._write_handoff_note(handoff)
+        if note_path is not None:
+            self._transcript.write(f"[dim]↳ vault note (tech-lead, authored): {note_path}[/dim]")
+        self._sync_intro()
+        self._follow_tail()
+
+    def _write_handoff_note(self, handoff):
+        """Best-effort: persist an authored vault note for the handoff (WT5)."""
+
+        try:
+            from datetime import date
+            from ..vault.note import note_from_handoff, write_note
+
+            content = note_from_handoff(handoff, created_at=date.today().isoformat())
+            return write_note(content, self.repo_root, "runs/forgekit/vault/handoff-note.md")
+        except Exception:  # noqa: BLE001 - vault write is best-effort, never fatal
+            return None
 
     def _submit_blocking(self, text: str) -> None:
         result = self._submit_service.submit(text)  # blocking IO (worker thread)
@@ -482,8 +621,96 @@ class ForgekitConsoleApp(App):
             # over the normal status line so it can't be missed (details: `/blocked`).
             self.query_one("#issue", Static).update(render.blocked_banner())
             return
+        if self._setup.blocked:
+            # no provider configured → forgekit can't run; surface setup-required.
+            self.query_one("#issue", Static).update(render.setup_required_banner())
+            return
+        pol = self._effective_policy
+        if pol is not None:
+            self.query_one("#issue", Static).update(
+                render.runtime_mode_line(
+                    pol.mode_label, pol.provider_policy_mode, pol.usage.usage_mode,
+                    pol.approval, loop=pol.background_loop,
+                )
+            )
+            return
         summary = self.context.load_operator()
         self.query_one("#issue", Static).update(render.issue_line(summary))
+
+    # --- runtime mode (Shift+Tab → real policy change) ----------------------
+
+    def _recompute_policy(self) -> None:
+        """Resolve the EffectivePolicy from the current mode × main-provider profile."""
+
+        from ..policy import runtime_mode as rm
+
+        profile = self._setup.profile if self._setup else None
+        if profile is None:
+            self._effective_policy = None
+            return
+        self._effective_policy = rm.resolve_effective_policy(profile, self._runtime_mode)
+
+    def _cycle_runtime_mode(self, direction: int = 1) -> None:
+        """Shift+Tab: advance the runtime mode and recompute the real policy."""
+
+        from ..policy import runtime_mode as rm
+
+        if self._setup.blocked:
+            self._transcript.write(
+                "[dim]provider 미설정 — 모드 전환 전에 setup 이 필요합니다 (`/doctor`).[/dim]"
+            )
+            self._sync_intro()
+            self._follow_tail()
+            return
+        self._runtime_mode = rm.cycle_mode(self._runtime_mode, direction)
+        self._recompute_policy()
+        pol = self._effective_policy
+        if pol is not None:
+            self._transcript.write(
+                render.runtime_mode_line(
+                    pol.mode_label, pol.provider_policy_mode, pol.usage.usage_mode,
+                    pol.approval, loop=pol.background_loop,
+                )
+            )
+        self._refresh_issue()
+        self._refresh_chrome()
+        self._sync_intro()
+        self._follow_tail()
+
+    def _show_mode_surface(self) -> None:
+        """/mode — the live runtime-mode table + the resolved EffectivePolicy."""
+
+        from ..policy import runtime_mode as rm
+
+        log = self._transcript
+        log.write_echo("/mode")
+        if self._setup.blocked:
+            log.write_result("mode", (
+                "[dim]provider 미설정 — 모드는 provider 설정 후 적용됩니다.[/dim]",
+                *(f"  - {a}" for a in self._setup.next_actions),
+            ))
+            self._sync_intro()
+            self._follow_tail()
+            return
+        pol = self._effective_policy
+        lines = [
+            f"현재 모드: [b]{pol.mode_label}[/b]  (Shift+Tab 으로 순환)",
+            f"  main provider : {pol.main_provider}",
+            f"  routing       : {pol.provider_policy_mode}  → chat slot = {pol.routing_target()}",
+            f"  usage         : {pol.usage.usage_mode} (reserve {pol.usage.reserve})",
+            f"  autonomy      : {pol.autonomy}",
+            f"  approval      : {pol.approval}",
+            f"  background    : {'on' if pol.background_loop else 'off'}",
+            f"  budget        : {pol.budget_posture}",
+            "",
+            "사용 가능한 모드:",
+        ]
+        for m in rm.all_modes():
+            mark = "●" if m.id == pol.mode_id else "○"
+            lines.append(f"  {mark} [b]{m.label:<13}[/b] [dim]{m.purpose}[/dim]")
+        log.write_result("mode", tuple(lines))
+        self._sync_intro()
+        self._follow_tail()
 
     def _refresh_chrome(self) -> None:
         mode = "palette" if self._palette.is_open else self.mode

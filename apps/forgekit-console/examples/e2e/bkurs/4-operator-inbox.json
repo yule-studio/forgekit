@@ -1,0 +1,15 @@
+[
+  {
+    "request_type": "ACCESS",
+    "event_type": "ACCESS_REQUIRED",
+    "title": "bkurs always-on: 승인 필요",
+    "why": "권한 없는 영역 1개에서 멈춤",
+    "action": "runbook 확인 후 승인",
+    "options": [
+      "승인",
+      "거부"
+    ],
+    "source": "always-on",
+    "needs_operator": true
+  }
+]
