@@ -66,7 +66,8 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_mounts_intro_issue_main_composer_topdown(self) -> None:
-        from textual.widgets import Input, Static
+        from textual.widgets import Static
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.header import IntroHeader
         from forgekit_console.tui.main_panel import MainPanel
@@ -82,7 +83,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # default view is the transcript
             self.assertFalse(app._main.help_open)
             self.assertIsNotNone(app.query_one("#composer", Composer))
-            self.assertIsNotNone(app.query_one("#prompt", Input))
+            self.assertIsNotNone(app.query_one("#prompt", PromptArea))
             # Claude-style idle: the mode pill is hidden (no `● operator` row)
             self.assertFalse(app.query_one("#modepill", Static).display)
 
@@ -92,7 +93,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         On a short session it sits in the UPPER area with EMPTY space below (not
         pinned to the viewport bottom, unlike the old footer).
         """
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
 
         app = self._app()
@@ -102,7 +103,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # the composer carries NO dock (it is part of the inline session flow)
             self.assertNotEqual(str(composer.styles.dock or "none").lower(), "bottom")
             self.assertTrue(composer.display)
-            self.assertTrue(app.query_one("#prompt", Input).display)
+            self.assertTrue(app.query_one("#prompt", PromptArea).display)
             # short session → composer near the TOP, empty space below (not pinned)
             self.assertLess(composer.region.bottom, app.size.height - 2)
             self.assertLess(composer.region.y, app.size.height // 2)
@@ -151,7 +152,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
     async def test_composer_hidden_in_help_mode_restored_on_close(self) -> None:
         """Claude-style: the composer BAR is HIDDEN while the help/tab view is open
         (help reads as its own mode), and restored + focused when help closes."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
 
         app = self._app()
@@ -170,7 +171,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertFalse(app._main.help_open)
             self.assertTrue(composer.display)
-            self.assertTrue(app.query_one("#prompt", Input).display)
+            self.assertTrue(app.query_one("#prompt", PromptArea).display)
 
     async def test_help_is_view_switch_not_transcript_append(self) -> None:
         """/help switches the main area to the help view; the transcript is hidden,
@@ -231,12 +232,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(app._transcript.lines), n_before)
 
     async def test_palette_opens_and_tab_completes(self) -> None:
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            prompt = app.query_one("#prompt", Input)
+            prompt = app.query_one("#prompt", PromptArea)
             prompt.value = "/he"
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
@@ -245,12 +246,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(prompt.value, "/help ")
 
     async def test_palette_cycles_multiple(self) -> None:
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            prompt = app.query_one("#prompt", Input)
+            prompt = app.query_one("#prompt", PromptArea)
             prompt.value = "/p"
             await pilot.pause()
             await pilot.press("tab")
@@ -261,12 +262,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(prompt.value, "/pm-agent ")
 
     async def test_escape_closes_palette(self) -> None:
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
 
         app = self._app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.query_one("#prompt", Input).value = "/st"
+            app.query_one("#prompt", PromptArea).value = "/st"
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
             await pilot.press("escape")
@@ -370,12 +371,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
     async def test_actual_typing_focus_value_and_submit(self) -> None:
         """REAL interaction (not existence): the prompt is focused on mount, typed
         characters land in Input.value, `/he` opens the palette, and Enter submits."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
 
         app = self._app()
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
-            prompt = app.query_one("#prompt", Input)
+            prompt = app.query_one("#prompt", PromptArea)
             # 1) the prompt has focus on mount
             self.assertIs(app.focused, prompt)
             # 2) typing real keys lands in Input.value
@@ -392,17 +393,18 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("enter")
             await pilot.pause()
             self.assertFalse(app._palette.is_open)
-            self.assertEqual(app.query_one("#prompt", Input).value, "")
+            self.assertEqual(app.query_one("#prompt", PromptArea).value, "")
 
     async def test_input_is_clean_hints_live_in_hint_row(self) -> None:
         """The input field carries NO in-field guidance (clean, Claude-style); the
         `/help · / palette · Tab · quit` hints live in the #hint row below it."""
-        from textual.widgets import Input, Static
+        from textual.widgets import Static
+        from forgekit_console.tui.prompt_area import PromptArea
 
         app = self._app()
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
-            prompt = app.query_one("#prompt", Input)
+            prompt = app.query_one("#prompt", PromptArea)
             self.assertEqual((prompt.placeholder or ""), "")  # no placeholder clutter
             hint = str(app.query_one("#hint", Static).render())
             self.assertIn("/help", hint)  # guidance in the hint row (outside the box)
@@ -411,14 +413,14 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
     async def test_slash_palette_is_separate_surface_below_the_box(self) -> None:
         """Slash palette is a SEPARATE surface BELOW the input box + hint — not inside
         the input box, not in the transcript. The key Claude-style fix."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
 
         app = self._app()
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
-            app.query_one("#prompt", Input).value = "/he"
+            app.query_one("#prompt", PromptArea).value = "/he"
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
             composer = app.query_one("#composer", Composer).region
@@ -556,7 +558,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         """A non-slash line goes to the injected submit service (NOT the slash path):
         the user echo + the assistant reply land in the transcript, the input is
         cleared, and focus returns to the prompt — no escalation on a live result."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.chat import models as m
 
         class FakeService:
@@ -576,7 +578,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             n_before = len(app._transcript.lines)
-            prompt = app.query_one("#prompt", Input)
+            prompt = app.query_one("#prompt", PromptArea)
             prompt.value = "프로젝트 상태 알려줘"
             await pilot.press("enter")
             await pilot.pause()
@@ -589,14 +591,14 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             joined = "\n".join(str(s) for s in app._transcript.lines)
             self.assertIn("라이브 응답", joined)
             # input cleared, focus kept on the prompt, no escalation
-            self.assertEqual(app.query_one("#prompt", Input).value, "")
-            self.assertIs(app.focused, app.query_one("#prompt", Input))
+            self.assertEqual(app.query_one("#prompt", PromptArea).value, "")
+            self.assertIs(app.focused, app.query_one("#prompt", PromptArea))
             self.assertFalse(app._blocked)
 
     async def test_free_text_failure_records_escalation(self) -> None:
         """A non-live submit (e.g. no provider) is surfaced honestly AND, after the
         threshold, escalates as a repeated failure (never silently swallowed)."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.chat import models as m
 
         class FailingService:
@@ -610,7 +612,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         app = self._app(escalator=self._tempdir_escalator(threshold=1), submit_service=FailingService())
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
-            app.query_one("#prompt", Input).value = "hello?"
+            app.query_one("#prompt", PromptArea).value = "hello?"
             await pilot.press("enter")
             await pilot.pause()
             await app.workers.wait_for_complete()
@@ -664,7 +666,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_empty_session_shows_hero_then_folds_to_compact(self) -> None:
         """Fresh empty session → HERO art visible; typing/submit → COMPACT header."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.header import IntroHeader
 
         app = self._hero_app()
@@ -720,7 +722,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_intro_mode_override_hero_forces_big_while_working(self) -> None:
         """FORGEKIT_INTRO_MODE=hero keeps the big art even after typing."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.header import IntroHeader
 
         app = self._hero_app(FORGEKIT_INTRO_MODE="hero")
@@ -732,7 +734,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_live_submit_still_works_with_hero(self) -> None:
         """Regression: free-text live-submit still appends + folds hero to compact."""
-        from textual.widgets import Input
+        from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.chat import models as m
         from forgekit_console.tui.header import IntroHeader
 
@@ -760,7 +762,7 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             self.assertEqual(app.query_one("#intro", IntroHeader).mode, "hero")
-            app.query_one("#prompt", Input).value = "hello"
+            app.query_one("#prompt", PromptArea).value = "hello"
             await pilot.press("enter")
             await pilot.pause()
             await app.workers.wait_for_complete()

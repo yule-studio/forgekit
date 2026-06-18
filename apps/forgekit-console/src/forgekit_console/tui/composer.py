@@ -25,10 +25,11 @@ It owns no command logic — the app drives ``#modepill`` / ``#hint`` / palette 
 from __future__ import annotations
 
 from textual.containers import Horizontal, Vertical
-from textual.widgets import Input, Static
+from textual.widgets import Static
 
 from . import theme
 from .palette import CommandPalette
+from .prompt_area import PromptArea
 
 
 class Composer(Vertical):
@@ -54,11 +55,12 @@ class Composer(Vertical):
         padding: 0 1 0 0;
         color: $accent;
     }
+    /* multiline: auto height (1 row for one line, grows with real newlines). */
     Composer #prompt {
         width: 1fr;
         border: none;
         background: $background;
-        height: 1;
+        height: auto;
         padding: 0;
     }
     /* secondary — BELOW the bar. mode pill (agent/palette only) then the hint line. */
@@ -77,7 +79,7 @@ class Composer(Vertical):
         # the input BAR first — full-width rule strip, marker `>` + input only.
         with Horizontal(id="composer-input-shell"):
             yield Static(f"[{theme.ACCENT_PRIMARY}]>[/{theme.ACCENT_PRIMARY}]", id="marker")
-            yield Input(placeholder="", id="prompt")
+            yield PromptArea(id="prompt")
         # SECONDARY rows — BELOW the bar (never above it).
         yield Static(id="modepill")   # mode indicator (agent/palette); hidden in idle operator
         yield Static(id="hint")       # the shortcut / mode-switch line (idle only)

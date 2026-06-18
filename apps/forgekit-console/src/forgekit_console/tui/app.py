@@ -27,7 +27,9 @@ from typing import Optional
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Input, Static
+from textual.widgets import Static
+
+from .prompt_area import PromptArea
 
 from .. import __version__
 from ..commands import palette as palette_state
@@ -173,22 +175,24 @@ class ForgekitConsoleApp(App):
         self._refresh_issue()
         self._refresh_chrome()
         self._sync_intro()  # empty + idle → wide hero art; working state → compact
-        self.query_one("#prompt", Input).focus()
+        self.query_one("#prompt", PromptArea).focus()
         self._follow_tail()
 
     # --- input / palette ----------------------------------------------------
 
-    def on_input_changed(self, event: Input.Changed) -> None:
+    def on_text_area_changed(self, event) -> None:
         if self._suppress_refilter:
             self._suppress_refilter = False
             self._refresh_chrome()  # keep the below-bar hint in sync (typing vs idle)
             return
-        self._palette = palette_state.refilter(event.value, self.context.commands)
+        value = self._prompt_value()
+        # palette only matters for the first line — a `/cmd` start; multiline body is content
+        self._palette = palette_state.refilter(value.split("\n", 1)[0], self.context.commands)
         self._render_palette()
         self._refresh_chrome()  # typing reduces the secondary mode line below the bar
         self._sync_intro()  # typing (or opening the palette) → fold the hero to compact
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def on_prompt_area_submitted(self, event: PromptArea.Submitted) -> None:
         raw = event.value
         selected = palette_state.selected(self._palette)
         self._close_palette()
@@ -217,10 +221,21 @@ class ForgekitConsoleApp(App):
     def action_palette_next(self) -> None:
         if self._palette.is_open:
             self._cycle(1)
+        else:
+            self._move_prompt_cursor("down")   # palette closed → real multiline nav
 
     def action_palette_prev(self) -> None:
         if self._palette.is_open:
             self._cycle(-1)
+        else:
+            self._move_prompt_cursor("up")
+
+    def _move_prompt_cursor(self, direction: str) -> None:
+        try:
+            prompt = self.query_one("#prompt", PromptArea)
+            (prompt.action_cursor_down if direction == "down" else prompt.action_cursor_up)()
+        except Exception:  # noqa: BLE001 - prompt not mounted / single-line buffer
+            pass
 
     def action_dismiss(self) -> None:
         if self._main.help_open:
@@ -239,9 +254,8 @@ class ForgekitConsoleApp(App):
         text = palette_state.completion_text(self._palette)
         if text is not None:
             self._suppress_refilter = True
-            prompt = self.query_one("#prompt", Input)
-            prompt.value = text
-            prompt.cursor_position = len(text)
+            prompt = self.query_one("#prompt", PromptArea)
+            prompt.set_value(text)
         self._render_palette()
 
     def _render_palette(self) -> None:
@@ -260,7 +274,7 @@ class ForgekitConsoleApp(App):
 
     def _reset_input(self) -> None:
         self._suppress_refilter = True
-        self.query_one("#prompt", Input).value = ""
+        self.query_one("#prompt", PromptArea).clear()
 
     # --- command execution --------------------------------------------------
 
@@ -314,6 +328,12 @@ class ForgekitConsoleApp(App):
         if parsed.name == "usage":
             self._show_usage()
             return
+        if parsed.name == "copy":
+            self._copy_last()
+            return
+        if parsed.name == "attach":
+            self._attach_seam(raw)
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -329,6 +349,7 @@ class ForgekitConsoleApp(App):
         log = self._transcript
         log.write_echo(raw)
         log.write_result(result.title, result.lines)
+        self._last_response = "\n".join(result.lines)   # copyable via /copy
         if result.kind == KIND_AGENT_MODE:
             self.mode = result.title  # router titles agent results as "agent:<id>"
             self._refresh_chrome()
@@ -758,10 +779,43 @@ class ForgekitConsoleApp(App):
         result = self._submit_service.submit(text, context=ctx)
         self.call_from_thread(self._on_submit_result, result)
 
+    def _copy_last(self) -> None:
+        """`/copy` — copy the most recent response to the OS clipboard (real, honest)."""
+
+        from . import clipboard
+
+        self._transcript.write_echo("/copy")
+        text = getattr(self, "_last_response", "") or ""
+        if not text.strip():
+            self._transcript.write("[dim]복사할 최근 응답이 없습니다 — 먼저 질문/명령을 실행하세요.[/dim]")
+        else:
+            ok, msg = clipboard.copy_text(text)
+            self._transcript.write((f"[{theme.SUCCESS}]✓ 복사됨[/{theme.SUCCESS}] [dim]{msg}[/dim]")
+                                   if ok else f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] [dim]{msg}[/dim]")
+        self._sync_intro()
+        self._follow_tail()
+
+    def _attach_seam(self, raw: str) -> None:
+        """`/attach` — honest blocked seam. The console submits TEXT ONLY to providers;
+        there is no upload transport, so we say so plainly instead of faking an upload."""
+
+        self._transcript.write_echo(raw)
+        self._transcript.write(
+            f"[{theme.WARNING}]⚠ 첨부 미지원[/{theme.WARNING}] "
+            "[dim]console submit 경로는 텍스트 전용입니다 — 파일 업로드 transport 가 아직 없습니다.[/dim]"
+        )
+        self._transcript.write(
+            "[dim]↳ 가짜 업로드를 만들지 않습니다. 파일 내용은 직접 붙여넣어(멀티라인: Ctrl+J) 제출하세요.[/dim]"
+        )
+        self._sync_intro()
+        self._follow_tail()
+
     def _on_submit_result(self, result) -> None:
         log = self._transcript
+        # line-by-line append (chunked render feel — each line written separately).
         for line in result.to_lines():
             log.write(line)
+        self._last_response = result.text or "\n".join(result.to_lines())   # copyable
         # WT2: record the usage event (live or estimate basis) to the ledger.
         self._record_usage(result)
         # held/throttled are intentional POLICY decisions, not failures → no escalation.
@@ -769,7 +823,7 @@ class ForgekitConsoleApp(App):
             self._record_submit_failure(result)
         self._follow_tail()
         try:
-            self.query_one("#prompt", Input).focus()
+            self.query_one("#prompt", PromptArea).focus()
         except Exception:  # noqa: BLE001 - prompt may be transiently unavailable
             pass
 
@@ -884,7 +938,7 @@ class ForgekitConsoleApp(App):
         self.query_one("#composer", Composer).display = True
         self._refresh_chrome()
         self._sync_intro()  # leaving About/help → recompute hero vs compact
-        self.query_one("#prompt", Input).focus()
+        self.query_one("#prompt", PromptArea).focus()
 
     @property
     def _flow(self) -> SessionFlow:
@@ -1069,7 +1123,7 @@ class ForgekitConsoleApp(App):
 
     def _prompt_value(self) -> str:
         try:
-            return self.query_one("#prompt", Input).value
+            return self.query_one("#prompt", PromptArea).value
         except Exception:  # noqa: BLE001 - prompt not mounted yet
             return ""
 
