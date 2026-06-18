@@ -102,7 +102,24 @@ def hephaistos_status_lines(*, env: Optional[Mapping[str, str]] = None,
     )
 
 
+def nexus_surface_lines(*, env: Optional[Mapping[str, str]] = None,
+                        config: Optional[Mapping] = None) -> Tuple[str, ...]:
+    """`/nexus` — Nexus live connection status (connected / not_connected / missing / blocked)."""
+
+    cs = nx.connection_status(env, config)
+    lines = [f"nexus: [{cs['status']}] {cs['reason']}"]
+    if cs["connected"]:
+        lines += [f"  root : {cs['root']} (connected · live read 가능)",
+                  "  restricted source 는 design/privacy role 만 raw, 그외 projection_only.",
+                  "  `/resolve <요청>` 의 nexus 줄에서 ref 별 read 결과 확인."]
+    else:
+        lines += [f"  root : {cs['root'] or '(미설정)'}",
+                  f"  연결: export {nx.ENV_NEXUS_ROOT}=<nexus repo 경로>  또는 config 의 nexus_root 설정.",
+                  "  미연결 동안 source 는 not_connected 로 정직 표면(fake-read 없음)."]
+    return tuple(lines)
+
+
 __all__ = (
     "resolve_with_sources", "nexus_status_lines", "resolve_summary_lines",
-    "skills_lines", "loadout_lines", "hephaistos_status_lines",
+    "skills_lines", "loadout_lines", "hephaistos_status_lines", "nexus_surface_lines",
 )
