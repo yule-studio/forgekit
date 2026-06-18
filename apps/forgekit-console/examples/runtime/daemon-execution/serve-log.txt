@@ -1,0 +1,12 @@
+$ forgekit runtime serve --interval 0 --max-ticks 2 --repo-root <forgekit-console>
+forgekit runtime serve — interval 0.0s, max_ticks 2 (Ctrl-C 또는 `forgekit runtime stop` 으로 종료)
+stopped: max_ticks(2) · ticks 2 · executed 3 · waits 2 · notified 2
+
+$ forgekit runtime status
+forgekit runtime: stopped · tick 2 · ts 2026-06-18T... · pid ...
+  last tick: max_ticks(2)
+  kill switch: clear
+
+# tick 1 실제 실행: exec 3 / propose 1 (restricted "운영/배포 준비 점검" 은 surface 만)
+#   wrote runs/forgekit/autopilot/forgekit-src-...-selfimprove-loop-py.md  (외 2개)
+# tick 2: 같은 finding dedupe → exec 0 (no-op churn 방지)
