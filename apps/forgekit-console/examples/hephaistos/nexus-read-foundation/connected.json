@@ -1,0 +1,13 @@
+{
+  "requested": 3,
+  "resolved": 2,
+  "missing": 1,
+  "blocked": 0,
+  "restricted": 1,
+  "not_connected": false,
+  "read_mode": "raw",
+  "evidence_lines": [
+    "nexus root: <nexus-root>",
+    "requested 3 · read 1 · restricted 1 · missing 1 · blocked 0"
+  ]
+}
