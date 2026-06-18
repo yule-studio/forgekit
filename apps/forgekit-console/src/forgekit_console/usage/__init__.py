@@ -17,6 +17,8 @@ from .ledger import (
 from .rollup import UsageRollup, rollup, top_by_tokens
 from .budget import BudgetState, alert_message, budget_from_config, evaluate_budget
 from .report import to_json, to_md, to_txt, write_reports
+from .breakdown import breakdown_by, render_lines as breakdown_lines
+from . import breakdown
 
 __all__ = (
     "BASIS_LIVE", "BASIS_ESTIMATE", "KIND_SUBMIT",
@@ -25,4 +27,5 @@ __all__ = (
     "UsageRollup", "rollup", "top_by_tokens",
     "BudgetState", "alert_message", "budget_from_config", "evaluate_budget",
     "to_json", "to_md", "to_txt", "write_reports",
+    "breakdown", "breakdown_by", "breakdown_lines",
 )
