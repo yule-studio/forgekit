@@ -21,7 +21,9 @@
   "can_write_vault": true,
   "obsidian_write_target": "30-engineering/knowledge-engineer",
   "color_token": "eng-knowledge-engineer",
-  "alias_roles": ["memory-curator"],
+  "alias_roles": [
+    "memory-curator"
+  ],
   "capabilities": [
     "vault_schema_and_metadata",
     "brain_pack_build",
@@ -34,12 +36,27 @@
     "canonical / reusable 승격",
     "brain pack build / retrieval eval"
   ],
-  "inputs": ["raw notes / sources / vault state", "retrieval eval fixture"],
-  "outputs": ["canonical/reusable notes + index", "brain pack", "retrieval/color policy"],
+  "inputs": [
+    "raw notes / sources / vault state",
+    "retrieval eval fixture"
+  ],
+  "outputs": [
+    "canonical/reusable notes + index",
+    "brain pack",
+    "retrieval/color policy"
+  ],
   "boundaries": [
     "코드 직접 수정/커밋 금지 — vault note/policy 중심.",
     "starter/shared pack 은 read-only — 쓰기는 canonical note 로만.",
     "retrieval 은 metadata 기반 — 색은 사람용 보조 신호."
   ],
-  "phase": "role-contract-v1"
+  "phase": "role-contract-v1",
+  "github_app_env_prefix": "YULE_GITHUB_APP_KNOWLEDGE_ENGINEER_",
+  "git_author_name": "Forgekit Knowledge Engineer",
+  "git_author_email": "knowledge@forgekit.local",
+  "vault_agent_id": "knowledge-engineer",
+  "vault_css_class": "fk-knowledge",
+  "vault_callout": "fk-knowledge",
+  "vault_color_token": "#f59e0b",
+  "identity_aliases": []
 }

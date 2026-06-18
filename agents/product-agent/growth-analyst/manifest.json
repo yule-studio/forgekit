@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_GROWTH_ANALYST_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.product_agent.growth_analyst.runner"
+  "module_path": "agents.product_agent.growth_analyst.runner",
+  "git_author_name": "Forgekit Growth Analyst",
+  "git_author_email": "growth-analyst@forgekit.local",
+  "vault_agent_id": "growth-analyst",
+  "vault_css_class": "fk-growth-analyst",
+  "vault_callout": "fk-growth-analyst",
+  "vault_color_token": "#10b981",
+  "identity_aliases": []
 }

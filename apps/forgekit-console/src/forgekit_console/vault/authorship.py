@@ -21,10 +21,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Tuple
 
+from ..identity import registry as _idreg
+
 
 @dataclass(frozen=True)
 class AgentIdentity:
-    """An agent's stable vault identity — author id, role label, css class, colour."""
+    """An agent's stable vault identity — author id, role label, css class, colour.
+
+    This is a thin view over the canonical identity registry (the SSoT). ``agent_id``
+    here is always the CANONICAL id, so an abbreviation (``fe``) and the formal id
+    (``frontend-engineer``) both yield the same vault identity."""
 
     agent_id: str
     role_label: str
@@ -33,31 +39,22 @@ class AgentIdentity:
     callout: str        # callout type for the `> [!type]` marker
 
 
-# Brand-aligned per-agent identities (PM / gateway / tech-lead / engineers / ops).
-AGENT_IDENTITIES: Mapping[str, AgentIdentity] = {
-    "product-agent": AgentIdentity("product-agent", "Product (PM)", "fk-pm", "#f23ccf", "fk-pm"),
-    "gateway": AgentIdentity("gateway", "Engineering Gateway", "fk-gateway", "#8b90a0", "fk-gateway"),
-    "tech-lead": AgentIdentity("tech-lead", "Tech Lead", "fk-techlead", "#00d8f0", "fk-techlead"),
-    "fe": AgentIdentity("fe", "Frontend", "fk-fe", "#3ddc97", "fk-fe"),
-    "be": AgentIdentity("be", "Backend", "fk-be", "#e0b020", "fk-be"),
-    "devops": AgentIdentity("devops", "DevOps", "fk-devops", "#ff5c7a", "fk-devops"),
-    "qa": AgentIdentity("qa", "QA", "fk-qa", "#9b8cf0", "fk-qa"),
-    "security": AgentIdentity("security", "Security", "fk-security", "#ff8c42", "fk-security"),
-    "ops-observer": AgentIdentity("ops-observer", "Ops Observer", "fk-ops", "#2f6f7a", "fk-ops"),
-    # design-family roles (design source/role split program)
-    "ux-ui-designer": AgentIdentity("ux-ui-designer", "UX/UI Designer", "fk-ux", "#7dd3fc", "fk-ux"),
-    "design-systems-designer": AgentIdentity("design-systems-designer", "Design Systems",
-                                             "fk-dsys", "#a78bfa", "fk-dsys"),
-    "illustration-brand-designer": AgentIdentity("illustration-brand-designer", "Illustration/Brand",
-                                                 "fk-illus", "#fb7185", "fk-illus"),
-    "design-lead": AgentIdentity("design-lead", "Design Lead", "fk-design-lead", "#22d3ee", "fk-design-lead"),
-}
+def _from_registry(ident) -> AgentIdentity:
+    return AgentIdentity(ident.canonical_id, ident.role_label, ident.vault_cssclass,
+                         ident.vault_color, ident.vault_callout)
 
-_FALLBACK = AgentIdentity("forgekit", "forgekit", "fk-agent", "#8b90a0", "fk-agent")
+
+# Derived from the canonical registry (NOT a second hardcoded SSoT) — keyed by
+# canonical id. The abbreviation→canonical mapping lives only in identity.registry.
+AGENT_IDENTITIES: Mapping[str, AgentIdentity] = {
+    ident.canonical_id: _from_registry(ident) for ident in _idreg.all_identities()
+}
 
 
 def identity_for(agent_id: str) -> AgentIdentity:
-    return AGENT_IDENTITIES.get((agent_id or "").strip(), _FALLBACK)
+    """Resolve any id/alias to its canonical vault identity (registry-backed)."""
+
+    return _from_registry(_idreg.resolve_identity(agent_id))
 
 
 def _yaml_scalar(value: str) -> str:

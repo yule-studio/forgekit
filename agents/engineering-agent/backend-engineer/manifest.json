@@ -13,11 +13,24 @@
     "security_review"
   ],
   "council_role": {
-    "default_seats": ["owner", "challenger", "reviewer"],
+    "default_seats": [
+      "owner",
+      "challenger",
+      "reviewer"
+    ],
     "owner_focus": "domain_model / api_contract / data_contract / transaction / security 의 1차 draft",
     "challenger_focus": "happy-path 가정 / migration rollback 누락 / 권한 우회 / idempotency 회피 / 외부 의존 timeout",
-    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "tech_lead_brief"],
-    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "reviewer_decision_inputs": [
+      "owner_draft",
+      "challenger_draft",
+      "research_pack",
+      "tech_lead_brief"
+    ],
+    "produces": [
+      "RoleDraft",
+      "PeerReviewNote",
+      "RoleCouncilResult"
+    ],
     "design_doc": "../../../docs/engineering-role-council-runtime.md"
   },
   "plugins_required": [
@@ -574,5 +587,14 @@
       "정상 케이스만으로 ship 동의하지 않는다",
       "권한별 분기/동시 요청/외부 의존 실패는 누락하지 않는다"
     ]
-  }
+  },
+  "git_author_name": "Forgekit Backend",
+  "git_author_email": "be@forgekit.local",
+  "vault_agent_id": "backend-engineer",
+  "vault_css_class": "fk-be",
+  "vault_callout": "fk-be",
+  "vault_color_token": "#e0b020",
+  "identity_aliases": [
+    "be"
+  ]
 }

@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_CONTRACT_REVIEWER_",
   "autonomy_level": "advisory",
   "risk_class": "HIGH",
-  "module_path": "agents.legal_agent.contract_reviewer.runner"
+  "module_path": "agents.legal_agent.contract_reviewer.runner",
+  "git_author_name": "Forgekit Contract Reviewer",
+  "git_author_email": "contract@forgekit.local",
+  "vault_agent_id": "contract-reviewer",
+  "vault_css_class": "fk-contract",
+  "vault_callout": "fk-contract",
+  "vault_color_token": "#f97316",
+  "identity_aliases": []
 }

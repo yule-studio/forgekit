@@ -13,11 +13,24 @@
     "runtime_topology_planning"
   ],
   "council_role": {
-    "default_seats": ["owner", "challenger", "reviewer"],
+    "default_seats": [
+      "owner",
+      "challenger",
+      "reviewer"
+    ],
     "owner_focus": "CI/CD / 배포 / env / secret / 관측성 / rollback 1차 draft",
     "challenger_focus": "deploy 직후 30분 모니터 누락 / secret rotation 사각 / rollback window 부재 / capacity·DLQ 미정의 / supply-chain",
-    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "backend_handoff"],
-    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "reviewer_decision_inputs": [
+      "owner_draft",
+      "challenger_draft",
+      "research_pack",
+      "backend_handoff"
+    ],
+    "produces": [
+      "RoleDraft",
+      "PeerReviewNote",
+      "RoleCouncilResult"
+    ],
     "secret_and_deploy_actions_stay_operator_approval": true,
     "design_doc": "../../../docs/engineering-role-council-runtime.md"
   },
@@ -448,5 +461,14 @@
       "rollback이 비가역이거나 데이터 손실 가능성이 있으면 사용자 승인 필요",
       "rollback 검증 없이 incident close하지 않는다"
     ]
-  }
+  },
+  "git_author_name": "Forgekit DevOps",
+  "git_author_email": "devops@forgekit.local",
+  "vault_agent_id": "devops-engineer",
+  "vault_css_class": "fk-devops",
+  "vault_callout": "fk-devops",
+  "vault_color_token": "#ff5c7a",
+  "identity_aliases": [
+    "devops"
+  ]
 }

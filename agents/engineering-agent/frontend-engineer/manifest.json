@@ -13,11 +13,24 @@
     "ui_test_planning"
   ],
   "council_role": {
-    "default_seats": ["owner", "challenger", "reviewer"],
+    "default_seats": [
+      "owner",
+      "challenger",
+      "reviewer"
+    ],
     "owner_focus": "component / state / api integration / loading-error-empty 상태 1차 draft",
     "challenger_focus": "디자인 토큰 우회 / 접근성 회귀 / 권한별 화면 누락 / hydration·번들 비용 / API 가정 오류",
-    "reviewer_decision_inputs": ["owner_draft", "challenger_draft", "research_pack", "design_handoff"],
-    "produces": ["RoleDraft", "PeerReviewNote", "RoleCouncilResult"],
+    "reviewer_decision_inputs": [
+      "owner_draft",
+      "challenger_draft",
+      "research_pack",
+      "design_handoff"
+    ],
+    "produces": [
+      "RoleDraft",
+      "PeerReviewNote",
+      "RoleCouncilResult"
+    ],
     "design_doc": "../../../docs/engineering-role-council-runtime.md"
   },
   "plugins_required": [
@@ -434,5 +447,14 @@
       "주요 컴포넌트 변경에는 단위 테스트를 함께 갱신한다",
       "Storybook/시각 회귀 가능 영역은 함께 업데이트한다"
     ]
-  }
+  },
+  "git_author_name": "Forgekit Frontend",
+  "git_author_email": "fe@forgekit.local",
+  "vault_agent_id": "frontend-engineer",
+  "vault_css_class": "fk-fe",
+  "vault_callout": "fk-fe",
+  "vault_color_token": "#3ddc97",
+  "identity_aliases": [
+    "fe"
+  ]
 }

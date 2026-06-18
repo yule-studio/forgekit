@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_CONTENT_STRATEGIST_",
   "autonomy_level": "advisory",
   "risk_class": "LOW",
-  "module_path": "agents.marketing_agent.content_strategist.runner"
+  "module_path": "agents.marketing_agent.content_strategist.runner",
+  "git_author_name": "Forgekit Content",
+  "git_author_email": "content@forgekit.local",
+  "vault_agent_id": "content-strategist",
+  "vault_css_class": "fk-content",
+  "vault_callout": "fk-content",
+  "vault_color_token": "#f59e0b",
+  "identity_aliases": []
 }

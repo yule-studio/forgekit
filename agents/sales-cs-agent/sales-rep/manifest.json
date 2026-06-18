@@ -19,5 +19,12 @@
   "github_app_env_prefix": "YULE_GITHUB_APP_SALES_REP_",
   "autonomy_level": "advisory",
   "risk_class": "MEDIUM",
-  "module_path": "agents.sales_cs_agent.sales_rep.runner"
+  "module_path": "agents.sales_cs_agent.sales_rep.runner",
+  "git_author_name": "Forgekit Sales",
+  "git_author_email": "sales@forgekit.local",
+  "vault_agent_id": "sales-rep",
+  "vault_css_class": "fk-sales",
+  "vault_callout": "fk-sales",
+  "vault_color_token": "#22c55e",
+  "identity_aliases": []
 }
