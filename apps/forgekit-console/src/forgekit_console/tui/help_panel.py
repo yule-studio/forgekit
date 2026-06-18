@@ -35,9 +35,9 @@ class HelpPanel(Vertical):
     HelpPanel {
         width: 1fr;
         height: auto;
-        max-height: 80vh;
+        overflow-y: hidden;
+        scrollbar-size-vertical: 0;
         padding: 1 2;
-        overflow-y: auto;
     }
     HelpPanel #help-tabs {
         height: auto;
