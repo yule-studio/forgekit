@@ -135,9 +135,9 @@ class SubmitService:
             return m.SubmitResult(
                 ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=source,
                 runtime_mode=runtime_mode,
-                text="provider 가 아직 설정되지 않았습니다 — free-text 를 보낼 대상이 없습니다.",
-                next_action="`forgekit` setup 으로 provider 를 설정하거나, 로컬 ollama 를 실행하세요 "
-                            "(http://localhost:11434).",
+                text="primary provider 가 아직 설정되지 않았습니다 — free-text 를 보낼 대상이 없습니다.",
+                next_action="콘솔에서 `/provider set <id>` (claude/codex/gemini/ollama) 로 primary provider 를 "
+                            "정하세요. ForgeKit 은 자동으로 ollama 를 쓰지 않습니다 — operator 가 정합니다.",
             )
         if spec.submit_compat == SUBMIT_OPENAI:
             return self._submit_openai(prompt, spec, source, runtime_mode=runtime_mode)
