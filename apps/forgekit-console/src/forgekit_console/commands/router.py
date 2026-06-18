@@ -197,6 +197,21 @@ def _provider_result(parsed) -> CommandResult:
         return CommandResult.info("provider list", ps.provider_list_lines(cfg))
     if sub == "doctor":
         return CommandResult.info("provider doctor", ps.provider_doctor_lines(cfg))
+    if sub == "link":
+        ok, msg = ps.apply_link(args[1] if len(args) > 1 else "")
+        return (CommandResult.info if ok else CommandResult.error)("provider link", (msg,))
+    if sub == "unlink":
+        ok, msg = ps.apply_unlink(args[1] if len(args) > 1 else "")
+        return (CommandResult.info if ok else CommandResult.error)("provider unlink", (msg,))
+    if sub == "route":
+        op = args[1].lower() if len(args) > 1 else "show"
+        if op == "set":
+            ok, msg = ps.apply_route_set(args[2] if len(args) > 2 else "", args[3] if len(args) > 3 else "")
+            return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
+        if op == "clear":
+            ok, msg = ps.apply_route_clear(args[2] if len(args) > 2 else "")
+            return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
+        return CommandResult.info("provider route", ps.route_show_lines(cfg))
     return CommandResult.info("provider", ps.provider_status_lines(cfg))
 
 
