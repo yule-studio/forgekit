@@ -91,6 +91,31 @@ class SkillSpec:
     related_loadouts: Tuple[str, ...] = ()
     related_roles: Tuple[str, ...] = ()
     nexus_refs: Tuple[NexusSourceRef, ...] = ()
+    # breadth fields (PR3) — the real selection contract.
+    category: str = ""
+    summary: str = ""
+    when_to_use: Tuple[str, ...] = ()
+    when_not_to_use: Tuple[str, ...] = ()
+    required_inputs: Tuple[str, ...] = ()
+    expected_outputs: Tuple[str, ...] = ()
+    signals: Tuple[str, ...] = ()          # keyword/intent signals the resolver scores on
+    capability_note: str = ""              # vendor-neutral capability (NOT a provider name)
+    status: str = "ready"                  # ready / partial / shallow
+
+    @property
+    def title(self) -> str:
+        return self.name
+
+    @property
+    def unsafe_boundary(self) -> Tuple[str, ...]:
+        return self.forbidden
+
+    @property
+    def verify_steps(self) -> Tuple[str, ...]:
+        return self.verification
+
+    def signal_score(self, blob: str) -> int:
+        return sum(1 for s in self.signals if s and s in blob)
 
     def matches(self, *, domain="", language="", framework="", topic="") -> int:
         """Heuristic relevance score for a resolve query (deterministic)."""
@@ -126,13 +151,30 @@ class LoadoutSpec:
     optional_weapons: Tuple[str, ...] = ()
     environment_assumptions: Tuple[str, ...] = ()
     verify_commands: Tuple[str, ...] = ()
+    # breadth fields (PR3)
+    goal: str = ""
+    recommended_skills: Tuple[str, ...] = ()
+    optional_skills: Tuple[str, ...] = ()
+    blocked_skills: Tuple[str, ...] = ()
+    default_verify_flow: Tuple[str, ...] = ()
+    selection_signals: Tuple[str, ...] = ()    # signals that pick THIS loadout
+    notes: str = ""
+
+    @property
+    def title(self) -> str:
+        return self.name
 
     def to_dict(self) -> dict:
         return {"id": self.id, "name": self.name, "intended_roles": list(self.intended_roles),
                 "required_weapons": list(self.required_weapons),
                 "optional_weapons": list(self.optional_weapons),
                 "environment_assumptions": list(self.environment_assumptions),
-                "verify_commands": list(self.verify_commands)}
+                "verify_commands": list(self.verify_commands), "goal": self.goal,
+                "recommended_skills": list(self.recommended_skills),
+                "optional_skills": list(self.optional_skills),
+                "blocked_skills": list(self.blocked_skills),
+                "default_verify_flow": list(self.default_verify_flow),
+                "selection_signals": list(self.selection_signals), "notes": self.notes}
 
 
 @dataclass(frozen=True)
