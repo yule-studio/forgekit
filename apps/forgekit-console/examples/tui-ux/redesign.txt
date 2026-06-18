@@ -1,0 +1,41 @@
+forgekit console — Claude-Code UX redesign 증거 (real pilot render)
+================================================================
+
+[1] SLASH PALETTE — 입력창 '위로' 열림 (`/he`)
+  palette y=11 h=4 · input-bar y=15 h=3
+  palette ABOVE input-bar : True   composer visible : True
+  rendered (palette ABOVE, input BELOW):
+    | 2 commands · Tab/↑↓ 선택 · Enter 실행 · Esc 닫기
+    |   /help            이 콘솔의 명령 목록
+    |   /hephaistos      Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout
+    |--------------------------------------------------
+    | > /he
+
+[2] AUTO-REVEAL — 긴 transcript browse 중 `/` → composer 노출 (close→reopen 포함)
+  browsing(visible)=False  →  after `/`(reopen) visible=True  palette-above=True
+
+[3] PROGRESSIVE RENDER — thinking → generating(chunked) → receipt
+  generating status : '● 생성 중…'  partial lines=3
+  progressive growth: 3 -> 8 lines ; status cleared=True
+  final transcript:
+    › 설명해줘
+    첫 문단입니다.
+    둘째 문단은
+    여러 줄로 이어집니다.
+    셋째 문단 끝.
+    ↳ Ollama · gemma3 · live · ok
+
+[4] AVATAR — compact 16-col braille silhouette (frame + head/headphone)
+    ⡏⠉⠉⠉⢉⡩⠭⢯⣍⠩⢉⠉⠉⠉⠉⢹
+    ⡇⠀⢀⠞⠀⠀⠀⠀⡙⣧⢀⠔⢄⠀⠀⢸
+    ⡇⠀⣦⣀⣄⢆⠠⠘⠀⠘⣧⠀⠘⣆⠀⢸
+    ⡇⠸⠀⠐⣜⣷⣵⣆⡼⡕⣩⣷⠄⠘⢄⢸
+    ⡇⠀⠁⠌⣻⣯⣿⣿⣟⣣⡻⠋⡀⢄⢊⢸
+    ⡇⢠⡿⠾⡏⢿⣿⡿⢿⣿⣧⠀⢑⣈⠣⢹
+    ⡇⣼⣿⡧⡰⠀⠁⠀⢘⣿⣿⣟⣩⣭⠷⣾
+    ⣿⣿⣿⡷⡁⠀⠀⣠⢟⡿⠉⢉⡥⣺⣿⣻
+
+[5] AVATAR — managed fallback badge (headphone ◖◗ + framed fk face)
+    ╭──╮
+    ◖▕fk▏◗
+    ╰──╯
