@@ -55,12 +55,28 @@ class UsageAwareTransport:
 
 
 class ResolveTests(unittest.TestCase):
-    def test_zero_config_local_ollama_when_reachable(self) -> None:
+    def test_zero_config_does_NOT_use_ollama(self) -> None:
+        # forgekit no longer silently routes to a reachable ollama with no config.
         svc = SubmitService(transport=FakeTransport(reachable=True), env={}, config={})
+        spec, source = svc.resolve()
+        self.assertIsNone(spec)              # setup-required, NOT implicit ollama
+        self.assertEqual(source, m.SOURCE_NONE)
+
+    def test_implicit_local_fallback_opt_in_uses_ollama(self) -> None:
+        # only when the operator EXPLICITLY enables implicit_local_fallback
+        cfg = {"fallback_policy": {"implicit_local_fallback": True}}
+        svc = SubmitService(transport=FakeTransport(reachable=True), env={}, config=cfg)
         spec, source = svc.resolve()
         self.assertIsNotNone(spec)
         self.assertEqual(spec.id, "ollama")
         self.assertEqual(source, m.SOURCE_LOCAL_DEFAULT)
+
+    def test_explicit_primary_ollama(self) -> None:
+        svc = SubmitService(transport=FakeTransport(reachable=True), env={},
+                            config={"primary_provider": "ollama"})
+        spec, source = svc.resolve()
+        self.assertEqual(spec.id, "ollama")
+        self.assertEqual(source, m.SOURCE_CONFIGURED)
 
     def test_none_when_unconfigured_and_unreachable(self) -> None:
         svc = SubmitService(transport=FakeTransport(reachable=False), env={}, config={})
@@ -78,7 +94,7 @@ class ResolveTests(unittest.TestCase):
 class SubmitTests(unittest.TestCase):
     def test_live_ollama_success(self) -> None:
         t = FakeTransport(reachable=True, reply="forgekit live ok")
-        out = SubmitService(transport=t, env={}, config={}).submit("hi")
+        out = SubmitService(transport=t, env={}, config={"primary_provider": "ollama"}).submit("hi")
         self.assertTrue(out.ok)
         self.assertTrue(out.is_live)
         self.assertEqual(out.mode, m.MODE_LIVE)
@@ -95,7 +111,7 @@ class SubmitTests(unittest.TestCase):
         # provider returns a real usage block → usage_basis=live with the real numbers
         usage = m.ProviderUsage(input_tokens=26, output_tokens=298, total_tokens=324)
         t = UsageAwareTransport(reply="measured", usage=usage)
-        out = SubmitService(transport=t, env={}, config={}).submit("hi")
+        out = SubmitService(transport=t, env={}, config={"primary_provider": "ollama"}).submit("hi")
         self.assertTrue(out.is_live)
         self.assertEqual(out.usage_basis, m.USAGE_LIVE)
         self.assertEqual(out.total_tokens, 324)
@@ -104,14 +120,14 @@ class SubmitTests(unittest.TestCase):
     def test_no_usage_block_degrades_to_estimate(self) -> None:
         # ChatResult without usage → honest estimate (never faked live)
         t = UsageAwareTransport(reply="no usage", usage=None)
-        out = SubmitService(transport=t, env={}, config={}).submit("hello world")
+        out = SubmitService(transport=t, env={}, config={"primary_provider": "ollama"}).submit("hello world")
         self.assertTrue(out.is_live)
         self.assertEqual(out.usage_basis, m.USAGE_ESTIMATE)
         self.assertGreater(out.total_tokens, 0)
 
     def test_legacy_str_transport_is_estimate(self) -> None:
         # a transport that still returns a bare str must keep working (back-compat)
-        out = SubmitService(transport=FakeTransport(reply="legacy"), env={}, config={}).submit("hi")
+        out = SubmitService(transport=FakeTransport(reply="legacy"), env={}, config={"primary_provider": "ollama"}).submit("hi")
         self.assertTrue(out.is_live)
         self.assertEqual(out.usage_basis, m.USAGE_ESTIMATE)
         self.assertEqual(out.text, "legacy")
@@ -143,14 +159,14 @@ class SubmitTests(unittest.TestCase):
 
     def test_transport_error_is_unreachable(self) -> None:
         t = FakeTransport(reachable=True, raise_exc=ConnectionError("refused"))
-        out = SubmitService(transport=t, env={}, config={}).submit("hi")
+        out = SubmitService(transport=t, env={}, config={"primary_provider": "ollama"}).submit("hi")
         self.assertFalse(out.ok)
         self.assertEqual(out.category, m.CAT_UNREACHABLE)
         self.assertIn("ConnectionError", out.text)
 
     def test_four_states_are_distinct(self) -> None:
         cats = {
-            SubmitService(transport=FakeTransport(reply="x"), env={}, config={}).submit("hi").category,
+            SubmitService(transport=FakeTransport(reply="x"), env={}, config={"primary_provider": "ollama"}).submit("hi").category,
             SubmitService(transport=FakeTransport(reachable=False), env={}, config={}).submit("hi").category,
             SubmitService(transport=FakeTransport(), env={}, config={"main_provider": "gemini"}).submit("hi").category,
             SubmitService(transport=FakeTransport(), env={}, config={"main_provider": "claude"}).submit("hi").category,
