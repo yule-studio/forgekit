@@ -22,7 +22,7 @@ from typing import Sequence
 
 from textual.widgets import RichLog
 
-from . import render
+from . import render, theme
 
 
 class Transcript(RichLog):
@@ -50,10 +50,27 @@ class Transcript(RichLog):
         for line in lines:
             self.write(line)
 
-    def write_echo(self, raw: str) -> None:
-        """Echo the submitted input as a quiet transcript turn."""
+    def begin_turn(self) -> None:
+        """Insert a blank separator before a NEW turn (only when content exists).
 
-        self.write(f"[dim]›[/dim] {raw}")
+        Gives each user→response turn vertical breathing room so the session reads as
+        a stack of turns (Claude cadence), not a wall of tightly-packed lines.
+        """
+
+        if self.lines:
+            self.write("")
+
+    def write_echo(self, raw: str) -> None:
+        """Echo the submitted input as a quiet transcript turn.
+
+        The first line carries the accent ``›`` marker; continuation lines of a
+        multiline prompt are indented under it so a pasted block reads as one turn.
+        """
+
+        head, *rest = (raw or "").split("\n")
+        self.write(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}] {head}")
+        for line in rest:
+            self.write(f"  [dim]{line}[/dim]")
 
     def write_result(self, title: str, lines: Sequence[str]) -> None:
         self.write_lines(render.result_block(title, lines))

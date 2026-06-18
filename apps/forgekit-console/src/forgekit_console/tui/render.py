@@ -653,6 +653,27 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
     return (header, *lines, "")
 
 
+def chunk_result_lines(lines: Sequence[str], max_lines: int = 3) -> Tuple[Tuple[str, ...], ...]:
+    """Group response lines into small reveal chunks for progressive rendering.
+
+    A chunk ends at a blank line (paragraph boundary) or after ``max_lines`` lines,
+    whichever comes first — so the body is revealed paragraph-by-paragraph (long
+    paragraphs sub-chunked), NOT one giant frame. Pure: drives the timer reveal in
+    the app but is unit-testable on its own.
+    """
+
+    chunks = []
+    cur = []
+    for ln in lines:
+        cur.append(ln)
+        if ln.strip() == "" or len(cur) >= max_lines:
+            chunks.append(tuple(cur))
+            cur = []
+    if cur:
+        chunks.append(tuple(cur))
+    return tuple(chunks)
+
+
 __all__ = (
     "BRAND", "TAGLINE",
     "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
@@ -662,5 +683,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines",
 )

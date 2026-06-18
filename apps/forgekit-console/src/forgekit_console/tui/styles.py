@@ -20,6 +20,9 @@ SCREEN_CSS = """
 Screen { layout: vertical; background: $background; }
 
 #issue { height: 1; padding: 0 1; }
+
+/* transient stage marker (thinking → generating); collapses to 0 rows when empty. */
+#livestatus { height: auto; padding: 0 1; color: $text-muted; }
 """
 
 __all__ = ("SCREEN_CSS",)

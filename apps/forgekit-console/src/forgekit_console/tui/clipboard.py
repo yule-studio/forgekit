@@ -25,9 +25,14 @@ def _cmd() -> Optional[list]:
 
 
 def copy_text(text: str) -> Tuple[bool, str]:
-    """Copy *text* to the OS clipboard. (ok, reason). Honest unsupported/failure."""
+    """Copy *text* to the OS clipboard. (ok, reason). Honest unsupported/failure.
+
+    An EMPTY payload is treated as a failure — copying nothing is never a success the
+    operator would want reported as "copied"."""
 
     text = text or ""
+    if not text.strip():
+        return False, "복사할 내용이 비어 있습니다 (empty payload)"
     cmd = _cmd()
     if cmd is None:
         return False, "clipboard 도구 없음 (macOS=pbcopy / Linux=xclip|xsel / Win=clip) — copy 미지원"
@@ -41,4 +46,33 @@ def copy_text(text: str) -> Tuple[bool, str]:
     return True, f"{len(text)}자 복사됨 ({cmd[0]})"
 
 
-__all__ = ("copy_text",)
+def _read_cmd() -> Optional[list]:
+    """The OS clipboard READ command (paste), mirroring :func:`_cmd`. None if absent."""
+
+    if sys.platform == "darwin" and shutil.which("pbpaste"):
+        return ["pbpaste"]
+    if shutil.which("xclip"):
+        return ["xclip", "-selection", "clipboard", "-o"]
+    if shutil.which("xsel"):
+        return ["xsel", "--clipboard", "--output"]
+    return None
+
+
+def read_text() -> Optional[str]:
+    """Read the OS clipboard back (paste). None when no reader is available / on error.
+
+    Used to VERIFY a copy actually landed (readback), not to assume pbcopy success."""
+
+    cmd = _read_cmd()
+    if cmd is None:
+        return None
+    try:
+        p = subprocess.run(cmd, capture_output=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    return p.stdout.decode("utf-8", errors="replace")
+
+
+__all__ = ("copy_text", "read_text")
