@@ -104,6 +104,7 @@ class AutopilotOrchestrator:
     allowlist: Tuple[str, ...] = DEFAULT_ALLOWLIST
     limits: AutopilotLimits = field(default_factory=AutopilotLimits)
     kill_switch: bool = False
+    mutator: Optional[object] = None   # BoundedMutator → REAL safe-class execution (WT3)
 
     def is_allowed(self, repo: str) -> bool:
         return (repo or "").strip() in self.allowlist
@@ -142,28 +143,53 @@ class AutopilotOrchestrator:
             if not granted:
                 res.proposed.append({"finding": finding.finding, "queued_for": executor})
                 continue
-            split = ExecutionTaskSplit(decision.packet_summary, executor=executor,
-                                       tasks=(f"{finding.finding} 안전 적용",),
-                                       diff_limit=self.limits.max_diff,
-                                       file_limit=self.limits.max_files)
+
+            # WT3: a mutator performs a REAL bounded write (verified). WITHOUT a mutator
+            # there is NO fake execution — the item is recorded as proposed-only.
+            if self.mutator is None:
+                res.proposed.append({"finding": finding.finding, "decision_class": "safe",
+                                     "note": "no mutator — propose-only (실제 실행 미연결)"})
+                arb.release(executor)
+                continue
+
             res.steps.append(f"{PHASE_EXECUTE}:{executor}")
-            report = VerificationReport(split.decision_summary, passed=True,
-                                        checks=("테스트", "lint"), note="safe-class 검증 통과")
+            outcome = self._mutate(finding, repo)
             res.steps.append(PHASE_VERIFY)
-            if not report.passed:
+            if not (outcome.executed and outcome.verified):
                 failures += 1
+                res.proposed.append({"finding": finding.finding, "executor": executor,
+                                     "refused": outcome.refused_reason or "verify 실패"})
+                arb.release(executor)
                 if failures >= self.limits.failure_threshold:
                     res.halted = True
-                    res.halt_reason = "failure threshold 도달 — cooldown/정지"
-                    arb.release(executor)
+                    res.halt_reason = "verify 실패 반복 — cooldown/정지 (커밋하지 않음)"
                     break
+                continue
             res.executed.append({"finding": finding.finding, "executor": executor,
-                                 "verified": report.passed})
+                                 "verified": True, "path": outcome.path,
+                                 "lines_changed": outcome.lines_changed})
             res.steps.append(PHASE_RECORD)
             arb.release(executor)   # release so the NEXT executor can take the slot
         res.executor_log = list(arb.log)
         # invariant: the arbiter granted to at most one holder at any instant (serial)
         return res
+
+    def _mutate(self, finding, repo: str):
+        """Build a safe-class note task for the finding → REAL bounded write via the mutator."""
+
+        from .runner import ACTION_NOTE, ExecTask
+
+        slug = "".join(c if c.isalnum() else "-" for c in finding.finding.lower())[:40].strip("-") or "task"
+        rel = f"runs/forgekit/autopilot/{repo}-{slug}.md"
+        content = (
+            f"# autopilot note — {repo}\n\n"
+            f"- finding: {finding.finding}\n"
+            f"- kind: {getattr(finding, 'kind', '')}\n"
+            f"- class: safe (internal-approved: PM→gateway→tech-lead)\n"
+            f"- action: 안전 클래스 note 기록 (실제 코드 mutation 은 후속 단계)\n"
+        )
+        return self.mutator.execute(ExecTask(ACTION_NOTE, rel, content=content,
+                                             summary=finding.finding))
 
 
 __all__ = (
