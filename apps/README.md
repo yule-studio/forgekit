@@ -1,15 +1,20 @@
 # apps/ — 실행 단위(앱) 인덱스
 
-> 본 디렉터리는 monorepo 의 **실행 단위(앱)** 를 모은다. 각 앱은 명확하고
-> 좁은 책임 범위를 가지며, 공통 로직은 향후 `packages/*` 로 추출한다.
-> 본 브랜치(`refactor/apps-layout`)는 **scaffold/문서 전용** 이며 실제 코드
-> 이전은 후속 작업이다. 현재 코드는 여전히
-> `apps/engineering-agent/src/yule_engineering/**` 에 있다.
+> 본 디렉터리는 ForgeKit 플랫폼(umbrella)의 **실행 단위(앱)** 를 모은다. 각 앱은
+> 명확하고 좁은 책임 범위를 가지며, ForgeKit 코어/공용 로직은 `packages/*` 가 소유한다.
+> 앱은 `packages/*` 만 바라보고 **서로 직접 import 하지 않는다**(§2).
+>
+> **`forgekit-console` 은 ForgeKit 을 조작하는 operator app 이다 — ForgeKit 플랫폼 자체가
+> 아니다.** 단, 현재는 ForgeKit 코어(runtime/provider/hephaistos/nexus/armory/config/
+> contracts)가 아직 `apps/forgekit-console/src/forgekit_console/**` 안에 물리적으로
+> 들어있다. 이를 `packages/*` 코어로 분리하는 작업이 진행 중이다 — owner 매트릭스와
+> 로드맵 SSoT 는 [`docs/forgekit-architecture-ownership.md`](../docs/forgekit-architecture-ownership.md).
 
 ## 1. 앱 목록
 
 | 앱 | 책임 한 줄 | 현재 코드 위치 |
 | --- | --- | --- |
+| [`forgekit-console`](forgekit-console/README.md) | ForgeKit operator app — TUI/CLI/operator surface (보여주고 조작) | `apps/forgekit-console/src/forgekit_console/**` (현재 코어 혼재, packages 분리 진행 중) |
 | [`engineering-agent`](engineering-agent/README.md) | 개발 작업 intake / 코드 작업 계획 / role deliberation / GitHub 연동 | `apps/engineering-agent/src/yule_engineering/agents/**`, `discord/engineering_channel_router/**` |
 | [`planning-agent`](planning-agent/README.md) | 일정·계획·브리핑, calendar 기반 작업 정리 | `apps/engineering-agent/src/yule_engineering/planning/**` |
 | [`discord-gateway`](discord-gateway/README.md) | Discord 메시지 수신/전송, agent runtime I/O 채널 연결 | `apps/engineering-agent/src/yule_engineering/discord/**` |
@@ -38,9 +43,19 @@ agent ──X──▶ agent  (직접 import 금지, contracts 경유)
 
 ## 3. 향후 구조
 
-- `packages/agent-contracts` — command / event / status 스키마 (예정/일부 완료)
-- `packages/memory` — 검색/인덱싱 코어 (예정)
-- `packages/llm-gateway` — LLM 요청 게이트웨이 (예정)
-- `packages/runtime` — job queue / lifecycle (예정)
+ForgeKit 코어(현재 `forgekit-console` 내부)를 `packages/*` 로 분리한다:
 
-자세한 목표 구조와 진행 상황은 [`docs/monorepo-structure.md`](../docs/monorepo-structure.md) 참조.
+- `packages/forgekit-runtime` — runtime loop / daemon / approval·notify / lifecycle / autopilot / runtime_mode
+- `packages/forgekit-provider` — provider/model routing / usage gate / policy / submit service / brain
+- `packages/forgekit-config` — config schema / env·persistence / runtime paths / agent identity
+- `packages/forgekit-contracts` — command / event / status / work-packet 스키마
+- `packages/hephaistos` — skill/loadout/work-packet **forging core** (slash command 아님)
+- `packages/nexus` — knowledge source read/projection/retrieval **boundary**
+- `packages/armory` — skill/loadout/weapon manifest **catalog**
+
+기존 공용 라이브러리(예정/일부 완료): `packages/agent-contracts`(command/event/status) ·
+`packages/memory`(검색/인덱싱) · `packages/llm-gateway`(LLM 게이트웨이) ·
+`packages/runtime`(job queue/lifecycle 프리미티브).
+
+자세한 목표 구조·진행 상황은 [`docs/monorepo-structure.md`](../docs/monorepo-structure.md),
+owner 매트릭스·로드맵은 [`docs/forgekit-architecture-ownership.md`](../docs/forgekit-architecture-ownership.md) 참조.

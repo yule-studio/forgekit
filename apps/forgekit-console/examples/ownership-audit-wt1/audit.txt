@@ -1,0 +1,70 @@
+ForgeKit WT1 ownership audit — import-direction + module inventory (reproducible)
+================================================================================
+
+[Q1] console 밖에서 forgekit_console.* import? (block extraction?)
+  result: 0건 → console 은 leaf (코어가 앱 안에 갇힘, 다른 앱이 도달 불가)
+
+[Q2] console 코어 모듈 → surface(tui/commands) import? (upward leak?)
+  result: 0건 → 코어는 surface 를 import 하지 않음 (이미 surface→core 단방향)
+
+[Q3] surface(tui/commands) → 코어 import 분포 (정상 방향)
+     9 from ..policy
+     6 from ..usage
+     6 from ..lifecycle
+     6 from ..chat
+     5 from ..autopilot
+     3 from ..sources
+     3 from ..runtime
+     3 from ..notify
+     3 from ..hephaistos
+     3 from ..discovery
+     2 from ..handoff
+     1 from ..vault
+     1 from ..selfimprove
+     1 from ..security
+     1 from ..identity
+     1 from ..design
+     1 from ..data
+
+[Q4] app→app debt: forgekit-console → yule_engineering (lazy best-effort)
+  handoff/gateway.py:3:``intake_packet`` bridges to ``yule_engineering.agents.product_intake`` (importable
+  handoff/gateway.py:83:        from yule_engineering.agents.product_intake.shaping import shape_product_intent
+  lifecycle/failure_escalation.py:458:        from yule_engineering.agents.lifecycle.troubleshooting_ledger import (  # noqa: WPS433
+  lifecycle/failure_escalation.py:462:        from yule_engineering.agents.lifecycle.troubleshooting_record import CaptureReason
+  commands/router.py:306:    # runtime loader — so it works even with no yule_engineering install. Lazy import
+  data/status_loader.py:6:functions do the best-effort IO (lazy ``yule_engineering`` imports wrapped in
+  data/status_loader.py:118:        from yule_engineering.agents.harness.operator_surface import compose_dashboard
+  data/status_loader.py:119:        from yule_engineering.agents.harness.insights import scan_token_efficiency_evidence
+  data/status_loader.py:139:        from yule_engineering.diagnostics.doctor import render_doctor_report, run_doctor
+  data/status_loader.py:151:        from yule_engineering.agents.job_queue.heartbeat import HeartbeatStore
+  data/status_loader.py:152:        from yule_engineering.agents.job_queue.store import JobQueue
+  data/status_loader.py:153:        from yule_engineering.runtime.status import (
+  data/status_loader.py:183:        from yule_engineering.agents.lifecycle.problem_ledger import (
+
+[inventory] forgekit_console/ 모듈별 LOC (core 후보 = packages 목표)
+  app/               137 LOC
+  assets/            208 LOC
+  autopilot/        1012 LOC
+  brain/             515 LOC
+  chat/              679 LOC
+  cli/               249 LOC
+  commands/          673 LOC
+  data/              211 LOC
+  design/            581 LOC
+  discovery/         342 LOC
+  handoff/           396 LOC
+  hephaistos/       1414 LOC
+  identity/          409 LOC
+  lifecycle/         511 LOC
+  notify/            336 LOC
+  policy/           1996 LOC
+  providers/         519 LOC
+  runtime/           780 LOC
+  security/          239 LOC
+  selfimprove/       190 LOC
+  setup/               0 LOC
+  sources/           463 LOC
+  tui/              6390 LOC
+  uiref/             116 LOC
+  usage/             478 LOC
+  vault/             253 LOC
