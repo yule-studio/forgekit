@@ -13,11 +13,20 @@
 
 ## What ForgeKit is
 
-A monorepo with two cooperating apps:
-- **`forgekit-console`** — the operator TUI (Claude-Code-style). You configure the brain,
-  switch runtime modes, resolve work, and read honest status.
+ForgeKit is the **platform (umbrella)**. Its engine lives in `packages/*`; the things under
+`apps/*` are **execution apps** that share that engine — none of them *is* ForgeKit:
+- **`forgekit-console`** — the **operator app**: a Claude-Code-style TUI to configure the
+  brain, switch runtime modes, resolve work, and read honest status. It shows and operates;
+  it should not own platform core.
 - **`engineering-agent`** (`yule`) — an always-on, role-based engineering runtime (Discord
   gateway + member bots, SQLite job queue, Obsidian vault mirror).
+- plus `planning-agent` · `discord-gateway` · `memory-worker` · `loadtest-runner`.
+
+The ForgeKit core — runtime / provider / config / contracts / **Hephaistos** / **Nexus** /
+**Armory** — belongs in `packages/*`. **Today much of it still physically lives inside
+`forgekit_console/`**; a packaging refactor (WT1–WT4) is moving ownership out to `packages/*`
+so every app can share it. Owner matrix + roadmap:
+[`docs/forgekit-architecture-ownership.md`](docs/forgekit-architecture-ownership.md).
 
 Everything is provider-neutral (Claude / Codex / Gemini / Ollama and any openai-compatible
 or enterprise endpoint sit behind one contract) and operator-gated (approval / budget /
@@ -35,6 +44,12 @@ safe-class boundaries are real, not decorative).
 | **Runtime Mode** | the operator posture (Shift+Tab) that actually changes routing / budget / approval | `policy/runtime_mode.py` |
 
 Mine → library → smith: **Nexus is the mine/library, ForgeKit is the forge, Hephaistos is the smith.**
+
+> The `Code` column above is the **current** location (still inside `forgekit_console/`). These are
+> ForgeKit **core**, not console-private — the WT1–WT4 refactor moves their owner to
+> `packages/{hephaistos,nexus,armory,forgekit-runtime,forgekit-provider,...}`. See the
+> [ownership matrix](docs/forgekit-architecture-ownership.md). Hephaistos/Nexus/Armory are cores,
+> not slash commands; the console only renders their projection.
 
 ## Current reality (honest)
 

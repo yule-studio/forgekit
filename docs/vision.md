@@ -14,9 +14,22 @@ real work to a finish, with everything recorded for reuse.
   not the whole platform and not a single slash command.
 - **Armory** = the smith's catalog: the skill/loadout/weapon manifests.
 
+## Where the boundary lives (umbrella vs apps vs core)
+ForgeKit is the **platform (umbrella)**. `apps/forgekit-console` is the **operator app** —
+the cockpit that *shows and operates* ForgeKit; it is **not** ForgeKit itself.
+`engineering-agent / planning-agent / discord-gateway / memory-worker / loadtest-runner` are
+sibling **execution apps** under the same umbrella — they share ForgeKit core via `packages/*`,
+they do **not** import each other or live inside the console.
+
+The engine (runtime / provider / config / contracts / Nexus / Hephaistos / Armory) belongs in
+`packages/*`. It currently still sits inside `forgekit_console/`; the WT1–WT4 refactor moves its
+owner out. Owner matrix + import boundary + roadmap:
+[forgekit-architecture-ownership.md](forgekit-architecture-ownership.md).
+
 ## Non-goals (now)
 - Fully-autonomous, unsupervised code mutation — only **safe-class**, operator-gated.
 - Live social/Figma scraping — **planned seams**, never faked live.
 - "Complete autonomous team" — agents are bounded and approval-gated by design.
 
-Related: [hephaistos-runtime.md](hephaistos-runtime.md) · [README](../README.md).
+Related: [forgekit-architecture-ownership.md](forgekit-architecture-ownership.md) ·
+[hephaistos-runtime.md](hephaistos-runtime.md) · [README](../README.md).
