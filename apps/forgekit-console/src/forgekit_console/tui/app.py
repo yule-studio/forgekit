@@ -167,18 +167,21 @@ class ForgekitConsoleApp(App):
             profile=self.context.profile,
             id="intro",
         )
-        # THE SESSION FLOW (1fr) — the SINGLE scroll owner, TOP-ALIGNED. The whole session
-        # stacks inside it: issue line → transcript/help → process feed → INLINE composer.
-        # The composer is INLINE (not docked): on an empty session it sits near the TOP
-        # with empty space below (Claude); as the transcript grows it is pushed down and
-        # follow_tail keeps it in view — "typing at the tail of the current session".
+        # THE SESSION FLOW — the SINGLE scroll owner of the READING flow only:
+        #   issue line → transcript/help → process feed.
+        # It is CONTENT-DRIVEN in inline mode (height: auto — see styles.SCREEN_CSS): the
+        # block grows with the conversation and the terminal renders that many rows, so
+        # output ACCUMULATES downward instead of being trapped in a fixed bounded box. The
+        # composer is NOT inside it — it is DOCKED at the bottom (below), so the chat bar
+        # stays pinned while the conversation grows above it (Claude-Code cadence).
         with SessionFlow(id="flow"):
             yield Static(id="issue")               # one quiet status line at the top
             yield MainPanel(id="main")             # transcript XOR help (height: auto)
             # process event feed (route/submit/generate/…); empty → collapses to 0 rows.
             yield Static(id="livestatus")
-            # inline composer — input bar + slash palette DIRECTLY BELOW it + sub-hint row.
-            yield Composer(id="composer")
+        # the DOCKED composer (input bar + slash palette DIRECTLY BELOW it + sub-hint row).
+        # bottom-pinned; opening the palette grows it UPWARD (command area), never a pane.
+        yield Composer(id="composer")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
