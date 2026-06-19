@@ -152,8 +152,35 @@ def resolve_submit(cfg: pc.ProviderConfig, mode_id: str, **kw) -> RoutingResolut
     return resolve_routing(cfg, mode_submit_slot(mode_id), **kw)
 
 
+def submit_chain(cfg: pc.ProviderConfig, slot: str, *, prefer: str = "") -> Tuple[str, ...]:
+    """The ORDERED provider ids the submit service should ATTEMPT for *slot*.
+
+    head = ``prefer`` (the gate's routing target) or the slot's declared provider;
+    then the slot's EXPLICIT fallback order; then ollama ONLY when implicit local
+    fallback is explicitly enabled AND ollama is linked. Deduped, empties dropped.
+
+    This is the pure builder the live submit path iterates — so ``slot_fallback_orders``
+    and ``slot_routing`` actually steer which provider is called (and in what order),
+    not just the display. No implicit ollama unless the operator opted in.
+    """
+
+    head = (prefer or cfg.slot_target(slot) or "").strip()
+    ordered = [head, *cfg.fallback_order(slot)]
+    if cfg.implicit_local_fallback and "ollama" in cfg.linked_providers:
+        ordered.append("ollama")
+    seen = set()
+    chain = []
+    for pid in ordered:
+        pid = (pid or "").strip()
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        chain.append(pid)
+    return tuple(chain)
+
+
 __all__ = (
     "RESOLVE_OK", "RESOLVE_FALLBACK", "RESOLVE_UNSUPPORTED", "RESOLVE_NO_CONFIG",
     "mode_submit_slot", "submit_supported", "RoutingResolution",
-    "resolve_routing", "resolve_submit",
+    "resolve_routing", "resolve_submit", "submit_chain",
 )
