@@ -1,0 +1,39 @@
+ForgeKit package topology — TWT4 merge-prep QA evidence
+=======================================================
+
+[1] packages → apps hard rail (production src only)
+    package→app import edges in src/: 2 (sanctioned: 1 = forgekit-runtime lifecycle lazy bridge)
+      forgekit-runtime/src/forgekit_runtime/lifecycle/failure_escalation.py:458:        from yule_engineering.agents.lifecycle.troubleshooting_ledger import (  # noqa: WPS433
+      forgekit-runtime/src/forgekit_runtime/lifecycle/failure_escalation.py:462:        from yule_engineering.agents.lifecycle.troubleshooting_record import CaptureReason
+
+[2] every package classified in docs/package-topology.md + has pyproject.toml
+      agent-contracts    doc:Y pyproject:Y
+      agent-memory       doc:Y pyproject:Y
+      agent-runtime      doc:Y pyproject:Y
+      core               doc:Y pyproject:Y
+      forgekit-config    doc:Y pyproject:Y
+      forgekit-contracts doc:Y pyproject:Y
+      forgekit-provider  doc:Y pyproject:Y
+      forgekit-runtime   doc:Y pyproject:Y
+      hephaistos         doc:Y pyproject:Y
+      integrations       doc:Y pyproject:Y
+      learning           doc:Y pyproject:Y
+      llm-gateway        doc:Y pyproject:Y
+      memory             doc:Y pyproject:Y
+      nexus              doc:Y pyproject:Y
+      runtime            doc:Y pyproject:Y
+      security           doc:Y pyproject:Y
+      storage            doc:Y pyproject:Y
+      vcs                doc:Y pyproject:Y
+
+[3] ForgeKit core import smoke (standalone)
+      OK forgekit_config
+      OK forgekit_contracts
+      OK forgekit_provider
+      OK forgekit_runtime
+      OK hephaistos
+      OK nexus
+
+[4] topology guard test
+      Ran 5 tests in 0.020s
+      OK
