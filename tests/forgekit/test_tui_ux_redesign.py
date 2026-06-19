@@ -163,17 +163,20 @@ class ProgressiveRenderTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause(0.05)
             partial = len(app._transcript.lines)
             gen = str(app.query_one("#livestatus", Static).render())
-            self.assertIn("생성", gen)                       # GENERATING stage visible
+            self.assertIn("Generating", gen)                 # GENERATING event visible in the feed
             for _ in range(25):
                 await pilot.pause(0.1)
             full = len(app._transcript.lines)
             joined = "\n".join(str(s) for s in app._transcript.lines)
             self.assertGreater(full, partial)                # grew progressively (chunked)
             self.assertTrue(all(p in joined for p in ["문단 하나", "문단 둘", "문단 셋"]))
-            self.assertIn("Ollama", joined)                  # RECEIPT at the end
-            self.assertEqual(str(app.query_one("#livestatus", Static).render()), "")  # cleared
+            self.assertIn("Ollama", joined)                  # RECEIPT at the end (transcript)
+            # the feed ends with a Done event (real timeline), not the old transient string
+            kinds = [e.kind for e in app._feed.events]
+            self.assertIn("generate_start", kinds)
+            self.assertIn("done", kinds)
 
-    async def test_thinking_stage_shows_while_provider_runs(self) -> None:
+    async def test_submitting_event_shows_while_provider_runs(self) -> None:
         from textual.widgets import Static
         from forgekit_console.chat import models as m
 
@@ -183,7 +186,7 @@ class ProgressiveRenderTests(unittest.IsolatedAsyncioTestCase):
         class BlockingSvc:
             def submit(self, text, **_):
                 released.set()
-                gate.wait(2.0)   # hold the worker so the THINKING stage is observable
+                gate.wait(2.0)   # hold the worker so the running Submit event is observable
                 return m.SubmitResult(ok=True, mode=m.MODE_LIVE, category=m.CAT_OK,
                                       text="끝", provider_id="ollama", provider_label="Ollama",
                                       source=m.SOURCE_LOCAL_DEFAULT, model="g")
@@ -197,11 +200,14 @@ class ProgressiveRenderTests(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause(0.02)
                 if released.is_set():
                     break
-            think = str(app.query_one("#livestatus", Static).render())
+            # while the provider call runs, the feed shows a RUNNING "Submitting…" event
+            feed = str(app.query_one("#livestatus", Static).render())
+            active = app._feed.active()
             gate.set()
             await app.workers.wait_for_complete()
             await pilot.pause()
-            self.assertIn("생각", think)   # THINKING shown while the provider call ran
+            self.assertIn("Submitting", feed)
+            self.assertIsNotNone(active)                  # a real running event, not a fake string
 
 
 # --------------------------------------------------------------------------- #
