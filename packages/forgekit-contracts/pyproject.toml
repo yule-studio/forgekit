@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgekit-contracts"
+version = "0.1.0"
+description = "ForgeKit contracts core — command/result/work-packet schema (pure, stdlib-only) shared between ForgeKit core and its surfaces."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
