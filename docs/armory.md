@@ -1,8 +1,18 @@
 # Armory
 
-The catalog Hephaistos forges from — `forgekit_console/hephaistos/armory.py`. **Provider-neutral**:
-skills describe *capability / framework / workflow* (`capability_note` carries the capability lens),
-never a vendor name.
+The catalog Hephaistos forges from — now its own package **`packages/armory`** (RWT2):
+- `armory.catalog` — the catalog data + accessors (`all_skills` / `all_loadouts` / `all_weapons` /
+  `skill` / `loadout` / `weapon` / `categories`). Was `hephaistos/armory.py`.
+- `armory.models` — the spec vocabulary (`SkillSpec` / `LoadoutSpec` / `WeaponSpec` / `RuneSpec`
+  + `NexusSourceRef` + NEXUS_*/SRC_*/WEAPON_*). Split out of `hephaistos.models`.
+
+**Boundary:** Hephaistos = resolve / orchestration / loadout *selection* / work-packet
+(forge-output types `WorkPacketDraft` / `ResolvedForgePlan` stay in `hephaistos.models`).
+Armory = "무엇이 존재하는가" catalog. **Armory imports nothing from Hephaistos** → `hephaistos →
+armory` single direction (no cycle). Old paths kept as compat: `hephaistos.armory` re-exports
+`armory.catalog`; `hephaistos.models` re-exports the catalog vocab from `armory.models`
+(so `from hephaistos.models import SkillSpec` still works). **Provider-neutral**: skills describe
+*capability / framework / workflow* (`capability_note` carries the capability lens), never a vendor name.
 
 ## Coverage (7 categories, 25 skills, 8 loadouts)
 | category | skills |

@@ -17,7 +17,8 @@ packages/    재사용 코어/라이브러리 — apps/* 가 의존. apps/* 를 
   forgekit-provider/  provider routing / usage / policy / chat / brain (forgekit_provider)
   forgekit-runtime/   bounded loop / daemon / autopilot / lifecycle / notify (forgekit_runtime)
   # ForgeKit named cores
-  hephaistos/         skill-forge / resolve / loadout / work-packet (+ armory 내부)
+  hephaistos/         skill-forge / resolve / loadout selection / work-packet (forge-output)
+  armory/             skill/loadout/weapon catalog + spec vocabulary (hephaistos → armory)
   nexus/              knowledge source read / vault / discovery
   # shared infra (여러 app 공용)
   core/ storage/ integrations/ security/ vcs/ llm-gateway/ memory/
