@@ -146,8 +146,8 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 | `runtime_paths.py` | 78 | `~/.forgekit` 경로 해석 | `packages/forgekit-config` (`forgekit_config.paths`) | **done** (옛 경로 compat shim) |
 | `identity/` | 409 | agent identity(git author/app) | `packages/forgekit-config` | planned |
 | `data/status_loader.py` | 211 | 대시보드 데이터 bridge(→yule_engineering) | `packages/forgekit-config` adapter + console (bridge 잔존 debt) | planned |
-| `models.py` | 137 | work packet/command/event 모델 | `packages/forgekit-contracts` | planned |
-| `handoff/` | 396 | intake packet bridge | `packages/forgekit-contracts` (+ agent-contracts) | planned |
+| `models.py` | 137 | command-result/work packet 스키마 | `packages/forgekit-contracts` (`forgekit_contracts.models`) | **done** (옛 경로 shim) |
+| `handoff/` | 396 | intake packet bridge | `packages/forgekit-contracts` (+ agent-contracts) | planned (yule_engineering lazy dep 분리 후) |
 
 ### 3.3 console 에서 빠지는 core → packages (WT3: hephaistos/nexus/armory)
 
