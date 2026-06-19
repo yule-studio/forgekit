@@ -23,6 +23,8 @@ Honest status of each console surface (working / partial / planned). Code:
 | red/blue planning (owned assets) | working (plan-only) | `/red-blue` | `examples/security/` |
 | `/provider` console config (set primary / list / doctor) | working | `/provider [set <id>\|list\|doctor]` | `test_provider_surface` |
 | provider link / unlink / slot route | working | `/provider [link\|unlink\|route show\|route set <slot> <id>]` | `test_provider_surface` |
+| 4-provider brain preset (real config writer) | working | `/provider preset four-brain` | `test_four_brain_preset_and_routing` |
+| `/provider` declared→actual per slot (brain vs live transport) | working | `/provider` (default_chat/execution: declared X → actual Y) | `test_four_brain_preset_and_routing` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |
@@ -33,6 +35,15 @@ Honest status of each console surface (working / partial / planned). Code:
 
 The operator **sets `primary_provider`**; no implicit local fallback (a reachable ollama is NOT used
 unless `fallback_policy.implicit_local_fallback: true`). No provider → `setup-required`.
+
+**Primary brain ≠ actual live transport.** A free-text submit does NOT hit `primary_provider`
+directly — it follows `slot_routing.default_chat` resolved to the **actual live provider**
+(declared → actual, explicit fallback surfaced). claude/codex stay **routing/brain participants**
+(`unsupported_in_console`); **gemini/ollama are the live lane**. So `primary=claude` +
+`default_chat=gemini` resolves the submit to gemini (live) — shown as `declared claude → actual
+gemini`, never "Submitting to claude" then dying. Only when *every* linked provider is
+`unsupported_in_console` does the submit honestly fail. With a live linked provider (gemini/ollama)
+the brain is `configured-live`, NOT `configured-no-live`.
 
 **Submit teeth (WT1 — `chat/service.py`):** the submit path builds an ordered attempt chain
 `routing.submit_chain(cfg, default_chat, prefer=<gate target>)` = declared/routed head + the operator's

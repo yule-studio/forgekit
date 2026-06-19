@@ -1,0 +1,25 @@
+ForgeKit console — inline default + four-brain preset + submit routing fix QA
+============================================================================
+
+[A] inline default (bare forgekit = inline; --full escape hatch)
+  bare/unset → inline | --full → full | FORGEKIT_UI_MODE=full → full
+
+[B] terminal-native bg (no painted Screen/component background)
+  apps/forgekit-console/src/forgekit_console/tui/styles.py:1
+  apps/forgekit-console/src/forgekit_console/tui/prompt_area.py:2
+  apps/forgekit-console/src/forgekit_console/tui/palette.py:1
+  apps/forgekit-console/src/forgekit_console/tui/composer.py:3
+  default avatar mark fg-only (no 'on bg'): 0 0
+
+[D+G] four-brain preset persists across restart
+  persisted primary=claude linked=['claude', 'codex', 'gemini', 'ollama'] default_chat=gemini model_overrides={'ollama': 'gemma3:latest'}
+
+[E] submit routing — primary=claude but free-text resolves to default_chat actual live
+  routing_target (was claude bug) → gemini
+  submit chain head=gemini full=('gemini', 'ollama') (gemini live, ollama fallback)
+  all-unsupported(claude/codex) → status=unsupported_in_console live=False (honest fail)
+
+[F] setup_state for four-brain → ready/live (NOT configured-no-live)
+  state=ready live_capable=True blocked=False
+
+tests: full root CI OK(skipped=111), console subset OK; guards test_four_brain_preset_and_routing(7) + test_tui_inline_mode

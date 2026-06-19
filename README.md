@@ -89,11 +89,25 @@ local Ollama (implicit local fallback is OFF by default).
 
 ## Provider / setup / doctor / mode
 
+- **`forgekit` opens inline by default** (Claude-Code-style: lives in the existing terminal
+  flow, native scrollback/selection, terminal-native background). `forgekit --full` (or
+  `FORGEKIT_UI_MODE=full`) is the escape hatch to the alternate-screen TUI.
+- **Primary brain ≠ actual live transport.** You set the primary brain, but a free-text submit
+  follows `slot_routing.default_chat` to the **actual live provider**. claude/codex are
+  **routing/brain participants** (no console live-submit yet — `unsupported_in_console`);
+  **gemini/ollama are the current live lane**. So `primary=claude` with `default_chat=gemini`
+  is a normal, healthy state — the submit goes to gemini (live), surfaced honestly as
+  `declared claude → actual gemini`, never "Submitting to claude" then dying.
+- **`/provider preset four-brain`** wires the recommended 4-provider brain in one command:
+  `primary=claude`, `linked=[claude,codex,gemini,ollama]`, `default_chat/research→gemini`,
+  `execution→codex`, `compression/classification→ollama`, `safety/synthesis→claude`, with
+  explicit per-slot fallback orders. It writes a real, persisted config (survives restart).
 - **You set the primary provider.** `~/.forgekit/config.json` carries `primary_provider` +
   `linked_providers` + `slot_routing` + `fallback_policy` (legacy `main_provider` is migrated).
   See [`docs/forgekit-provider-policy.md`](docs/forgekit-provider-policy.md).
 - **No implicit Ollama.** With no config, submit is `setup-required` — a reachable Ollama is
-  only used if you explicitly set `fallback_policy.implicit_local_fallback: true`.
+  only used if you explicitly set `fallback_policy.implicit_local_fallback: true`. The
+  four-brain preset connects providers **explicitly** (no implicit/silent ollama).
 - **`/doctor`** checks environment readiness (render backend, runtime, provider posture).
 - **`/mode`** (Shift+Tab) cycles runtime modes — each changes real routing / budget / approval
   (not just a label). `approval-wait` truly holds submits; `cost-save` biases cheap routing.
