@@ -1,0 +1,33 @@
+forgekit Nexus live read — 표면이 실제 root/status 를 정직하게 반영
+======================================================================
+
+[1] not_connected (root 미설정) — 기본 zero-state
+  nexus: [not_connected] FORGEKIT_NEXUS_ROOT (env) / nexus_root (config) 미설정
+
+[2] connected via FORGEKIT_NEXUS_ROOT (실제 readable dir) → exists + live read
+  nexus: [exists] 연결됨
+    root : /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpn80gm98_ (connected · live read 가능)
+    restricted source 는 design/privacy role 만 raw, 그외 projection_only.
+    `/resolve <요청>` 의 nexus 줄에서 ref 별 read 결과 확인.
+
+[3] missing — root set 됐지만 경로 없음 (정직, fake 아님)
+  nexus: [missing] 설정된 root 경로가 존재하지 않음
+    root : /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpn80gm98_/not-cloned
+    연결: export FORGEKIT_NEXUS_ROOT=<nexus repo 경로>  또는 config 의 nexus_root 설정.
+    미연결 동안 source 는 not_connected 로 정직 표면(fake-read 없음).
+
+[4] /resolve nexus 줄 — connected 시 live read/missing 카운트
+    nexus     : connected · read 0 / missing 7 / blocked 0 / restricted 0
+
+[5] operator connect/disconnect — /nexus set·clear (config 영속)
+  > /nexus set /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp0ccmrdt8/vault
+    nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp0ccmrdt8/vault (저장됨) · 상태: [exists] 연결됨
+    config.json nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp0ccmrdt8/vault
+  > /nexus (persisted)
+    nexus: [exists] 연결됨
+  > /nexus clear
+    nexus_root 해제됨 — not_connected (지식 source 미연결)
+
+[6] restricted — 비허용 role=projection_only(raw 비노출), 허용 role=bounded raw
+  role=backend-engineer → read_mode=projection_only, raw '비밀 내용' 노출=False
+  role=security-engineer → read_mode=raw (허용 role bounded raw)

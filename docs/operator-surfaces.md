@@ -9,8 +9,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | Hephaistos resolve | working | `/resolve` `/skills` | `examples/hephaistos/`, `test_armory_breadth` |
 | forge status | working | `/hephaistos` | `test_hephaistos_surface` |
 | loadout verify (real env) | working | `/loadout <id>` | `test_hephaistos` |
-| Nexus read | partial (not_connected default) | `/resolve` nexus line | `examples/hephaistos/nexus-read-foundation/` |
-| Nexus connection status | working | `/nexus` | `test_nexus_read` |
+| Nexus read | working (live read when connected; not_connected/missing/blocked/restricted honest) | `/resolve` nexus line | `examples/nexus-live-read/`, `test_nexus_live_read` |
+| Nexus connection status | working | `/nexus` | `test_nexus_read`, `test_nexus_live_read` |
+| Nexus connect/disconnect (operator) | working | `/nexus set <path>` · `/nexus clear` | `test_nexus_live_read` |
 | usage ledger (live vs estimate) | working | `/usage` | `examples/usage/` |
 | per-provider/model/mode usage breakdown | working | `/usage` | `examples/usage/per-provider-breakdown/` |
 | runtime modes (real routing/budget/approval) | working | `/mode`, Shift+Tab | `examples/runtime-teeth/` |
@@ -31,6 +32,14 @@ Honest status of each console surface (working / partial / planned). Code:
 
 The operator **sets `primary_provider`**; no implicit local fallback (a reachable ollama is NOT used
 unless `fallback_policy.implicit_local_fallback: true`). No provider → `setup-required`.
+
+**Submit teeth (WT1 — `chat/service.py`):** the submit path builds an ordered attempt chain
+`routing.submit_chain(cfg, default_chat, prefer=<gate target>)` = declared/routed head + the operator's
+**explicit `slot_fallback_orders`** + (opt-in only) ollama. If the head is unusable
+(`unsupported_in_console` / auth missing / transport error) it falls to the next provider in that order
+and the receipt shows the honest hop (`· fallback claude→ollama`). Per-provider `model_overrides[<id>]`
+is applied to the actual call (model precedence: override → global `model` → ollama-installed → id).
+Evidence: `examples/provider-runtime-core/`, `test_provider_runtime_core`.
 
 ## Source reality matrix
 | source | read status | restrictions | evidence |
