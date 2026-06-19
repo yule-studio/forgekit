@@ -22,7 +22,7 @@ packages/    재사용 코어/라이브러리 — apps/* 가 의존. apps/* 를 
   # shared infra (여러 app 공용)
   core/ storage/ integrations/ security/ vcs/ llm-gateway/ memory/
   # transitional / agent-coupled (engineering-agent 산하 추출 infra)
-  agent-contracts/ agent-memory/ agent-runtime/ learning/ runtime(=primitives)/
+  agent-contracts/ agent-memory/ agent-runtime/ learning/ runtime-primitives(옛 runtime/yule_runtime, compat shim)/
 
 apps/        실행 단위 — 좁은 책임. packages/* 를 의존. 다른 app 을 직접 import 하지 않는다(목표).
   forgekit-console/  ForgeKit operator app — TUI/CLI/operator surface (forgekit_console)
@@ -35,7 +35,7 @@ apps/        실행 단위 — 좁은 책임. packages/* 를 의존. 다른 app 
 
 apps/engineering-agent/src/yule_engineering/   (구 src/yule_orchestrator) 아직 분해되지 않은 모놀리스 + 옛 경로 compat shim
   agents/      ~106k LOC — engineering-agent 코어 (장기 분해 대상, §4)
-  runtime/     status / run_service 등 오케스트레이션 (프리미티브는 packages/runtime 로 빠짐)
+  runtime/     status / run_service 등 오케스트레이션 (프리미티브는 packages/runtime-primitives 로 빠짐)
   cli/         `yule` CLI 진입점 (서브커맨드)
   github_app/  GitHub App 연동
   observability/ diagnostics/  소형 유틸
