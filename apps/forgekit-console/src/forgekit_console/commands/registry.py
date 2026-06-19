@@ -90,7 +90,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("usage", "토큰 사용량 — today rollup(provider/mode/live·estimate) + budget", H_MODE, "status"),
     SlashCommand("blocked", "반복 실패 에스컬레이션 목록 (왜·대안·다음 단계)", H_BLOCKED, "status"),
     SlashCommand("copy", "OS clipboard 로 복사 — `/copy [last|all|turn <n>|block <n>]` (plain-text, pbcopy/xclip)", H_COPY, "status"),
-    SlashCommand("attach", "첨부 seam — 현재 console submit 은 텍스트 전용 (정직하게 blocked, 가짜 업로드 없음)", H_ATTACH, "status"),
+    SlashCommand("attach", "첨부 staging — `/attach [<path>|status|clear]` 또는 이미지 붙여넣기. 실제 stage(미전송 staged_only — provider 텍스트 전용)", H_ATTACH, "status"),
     SlashCommand("whoami", "agent identity — git author / vault / GitHub App 자격 (`/whoami <agent>`)", H_WHOAMI, "status"),
     SlashCommand("resolve", "Hephaistos — 요청을 skill/loadout/weapon/source/packet 으로 resolve (`/resolve <요청>`)", H_RESOLVE, "status"),
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),

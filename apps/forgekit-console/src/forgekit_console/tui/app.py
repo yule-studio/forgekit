@@ -91,6 +91,8 @@ class ForgekitConsoleApp(App):
         self._palette_was_open = False  # tracks open transitions for the auto-reveal policy
         from .transcript_store import TranscriptStore
         self._store = TranscriptStore()  # copyable plain-text model (/copy last|turn|block|all)
+        from .attachment import AttachmentStore
+        self._attachments = AttachmentStore()  # staged image/file attachments (honest staged_only)
         self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
         self._suppress_refilter = False
         # Repeated-failure escalation: same blocked signature past the threshold
@@ -183,6 +185,41 @@ class ForgekitConsoleApp(App):
         self._follow_tail()
 
     # --- input / palette ----------------------------------------------------
+
+    def on_paste(self, event) -> None:
+        """Rehydrate a HOST paste placeholder from the real clipboard payload.
+
+        A genuine bracketed paste lands its full multiline text in PromptArea (TextArea
+        handles it) — nothing to do. But when the HOST substitutes a placeholder
+        (`[Pasted text #N +M lines]` / `[Image #N]`) the buffer now holds only that
+        marker; we recover the REAL payload from the OS clipboard: text → rehydrate the
+        composer buffer (multiline preserved); image → stage an attachment. If recovery
+        fails it is surfaced honestly (the placeholder is never treated as the message).
+        """
+
+        from . import clipboard, ingest
+
+        text = getattr(event, "text", "") or ""
+        if ingest.has_image_placeholder(text):
+            self._stage_clipboard_image(origin="paste")
+        if not ingest.has_text_placeholder(text):
+            return
+        # the TextArea already inserted the placeholder into the buffer — resolve the
+        # WHOLE buffer (placeholder span → clipboard text) and rehydrate in place.
+        try:
+            prompt = self.query_one("#prompt", PromptArea)
+        except Exception:  # noqa: BLE001
+            return
+        res = ingest.resolve_submit_text(prompt.value, clipboard.read_text())
+        if res.rehydrated:
+            self._suppress_refilter = True
+            prompt.set_value(res.text)   # full multiline payload now lives in the composer
+            self._transcript.write(f"[dim]↳ paste: {res.note}[/dim]")
+            self._follow_tail()
+        elif res.blocked:
+            self._transcript.write(
+                f"[{theme.WARNING}]⚠ paste[/{theme.WARNING}] [dim]{res.note}[/dim]")
+            self._follow_tail()
 
     def on_text_area_changed(self, event) -> None:
         if self._suppress_refilter:
@@ -358,7 +395,7 @@ class ForgekitConsoleApp(App):
             self._copy_dispatch(list(getattr(parsed, "args", ()) or ()))
             return
         if parsed.name == "attach":
-            self._attach_seam(raw)
+            self._attach_dispatch(list(getattr(parsed, "args", ()) or ()))
             return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
@@ -404,12 +441,32 @@ class ForgekitConsoleApp(App):
         a strictly separate path from slash commands.
         """
 
-        text = raw.strip()
+        from . import clipboard, ingest
+
+        # rehydrate a host paste placeholder from the clipboard BEFORE submitting — the
+        # FULL multiline payload goes to the provider, never the bare placeholder.
+        res = ingest.resolve_submit_text(raw, clipboard.read_text())
+        if res.blocked:
+            self._transcript.begin_turn()
+            self._transcript.write_echo(raw)
+            self._transcript.write(
+                f"[{theme.WARNING}]⚠ paste 차단[/{theme.WARNING}] [dim]{res.note}[/dim]")
+            self._follow_tail()
+            return
+        text = (res.text if res.rehydrated else raw).strip()
         if not text:
             return
         self._transcript.begin_turn()       # vertical breathing room between turns
-        self._transcript.write_echo(text)   # the user's message
-        self._store.add_user(text)          # copyable user turn (for /copy turn/all)
+        # huge paste → compact echo (first line + "[+N lines]"); submit the FULL text.
+        lines = text.splitlines()
+        if len(lines) > 8:
+            self._transcript.write_echo(f"{lines[0]}  [dim][+{len(lines) - 1} lines · {len(text)} chars][/dim]")
+        else:
+            self._transcript.write_echo(text)
+        if res.rehydrated:
+            self._transcript.write(f"[dim]↳ {res.note}[/dim]")
+        self._store.add_user(text)          # copyable FULL user turn (for /copy turn/all)
+        self._surface_staged_attachments()  # honest staged_only (provider text-only)
         self._sync_intro()  # transcript now has content → compact working header
         # RUNTIME-TEETH (WT1): enforce the EffectivePolicy via the chat policy gate
         # BEFORE any provider call. hold-all (approval-wait) / budget throttle → no
@@ -861,21 +918,86 @@ class ForgekitConsoleApp(App):
         self._sync_intro()
         self._follow_tail()
 
-    def _attach_seam(self, raw: str) -> None:
-        """`/attach` — honest blocked seam. The console submits TEXT ONLY to providers;
-        there is no upload transport, so we say so plainly instead of faking an upload."""
+    def _attach_dispatch(self, args) -> None:
+        """`/attach [<path>|status|clear]` — stage a real attachment (honest states).
 
+        `<path>` stages a file (missing/blocked/no_attachment honest); `status` lists
+        staged; `clear` removes them. Staging reads the real bytes; whether it can be
+        SENT is separate — the console submit is text-only, so images are staged_only.
+        """
+
+        from . import attachment as att
+
+        sub = (args[0].lower() if args else "")
         self._transcript.begin_turn()
-        self._transcript.write_echo(raw)
-        self._transcript.write(
-            f"[{theme.WARNING}]⚠ 첨부 미지원[/{theme.WARNING}] "
-            "[dim]console submit 경로는 텍스트 전용입니다 — 파일 업로드 transport 가 아직 없습니다.[/dim]"
-        )
-        self._transcript.write(
-            "[dim]↳ 가짜 업로드를 만들지 않습니다. 파일 내용은 직접 붙여넣어(멀티라인: Ctrl+J) 제출하세요.[/dim]"
-        )
+        self._transcript.write_echo("/attach " + " ".join(args) if args else "/attach")
+        if sub == "status":
+            for line in self._attachments.status_lines():
+                self._transcript.write(f"[dim]{line}[/dim]")
+        elif sub == "clear":
+            n = self._attachments.clear()
+            self._transcript.write(f"[dim]attach: {n}개 staged attachment 제거됨.[/dim]")
+        elif args:
+            attachment, state, msg = att.stage_file(args[0])
+            if attachment is not None:
+                self._attachments.add(attachment)
+                self._transcript.write(f"[{theme.SUCCESS}]✓ {state}[/{theme.SUCCESS}] [dim]{msg}[/dim]")
+                self._transcript.write(f"[dim]↳ {att.PROVIDER_TEXT_ONLY_REASON} — 제출 시 staged_only 로 표시[/dim]")
+            else:
+                self._transcript.write(f"[{theme.WARNING}]⚠ {state}[/{theme.WARNING}] [dim]{msg}[/dim]")
+        else:
+            # no args, no subcommand → try the clipboard image, else show usage + status.
+            if not self._stage_clipboard_image(origin="attach"):
+                self._transcript.write("[dim]사용법: /attach <path> · /attach status · /attach clear[/dim]")
+                for line in self._attachments.status_lines():
+                    self._transcript.write(f"[dim]{line}[/dim]")
         self._sync_intro()
         self._follow_tail()
+
+    def _stage_clipboard_image(self, *, origin: str) -> bool:
+        """Try to stage an IMAGE from the OS clipboard (real bytes → temp file). Honest.
+
+        Returns True when an image was actually staged; False (with a surfaced reason)
+        when there is no clipboard image / no reader — never a fake stage."""
+
+        from . import attachment as att
+        from . import clipboard, ingest
+        from ..runtime_paths import state_dir
+
+        try:
+            dest_dir = state_dir() / "attachments"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / f"clip-{len(self._attachments.items) + 1}.png"
+        except OSError as exc:  # noqa: BLE001
+            self._transcript.write(f"[{theme.WARNING}]⚠ attach[/{theme.WARNING}] [dim]temp dir 실패: {exc}[/dim]")
+            return False
+        ok, mime_or_reason = clipboard.read_image(str(dest))
+        if not ok:
+            self._transcript.write(
+                f"[{theme.WARNING}]⚠ 이미지 없음[/{theme.WARNING}] [dim]{mime_or_reason}[/dim]")
+            return False
+        attachment, state, msg = att.stage_file(str(dest), source=ingest.SRC_CLIPBOARD)
+        if attachment is None:
+            self._transcript.write(f"[{theme.WARNING}]⚠ {state}[/{theme.WARNING}] [dim]{msg}[/dim]")
+            return False
+        self._attachments.add(attachment)
+        self._transcript.write(f"[{theme.SUCCESS}]✓ staged[/{theme.SUCCESS}] [dim]{msg} (clipboard)[/dim]")
+        return True
+
+    def _surface_staged_attachments(self) -> None:
+        """At submit time, surface staged attachments + their HONEST send status.
+
+        The console submit is text-only, so images are ``staged_only`` (received + held,
+        NOT sent) with the reason — never a fake upload. The staged set is then cleared
+        (it belonged to this turn)."""
+
+        if not self._attachments.pending:
+            return
+        for a in self._attachments.items:
+            status = "sent" if a.sendable else "staged_only"
+            note = "" if a.sendable else f" — {a.reason_if_blocked}"
+            self._transcript.write(f"[dim]{a.chip()} → {status}{note}[/dim]")
+        self._attachments.clear()
 
     def _on_submit_result(self, result) -> None:
         # record the assistant reply as a copyable response block (plain text, no receipt).

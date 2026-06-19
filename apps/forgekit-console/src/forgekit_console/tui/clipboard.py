@@ -75,4 +75,65 @@ def read_text() -> Optional[str]:
     return p.stdout.decode("utf-8", errors="replace")
 
 
-__all__ = ("copy_text", "read_text")
+# --- clipboard IMAGE (attachment staging) ----------------------------------
+# macOS: pngpaste (if installed) writes the clipboard image straight to a file;
+# otherwise an osascript snippet writes the «class PNGf» clipboard flavour. Linux:
+# xclip can read image/png. We NEVER pretend an image exists — None reason explains.
+
+_OSA_WRITE_PNG = (
+    'on run argv\n'
+    '  set outFile to POSIX file (item 1 of argv)\n'
+    '  try\n'
+    '    set pngData to (the clipboard as «class PNGf»)\n'
+    '  on error\n'
+    '    return "no-image"\n'
+    '  end try\n'
+    '  set fh to open for access outFile with write permission\n'
+    '  set eof fh to 0\n'
+    '  write pngData to fh\n'
+    '  close access fh\n'
+    '  return "ok"\n'
+    'end run'
+)
+
+
+def read_image(dest_path: str) -> Tuple[bool, str]:
+    """Write the clipboard IMAGE to *dest_path*. (ok, mime|reason).
+
+    Real OS read (pngpaste → osascript on macOS, xclip on Linux). Honest failure when
+    there is no image on the clipboard or no reader is available — never a fake stage.
+    """
+
+    dest = str(dest_path)
+    if sys.platform == "darwin":
+        if shutil.which("pngpaste"):
+            try:
+                p = subprocess.run(["pngpaste", dest], timeout=5,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except (OSError, subprocess.SubprocessError) as exc:
+                return False, f"pngpaste 실패: {exc}"
+            return (True, "image/png") if p.returncode == 0 else (False, "클립보드에 이미지 없음 (pngpaste)")
+        if shutil.which("osascript"):
+            try:
+                p = subprocess.run(["osascript", "-e", _OSA_WRITE_PNG, dest],
+                                   capture_output=True, timeout=8)
+            except (OSError, subprocess.SubprocessError) as exc:
+                return False, f"osascript 실패: {exc}"
+            out = (p.stdout or b"").decode("utf-8", errors="replace").strip()
+            return (True, "image/png") if out == "ok" else (False, "클립보드에 이미지 없음 (osascript)")
+        return False, "이미지 reader 없음 (pngpaste 설치 권장: brew install pngpaste)"
+    if shutil.which("xclip"):
+        try:
+            p = subprocess.run(["xclip", "-selection", "clipboard", "-t", "image/png", "-o"],
+                               capture_output=True, timeout=5)
+            if p.returncode == 0 and p.stdout:
+                with open(dest, "wb") as fh:
+                    fh.write(p.stdout)
+                return True, "image/png"
+        except (OSError, subprocess.SubprocessError) as exc:
+            return False, f"xclip image 실패: {exc}"
+        return False, "클립보드에 이미지 없음 (xclip)"
+    return False, "이미지 clipboard reader 없음 (macOS=pngpaste/osascript, Linux=xclip)"
+
+
+__all__ = ("copy_text", "read_text", "read_image")

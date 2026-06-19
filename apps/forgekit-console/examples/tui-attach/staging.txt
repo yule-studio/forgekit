@@ -1,0 +1,13 @@
+forgekit attach staging — 실제 stage, honest staged_only/missing/blocked
+================================================================
+
+[/attach <file>] staged=1  chip: 📎 diagram.png · image/png · 306B · staged_only
+[/attach status]
+  attach: 1 staged
+    1. 📎 diagram.png · image/png · 306B · staged_only  (provider text-only (console live-submit) — staged_only, 미전송)
+
+  missing 판정: state=missing
+[submit] staged_only 표면화: True  · 턴 후 cleared: True
+
+provider 가 이미지를 실제로 보냈는가: 아니오 — console submit 은 텍스트 전용.
+  staged_only = 받아서 보관(실파일)했으나 미전송. 가짜 업로드 없음.
