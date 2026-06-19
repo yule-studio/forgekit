@@ -12,24 +12,39 @@
 `tui/session_flow.py` (scroll owner), `tui/composer.py`·`tui/palette.py` (docked
 composer + 입력창 바로 아래 열리는 palette), `tui/transcript_store.py` (copy 모델), `tui/clipboard.py`.
 
-## 1. Layout — docked composer (단일 세션 흐름)
+## 1. Layout — content-driven reading flow + 하단 고정 composer
 ```
-IntroHeader        (fixed top banner)
-SessionFlow (1fr)  ← 유일한 vertical scroll owner. issue + transcript/help 만.
-  #issue
-  #main (transcript XOR help, height auto)
-#livestatus        (thinking→generating 마커)
-Composer           ← 하단 DOCK. 입력 bar + palette(입력 바로 아래) + hint.
+IntroHeader              (fixed top banner)
+SessionFlow              ← 유일한 vertical scroll owner. issue + transcript/help 만 (composer 제외).
+  #issue                   inline: height auto, max-height 100% (content-driven)
+  #main (transcript XOR help, height auto)   full : height 1fr (alt-screen 채움)
+  #livestatus            (thinking→generating 마커)
+Composer                 ← inline 에서 dock:bottom. full 에서는 1fr flow 뒤 마지막 child(자연히 하단).
+                           입력 bar + palette(입력 바로 아래) + hint.
 ```
-- 입력 bar 는 **항상 viewport 하단 영역에 고정**(Claude). 짧은 세션에서 중앙에 부유하지 않는다.
-- `/` 입력 시 palette 가 **입력 bar 바로 아래**(flush, gap ≈ 0)에 열린다 — composer zone 의
-  일부이며 transcript 가 아니다. 수동 스크롤 없이 즉시 보인다. palette 가 열리면 composer 가
-  자라 SessionFlow(1fr) 가 위로 밀린다(전사 zone 만 줄어듦). 측정: `test_tui_palette_below`.
+**inline 누적 흐름(이번 라운드 핵심):** 예전엔 `Screen.-inline #flow { height: 14 }` 로 reading
+flow 를 **14줄 고정 박스**로 잘라, 출력이 길어지면 이전 내용이 그 작은 창 밖으로 밀려나 "내용이
+날아간다"는 느낌을 줬다. 이제 inline flow 는 **content-driven**(`height: auto; max-height: 100%`):
+- 짧은 세션 → flow 가 내용 높이만큼만(예: 2~10줄) — 빈 박스 없음.
+- 긴 `/doctor`·`/provider`·`/usage`·긴 paste·긴 응답 → flow 가 **viewport 까지 자라며 누적**
+  (고정 14 cap 제거). viewport 를 넘으면 그때 비로소 SessionFlow(단일 owner)가 스크롤되어 이전
+  내용이 **사라지지 않고 접근 가능**. 실측 evidence: `examples/inline-accumulating-flow/render-evidence.txt`
+  (flow 2→10→16→25, composer 하단 고정, overflow 시 scrollable·max_scroll_y>0).
+- composer 는 **항상 viewport 하단**(inline=dock, full=마지막 child). 긴 대화에도 위로 스크롤되어
+  사라지지 않는다.
+- `/` 입력 시 palette 가 **입력 bar 바로 아래**(flush, gap ≈ 0)에 열리고, composer 가 위로 자란다
+  (command area — bounded pane 아님). 측정: `test_tui_palette_below` · `test_inline_accumulating_flow`.
+
+> **정직한 한계:** 이건 "viewport 까지 누적 + 그 뒤 단일 스크롤"이지 **진짜 terminal-native
+> scrollback 누적(print-flow)은 아직 아니다.** Textual inline 은 매 프레임 region 을 다시 그려서,
+> region 위로 넘어간 내용은 앱의 scroll buffer 가 갖지(터미널 native history 가 아님). 다음 단계
+> seam 은 `tui/transcript_sink.py` (TranscriptSink/WidgetSink=현재, PrintFlowSink=미연결 seam).
 
 ## 2. Scroll model — 읽기 흐름 단일 owner + visible gutter 0
-**선택한 모델: bounded app viewport, 단일 reading-flow scroll owner, gutter 없음**
-(inline 모드는 추가로 alt-screen/mouse capture 제거 — §6). 진짜 terminal-native scrollback
-누적(print-flow)은 다음 단계 seam(§6).
+**선택한 모델: content-driven reading flow(고정 박스 아님) + 단일 reading-flow scroll owner +
+gutter 없음** (inline 모드는 추가로 alt-screen/mouse capture 제거 — §6). flow 는 viewport 까지
+자라며 누적하고 그 뒤에만 SessionFlow 가 스크롤한다(§1). 진짜 terminal-native scrollback
+누적(print-flow)은 다음 단계 seam(§6 · `tui/transcript_sink.py`).
 
 런타임 감사(실 widget property, CSS 추측 아님 — `examples/tui-scroll/audit.txt`):
 - **content scroll owner = `SessionFlow` 단 하나.** Transcript/Help/Palette/Composer 는 전부

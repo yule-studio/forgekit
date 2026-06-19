@@ -27,11 +27,28 @@ Screen { layout: vertical; background: transparent; }
 /* transient stage marker (thinking → generating); collapses to 0 rows when empty. */
 #livestatus { height: auto; padding: 0 1; color: $text-muted; }
 
-/* INLINE mode (`.-inline`, set on the Screen by the app when run inline): the console
-   is a BOUNDED terminal-flow region, not a full-screen takeover. The reading flow is
-   capped so the inline block stays compact (recent conversation + docked composer);
-   the terminal keeps its native scrollback above/below the region. */
-Screen.-inline #flow { height: 14; }
+/* Full mode: the composer is the last child after the 1fr flow, so it naturally sits at
+   the bottom (the 1fr flow fills the space above it) — no dock needed, no overlap.
+   Inline mode (below): the flow is content-driven (auto), so the composer is DOCKED at the
+   bottom to stay pinned as the flow grows past the viewport. Opening the slash palette
+   grows the composer UPWARD (it is `height: auto`), so the command area never reads as a box. */
+Screen.-inline #composer { dock: bottom; }
+
+/* INLINE mode (`.-inline`, set on the Screen by the app when run inline): the reading
+   flow is CONTENT-DRIVEN (`height: auto`), NOT a fixed bounded box. So a short session
+   renders only a few rows and a long /doctor|/provider|/usage output makes the inline
+   block GROW — the terminal draws that many rows and output accumulates downward instead
+   of the old hard 14-row cap pushing earlier content out of a tiny window.
+   `max-height: 100%` keeps the flow content-driven up to the viewport, then (and only
+   then) it scrolls — so a short session is COMPACT (a few rows, no empty box) while a long
+   session fills the viewport and stays scrollable (older content is never lost, and
+   SessionFlow remains the single scroll owner).
+   Honest Textual limit: the inline region can only grow up to the terminal viewport; once
+   the conversation exceeds the viewport the flow still scrolls internally (it is not yet
+   true native-scrollback accumulation — that is the print-flow seam, see
+   tui/transcript_sink.py and docs/forgekit-console-ui.md). In `--full` the flow stays
+   `1fr` (fills the alt-screen) with the composer as its last (bottom) child. */
+Screen.-inline #flow { height: auto; max-height: 100%; }
 """
 
 __all__ = ("SCREEN_CSS",)
