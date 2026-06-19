@@ -38,6 +38,7 @@ from .registry import (
     H_LOADOUT,
     H_PROVIDER,
     H_NEXUS,
+    H_DAEMON,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -173,6 +174,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _provider_result(parsed)
     if handler == H_NEXUS:
         return _nexus_result(parsed, ctx)
+    if handler == H_DAEMON:
+        return _daemon_result(parsed, ctx)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -248,6 +251,19 @@ def _nexus_result(parsed, ctx) -> CommandResult:
         return (CommandResult.info if ok else CommandResult.error)("nexus clear", (msg,))
     return CommandResult.info(
         "nexus", _proj.nexus_surface_lines(env=ctx.env, config=ctx.config))
+
+
+def _daemon_result(parsed, ctx) -> CommandResult:
+    # /daemon [stop] — surface the REAL always-on daemon heartbeat (state/tick/pid),
+    # or set the kill-switch. Reads the same file `forgekit runtime status` reads.
+    from ..runtime import surface as rsurface
+
+    env = getattr(ctx, "env", None) or None
+    args = list(getattr(parsed, "args", ()) or ())
+    if args and args[0].lower() == "stop":
+        ok, msg = rsurface.request_stop(env=env)
+        return (CommandResult.info if ok else CommandResult.error)("daemon stop", (msg,))
+    return CommandResult.info("daemon", rsurface.daemon_status_lines(env=env))
 
 
 def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
