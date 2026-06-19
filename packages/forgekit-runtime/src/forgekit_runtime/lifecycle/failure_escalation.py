@@ -32,8 +32,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Mapping, Optional, Sequence, Tuple
 
-from ..models import LEVEL_ERROR, LEVEL_WARN, Alert
-from ..runtime_paths import escalation_ledger_path, operator_inbox_path
+from forgekit_contracts.models import LEVEL_ERROR, LEVEL_WARN, Alert
+from forgekit_config.paths import escalation_ledger_path, operator_inbox_path
 
 # --- policy knobs -----------------------------------------------------------
 DEFAULT_THRESHOLD = 3

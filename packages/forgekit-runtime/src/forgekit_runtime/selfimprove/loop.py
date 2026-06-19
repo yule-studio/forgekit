@@ -44,7 +44,7 @@ class SelfImprovementResult:
 
 
 def _from_repo_local(repo_root, limit: int) -> List[P.RepoImprovementPacket]:
-    from ..sources import RepoLocalCollector
+    from nexus.sources import RepoLocalCollector
 
     out: List[P.RepoImprovementPacket] = []
     try:

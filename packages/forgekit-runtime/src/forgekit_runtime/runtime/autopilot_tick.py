@@ -64,7 +64,7 @@ class AutopilotTicker:
         try:
             collector = self.collector
             if collector is None:
-                from ..sources import RepoLocalCollector
+                from nexus.sources import RepoLocalCollector
 
                 collector = RepoLocalCollector(self.repo_root)
             for it in collector.collect(limit=self.max_findings):

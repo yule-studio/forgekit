@@ -50,7 +50,7 @@ def observe_repo(repo: str, repo_root, *, discovery_signals: Sequence = (),
 
     # 1) repo-local gaps (offline)
     try:
-        from ..sources import RepoLocalCollector
+        from nexus.sources import RepoLocalCollector
 
         for it in RepoLocalCollector(repo_root).collect(limit=limit):
             kind = "docs" if "TODO" in it.title else "gap"

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Mapping, Optional, Tuple
 
-from ..runtime_paths import operator_inbox_path
+from forgekit_config.paths import operator_inbox_path
 from . import desktop
 from .events import NotificationEvent
 

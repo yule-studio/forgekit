@@ -10,6 +10,7 @@ from .loop import (
     BoundedRuntimeLoop,
     Finding,
     LoopResult,
+    register_handoff_runner,
 )
 from .daemon import BoundedDaemon, DaemonResult, TickOutcome
 from .heartbeat import Heartbeat, read_heartbeat, write_heartbeat
@@ -23,6 +24,7 @@ __all__ = (
     "BoundedRuntimeLoop",
     "Finding",
     "LoopResult",
+    "register_handoff_runner",
     "RunbookNote",
     "build_runbook",
     "infer_area",

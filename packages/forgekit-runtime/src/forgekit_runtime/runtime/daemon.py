@@ -72,7 +72,7 @@ class BoundedDaemon:
     def _heartbeat(self, status: str, tick: int, note: str = "") -> bool:
         from .heartbeat import Heartbeat
 
-        from ..usage.ledger import now_ts  # reuse the real clock
+        from forgekit_provider.usage.ledger import now_ts  # reuse the real clock
 
         ok = HB.write_heartbeat(
             Heartbeat(status=status, tick=tick, ts=now_ts(self.env), pid=self.pid, note=note),
