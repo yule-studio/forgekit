@@ -160,22 +160,22 @@ class ForgekitConsoleApp(App):
     # --- layout -------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
-        # top (fixed banner): small real-image avatar + brand/version/provider/...
-        yield IntroHeader(
-            repo=str(self.repo_root),
-            version=__version__,
-            profile=self.context.profile,
-            id="intro",
-        )
-        # THE SESSION FLOW — the SINGLE scroll owner of the READING flow only:
-        #   issue line → transcript/help → process feed.
-        # It is CONTENT-DRIVEN in inline mode (height: auto — see styles.SCREEN_CSS): the
-        # block grows with the conversation and the terminal renders that many rows, so
-        # output ACCUMULATES downward instead of being trapped in a fixed bounded box. The
-        # composer is NOT inside it — it is DOCKED at the bottom (below), so the chat bar
-        # stays pinned while the conversation grows above it (Claude-Code cadence).
+        # THE SESSION FLOW — the SINGLE scroll owner of the whole READING flow:
+        #   intro (hero/compact) → issue line → transcript/help → process feed.
+        # The intro is the FIRST child of the flow (NOT fixed top chrome), so it is a
+        # first-impression element that scrolls UP and away as the conversation grows —
+        # Claude-Code style — instead of a permanent panel pinned at the top eating space.
+        # The flow is CONTENT-DRIVEN in inline mode (height: auto — see styles.SCREEN_CSS):
+        # it grows with the conversation so output accumulates downward. The composer is NOT
+        # inside it — it is DOCKED at the bottom (below), pinned while content grows above.
         with SessionFlow(id="flow"):
-            yield Static(id="issue")               # one quiet status line at the top
+            yield IntroHeader(                     # first impression — scrolls away with content
+                repo=str(self.repo_root),
+                version=__version__,
+                profile=self.context.profile,
+                id="intro",
+            )
+            yield Static(id="issue")               # one quiet status line under the intro
             yield MainPanel(id="main")             # transcript XOR help (height: auto)
             # process event feed (route/submit/generate/…); empty → collapses to 0 rows.
             yield Static(id="livestatus")
@@ -1231,6 +1231,28 @@ class ForgekitConsoleApp(App):
             return
         w.update("\n".join(render.process_feed_lines(self._feed.recent(6))))
 
+    def _flash_mode_switch(self) -> None:
+        """A SHORT transient '▶▶ <mode> mode on' confirmation in the live status zone —
+        NEVER the transcript. Replaces in place and clears after a brief dwell, so cycling
+        Shift+Tab many times leaves the reading log untouched."""
+
+        pol = self._effective_policy
+        if pol is None or not self._feed.empty:
+            return  # a real process feed is active → don't clobber it (issue/hint still update)
+        try:
+            w = self.query_one("#livestatus", Static)
+        except Exception:  # noqa: BLE001 - not mounted yet
+            return
+        w.update(render.mode_switch_flash(pol.mode_label))
+        self._mode_flash = token = object()
+
+        def _restore() -> None:
+            if getattr(self, "_mode_flash", None) is token:
+                self._mode_flash = None
+                self._render_feed()   # idle → collapses to 0 rows; active submit → real feed
+
+        self.set_timer(1.6, _restore)
+
     def _refocus_prompt(self) -> None:
         try:
             self.query_one("#prompt", PromptArea).focus()
@@ -1485,14 +1507,12 @@ class ForgekitConsoleApp(App):
         self._runtime_mode = rm.cycle_mode(self._runtime_mode, direction)
         self._mode_pinned = True  # explicit operator action → auto won't override
         self._recompute_policy()
-        pol = self._effective_policy
-        if pol is not None:
-            self._transcript.write(
-                render.runtime_mode_line(
-                    pol.mode_label, pol.provider_policy_mode, pol.usage.usage_mode,
-                    pol.approval, loop=pol.background_loop,
-                )
-            )
+        # Shift+Tab is an EPHEMERAL mode switch — it must NOT append to the transcript
+        # (that floods the reading log with a mode line on every keypress). The current
+        # mode is shown in the LIVE surfaces that REPLACE in place: the issue line
+        # (`◆ <mode> · routing …`) and the bottom hint (`▶▶ <mode> mode …`). A short
+        # transient "▶▶ <mode> mode on" flash confirms the switch, then clears.
+        self._flash_mode_switch()
         self._refresh_issue()
         self._refresh_chrome()
         self._sync_intro()
@@ -1545,12 +1565,15 @@ class ForgekitConsoleApp(App):
         if show_mode:
             modepill.update(render.mode_pill(self.mode, self.context.agents))
         typing = bool((self._prompt_value() or "").strip())
+        pol = self._effective_policy
+        mode_label = getattr(pol, "mode_label", "") if pol is not None else ""
         self.query_one("#hint", Static).update(
             render.hint_line(
                 palette_open=self._palette.is_open,
                 help_open=self._main.help_open,
                 in_agent=self.mode != MODE_OPERATOR,
                 typing=typing,
+                mode_label=mode_label,   # bottom hint reflects the actual runtime mode (D)
             )
         )
 
