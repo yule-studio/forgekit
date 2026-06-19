@@ -79,6 +79,41 @@ def set_implicit_fallback(cfg: Optional[Mapping], enabled: bool) -> dict:
     return out
 
 
+# --- presets (multi-provider brain templates) -------------------------------
+def preset_four_brain(cfg: Optional[Mapping]) -> dict:
+    """The recommended 4-provider brain: claude(primary/safety/synthesis) + codex(execution)
+    + gemini(default_chat/research live lane) + ollama(cheap compression/classification).
+
+    Honest intent: ``primary_provider`` is the brain head (claude), but the live console
+    transport for free-text follows ``slot_routing.default_chat`` → gemini, with explicit
+    fallback to ollama. claude/codex stay routing/brain participants (no console
+    live-submit). No implicit ollama. Merges over the existing config (idempotent)."""
+
+    out = _clone(cfg)
+    out["primary_provider"] = "claude"
+    out["linked_providers"] = ["claude", "codex", "gemini", "ollama"]
+    out["model_overrides"] = {**(out.get("model_overrides") or {}), "ollama": "gemma3:latest"}
+    out["slot_routing"] = {
+        "default_chat": "gemini", "research": "gemini", "execution": "codex",
+        "compression": "ollama", "classification": "ollama",
+        "safety": "claude", "synthesis": "claude",
+    }
+    out["fallback_policy"] = {
+        "implicit_local_fallback": False,
+        "slot_fallback_orders": {
+            "default_chat": ["gemini", "ollama"], "research": ["gemini", "ollama"],
+            "execution": ["codex", "gemini", "ollama"], "compression": ["ollama"],
+            "classification": ["ollama"], "safety": ["claude", "gemini"],
+            "synthesis": ["claude", "gemini", "ollama"],
+        },
+    }
+    return out
+
+
+# Registry of named presets → builders. Adding a preset here surfaces it everywhere.
+PRESETS = {"four-brain": preset_four_brain}
+
+
 # --- persistence (the only IO; path-injectable) -----------------------------
 def load_raw_config(*, env: Optional[Mapping[str, str]] = None, path: Optional[Path] = None) -> dict:
     p = path or config_path(env)

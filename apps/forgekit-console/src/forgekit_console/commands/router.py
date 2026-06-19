@@ -217,6 +217,9 @@ def _provider_result(parsed) -> CommandResult:
         return CommandResult.info("provider list", ps.provider_list_lines(cfg))
     if sub == "doctor":
         return CommandResult.info("provider doctor", ps.provider_doctor_lines(cfg))
+    if sub == "preset":
+        ok, msg = ps.apply_preset(args[1] if len(args) > 1 else "")
+        return (CommandResult.info if ok else CommandResult.error)("provider preset", msg.split("\n"))
     if sub == "link":
         ok, msg = ps.apply_link(args[1] if len(args) > 1 else "")
         return (CommandResult.info if ok else CommandResult.error)("provider link", (msg,))
