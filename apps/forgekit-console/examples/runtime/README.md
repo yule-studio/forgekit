@@ -3,13 +3,22 @@
 forgekit 가 Claude Code 세션이 아니라 **자체 long-running bounded 데몬**으로 돈다.
 코드 SSoT: `runtime/daemon.py`(serve loop) · `runtime/heartbeat.py`(상태/kill) · `cli/runtime_cmd.py`.
 
-## 명령
+## 명령 (CLI)
 ```
 forgekit runtime serve [--interval 300] [--max-ticks 0] [--repo-root P]   # 장시간 loop 시작
 forgekit runtime once                                                     # 단일 tick
 forgekit runtime status                                                   # heartbeat 상태
 forgekit runtime stop                                                     # kill switch (다음 tick 종료)
 ```
+
+## 콘솔 surface (TUI, WT3)
+CLI 와 같은 heartbeat 파일을 콘솔에서도 본다 — `runtime/surface.py` → `/daemon` 핸들러.
+```
+/daemon          # state(alive/stopped/kill-pending) · status · tick · last_tick · pid · kill-switch
+/daemon stop     # kill-switch SET — 실행 중 serve 는 다음 tick 에 정지
+```
+`/daemon` 은 `forgekit runtime status` 와 **동일한** `runtime-heartbeat.json` 을 읽는다(별도 상태 아님).
+heartbeat 파일이 없으면 정직하게 `stopped` + 시작 hint 를 표시하고, 가짜 liveness 를 만들지 않는다.
 
 ## 무엇이 bounded autonomy 인가 (정직)
 - 각 tick = **관측(repo-local) → 내부 승인 chain(PM→gateway→tech-lead) → safe-class 실제 실행

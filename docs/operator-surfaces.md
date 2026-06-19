@@ -16,6 +16,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | per-provider/model/mode usage breakdown | working | `/usage` | `examples/usage/per-provider-breakdown/` |
 | runtime modes (real routing/budget/approval) | working | `/mode`, Shift+Tab | `examples/runtime-teeth/` |
 | always-on daemon + safe-class autopilot | working (bounded) | `forgekit runtime serve`, `/autopilot` | `examples/runtime/`, `examples/autopilot/` |
+| daemon heartbeat in console (state/tick/pid/kill-switch) | working | `/daemon` · `/daemon stop` | `examples/runtime-daemon/`, `test_runtime_daemon_surface` |
 | agent identity (git author / app status) | working | `/whoami` | `test_identity_attribution` |
 | discovery collectors (free-first) | working; YouTube/IG/Google planned | `/sources` | `examples/sources/` |
 | design restricted source | blocked (real TCC) — honest | `/design` | `examples/design/` |

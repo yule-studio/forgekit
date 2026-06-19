@@ -1,0 +1,36 @@
+forgekit always-on daemon — 콘솔 /daemon 표면이 실제 heartbeat/kill-switch 를 반영
+========================================================================
+
+[1] /daemon — 데몬 미가동 (heartbeat 없음 → stopped, 정직한 start hint)
+  forgekit always-on daemon — stopped
+    status    : stopped · tick 0
+    last tick : -
+    last note : no heartbeat
+    kill-switch: clear
+    (데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 bounded 시작)
+    [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]
+
+[2] 실제 bounded serve 3 tick (no-op sleep) → heartbeat 3회 기록
+  serve result: {'ticks': 3, 'stopped_reason': 'max_ticks(3)', 'waits': 0, 'notified': 0, 'heartbeats': 3, 'executed': 0}
+
+[3] /daemon — serve 가 남긴 실제 heartbeat 를 읽음 (tick/pid/last_tick)
+  forgekit always-on daemon — stopped
+    status    : stopped · tick 3 · pid 4242
+    last tick : 2026-06-19T10:31:53
+    last note : max_ticks(3)
+    kill-switch: clear
+    [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]
+
+[4] /daemon stop — kill-switch SET
+  kill-switch SET — 실행 중인 `forgekit runtime serve` 는 다음 tick 에 정지합니다.
+
+[5] /daemon — kill-pending 상태
+  forgekit always-on daemon — kill-pending
+    status    : stopped · tick 3 · pid 4242
+    last tick : 2026-06-19T10:31:53
+    last note : max_ticks(3)
+    kill-switch: SET — serve 는 다음 tick 에 정지
+    [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]
+
+[6] kill-switch 가 실제로 새 serve loop 를 즉시 정지시킴 (stub 아님)
+  fresh serve(max_ticks=10) → ticks=0, stopped_reason='kill switch'
