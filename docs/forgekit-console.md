@@ -840,3 +840,18 @@ css·callout·color)은 **단일 canonical registry** 가 SSoT —
 ## 7. 관련
 - [`runtime-operator-surfaces.md`](runtime-operator-surfaces.md) (재사용하는 surface) ·
   [`operations.md`](operations.md) · [`monorepo-structure.md`](monorepo-structure.md)
+
+## 프로세스 / 터미널 식별자 (`forgekit` vs `Python`)
+`forgekit` 는 Python console-script 라 실행 PROCESS 자체는 `python`(launcher shebang 인터프리터)이다.
+그래서 **process/executable 로 탭을 라벨링하는 host UI(VS Code 터미널 탭, Activity Monitor)는 `Python`** 으로
+보일 수 있다. 명령 *이름* 은 `forgekit` 이 맞다.
+
+best-effort 로 두 가지를 **분리**해 처리한다 (`forgekit_console/proc_identity.py`, launch 경로에서 호출):
+- **terminal/tab title** — OSC 시퀀스(`ESC ] 0 ; forgekit console BEL`, control char sanitize, **tty 일 때만**).
+  host 탭 제목이 sequence 기반이면 반영, process 기반이면 무시.
+- **process name** — Linux `prctl(PR_SET_NAME)`(`/proc/self/comm`, ≤15자), macOS `setprogname`
+  (`getprogname` 반영 확인됨). 새 의존성 없음(stdlib ctypes; setproctitle 미사용).
+
+**정직한 한계:** 둘 다 커널이 기록한 *executable* 을 바꾸지 않는다. 따라서 **VS Code(특히 macOS)는
+인터프리터 경로를 우선해 여전히 `Python` 으로 표시할 수 있다.** "반드시 forgekit 으로 뜬다" 는 보장 아님 —
+TTY/host 가 지원하는 범위에서의 best-effort. 테스트: `test_proc_identity`.
