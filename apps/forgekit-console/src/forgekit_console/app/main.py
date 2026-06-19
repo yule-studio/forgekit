@@ -84,6 +84,15 @@ def launch_console(*, repo_root: Path, ui_mode: Optional[str] = None) -> int:
             return EXIT_MISSING_TUI
         raise
 
+    # Best-effort process/terminal identity so the console reads as `forgekit`, not the
+    # interpreter (`python`). Honest limits live in proc_identity; never blocks launch.
+    try:
+        from .. import proc_identity
+
+        proc_identity.apply_identity()
+    except Exception:  # noqa: BLE001 - identity is cosmetic; never break launch
+        pass
+
     # Prime textual-image's backend BEFORE Textual starts: its sixel/TGP probe only
     # works while stdin is free, so this is what lets a capable terminal resolve to a
     # true raster instead of halfcell. Best-effort — never blocks launch.
