@@ -1,0 +1,8 @@
+forgekit slash palette — 입력 bar 바로 아래 (실측)
+====================================================
+input-bar: y=21 bottom=24
+palette  : y=24 bottom=27
+palette.top >= input.bottom : True
+gap (palette.top - input.bottom) : 0 rows (flush)
+both in viewport (H=28) : True
+palette parent is Composer (not transcript) : True

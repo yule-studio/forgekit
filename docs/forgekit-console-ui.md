@@ -2,7 +2,7 @@
 
 콘솔 TUI 의 입력/복사/스크롤 동작 SSoT. 코드: `tui/app.py` (layout·copy dispatch),
 `tui/session_flow.py` (scroll owner), `tui/composer.py`·`tui/palette.py` (docked
-composer + 위로 열리는 palette), `tui/transcript_store.py` (copy 모델), `tui/clipboard.py`.
+composer + 입력창 바로 아래 열리는 palette), `tui/transcript_store.py` (copy 모델), `tui/clipboard.py`.
 
 ## 1. Layout — docked composer (단일 세션 흐름)
 ```
@@ -11,11 +11,12 @@ SessionFlow (1fr)  ← 유일한 vertical scroll owner. issue + transcript/help 
   #issue
   #main (transcript XOR help, height auto)
 #livestatus        (thinking→generating 마커)
-Composer           ← 하단 DOCK. palette(위) + 입력 bar + hint.
+Composer           ← 하단 DOCK. 입력 bar + palette(입력 바로 아래) + hint.
 ```
-- 입력 bar 는 **항상 viewport 하단에 고정**(Claude). 짧은 세션에서 중앙에 부유하지 않는다.
-- palette 가 열리면 composer 가 **위로** 자라 SessionFlow(1fr) 가 위로 밀린다 — 입력 bar 는
-  하단 고정, 대화는 그 위로 스크롤. `examples/tui-ux-v2/measurements.txt` [A][C].
+- 입력 bar 는 **항상 viewport 하단 영역에 고정**(Claude). 짧은 세션에서 중앙에 부유하지 않는다.
+- `/` 입력 시 palette 가 **입력 bar 바로 아래**(flush, gap ≈ 0)에 열린다 — composer zone 의
+  일부이며 transcript 가 아니다. 수동 스크롤 없이 즉시 보인다. palette 가 열리면 composer 가
+  자라 SessionFlow(1fr) 가 위로 밀린다(전사 zone 만 줄어듦). 측정: `test_tui_palette_below`.
 
 ## 2. Scroll owner — SessionFlow 단독, gutter 없음
 - `SessionFlow` 만 `allow_vertical_scroll=True`. Transcript/Help/Palette/Composer 는 전부
@@ -52,7 +53,7 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 | --- | --- | --- |
 | 마우스 드래그로 transcript 선택 복사 | ❌ 구조 한계 | alt-screen + mouse capture. `/copy` 로 대체, native 는 Option/Shift+드래그 |
 | 터미널 스크롤백에 세션이 남음 | ❌ 구조 한계 | alt-screen. inline(non-alt-screen) 모드로 가야 함(아래 seam) |
-| 입력창 하단 고정 / palette 위로 / 단일 scroll | ✅ 해결됨 | docked composer + SessionFlow 단독 owner |
+| 입력창 하단 고정 / palette 입력 바로 아래 / 단일 scroll | ✅ 해결됨 | docked composer + SessionFlow 단독 owner |
 
 ### 다음 리팩터링 seam (구조 한계를 넘으려면)
 터미널 native scrollback + 드래그 복사를 원하면 **alternate-screen full-screen → inline 모드**
@@ -108,7 +109,7 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 
 - 선택: `forgekit --inline` / `forgekit --full` / `FORGEKIT_UI_MODE=full|inline|auto`. `auto` 는 **정직히
   full**(터미널 선호 추측 안 함 — inline 은 opt-in).
-- inline 에서도 유지: 입력창 하단 dock · palette 입력창 위 · SessionFlow 단일 owner · `/copy` ·
+- inline 에서도 유지: 입력창 하단 dock · palette 입력창 바로 아래 · SessionFlow 단일 owner · `/copy` ·
   multiline · help view (테스트 `test_tui_inline_mode`).
 
 ### inline 이 truly 닫는 것 vs 남는 것 (정직)
