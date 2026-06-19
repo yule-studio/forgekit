@@ -57,11 +57,11 @@ class ChunkTests(unittest.TestCase):
 
 
 # --------------------------------------------------------------------------- #
-# A + B: palette opens above the input bar; opening reveals the composer
+# A + B: palette opens directly below the input bar; composer stays docked
 # --------------------------------------------------------------------------- #
 @unittest.skipUnless(_TEXTUAL, "textual 필요")
 class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
-    async def test_palette_opens_above_input_bar(self) -> None:
+    async def test_palette_opens_directly_below_input_bar(self) -> None:
         from forgekit_console.tui.palette import CommandPalette
 
         app = _app()
@@ -72,13 +72,14 @@ class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
             pal = app.query_one(CommandPalette).region
             bar = app.query_one("#composer-input-shell").region
             self.assertTrue(app._palette.is_open)
-            self.assertLessEqual(pal.bottom, bar.y + 1)   # palette is ABOVE the bar
+            self.assertGreaterEqual(pal.y, bar.bottom)        # palette is BELOW the bar
+            self.assertLessEqual(pal.y - bar.bottom, 1)       # flush (gap ≈ 0)
 
     async def test_composer_docked_visible_even_while_browsing(self) -> None:
         """Parity hotfix 2: the composer is DOCKED, so the operator NEVER has to scroll
         to see the input/palette. Even after scrolling up to browse a long history,
-        pressing `/` shows the palette above the (still-docked, still-visible) input —
-        no manual scroll-down needed."""
+        pressing `/` shows the palette directly below the (still-docked, still-visible)
+        input — no manual scroll-down needed."""
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
         from forgekit_console.tui.session_flow import SessionFlow
@@ -99,14 +100,14 @@ class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("slash", "h")          # command-entry while scrolled up
             await pilot.pause()
             self.assertGreaterEqual(comp.region.bottom, app.size.height - 1)
-            self.assertLessEqual(
-                app.query_one(CommandPalette).region.bottom,
-                app.query_one("#composer-input-shell").region.y + 1,   # palette above bar
+            self.assertGreaterEqual(
+                app.query_one(CommandPalette).region.y,
+                app.query_one("#composer-input-shell").region.bottom,   # palette below bar
             )
 
-    async def test_reopen_after_close_keeps_palette_above_input(self) -> None:
+    async def test_reopen_after_close_keeps_palette_below_input(self) -> None:
         """close→reopen regression: after Esc-close then reopen, the palette still opens
-        above the docked input (no stuck state)."""
+        directly below the docked input (no stuck state)."""
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
 
@@ -126,9 +127,9 @@ class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             self.assertTrue(app._palette.is_open)
             self.assertGreaterEqual(comp.region.bottom, app.size.height - 1)
-            self.assertLessEqual(
-                app.query_one(CommandPalette).region.bottom,
-                app.query_one("#composer-input-shell").region.y + 1,
+            self.assertGreaterEqual(
+                app.query_one(CommandPalette).region.y,
+                app.query_one("#composer-input-shell").region.bottom,
             )
 
 

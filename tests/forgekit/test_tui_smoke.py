@@ -407,10 +407,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("/help", hint)  # guidance in the hint row (outside the box)
             self.assertIn("palette", hint)
 
-    async def test_slash_palette_opens_above_the_input_bar(self) -> None:
-        """Slash palette is a SEPARATE surface that opens ABOVE the input bar (Claude
-        upward palette) — not inside the input box, not in the transcript, and never
-        pushed below the bar where the operator would have to scroll to it."""
+    async def test_slash_palette_opens_directly_below_the_input_bar(self) -> None:
+        """Slash palette is a SEPARATE surface that opens DIRECTLY BELOW the input bar
+        (Claude) — flush under the input box, inside the bottom-docked composer zone,
+        not inside the transcript, instantly visible without any scroll."""
         from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
@@ -424,10 +424,11 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             composer = app.query_one("#composer", Composer).region
             box = app.query_one("#composer-input-shell").region
             palette = app.query_one("#palette", CommandPalette).region
-            # palette opens ABOVE the input bar (its bottom is at/above the bar top)
-            self.assertLessEqual(palette.bottom, box.y + 1)
-            # still part of the composer wrapper (connected), never in the transcript
-            self.assertGreaterEqual(palette.y, composer.y)
+            # palette opens DIRECTLY BELOW the input bar (flush, gap ≈ 0)
+            self.assertGreaterEqual(palette.y, box.bottom)
+            self.assertLessEqual(palette.y - box.bottom, 1)
+            # part of the composer zone (connected), never in the transcript
+            self.assertLessEqual(palette.bottom, composer.bottom)
             # compact: capped height (MAX_ROWS + header/hint) so it never becomes a giant box
             self.assertLessEqual(palette.height, 11)
 
