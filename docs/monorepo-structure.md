@@ -6,19 +6,27 @@
 
 ## 1. 현재 구조 (달성)
 
+> **packages/* 전체 분류·네이밍·migration matrix 의 SSoT 는 [`package-topology.md`](package-topology.md).**
+> 아래는 4개 책임 군 요약(중복 회피 — 상세/조치/위험도는 topology doc).
+
 ```
-packages/    공용 라이브러리 — apps/* 와 서로가 의존. apps/* 를 import 하지 않는다.
-  agent-contracts/   command/event/status/message/role/task 계약 (stdlib-only)
-  core/              env / timezone / tls / context-loading 유틸 (leaf)
-  storage/           SQLite 캐시 / calendar-state / task-history
-  integrations/      naver calendar / github(gh) 통합  → storage 의존(런타임 단방향)
-  memory/            검색 / 인덱싱 / FTS5 / vault 문서 처리
-  llm-gateway/       LLM 요청 게이트웨이 + token budget + prompt cache (최소 인터페이스)
-  runtime/           circuit_breaker / services / subprocess_supervisor 프리미티브
+packages/    재사용 코어/라이브러리 — apps/* 가 의존. apps/* 를 import 하지 않는다(hard rail).
+  # ForgeKit platform core
+  forgekit-config/    runtime paths + agent identity (forgekit_config)
+  forgekit-contracts/ command-result / work-packet schema (forgekit_contracts)
+  forgekit-provider/  provider routing / usage / policy / chat / brain (forgekit_provider)
+  forgekit-runtime/   bounded loop / daemon / autopilot / lifecycle / notify (forgekit_runtime)
+  # ForgeKit named cores
+  hephaistos/         skill-forge / resolve / loadout / work-packet (+ armory 내부)
+  nexus/              knowledge source read / vault / discovery
+  # shared infra (여러 app 공용)
+  core/ storage/ integrations/ security/ vcs/ llm-gateway/ memory/
+  # transitional / agent-coupled (engineering-agent 산하 추출 infra)
+  agent-contracts/ agent-memory/ agent-runtime/ learning/ runtime(=primitives)/
 
 apps/        실행 단위 — 좁은 책임. packages/* 를 의존. 다른 app 을 직접 import 하지 않는다(목표).
   forgekit-console/  ForgeKit operator app — TUI/CLI/operator surface (forgekit_console)
-                     ⚠ 현재 ForgeKit 코어가 이 앱 안에 혼재 → packages/forgekit-* 로 분리 진행 중
+                     ForgeKit 코어는 packages/forgekit-* + hephaistos/nexus 로 분리됨(console=surface)
   planning-agent/    일정 / 계획 / 브리핑          → 실코드 이전 완료 (yule_planning)
   discord-gateway/   Discord transport / 게이트웨이 → 실코드 이전 완료 (yule_discord)
   engineering-agent/ 개발 intake / 계획 / deliberation / GitHub 연동 → 실코드 보유 (yule_engineering)

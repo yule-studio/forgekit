@@ -21,9 +21,11 @@ the cockpit that *shows and operates* ForgeKit; it is **not** ForgeKit itself.
 sibling **execution apps** under the same umbrella — they share ForgeKit core via `packages/*`,
 they do **not** import each other or live inside the console.
 
-The engine (runtime / provider / config / contracts / Nexus / Hephaistos / Armory) belongs in
-`packages/*`. It currently still sits inside `forgekit_console/`; the WT1–WT4 refactor moves its
-owner out. Owner matrix + import boundary + roadmap:
+The engine (runtime / provider / config / contracts / Nexus / Hephaistos / Armory) lives in
+`packages/*`, beside the **shared-infra** packages (core / storage / integrations / …) used by
+the engineering-agent family. The full package classification — platform core vs named core vs
+shared infra vs transitional, plus where to add new work — is in
+[package-topology.md](package-topology.md); owner matrix + import boundary in
 [forgekit-architecture-ownership.md](forgekit-architecture-ownership.md).
 
 ## Non-goals (now)

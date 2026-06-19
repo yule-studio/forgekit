@@ -23,9 +23,13 @@ ForgeKit is the **platform (umbrella)**. Its engine lives in `packages/*`; the t
 - plus `planning-agent` · `discord-gateway` · `memory-worker` · `loadtest-runner`.
 
 The ForgeKit core — runtime / provider / config / contracts / **Hephaistos** / **Nexus** /
-**Armory** — belongs in `packages/*`. **Today much of it still physically lives inside
-`forgekit_console/`**; a packaging refactor (WT1–WT4) is moving ownership out to `packages/*`
-so every app can share it. Owner matrix + roadmap:
+**Armory** — lives in `packages/*` (extracted out of `forgekit_console/`; the console keeps
+only the operator surface). Alongside the ForgeKit cores, `packages/*` also holds **shared
+infra** (core / storage / integrations / vcs / security / llm-gateway / memory) used by the
+`engineering-agent` family, plus some **transitional** agent packages. The full classification
+(which package is platform core vs named core vs shared infra vs transitional, the naming
+collisions, and where to add a new feature) is in
+[`docs/package-topology.md`](docs/package-topology.md); owner matrix + extraction roadmap in
 [`docs/forgekit-architecture-ownership.md`](docs/forgekit-architecture-ownership.md).
 
 Everything is provider-neutral (Claude / Codex / Gemini / Ollama and any openai-compatible
@@ -130,6 +134,7 @@ Inputs/Connectors → Hephaistos (forge: resolve → packet) → Agents (PM/gate
 | Topic | Doc |
 | --- | --- |
 | Vision / why the split | [docs/vision.md](docs/vision.md) |
+| Package topology (apps vs packages, 분류표, 어디에 추가) | [docs/package-topology.md](docs/package-topology.md) |
 | Hephaistos runtime | [docs/hephaistos-runtime.md](docs/hephaistos-runtime.md) |
 | Nexus read path | [docs/nexus-read-path.md](docs/nexus-read-path.md) |
 | Armory (skills/loadouts) | [docs/armory.md](docs/armory.md) |
