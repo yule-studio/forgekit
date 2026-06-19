@@ -1,11 +1,15 @@
-"""Hephaistos — ForgeKit's skill-forging core.
+"""Forward-compat shim — Hephaistos now lives in ``packages/hephaistos`` (ForgeKit core, WT3).
 
-Reads the request, forges an equip plan (agent + skills + loadout + weapons + Nexus
-source refs + Work Packet draft) from the Armory, and verifies the local loadout. Pure
-core; the console is a projection layer. Nexus is a planned read seam (not_connected).
+Canonical: :mod:`hephaistos`. Aliases the old dotted path (and every submodule:
+``models`` / ``armory`` / ``resolver`` / ``projection`` / ``verifier`` / ``nexus_read`` /
+``nexus_ops``) to the canonical package via ``sys.modules`` (object identity preserved) so
+existing importers keep working. New code imports :mod:`hephaistos` directly. Owner matrix:
+``docs/forgekit-architecture-ownership.md``.
 """
 
-from .resolver import explain_lines, resolve
-from .verifier import readiness_lines, verify_loadout
+from __future__ import annotations
 
-__all__ = ("resolve", "explain_lines", "verify_loadout", "readiness_lines")
+from forgekit_console import _compat
+import hephaistos as _canon
+
+_compat.alias_package(__name__, _canon)
