@@ -5,6 +5,10 @@ under a single home dir so an install is self-contained and removable. Default i
 ``~/.forgekit``; ``FORGEKIT_HOME`` overrides it. Every helper takes an optional
 ``env`` mapping so tests point the whole tree at a tempdir — nothing here ever
 writes; callers create dirs explicitly.
+
+Owner: ``packages/forgekit-config`` (ForgeKit core, WT2). Moved out of
+``forgekit_console.runtime_paths`` — that old path is now a forward-compat shim
+re-exporting this module. See ``docs/forgekit-architecture-ownership.md``.
 """
 
 from __future__ import annotations
