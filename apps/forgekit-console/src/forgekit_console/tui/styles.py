@@ -17,7 +17,10 @@ against the forgekit cyan/magenta-on-black palette instead of textual's defaults
 """
 
 SCREEN_CSS = """
-Screen { layout: vertical; background: $background; }
+/* terminal-native: no painted screen background — the terminal's own bg shows through
+   (inline mode especially), so ForgeKit blends into the existing terminal flow instead
+   of looking like a separate boxed app window. `--full` still renders the same layout. */
+Screen { layout: vertical; background: transparent; }
 
 #issue { height: 1; padding: 0 1; }
 
