@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-vcs"
+version = "0.1.0"
+description = "Shared infra — version-control utilities (GitHub URL parsing, repo write/tag policy contract). Pure stdlib leaf extracted from the engineering-agent core. See docs/package-topology.md."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
