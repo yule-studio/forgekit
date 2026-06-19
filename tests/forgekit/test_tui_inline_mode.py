@@ -101,19 +101,27 @@ class InlineLayoutTests(unittest.IsolatedAsyncioTestCase):
         ctx = ConsoleContext(repo_root=Path("/tmp/repo"), agents=load_agents(), commands=load_commands())
         return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=ctx, inline=inline)
 
-    async def test_inline_bounds_flow_full_uses_1fr(self):
+    async def test_inline_flow_is_content_driven_not_a_fixed_box(self):
         from forgekit_console.tui.session_flow import SessionFlow
         from forgekit_console.tui.header import IntroHeader
         from forgekit_console.tui import intro_state
 
-        # inline → bounded flow + compact intro
+        # inline → CONTENT-DRIVEN flow (compact when empty, grows with content; no 14-cap)
         app = self._app(True)
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             self.assertTrue(app.screen.has_class("-inline"))
-            self.assertEqual(app.query_one(SessionFlow).region.height, 14)   # bounded
-            self.assertEqual(app.query_one(IntroHeader).mode, intro_state.INTRO_COMPACT)  # no hero
-        # full → flow fills (much taller than the inline cap)
+            empty_h = app.query_one(SessionFlow).region.height
+            self.assertLess(empty_h, 14)   # empty session is COMPACT, not a fixed 14-row box
+            self.assertEqual(app.query_one(IntroHeader).mode, intro_state.INTRO_COMPACT)
+            for _ in range(30):
+                app._execute("/status")
+            for _ in range(4):
+                await pilot.pause()
+            grown_h = app.query_one(SessionFlow).region.height
+            self.assertGreater(grown_h, empty_h)   # flow GREW with content (accumulates)
+            self.assertGreater(grown_h, 14)         # blew past the old hard cap
+        # full → flow fills the alt-screen (1fr)
         app2 = self._app(False)
         async with app2.run_test(size=(100, 40)) as pilot:
             await pilot.pause()

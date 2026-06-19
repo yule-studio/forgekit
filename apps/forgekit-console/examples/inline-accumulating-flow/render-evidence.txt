@@ -1,0 +1,42 @@
+ForgeKit inline accumulating-flow — REAL render evidence (Textual pilot, inline mode)
+==================================================================================
+policy: Screen.-inline #flow { height: auto; max-height: 100% }  (was: height: 14)
+        #composer docked at bottom in inline.  screen = 100x30.
+
+[/doctor (long env report)]
+  transcript lines written : 6
+  flow height  empty=2  after=10   (OLD policy would cap at 14)
+  composer     input_y=26 bottom=29 on_screen=True (pinned at bottom)
+  flow scrollable=False  scroll_y=0 max_scroll_y=0
+  → content beyond viewport is REACHABLE via the single SessionFlow scroll (not lost)
+
+[/provider (brain + declared→actual)]
+  transcript lines written : 12
+  flow height  empty=2  after=16   (OLD policy would cap at 14)
+  composer     input_y=26 bottom=29 on_screen=True (pinned at bottom)
+  flow scrollable=False  scroll_y=0 max_scroll_y=0
+  → content beyond viewport is REACHABLE via the single SessionFlow scroll (not lost)
+
+[/usage]
+  transcript lines written : 31
+  flow height  empty=2  after=25   (OLD policy would cap at 14)
+  composer     input_y=26 bottom=29 on_screen=True (pinned at bottom)
+  flow scrollable=True  scroll_y=8 max_scroll_y=8
+  → content beyond viewport is REACHABLE via the single SessionFlow scroll (not lost)
+
+[long multiline paste (35 lines)]
+  transcript lines written : 35
+  flow height  empty=2  after=25   (OLD policy would cap at 14)
+  composer     input_y=26 bottom=29 on_screen=True (pinned at bottom)
+  flow scrollable=True  scroll_y=12 max_scroll_y=12
+  → content beyond viewport is REACHABLE via the single SessionFlow scroll (not lost)
+
+[long assistant response (45 lines)]
+  transcript lines written : 45
+  flow height  empty=2  after=25   (OLD policy would cap at 14)
+  composer     input_y=26 bottom=29 on_screen=True (pinned at bottom)
+  flow scrollable=True  scroll_y=22 max_scroll_y=22
+  → content beyond viewport is REACHABLE via the single SessionFlow scroll (not lost)
+
+Honest limit: flow grows up to the viewport then scrolls (single owner) — NOT yet true
+terminal-native scrollback accumulation. Print-flow seam: tui/transcript_sink.py.

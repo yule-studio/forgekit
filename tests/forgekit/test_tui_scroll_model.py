@@ -58,12 +58,16 @@ class ScrollModelTests(unittest.IsolatedAsyncioTestCase):
                 w = app.query_one(cls)
                 visible_gutter = _gutter(w) > 0 and w.show_vertical_scrollbar
                 self.assertFalse(visible_gutter, f"{cls.__name__} draws a visible gutter (inline={inline})")
-            # content panes never own scroll — only SessionFlow (reading) + input may scroll
+            # content panes never own scroll — only SessionFlow (the reading flow) may.
             self.assertFalse(app.query_one(Transcript).allow_vertical_scroll)
             self.assertFalse(app.query_one(HelpPanel).allow_vertical_scroll)
             self.assertFalse(app.query_one(CommandPalette).allow_vertical_scroll)
             self.assertFalse(app.query_one(Composer).allow_vertical_scroll)
-            self.assertTrue(app.query_one(SessionFlow).allow_vertical_scroll)   # the one owner
+            # SessionFlow is the SOLE scroll-owning container (a VerticalScroll). It is now
+            # content-driven (height auto, max-height 100%), so it only *engages* scroll when
+            # content exceeds the viewport — but it is structurally the one and only owner.
+            from textual.containers import VerticalScroll
+            self.assertIsInstance(app.query_one(SessionFlow), VerticalScroll)
 
     async def test_full_mode_clean(self):
         await self._assert_clean_scroll(False)

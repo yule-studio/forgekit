@@ -29,14 +29,14 @@ def _app(config=None):
 
 @unittest.skipUnless(_TEXTUAL, "textual 필요")
 class PaletteBelowGeometryTests(unittest.IsolatedAsyncioTestCase):
-    async def test_input_inline_near_top_before_slash(self):
+    async def test_input_docked_at_bottom_before_slash(self):
         from forgekit_console.tui.composer import Composer
         app = _app()
         async with app.run_test(size=(100, 28)) as pilot:
             await pilot.pause()
             comp = app.query_one(Composer).region
-            # INLINE: empty session → composer near the TOP, not docked at the bottom
-            self.assertLess(comp.bottom, app.size.height - 2)
+            # the composer is the chat bar pinned at the bottom; the flow grows above it
+            self.assertGreaterEqual(comp.bottom, app.size.height - 1)
 
     async def test_palette_flush_below_input_and_visible(self):
         from forgekit_console.tui.palette import CommandPalette

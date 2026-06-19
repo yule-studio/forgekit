@@ -87,10 +87,11 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # Claude-style idle: the mode pill is hidden (no `● operator` row)
             self.assertFalse(app.query_one("#modepill", Static).display)
 
-    async def test_composer_inline_near_top_when_idle(self) -> None:
-        """Composer is INLINE (Claude): on an EMPTY session the input sits near the TOP
-        (just under the intro/issue) with empty space below — NOT docked at the bottom,
-        NOT floating mid-screen. (Parity correction: reverted the dock.)"""
+    async def test_composer_docked_at_bottom_when_idle(self) -> None:
+        """Composer is DOCKED at the bottom (Claude-Code cadence): the chat bar is pinned
+        to the viewport bottom and the reading flow grows ABOVE it. On an empty session the
+        flow is compact (content-driven) and the composer sits at the bottom — NOT trapped
+        in a fixed bounded box."""
         from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
 
@@ -100,26 +101,27 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             composer = app.query_one("#composer", Composer)
             self.assertTrue(composer.display)
             self.assertTrue(app.query_one("#prompt", PromptArea).display)
-            # empty session → composer near the TOP, empty space BELOW it (not docked)
-            self.assertLess(composer.region.y, app.size.height // 2)
-            self.assertLess(composer.region.bottom, app.size.height - 2)
+            # composer is pinned to the bottom of the viewport (docked)
+            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
 
-    async def test_composer_follows_content_down_as_transcript_grows(self) -> None:
-        """As the transcript grows, the inline composer is pushed DOWN (tail-follow) and
-        stays visible — it does not stay pinned near the top."""
+    async def test_composer_stays_pinned_at_bottom_as_transcript_grows(self) -> None:
+        """As the transcript grows, the reading flow accumulates ABOVE the composer while
+        the composer stays pinned at the viewport bottom — the chat bar never scrolls away
+        (content-driven inline growth is covered by test_tui_inline_mode)."""
         from forgekit_console.tui.composer import Composer
 
         app = self._app(config={"primary_provider": "ollama", "linked_providers": ["ollama"]})
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            short_y = composer.region.y
+            bottom_before = composer.region.bottom
             for _ in range(30):
                 app._execute("/status")
             for _ in range(4):
                 await pilot.pause()
-            # the composer moved DOWN with the content (inline tail-follow), still visible
-            self.assertGreater(composer.region.y, short_y)
+            # the composer stayed pinned at the bottom (still visible), content above it
+            self.assertEqual(composer.region.bottom, bottom_before)
+            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
             self.assertTrue(composer.display)
 
     async def test_help_tabs_first_with_cyan_divider_no_branding(self) -> None:
@@ -294,12 +296,12 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.mode, "operator")
 
     async def test_topdown_order_intro_issue_content_composer_hint(self) -> None:
-        """Geometry smoke: TOP-ALIGNED inline flow intro → issue → main → composer → hint.
+        """Geometry smoke: intro → issue → main (reading flow) → DOCKED composer → hint.
 
         Stands in for an SVG snapshot (the CI sweep runs unittest, not the
-        textual-snapshot pytest plugin): it asserts the y-order of the regions.
-        The composer is INLINE in the top-aligned flow: intro · issue · content ·
-        composer · hint, near the top on an empty session (NOT docked at the bottom).
+        textual-snapshot pytest plugin): it asserts the y-order of the regions. The
+        reading flow stacks top→down; the composer is docked at the bottom (content
+        accumulates above it) with the hint as its foot.
         """
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
@@ -314,15 +316,15 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             log = app.query_one("#main", MainPanel).region
             composer = app.query_one("#composer", Composer).region
             hint = app.query_one("#hint", Static).region
-            # top → down: intro · issue · content · (inline) composer-bar
+            # top → down: intro · issue · content (reading flow) · composer-bar (bottom)
             self.assertLessEqual(intro.y, issue.y)
             self.assertLessEqual(issue.y, log.y)
             self.assertLessEqual(log.bottom, composer.y)
             # the hint is the FOOT of the composer bar (inside it), not a stray line
             self.assertGreaterEqual(hint.y, composer.y)
             self.assertLessEqual(hint.bottom, composer.bottom)
-            # composer is INLINE near the top (empty session) — NOT pinned to the bottom
-            self.assertLess(composer.bottom, app.size.height - 2)
+            # composer is the LAST element, pinned at the bottom of the viewport
+            self.assertGreaterEqual(composer.bottom, app.size.height - 1)
 
     async def test_intro_avatar_renderer_selected(self) -> None:
         from forgekit_console.tui.header import IntroHeader

@@ -83,8 +83,8 @@ class DockedLayoutTests(unittest.IsolatedAsyncioTestCase):
             H = app.size.height
             comp = app.query_one(Composer)
             bar = app.query_one("#composer-input-shell")
-            # INLINE: empty session → composer near the top, NOT docked at the bottom
-            self.assertLess(comp.region.bottom, H - 2)
+            # composer is the chat bar pinned at the bottom; the reading flow grows above it
+            self.assertGreaterEqual(comp.region.bottom, H - 1)
             # open palette → it opens DIRECTLY BELOW the input bar (flush, gap ≈ 0)
             await pilot.press("slash", "h", "e")
             await pilot.pause()
