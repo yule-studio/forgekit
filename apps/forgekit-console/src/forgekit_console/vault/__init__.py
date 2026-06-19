@@ -1,23 +1,14 @@
-"""Vault authorship (WT5) — Obsidian-safe note metadata: who wrote it + handoff phase."""
+"""Forward-compat shim — ``vault`` now lives in ``packages/nexus`` (Nexus core, WT3).
+
+Canonical: :mod:`nexus.vault`. Aliases the old dotted path (and submodules) to the
+canonical package via ``sys.modules`` (object identity preserved) so existing
+importers keep working. New code imports :mod:`nexus.vault` directly. Owner matrix:
+``docs/forgekit-architecture-ownership.md``.
+"""
 
 from __future__ import annotations
 
-from .authorship import (
-    AGENT_IDENTITIES,
-    AgentIdentity,
-    NoteFrontmatter,
-    identity_for,
-    vault_css_snippet,
-)
-from .note import build_authored_note, note_from_handoff, write_note
+from forgekit_console import _compat
+from nexus import vault as _canon
 
-__all__ = (
-    "AGENT_IDENTITIES",
-    "AgentIdentity",
-    "NoteFrontmatter",
-    "identity_for",
-    "vault_css_snippet",
-    "build_authored_note",
-    "note_from_handoff",
-    "write_note",
-)
+_compat.alias_package(__name__, _canon)

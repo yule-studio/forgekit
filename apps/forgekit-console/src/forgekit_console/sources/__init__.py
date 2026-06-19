@@ -1,34 +1,14 @@
-"""Sources (WT2) — vendor-neutral source registry + no-cost-first collectors.
+"""Forward-compat shim — ``sources`` now lives in ``packages/nexus`` (Nexus core, WT3).
 
-Live (free/low): repo-local · Hacker News · Reddit · GitHub · operator RSS.
-Planned (adapter+runbook only, never fake live): YouTube · Instagram · paid Google.
+Canonical: :mod:`nexus.sources`. Aliases the old dotted path (and submodules) to the
+canonical package via ``sys.modules`` (object identity preserved) so existing
+importers keep working. New code imports :mod:`nexus.sources` directly. Owner matrix:
+``docs/forgekit-architecture-ownership.md``.
 """
 
 from __future__ import annotations
 
-from .contract import (
-    COST_FREE,
-    COST_LOW,
-    COST_PAID,
-    STATUS_LIVE,
-    STATUS_PLANNED,
-    SourceItem,
-    SourceSpec,
-)
-from .collectors import (
-    PlannedCollector,
-    RepoLocalCollector,
-    RssCollector,
-    github_collector,
-    hackernews_collector,
-    reddit_collector,
-)
-from .registry import SourceRegistry, default_registry
+from forgekit_console import _compat
+from nexus import sources as _canon
 
-__all__ = (
-    "COST_FREE", "COST_LOW", "COST_PAID", "STATUS_LIVE", "STATUS_PLANNED",
-    "SourceItem", "SourceSpec",
-    "PlannedCollector", "RepoLocalCollector", "RssCollector",
-    "github_collector", "hackernews_collector", "reddit_collector",
-    "SourceRegistry", "default_registry",
-)
+_compat.alias_package(__name__, _canon)

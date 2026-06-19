@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping, Tuple
 
-from ..identity import registry as _idreg
+from forgekit_config.identity import registry as _idreg
 
 
 @dataclass(frozen=True)

@@ -154,7 +154,9 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 | 모듈 | LOC | 책임 | 목표 owner | 상태 |
 | --- | ---: | --- | --- | --- |
 | `hephaistos/` (resolve/equip/forge/models, **minus** nexus_read·armory) | ~900 | request → equip plan **forging core** | `packages/hephaistos` | planned |
-| `hephaistos/nexus_read.py` + `sources/` + `vault/` + `discovery/` + `design/` | ~1700 | knowledge source read/projection/retrieval boundary | `packages/nexus` | planned |
+| `sources/` (collectors/contract/registry) | ~463 | discovery source 카탈로그 (free-first) | `packages/nexus` (`nexus.sources`) | **done** (옛 경로 shim) |
+| `vault/` (authorship/note) | ~253 | Obsidian vault read + authorship | `packages/nexus` (`nexus.vault`) | **done** (옛 경로 shim, vault→`forgekit_config.identity`) |
+| `hephaistos/nexus_read.py` + `discovery/` + `design/` | ~1000 | bounded nexus read / discovery / restricted source | `packages/nexus` | planned (discovery→handoff, design→uiref/selfimprove, nexus_read→hephaistos.models 분리 후) |
 | `hephaistos/armory.py` (+ manifests) | ~500 | skill/loadout/weapon **catalog** | `packages/armory` | planned |
 
 > Hephaistos 는 ForgeKit **내부 코어**이지 slash command 하나가 아니다. Nexus 는 knowledge
@@ -208,6 +210,12 @@ packages/* ──X──▶ apps/*   (역방향 금지, 기존 hard rail 유지)
 > root `pyproject` where 등록 → editable 재설치 → root `tests/` 회귀. runtime/contracts 추출에
 > 동일 적용. 검증: root CI 6571 OK, console 서브셋 766 OK, provider standalone import OK.
 | **WT3** | `hephaistos`(forge core) · `nexus`(sources/vault/discovery/design/nexus_read) · `armory`(catalog) 승격 | 3 package + console 은 projection 만 | resolve/nexus/armory 테스트 green |
+
+> **WT3 진행:** `nexus`(1차) — `sources`(pure leaf) + `vault`(→`forgekit_config.identity` 1줄
+> absolute 화) → `nexus.{sources,vault}`. 옛 경로 `_compat.alias_package` shim. **forgekit-runtime
+> 의 선행조건**: runtime/autopilot/selfimprove 가 `..sources` 를 쓰므로, 이제 `nexus.sources` 를
+> 의존하도록 바꿀 수 있다. 잔여 nexus(`discovery`/`design`/`nexus_read`)는 각각 handoff·uiref/
+> selfimprove·hephaistos.models 분리에 묶여 있어 후속 increment.
 | **WT4** | console 을 surface/TUI/CLI/render 로 축소 · app dependency 방향 최종 점검 · examples/docs/QA | import 방향 검증 스크립트 + evidence | 전체 suite green |
 
 **이동 우선순위(가장 먼저):**
