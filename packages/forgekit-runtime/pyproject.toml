@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgekit-runtime"
+version = "0.1.0"
+description = "ForgeKit runtime core — bounded always-on loop / daemon / approval-notify / lifecycle escalation / autopilot / self-improvement. Operator-gated, never an app import."
+requires-python = ">=3.9"
+dependencies = ["forgekit-config", "forgekit-provider", "forgekit-contracts", "nexus"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

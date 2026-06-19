@@ -1,19 +1,13 @@
-"""Self-improvement (WT4) — repo gaps → risk-classified improvement packets (bounded)."""
+"""Forward-compat shim — ``selfimprove`` now lives in ``packages/forgekit-runtime`` (WT2).
+
+Canonical: :mod:`forgekit_runtime.selfimprove`. Aliases the old dotted path (and submodules) to
+the canonical package via ``sys.modules`` (object identity preserved). New code imports
+:mod:`forgekit_runtime.selfimprove` directly. Owner matrix: ``docs/forgekit-architecture-ownership.md``.
+"""
 
 from __future__ import annotations
 
-from .packet import (
-    RISK_BLOCKED,
-    RISK_RISKY,
-    RISK_SAFE,
-    RepoImprovementPacket,
-    classify_risk,
-    make_packet,
-)
-from .loop import SelfImprovementResult, route_packet, run_self_improvement
+from forgekit_console import _compat
+from forgekit_runtime import selfimprove as _canon
 
-__all__ = (
-    "RISK_SAFE", "RISK_RISKY", "RISK_BLOCKED",
-    "RepoImprovementPacket", "classify_risk", "make_packet",
-    "SelfImprovementResult", "run_self_improvement", "route_packet",
-)
+_compat.alias_package(__name__, _canon)

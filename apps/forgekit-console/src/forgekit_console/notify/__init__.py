@@ -1,31 +1,13 @@
-"""Operator notifications (WT4) — desktop (macOS/Windows) + inbox, one event.
+"""Forward-compat shim — ``notify`` now lives in ``packages/forgekit-runtime`` (WT2).
 
-Python-first cross-platform desktop notification, mapped to the approval-matrix
-request types, tracked alongside the durable operator inbox.
+Canonical: :mod:`forgekit_runtime.notify`. Aliases the old dotted path (and submodules) to
+the canonical package via ``sys.modules`` (object identity preserved). New code imports
+:mod:`forgekit_runtime.notify` directly. Owner matrix: ``docs/forgekit-architecture-ownership.md``.
 """
 
 from __future__ import annotations
 
-from .desktop import detect_platform, build_command, dispatch
-from .events import (
-    EVENT_ACCESS_REQUIRED,
-    EVENT_APPROVAL_REQUIRED,
-    EVENT_DECISION_REQUIRED,
-    EVENT_DOCTOR_CRITICAL,
-    EVENT_INFO_REQUIRED,
-    EVENT_REPEATED_FAILURE,
-    EVENT_RUNTIME_BLOCKED,
-    EVENT_SECRET_REQUIRED,
-    NotificationEvent,
-    request_type_for,
-)
-from .service import NotificationOutcome, NotificationService
+from forgekit_console import _compat
+from forgekit_runtime import notify as _canon
 
-__all__ = (
-    "EVENT_APPROVAL_REQUIRED", "EVENT_DECISION_REQUIRED", "EVENT_INFO_REQUIRED",
-    "EVENT_ACCESS_REQUIRED", "EVENT_SECRET_REQUIRED", "EVENT_REPEATED_FAILURE",
-    "EVENT_DOCTOR_CRITICAL", "EVENT_RUNTIME_BLOCKED",
-    "NotificationEvent", "request_type_for",
-    "NotificationService", "NotificationOutcome",
-    "detect_platform", "build_command", "dispatch",
-)
+_compat.alias_package(__name__, _canon)

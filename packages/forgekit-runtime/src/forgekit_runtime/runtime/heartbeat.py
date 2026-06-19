@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
 
-from ..runtime_paths import state_dir
+from forgekit_config.paths import state_dir
 
 STATUS_RUNNING = "running"
 STATUS_IDLE = "idle"

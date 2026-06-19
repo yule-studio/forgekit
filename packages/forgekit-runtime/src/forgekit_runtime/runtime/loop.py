@@ -20,9 +20,22 @@ thread — so it is unit-testable and an operator can see exactly what it did.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from . import runbook as rb
+
+# Handoff seam (WT2 boundary): the intake→packet bridge (``handoff.run_handoff``) lives
+# in the operator app, not in this core package. The app (forgekit-console) injects it
+# via ``register_handoff_runner`` so this package never imports an app (packages → apps
+# hard rail). A loop may also take a per-instance ``handoff_runner``.
+_handoff_runner: Optional[Callable] = None
+
+
+def register_handoff_runner(fn: Optional[Callable]) -> None:
+    """Register the process-wide handoff runner (called by the operator app)."""
+
+    global _handoff_runner
+    _handoff_runner = fn
 
 # phases (the only things the loop may do — note: no EXECUTE phase exists) --------
 PHASE_OBSERVE = "observe"
@@ -104,6 +117,8 @@ class BoundedRuntimeLoop:
     autonomy: str = AUTONOMY_BOUNDED
     max_iterations: int = 10
     escalator: Optional[object] = None
+    # injected intake→packet bridge; falls back to the process-wide registered runner.
+    handoff_runner: Optional[Callable] = None
 
     def run(self, findings: Sequence[Finding]) -> LoopResult:
         result = LoopResult()
@@ -152,9 +167,14 @@ class BoundedRuntimeLoop:
         return result
 
     def _packetize(self, finding: Finding):
-        from ..handoff import run_handoff  # lazy → reuse WT2
-
-        return run_handoff(finding.description, project=finding.project)
+        runner = self.handoff_runner or _handoff_runner
+        if runner is None:
+            raise RuntimeError(
+                "handoff runner not configured — the operator app must call "
+                "forgekit_runtime.runtime.loop.register_handoff_runner(...) "
+                "(or pass handoff_runner=) before running a bounded loop."
+            )
+        return runner(finding.description, project=finding.project)
 
     def _record_blocked(self, finding: Finding) -> None:
         if self.escalator is None:
@@ -193,4 +213,5 @@ __all__ = (
     "AUTONOMY_OBSERVE", "AUTONOMY_BOUNDED",
     "CAT_PRODUCT", "CAT_DESIGN", "CAT_OPS", "CAT_INFRA",
     "Finding", "LoopStep", "LoopResult", "BoundedRuntimeLoop",
+    "register_handoff_runner",
 )

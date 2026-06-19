@@ -1,21 +1,13 @@
-"""Red/blue security mode (WT5) — own-assets-only, plan-first, approval-gated."""
+"""Forward-compat shim — ``security`` now lives in ``packages/forgekit-runtime`` (WT2).
+
+Canonical: :mod:`forgekit_runtime.security`. Aliases the old dotted path (and submodules) to
+the canonical package via ``sys.modules`` (object identity preserved). New code imports
+:mod:`forgekit_runtime.security` directly. Owner matrix: ``docs/forgekit-architecture-ownership.md``.
+"""
 
 from __future__ import annotations
 
-from .contract import (
-    DRILL_APPROVED_ACTIVE,
-    DRILL_BLOCKED,
-    DRILL_PLAN_ONLY,
-    AttackPlan,
-    DefenseRunbook,
-    FindingsDigest,
-    SecurityDrillPacket,
-    TargetSpec,
-)
-from .drill import build_drill, k3s_isolation_runbook, resolve_target, synthesize_purple
+from forgekit_console import _compat
+from forgekit_runtime import security as _canon
 
-__all__ = (
-    "DRILL_PLAN_ONLY", "DRILL_BLOCKED", "DRILL_APPROVED_ACTIVE",
-    "TargetSpec", "AttackPlan", "DefenseRunbook", "FindingsDigest", "SecurityDrillPacket",
-    "build_drill", "resolve_target", "synthesize_purple", "k3s_isolation_runbook",
-)
+_compat.alias_package(__name__, _canon)
