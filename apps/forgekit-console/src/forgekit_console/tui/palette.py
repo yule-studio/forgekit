@@ -1,10 +1,11 @@
-"""Command palette — a compact slash-command surface BELOW the composer bar.
+"""Command palette — a compact slash-command surface ABOVE the composer bar.
 
-A SEPARATE surface, not a popup box and NOT part of the input text box: it is a
-sibling rendered just under the :class:`tui.composer.Composer` bar, connected by a
-thin left accent rule, that filters as you type a slash. It is ``height: auto`` so
-a few matches stay small, with a ``max-height`` cap + scroll so a long list never
-swells into a giant boxed area. It owns no logic — the app drives it via
+A SEPARATE surface, not a popup box and NOT part of the input text box: it is the
+FIRST child of the :class:`tui.composer.Composer`, so it renders directly ABOVE the
+input bar (Claude-style upward palette). It filters as you type a slash. It is
+``height: auto`` and **caps the rows it renders** (``MAX_ROWS``) so a long match
+list never grows an inner scrollbar — the enclosing :class:`tui.session_flow.SessionFlow`
+stays the single scroll owner. It owns no logic — the app drives it via
 :meth:`show` / :meth:`hide` from a pure :class:`PaletteState`.
 """
 
@@ -15,21 +16,24 @@ from textual.widgets import Static
 from ..commands.palette import PaletteState
 from . import render
 
+# Cap the rows so the palette never needs its own scroll (single-scroll-owner rule).
+# A few more matches than this just show a "+N more — keep typing" hint instead.
+MAX_ROWS = 8
+
 
 class CommandPalette(Static):
-    """Compact slash-command list, a SEPARATE surface below the composer bar."""
+    """Compact slash-command list, a SEPARATE surface ABOVE the composer bar."""
 
     DEFAULT_CSS = """
     CommandPalette {
         display: none;
-        /* a FLAT list (Claude): no left rule / side bar — rows are separated by
-           whitespace + alignment only. auto-height so few matches stay small;
-           capped + scroll so a long list never becomes a giant box. */
+        /* a FLAT list (Claude): no left rule / side bar — rows separated by
+           whitespace + alignment only. auto-height; rows are CAPPED in show() so
+           it never needs an inner scrollbar (SessionFlow owns scroll). */
         height: auto;
-        max-height: 8;
-        overflow-y: auto;
-        scrollbar-size-vertical: 1;
-        padding: 0 1;
+        overflow-y: hidden;
+        scrollbar-size-vertical: 0;
+        padding: 0 1 1 1;   /* a blank line under the list separates it from the bar */
         color: $text;
         background: $background;
     }
@@ -38,10 +42,14 @@ class CommandPalette(Static):
 
     def show(self, state: PaletteState) -> None:
         count = len(state.matches)
-        # one quiet header line, then the candidate rows — flat, no side rule/marker.
-        header = f"[dim]{count} commands · Tab · ↑/↓ · Esc[/dim]"
-        body = render.palette_panel_lines(state.matches, state.index)
-        self.update("\n".join((header, *body)))
+        # Keep the SELECTED row in the visible window even when matches exceed the cap,
+        # so cycling never scrolls a row out of sight (no inner scroll, window slides).
+        matches, base, hidden = _window(state.matches, state.index, MAX_ROWS)
+        rows = render.palette_panel_lines(matches, state.index - base)
+        head = f"[dim]{count} commands · Tab/↑↓ 선택 · Enter 실행 · Esc 닫기[/dim]"
+        more = (f"[dim]  … +{hidden} more — 계속 입력해 좁히기[/dim]",) if hidden else ()
+        # header on top (furthest from the bar), candidates below it nearest the input.
+        self.update("\n".join((head, *rows, *more)))
         self.add_class("-open")
 
     def hide(self) -> None:
@@ -49,4 +57,15 @@ class CommandPalette(Static):
         self.update("")
 
 
-__all__ = ("CommandPalette",)
+def _window(matches, index: int, cap: int):
+    """Return (visible_matches, base_offset, hidden_count) — a cap-sized window that
+    always contains ``index``. Pure; keeps the selected row visible without scroll."""
+
+    total = len(matches)
+    if total <= cap:
+        return matches, 0, 0
+    base = 0 if index < 0 else min(max(0, index - cap + 1), total - cap)
+    return matches[base : base + cap], base, total - cap
+
+
+__all__ = ("CommandPalette", "MAX_ROWS")

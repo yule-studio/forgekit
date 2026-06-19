@@ -27,6 +27,7 @@ KEY_HINTS: Tuple[Tuple[str, str], ...] = (
     ("Shift+Tab", "previous"),
     ("↑/↓", "cycle candidates"),
     ("Enter", "run"),
+    ("^J", "newline (multiline)"),
     ("Esc", "close palette / exit agent"),
     ("F1", "help"),
     ("^L", "clear"),

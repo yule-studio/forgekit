@@ -6,14 +6,14 @@ top→down. ``/help`` is NOT rendered here — it is a separate view
 switches to, so opening or switching help never appends anything to this log. The
 inline composer follows this content the whole time.
 
-Layout note: the log is ``height: auto`` (it grows with its content) so a short
-session leaves the composer near the top with empty space below — the
-session-following inline feel. It is capped by a ``max-height`` so a very long
-session scrolls instead of unbounded growth; the enclosing
-:class:`tui.session_flow.SessionFlow` scroll keeps the newest line + the composer
-in view.
+Layout note (scroll ownership): the log is ``height: auto`` (grows with its content)
+and ``overflow-y: hidden`` so it NEVER owns its own vertical scroll. The single scroll
+owner is the enclosing :class:`tui.session_flow.SessionFlow` (``1fr``) — the whole
+session moves as one flow (Claude-Code feel), not a nested inner box. The composer
+follows this content; ``SessionFlow.follow_tail`` keeps the newest line + composer in
+view.
 
-This is a thin :class:`RichLog` wrapper; it owns no help/view state anymore.
+This is a thin :class:`RichLog` wrapper; it owns no help/view/scroll state anymore.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from typing import Sequence
 
 from textual.widgets import RichLog
 
-from . import render
+from . import render, theme
 
 
 class Transcript(RichLog):
@@ -32,7 +32,8 @@ class Transcript(RichLog):
     Transcript {
         width: 1fr;
         height: auto;
-        max-height: 80vh;
+        overflow-y: hidden;
+        scrollbar-size-vertical: 0;
         padding: 0 1;
     }
     """
@@ -41,17 +42,35 @@ class Transcript(RichLog):
         kwargs.setdefault("markup", True)
         kwargs.setdefault("wrap", True)
         kwargs.setdefault("highlight", False)
-        kwargs.setdefault("auto_scroll", True)
+        # NOT auto_scroll: the Transcript no longer owns scroll — SessionFlow does.
+        kwargs.setdefault("auto_scroll", False)
         super().__init__(**kwargs)
 
     def write_lines(self, lines: Sequence[str]) -> None:
         for line in lines:
             self.write(line)
 
-    def write_echo(self, raw: str) -> None:
-        """Echo the submitted input as a quiet transcript turn."""
+    def begin_turn(self) -> None:
+        """Insert a blank separator before a NEW turn (only when content exists).
 
-        self.write(f"[dim]›[/dim] {raw}")
+        Gives each user→response turn vertical breathing room so the session reads as
+        a stack of turns (Claude cadence), not a wall of tightly-packed lines.
+        """
+
+        if self.lines:
+            self.write("")
+
+    def write_echo(self, raw: str) -> None:
+        """Echo the submitted input as a quiet transcript turn.
+
+        The first line carries the accent ``›`` marker; continuation lines of a
+        multiline prompt are indented under it so a pasted block reads as one turn.
+        """
+
+        head, *rest = (raw or "").split("\n")
+        self.write(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}] {head}")
+        for line in rest:
+            self.write(f"  [dim]{line}[/dim]")
 
     def write_result(self, title: str, lines: Sequence[str]) -> None:
         self.write_lines(render.result_block(title, lines))
