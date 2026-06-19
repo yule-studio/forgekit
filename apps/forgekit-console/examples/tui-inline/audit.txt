@@ -1,0 +1,23 @@
+forgekit UI 모드 audit — full(alt-screen) vs inline(terminal-flow)
+====================================================================
+
+[감사] Textual 8.2.7 드라이버 실측
+  LinuxDriver(full)        alt-screen(?1049h) 진입: True
+  LinuxInlineDriver(inline) alt-screen 진입: False  → inline 은 alt-screen 미사용
+  inline driver mouse gate: _enable_mouse_support 가 self._mouse 로 gated → mouse=False 시 미캡처
+
+[모드 → run kwargs]
+  full   : App.run()                                    → {}
+  inline : App.run(inline=True,inline_no_clear=True,mouse=False) → {'inline': True, 'inline_no_clear': True, 'mouse': False}
+  resolve: --inline>inline · env inline>inline · auto>full(정직: full) · default>full
+
+[레이아웃 실측 (pilot, size 96x40)]
+  full  : screen.-inline=False · flow.height=26 · intro=compact · scroll_owner=False
+  inline: screen.-inline=True · flow.height=14 · intro=compact · scroll_owner=False
+
+[정직한 경계]
+  - inline 의 실제 TTY 렌더(native scrollback 누적/드래그 선택)는 real terminal 에서만 — headless
+    harness 로 자동 검증 불가. run kwargs/driver 사실/레이아웃은 위처럼 검증.
+  - inline = bounded region(no alt-screen)+mouse off → terminal native 선택/scrollback 친화.
+    단, live transcript 는 여전히 앱 영역 내 스크롤(줄단위 native scrollback 누적은 print-based
+    아키텍처 필요 — 다음 seam).

@@ -93,3 +93,35 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 
 증거: `examples/tui-paste/ingestion.txt`, `examples/tui-attach/staging.txt`,
 테스트 `test_tui_ingest_attach`.
+
+## 6. Inline UI mode (alt-screen → terminal-flow)
+§4 의 두 한계(드래그 선택 불가 / native scrollback 없음)는 **alternate-screen + mouse capture**
+때문이었다. **감사(실측)로 확인:** Textual 8.2.7 의 `LinuxDriver`(기본)는 `\x1b[?1049h`(alt-screen)을
+쓰지만, **`LinuxInlineDriver`(inline)는 alt-screen 을 쓰지 않고** mouse 도 `self._mouse` 로 gated.
+→ inline 모드는 구조적으로 두 한계를 완화한다. 코드: `tui/ui_mode.py`, `app/main.py`, `tui/app.py`
+(`inline` flag), `tui/styles.py`(`.-inline`).
+
+| 모드 | 실행 | alt-screen | mouse | scrollback/선택 | 레이아웃 |
+| --- | --- | --- | --- | --- | --- |
+| **full** (기본) | `App.run()` | 사용(`?1049h`) | 캡처 | 앱 소유 | full-screen, flow 1fr |
+| **inline** | `App.run(inline=True, inline_no_clear=True, mouse=False)` | **미사용** | **미캡처** | **터미널 native** | bounded(`#flow height:14`)+compact intro |
+
+- 선택: `forgekit --inline` / `forgekit --full` / `FORGEKIT_UI_MODE=full|inline|auto`. `auto` 는 **정직히
+  full**(터미널 선호 추측 안 함 — inline 은 opt-in).
+- inline 에서도 유지: 입력창 하단 dock · palette 입력창 위 · SessionFlow 단일 owner · `/copy` ·
+  multiline · help view (테스트 `test_tui_inline_mode`).
+
+### inline 이 truly 닫는 것 vs 남는 것 (정직)
+- ✅ **alt-screen 미사용** — 실행 시 터미널 history 안 지워지고, 종료 시(`inline_no_clear`) 최종 프레임이
+  scrollback 에 남는다. (driver 실측: `examples/tui-inline/audit.txt`)
+- ✅ **mouse=False** — 터미널이 드래그 선택/복사를 직접 처리(앱이 마우스 안 가로챔).
+- ✅ **bounded inline block** — full-screen 점유가 아니라 터미널의 일부를 쓰는 inline 도구로 읽힘.
+- ⚠️ **live transcript 의 줄단위 native scrollback 누적은 아직** — Textual inline 은 앱 영역을 in-place
+  로 재렌더하므로, 완료된 turn 을 한 줄씩 터미널 scrollback 으로 **print** 하려면 print-based 아키텍처
+  (앱 위젯이 아니라 stdout 출력 + 최소 prompt region)가 필요하다. 이는 다음 리팩터 seam — 구조적으로
+  unavoidable 은 아니나 별도 작업.
+- ⚠️ **headless 한계** — 실제 TTY inline 렌더(누적/선택)는 real terminal 에서만 — 자동 harness 로는
+  run kwargs/driver 사실/레이아웃까지만 검증(정직).
+
+증거: `examples/tui-inline/` (idle/slash SVG + audit.txt), `examples/tui-full/` (idle/slash SVG),
+테스트 `test_tui_inline_mode`.
