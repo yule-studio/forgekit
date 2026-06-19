@@ -126,7 +126,7 @@ class CopyCommandPilotTests(unittest.IsolatedAsyncioTestCase):
         app = _app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            app._last_response = "the answer is 42"
+            app._store.add_response("the answer is 42")
             seen = {}
 
             def _fake_copy(text):
@@ -136,7 +136,7 @@ class CopyCommandPilotTests(unittest.IsolatedAsyncioTestCase):
             orig = clipboard.copy_text
             clipboard.copy_text = _fake_copy
             try:
-                app._copy_last()
+                app._copy_dispatch([])   # /copy → last response
             finally:
                 clipboard.copy_text = orig
             await pilot.pause()
@@ -149,8 +149,7 @@ class CopyCommandPilotTests(unittest.IsolatedAsyncioTestCase):
         app = _app()
         async with app.run_test() as pilot:
             await pilot.pause()
-            app._last_response = ""
-            app._copy_last()   # must not crash; surfaces "복사할 최근 응답이 없습니다"
+            app._copy_dispatch([])   # empty store → must not crash; surfaces 실패
             await pilot.pause()
 
     async def test_attach_is_honest_blocked_not_fake_upload(self) -> None:
