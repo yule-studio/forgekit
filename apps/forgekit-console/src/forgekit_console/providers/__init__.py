@@ -1,33 +1,18 @@
-"""Forgekit provider layer — the vendor-neutral provider contract + registry.
+"""Forward-compat shim — ``providers`` now lives in ``packages/forgekit-provider``.
 
-``contract`` holds the fixed ``ProviderSpec`` shape every provider conforms to,
-``builtins`` declares the four shipped providers, ``registry`` builds specs from
-generic config (the enterprise / internal seam). Pure data + validation; no live
-submit lives here.
+Canonical: :mod:`forgekit_provider.providers`. This shim aliases the old dotted path
+(and every submodule) to the canonical package via ``sys.modules``, preserving
+object identity so existing importers/tests keep working:
+
+    from forgekit_console.providers import X        # → forgekit_provider.providers.X (same object)
+
+New code should import :mod:`forgekit_provider.providers` directly. Owner matrix:
+``docs/forgekit-architecture-ownership.md``.
 """
 
 from __future__ import annotations
 
-from .builtins import BUILTIN_IDS, BUILTIN_PROVIDERS, builtin, is_builtin
-from .contract import ProviderSpec, validate_provider_spec
-from .registry import (
-    ALL_SHAPES,
-    ProviderConfigError,
-    build_provider,
-    no_provider_configured,
-    validate_config,
-)
+from forgekit_console import _compat
+from forgekit_provider import providers as _canon
 
-__all__ = (
-    "ProviderSpec",
-    "validate_provider_spec",
-    "BUILTIN_PROVIDERS",
-    "BUILTIN_IDS",
-    "builtin",
-    "is_builtin",
-    "build_provider",
-    "validate_config",
-    "no_provider_configured",
-    "ProviderConfigError",
-    "ALL_SHAPES",
-)
+_compat.alias_package(__name__, _canon)

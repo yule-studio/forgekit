@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping, Optional
 
-from .. import runtime_paths
+from forgekit_config import paths as runtime_paths
 from . import pack as pack_mod
 from . import personal as personal_mod
 from .models import PackManifest

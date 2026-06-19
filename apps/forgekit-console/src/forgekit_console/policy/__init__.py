@@ -1,42 +1,18 @@
-"""Forgekit policy layer — provider slot resolution / main-provider defaults / usage.
+"""Forward-compat shim — ``policy`` now lives in ``packages/forgekit-provider``.
 
-``provider_policy`` resolves which provider fills each agent slot under a mode
-(strict-single / hybrid / optimized); ``main_profile`` derives setup defaults from
-the chosen main provider; ``usage_policy`` is the adaptive usage/budget posture
-(modes + reserve). Pure rules over the provider contract — no live submit.
+Canonical: :mod:`forgekit_provider.policy`. This shim aliases the old dotted path
+(and every submodule) to the canonical package via ``sys.modules``, preserving
+object identity so existing importers/tests keep working:
+
+    from forgekit_console.policy import X        # → forgekit_provider.policy.X (same object)
+
+New code should import :mod:`forgekit_provider.policy` directly. Owner matrix:
+``docs/forgekit-architecture-ownership.md``.
 """
 
 from __future__ import annotations
 
-from .main_profile import MainProviderProfile, profile_for
-from .provider_policy import (
-    ALL_POLICIES,
-    ALL_SLOTS,
-    POLICY_HYBRID,
-    POLICY_OPTIMIZED,
-    POLICY_STRICT_SINGLE,
-    resolve_slots,
-)
-from .usage_policy import (
-    ALL_BILLING_MODES,
-    ALL_USAGE_MODES,
-    UsagePolicy,
-    default_usage_policy,
-    should_throttle,
-)
+from forgekit_console import _compat
+from forgekit_provider import policy as _canon
 
-__all__ = (
-    "resolve_slots",
-    "POLICY_STRICT_SINGLE",
-    "POLICY_HYBRID",
-    "POLICY_OPTIMIZED",
-    "ALL_POLICIES",
-    "ALL_SLOTS",
-    "MainProviderProfile",
-    "profile_for",
-    "UsagePolicy",
-    "default_usage_policy",
-    "should_throttle",
-    "ALL_USAGE_MODES",
-    "ALL_BILLING_MODES",
-)
+_compat.alias_package(__name__, _canon)

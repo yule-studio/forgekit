@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgekit-provider"
+version = "0.1.0"
+description = "ForgeKit provider core — provider/model routing, usage gate, policy, submit service and brain construction. Pure, stdlib-first, shared by every ForgeKit app."
+requires-python = ">=3.9"
+dependencies = ["forgekit-config"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
