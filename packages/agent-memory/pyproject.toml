@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yule-agent-memory"
 version = "0.1.0"
-description = "에이전트 long-term memory (relevance/topic-index)."
+description = "Transitional (engineering-agent) — agent long-term memory (relevance/topic-index). NOT the yule_memory SQLite/FTS5 search index. See docs/package-topology.md."
 requires-python = ">=3.9"
 dependencies = []
 

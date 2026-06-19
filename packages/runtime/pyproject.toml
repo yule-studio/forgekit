@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yule-runtime"
 version = "0.1.0"
-description = "Cleanly-movable runtime primitives (circuit breaker, service manifest, subprocess supervisor) for the Yule Studio agent platform."
+description = "Shared infra — runtime PRIMITIVES (circuit breaker, service manifest, subprocess supervisor). NOT the forgekit-runtime exec loop nor the agent-runtime decide/recall loop (3x runtime naming) — rename candidate. See docs/package-topology.md."
 requires-python = ">=3.9"
 dependencies = []
 

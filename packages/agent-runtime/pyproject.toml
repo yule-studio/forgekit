@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yule-agent-runtime"
 version = "0.1.0"
-description = "에이전트 runtime 루프 (decide/recall/understand)."
+description = "Transitional (engineering-agent) — agent runtime loop: decide/recall/understand. NOT forgekit-runtime nor the yule_runtime primitives. See docs/package-topology.md."
 requires-python = ">=3.9"
 dependencies = []
 

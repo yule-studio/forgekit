@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yule-agent-contracts"
 version = "0.1.0"
-description = "Shared agent contracts (commands, events, status, messages) for the Yule Studio agent platform."
+description = "Transitional (engineering-agent) — AGENT-to-AGENT contracts (commands/events/status/messages). NOT forgekit-contracts (operator command-result/work-packet). See docs/package-topology.md."
 requires-python = ">=3.9"
 # Standard-library only by design — contracts must not pull in app deps.
 dependencies = []
