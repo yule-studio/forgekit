@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Tuple
+from typing import Callable, Mapping, Tuple
 
 from ..models import (
     KIND_AGENT_MODE,
@@ -38,6 +38,7 @@ from .registry import (
     H_LOADOUT,
     H_PROVIDER,
     H_NEXUS,
+    H_DAEMON,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -58,7 +59,13 @@ def _unavailable(title: str) -> StatusSummary:
 
 @dataclass
 class ConsoleContext:
-    """Everything the router needs — registries + zero-arg status loaders."""
+    """Everything the router needs — registries + zero-arg status loaders.
+
+    ``env`` / ``config`` / ``nexus_role`` are threaded into the Hephaistos + Nexus
+    surfaces so ``/nexus`` · ``/resolve`` · ``/hephaistos`` read the LIVE Nexus root
+    (``FORGEKIT_NEXUS_ROOT`` env or ``config['nexus_root']``) instead of a static
+    not_connected. ``nexus_role`` gates restricted-source raw vs projection_only.
+    """
 
     repo_root: Path
     agent_id: str = "engineering-agent"
@@ -68,20 +75,32 @@ class ConsoleContext:
     load_operator: StatusLoader = lambda: _unavailable("operator dashboard")
     load_runtime: StatusLoader = lambda: _unavailable("runtime status")
     load_doctor: StatusLoader = lambda: _unavailable("doctor")
+    env: Mapping = field(default_factory=dict)
+    config: Mapping = field(default_factory=dict)
+    nexus_role: str = ""
 
 
 def build_default_context(repo_root: Path, *, agent_id: str = "engineering-agent") -> ConsoleContext:
-    """Bind the real best-effort loaders to *repo_root*."""
+    """Bind the real best-effort loaders to *repo_root* + the live env/config (for Nexus)."""
 
+    import os
+
+    from ..chat.service import load_config
     from ..data import status_loader as sl
 
     root = Path(repo_root)
+    env = dict(os.environ)
+    config = load_config(env)
     return ConsoleContext(
         repo_root=root,
         agent_id=agent_id,
         load_operator=lambda: sl.load_operator_summary(root),
         load_runtime=lambda: sl.load_runtime_summary(root),
         load_doctor=lambda: sl.load_doctor_summary(root, agent_id),
+        env=env,
+        config=config,
+        # operator may grant a restricted role for raw Nexus reads (else projection_only).
+        nexus_role=str(env.get("FORGEKIT_NEXUS_ROLE", "") or "").strip(),
     )
 
 
@@ -150,12 +169,13 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     if handler == H_WHOAMI:
         return _whoami_result(parsed)
     if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
-        return _hephaistos_result(handler, parsed)
+        return _hephaistos_result(handler, parsed, ctx)
     if handler == H_PROVIDER:
         return _provider_result(parsed)
     if handler == H_NEXUS:
-        from ..hephaistos import projection as _proj
-        return CommandResult.info("nexus", _proj.nexus_surface_lines())
+        return _nexus_result(parsed, ctx)
+    if handler == H_DAEMON:
+        return _daemon_result(parsed, ctx)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -215,21 +235,56 @@ def _provider_result(parsed) -> CommandResult:
     return CommandResult.info("provider", ps.provider_status_lines(cfg))
 
 
-def _hephaistos_result(handler, parsed) -> CommandResult:
+def _nexus_result(parsed, ctx) -> CommandResult:
+    # /nexus [set <path> | clear] — operator-driven connect, else live status.
+    from ..hephaistos import nexus_ops as nops
+    from ..hephaistos import projection as _proj
+
+    args = list(getattr(parsed, "args", ()) or ())
+    sub = args[0].lower() if args else ""
+    env = getattr(ctx, "env", None) or None
+    if sub == "set":
+        ok, msg = nops.apply_set_root(args[1] if len(args) > 1 else "", env=env)
+        return (CommandResult.info if ok else CommandResult.error)("nexus set", (msg,))
+    if sub == "clear":
+        ok, msg = nops.apply_clear_root(env=env)
+        return (CommandResult.info if ok else CommandResult.error)("nexus clear", (msg,))
+    return CommandResult.info(
+        "nexus", _proj.nexus_surface_lines(env=ctx.env, config=ctx.config))
+
+
+def _daemon_result(parsed, ctx) -> CommandResult:
+    # /daemon [stop] — surface the REAL always-on daemon heartbeat (state/tick/pid),
+    # or set the kill-switch. Reads the same file `forgekit runtime status` reads.
+    from ..runtime import surface as rsurface
+
+    env = getattr(ctx, "env", None) or None
+    args = list(getattr(parsed, "args", ()) or ())
+    if args and args[0].lower() == "stop":
+        ok, msg = rsurface.request_stop(env=env)
+        return (CommandResult.info if ok else CommandResult.error)("daemon stop", (msg,))
+    return CommandResult.info("daemon", rsurface.daemon_status_lines(env=env))
+
+
+def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
     # Hephaistos operator surfaces — projection over resolver/verifier/nexus_read (pure core).
+    # env/config/role threaded from the context so Nexus reads are LIVE (not static).
     from ..hephaistos import projection as proj
 
+    env = getattr(ctx, "env", None)
+    config = getattr(ctx, "config", None)
+    role = getattr(ctx, "nexus_role", "") or ""
     args = getattr(parsed, "args", ()) or ()
     request = " ".join(args).strip()
     if handler == H_HEPHAISTOS:
-        return CommandResult.info("hephaistos", proj.hephaistos_status_lines())
+        return CommandResult.info("hephaistos", proj.hephaistos_status_lines(env=env, config=config))
     if handler == H_LOADOUT:
         return CommandResult.info("loadout", proj.loadout_lines(args[0] if args else "backend-java-local"))
     if not request:
         which = "/resolve" if handler == H_RESOLVE else "/skills"
         return CommandResult.info(handler, (f"요청을 입력하세요 — `{which} <요청>` "
                                             "(예: `/resolve Spring Boot JWT refresh token`).",))
-    plan, read = proj.resolve_with_sources(request)
+    plan, read = proj.resolve_with_sources(request, env=env, config=config, role=role)
     if handler == H_RESOLVE:
         return CommandResult.info("resolve", proj.resolve_summary_lines(plan, read))
     return CommandResult.info("skills", proj.skills_lines(plan, read))
