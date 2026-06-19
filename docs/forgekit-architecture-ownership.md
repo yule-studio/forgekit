@@ -143,7 +143,7 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 | `selfimprove/` | 190 | self-improvement loop | `packages/forgekit-runtime` | planned |
 | `notify/` | 336 | approval/alert inbox (operator action) | `packages/forgekit-runtime` | planned |
 | `security/` | 239 | red/blue 계획(plan-only) | `packages/forgekit-runtime` | planned |
-| `runtime_paths.py` | 78 | `~/.forgekit` 경로 해석 | `packages/forgekit-config` | planned |
+| `runtime_paths.py` | 78 | `~/.forgekit` 경로 해석 | `packages/forgekit-config` (`forgekit_config.paths`) | **done** (옛 경로 compat shim) |
 | `identity/` | 409 | agent identity(git author/app) | `packages/forgekit-config` | planned |
 | `data/status_loader.py` | 211 | 대시보드 데이터 bridge(→yule_engineering) | `packages/forgekit-config` adapter + console (bridge 잔존 debt) | planned |
 | `models.py` | 137 | work packet/command/event 모델 | `packages/forgekit-contracts` | planned |
@@ -194,6 +194,12 @@ packages/* ──X──▶ apps/*   (역방향 금지, 기존 hard rail 유지)
 | WT | 범위 | 산출물 | 검증 |
 | --- | --- | --- | --- |
 | **WT2** | `forgekit-provider`(provider/policy/usage/chat/brain) · `forgekit-runtime`(runtime/autopilot/lifecycle/notify/runtime_mode) · `forgekit-config`(paths/identity) · `forgekit-contracts`(models/handoff) 추출 | 4 package + console 옛 경로 compat shim | import smoke + 기존 테스트 green |
+
+> **WT2 진행:** `forgekit-config` 의 첫 추출 완료 — `runtime_paths.py` → `forgekit_config.paths`
+> (옛 경로 `forgekit_console.runtime_paths` 는 `sys.modules` alias compat shim, 객체 동일성
+> 보존). 10개 console importer 무수정 동작, root CI 6571 OK + package smoke 4 OK 검증. 이 패턴
+> (package 생성 → git mv → 옛 경로 shim → root `pyproject` where 등록 → editable 재설치 →
+> root `tests/` 회귀)이 나머지 provider/runtime/contracts 추출의 템플릿이다.
 | **WT3** | `hephaistos`(forge core) · `nexus`(sources/vault/discovery/design/nexus_read) · `armory`(catalog) 승격 | 3 package + console 은 projection 만 | resolve/nexus/armory 테스트 green |
 | **WT4** | console 을 surface/TUI/CLI/render 로 축소 · app dependency 방향 최종 점검 · examples/docs/QA | import 방향 검증 스크립트 + evidence | 전체 suite green |
 
