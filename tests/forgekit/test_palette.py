@@ -35,10 +35,12 @@ class RefilterTests(unittest.TestCase):
 class CycleTests(unittest.TestCase):
     def test_tab_from_empty_selects_first(self) -> None:
         s = P.cycle(P.refilter("/p", _CMDS), 1)
-        self.assertEqual(P.selected(s).name, "provider")   # /p → provider, pm-agent, planning-agent
+        self.assertEqual(P.selected(s).name, "paste")   # /p → paste, provider, pm-agent, planning-agent
 
     def test_tab_cycles_forward_and_wraps(self) -> None:
-        s = P.refilter("/p", _CMDS)  # provider, pm-agent, planning-agent
+        s = P.refilter("/p", _CMDS)  # paste, provider, pm-agent, planning-agent
+        s = P.cycle(s, 1)
+        self.assertEqual(P.selected(s).name, "paste")
         s = P.cycle(s, 1)
         self.assertEqual(P.selected(s).name, "provider")
         s = P.cycle(s, 1)
@@ -46,7 +48,7 @@ class CycleTests(unittest.TestCase):
         s = P.cycle(s, 1)
         self.assertEqual(P.selected(s).name, "planning-agent")
         s = P.cycle(s, 1)  # wrap
-        self.assertEqual(P.selected(s).name, "provider")
+        self.assertEqual(P.selected(s).name, "paste")
 
     def test_shift_tab_from_empty_selects_last(self) -> None:
         s = P.cycle(P.refilter("/p", _CMDS), -1)

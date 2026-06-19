@@ -253,10 +253,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             await pilot.pause()
             await pilot.press("tab")
             await pilot.pause()
-            self.assertEqual(prompt.value, "/provider ")   # /p → provider, pm-agent, planning-agent
+            self.assertEqual(prompt.value, "/paste ")   # /p → paste, provider, pm-agent, planning-agent
             await pilot.press("tab")
             await pilot.pause()
-            self.assertEqual(prompt.value, "/pm-agent ")
+            self.assertEqual(prompt.value, "/provider ")
 
     async def test_escape_closes_palette(self) -> None:
         from forgekit_console.tui.prompt_area import PromptArea
