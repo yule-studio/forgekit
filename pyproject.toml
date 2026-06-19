@@ -58,5 +58,6 @@ where = [
     "packages/agent-memory/src",
     "packages/agent-runtime/src",
     "packages/forgekit-config/src",
+    "packages/forgekit-provider/src",
     "apps/forgekit-console/src",
 ]

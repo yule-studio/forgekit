@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
-from ..runtime_paths import state_dir
+from forgekit_config.paths import state_dir
 
 # usage_basis mirrors chat.models (live / estimate / proxy / unknown)
 BASIS_LIVE = "live"

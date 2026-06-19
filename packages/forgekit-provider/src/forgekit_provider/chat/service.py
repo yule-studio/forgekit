@@ -28,7 +28,7 @@ from ..providers.contract import (
     ProviderSpec,
 )
 from ..providers.registry import build_provider
-from ..runtime_paths import config_path
+from forgekit_config.paths import config_path
 from . import models as m
 
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Tuple
 
 from ..providers import builtins
-from ..runtime_paths import config_path
+from forgekit_config.paths import config_path
 from . import provider_config as pc
 from . import routing as rt
 
