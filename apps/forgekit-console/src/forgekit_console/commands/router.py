@@ -37,6 +37,7 @@ from .registry import (
     H_SKILLS,
     H_LOADOUT,
     H_PROVIDER,
+    H_SETUP,
     H_NEXUS,
     H_DAEMON,
     H_LAYOUT,
@@ -172,6 +173,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _hephaistos_result(handler, parsed, ctx)
     if handler == H_PROVIDER:
         return _provider_result(parsed)
+    if handler == H_SETUP:
+        return _setup_result(parsed)
     if handler == H_NEXUS:
         return _nexus_result(parsed, ctx)
     if handler == H_DAEMON:
@@ -220,6 +223,15 @@ def _provider_result(parsed) -> CommandResult:
     if sub == "preset":
         ok, msg = ps.apply_preset(args[1] if len(args) > 1 else "")
         return (CommandResult.info if ok else CommandResult.error)("provider preset", msg.split("\n"))
+    if sub in ("connect", "disconnect", "test", "recommended"):
+        from forgekit_provider_connect import surface as cs
+        pid = args[1] if len(args) > 1 else ""
+        if sub == "test":
+            return CommandResult.info("provider test", cs.test_lines(pid, cfg))
+        if sub == "recommended":
+            return CommandResult.info("provider recommended", cs.recommended_lines(cfg))
+        ok, msg = (cs.apply_connect(pid) if sub == "connect" else cs.apply_disconnect(pid))
+        return (CommandResult.info if ok else CommandResult.error)(f"provider {sub}", msg.split("\n"))
     if sub == "link":
         ok, msg = ps.apply_link(args[1] if len(args) > 1 else "")
         return (CommandResult.info if ok else CommandResult.error)("provider link", (msg,))
@@ -236,6 +248,19 @@ def _provider_result(parsed) -> CommandResult:
             return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
         return CommandResult.info("provider route", ps.route_show_lines(cfg))
     return CommandResult.info("provider", ps.provider_status_lines(cfg))
+
+
+def _setup_result(parsed) -> CommandResult:
+    # /setup [apply] — provider onboarding wizard (connect checks → recommended preset → save+verify).
+    from forgekit_provider_connect import surface as cs
+
+    args = list(getattr(parsed, "args", ()) or ())
+    sub = args[0].lower() if args else ""
+    if sub == "apply":
+        ok, msg = cs.apply_setup(args[1] if len(args) > 1 else "four-brain")
+        return (CommandResult.info if ok else CommandResult.error)("setup", msg.split("\n"))
+    from ..policy import provider_ops as ops
+    return CommandResult.info("setup", cs.setup_status_lines(ops.load_raw_config()))
 
 
 def _nexus_result(parsed, ctx) -> CommandResult:

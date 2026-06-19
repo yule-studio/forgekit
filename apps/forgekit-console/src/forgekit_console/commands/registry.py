@@ -31,6 +31,7 @@ H_HEPHAISTOS = "hephaistos"
 H_SKILLS = "skills"
 H_LOADOUT = "loadout"
 H_PROVIDER = "provider"
+H_SETUP = "setup"
 H_NEXUS = "nexus"
 H_DAEMON = "daemon"
 H_COPY = "copy"
@@ -98,7 +99,8 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
-    SlashCommand("provider", "provider 설정 — `/provider [set <id>|link <id>|unlink <id>|route show|route set <slot> <id>|list|doctor]` (operator 주도)", H_PROVIDER, "status"),
+    SlashCommand("provider", "provider 설정/연결 — `/provider [set|link|unlink|connect <id>|disconnect <id>|test <id>|recommended|preset four-brain|route show|route set <slot> <id>|list|doctor]`", H_PROVIDER, "status"),
+    SlashCommand("setup", "provider onboarding wizard — 연결 점검 + 추천 4-provider 브레인 저장/검증 (`/setup [apply]`)", H_SETUP, "status"),
     SlashCommand("nexus", "Nexus 지식 source — `/nexus [set <path>|clear]` 연결/해제 + live 상태(connected/not_connected/missing/blocked/restricted)", H_NEXUS, "status"),
     SlashCommand("daemon", "always-on 데몬 heartbeat — state/tick/last_tick/pid/kill-switch (`/daemon [stop]`); CLI `forgekit runtime serve|status|stop`", H_DAEMON, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
