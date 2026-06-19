@@ -21,3 +21,19 @@ forgekit UI 모드 audit — full(alt-screen) vs inline(terminal-flow)
   - inline = bounded region(no alt-screen)+mouse off → terminal native 선택/scrollback 친화.
     단, live transcript 는 여전히 앱 영역 내 스크롤(줄단위 native scrollback 누적은 print-based
     아키텍처 필요 — 다음 seam).
+
+[PTY 실측 — 실제 pseudo-terminal 에서 driver 가 emit 한 raw 바이트]
+  FULL  : \x1b[?1049h(alt-screen)=YES · \x1b[?1000h(mouse)=YES · \x1b[?1006h(SGR mouse)=YES
+  INLINE: \x1b[?1049h=NO · \x1b[?1000h=NO · \x1b[?1006h=NO
+  → headless 가정이 아니라 실제 TTY 바이트로 확정. 테스트: test_tui_inline_pty.
+
+[native scrollback 줄단위 누적 — 왜 아직 partial 인가 (코드 근거)]
+  - App._get_inline_height 는 inline 높이를 content 높이로 잡되 terminal 높이로 cap.
+    content > terminal 이면 inline region 이 내부 스크롤(app-managed) → 줄이 native
+    scrollback 으로 안 넘어감.
+  - App.suspend()/App._print 는 있으나, 매 turn suspend 는 region 을 내렸다 올려 깜빡임/
+    focus 교란. 깔끔한 "live region 위로 한 줄씩 print" 공개 API 는 없음.
+  - 따라서 완전한 Claude식(완료 turn 이 native scrollback 으로 print) 은 print-based
+    아키텍처(transcript 를 위젯이 아니라 stdout 출력 + 최소 prompt region)가 필요 —
+    구조적 unavoidable 은 아니고 다음 리팩터 seam. 현재 inline 은 alt-screen 미사용 +
+    mouse off 로 "보이는 영역 native 선택 + history 보존"까지 도달(검증됨).
