@@ -223,20 +223,29 @@ def mode_pill(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
     return f"[dim]●[/dim] {mode}"
 
 
+def mode_switch_flash(label: str) -> str:
+    """The transient '▶▶ <mode> mode on' confirmation shown in the live status zone on a
+    Shift+Tab switch (ephemeral — replaces in place, never appended to the transcript)."""
+
+    return f"[{_ACCENT}]▶▶[/{_ACCENT}] [b]{label}[/b] mode on"
+
+
 def hint_line(
     *,
     palette_open: bool = False,
     help_open: bool = False,
     in_agent: bool = False,
     typing: bool = False,
+    mode_label: str = "",
 ) -> str:
     """The secondary mode/shortcut line shown BELOW the input bar (Claude-style).
 
-    Claude shows a quiet mode line under the input (``▶▶ auto mode on …``) only at
-    idle. So: while TYPING (non-empty input) this line is empty — the input is the
-    star and clutter drops. When the palette is open the palette owns the space
-    (also empty here). At idle it shows the mode + key shortcuts with a small accent
-    ``▶▶`` marker, like Claude's bottom mode line.
+    Claude shows a quiet mode line under the input (``▶▶ auto mode on …``) only at idle.
+    So: while TYPING (non-empty input) this line is empty — the input is the star and
+    clutter drops. When the palette is open the palette owns the space (also empty here).
+    At idle it shows the CURRENT runtime mode + key shortcuts with a small accent ``▶▶``
+    marker — so Shift+Tab is reflected HERE (not a fixed "operator" string), and this line
+    doubles as the persistent live mode indicator.
     """
 
     if typing or palette_open:
@@ -246,7 +255,8 @@ def hint_line(
         return f"{marker} [dim]Tab 탭 전환 · Esc 로 닫기[/dim]"
     if in_agent:
         return f"{marker} [dim]Esc 로 operator · /help · ^C quit[/dim]"
-    return f"{marker} [dim]operator · /help · / palette · ^C quit[/dim]"
+    mode = (mode_label or "operator").strip()
+    return f"{marker} [b]{mode}[/b] [dim]mode · /help · / palette · ^C quit[/dim]"
 
 
 def default_help_tab(sections: Sequence[HelpSection]) -> int:
