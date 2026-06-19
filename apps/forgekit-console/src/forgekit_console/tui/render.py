@@ -105,8 +105,39 @@ def setup_required_banner() -> str:
     """Issue-line banner when no provider is configured (forgekit can't run yet)."""
 
     return (
-        f"[{_WARN}]● setup-required[/{_WARN}] [dim]main provider 미설정 — "
-        f"`/doctor` 로 점검, config 의 `main_provider` 설정 (또는 로컬 ollama)[/dim]"
+        f"[{_WARN}]● setup-required[/{_WARN}] [dim]primary provider 미설정 — "
+        f"`/provider set <id>` 또는 `/provider preset <…>-brain` (자동 ollama 안 함)[/dim]"
+    )
+
+
+def no_live_banner(primary: str = "") -> str:
+    """Issue-line banner when a primary IS set but no live-submit-capable provider exists.
+
+    Honest: the brain is CONFIGURED (not setup-required) — but claude/codex are
+    unsupported_in_console, so there is no console live path until a live provider is
+    linked. NOT "설정 안 됨"."""
+
+    who = f" (primary={primary})" if primary else ""
+    return (
+        f"[{_WARN}]● configured · no live-submit[/{_WARN}] [dim]primary 설정됨{who} — "
+        f"live 경로(gemini/ollama) 미연결. `/provider link gemini|ollama`[/dim]"
+    )
+
+
+def setup_explanation_lines() -> Tuple[str, ...]:
+    """The copyable operator-facing setup/provider explanation (transcript + /copy).
+
+    Distinct from :func:`setup_required_banner` (the short status PILL on the issue line):
+    this is the readable BLOCK that lands in the transcript / plain-text store, so the
+    operator can `/copy` the guidance — not a UI-only decoration."""
+
+    return (
+        "[b]setup-required[/b] — primary provider 가 아직 설정되지 않았습니다.",
+        "ForgeKit 은 operator 가 정한 primary provider 로 동작합니다 — 자동으로 ollama 를 쓰지 않습니다.",
+        "다음 단계:",
+        "  • `/provider set <id>`  (claude · codex · gemini · ollama 중 하나)",
+        "  • `/doctor` 로 환경 점검 · `/provider list` 로 후보 확인",
+        "  • 로컬 ollama 로 시작하려면: `/provider set ollama`",
     )
 
 
@@ -713,7 +744,7 @@ def chunk_result_lines(lines: Sequence[str], max_lines: int = 3) -> Tuple[Tuple[
 __all__ = (
     "BRAND", "TAGLINE",
     "welcome_banner", "intro_meta_lines", "renderer_debug_line", "blocked_banner",
-    "setup_required_banner", "runtime_mode_line", "submit_held_line",
+    "setup_required_banner", "setup_explanation_lines", "runtime_mode_line", "submit_held_line",
     "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
