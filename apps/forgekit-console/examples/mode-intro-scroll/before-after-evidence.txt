@@ -1,0 +1,26 @@
+ForgeKit 콘솔 — mode 전환 / intro / internal-scroll : BEFORE → AFTER (실측, inline 100x30)
+====================================================================================
+
+[A] Shift+Tab 모드 전환 — transcript flood
+  BEFORE: _cycle_runtime_mode 가 매 키프레스마다 self._transcript.write(runtime_mode_line)
+          → Shift+Tab N번 = transcript 에 N줄 append (대화 로그 도배)
+  AFTER : 8x Shift+Tab → transcript lines 0→0  (flood 제거: True)
+          live indicator 만 갱신 — issue: '◆ Idea-discovery · routing optimized · usage ada'
+                                hint : '▶▶ Idea-discovery mode · /help · / palette · ^C quit'
+
+[D] 하단 hint — 실제 runtime mode 반영
+  BEFORE: 항상 '▶▶ operator · /help · / palette · ^C quit' (고정 'operator')
+  AFTER : '▶▶ <현재mode> mode · /help …'  ← Shift+Tab 으로 바뀐 mode 반영
+
+[B] intro/hero lifecycle
+  BEFORE: IntroHeader 가 SessionFlow 밖 '고정 top chrome' — 대화가 쌓여도 상단에 영구 점유
+  AFTER : IntroHeader 가 SessionFlow 안(첫 child). in_flow=True
+          empty 일 때 intro.y=0 → 40줄 후 intro.y=-25 (위로 스크롤되어 사라짐)
+
+[C] internal scroll / gutter
+  BEFORE: mode flood + 고정 intro 로 내부 pane 처럼 보이고, 긴 출력에서 내부 세로 스크롤 체감
+  AFTER : visible gutter — SessionFlow=False MainPanel=False IntroHeader=False (전부 False)
+          MainPanel/IntroHeader owns_scroll=False/False → SessionFlow 만 scroll(gutter 0)
+
+정직한 한계: SessionFlow 가 viewport 초과 시 스크롤하는 건 여전(단일 owner, gutter 0). 진짜
+terminal-native scrollback 누적은 print-flow seam(tui/transcript_sink.py) 다음 단계.

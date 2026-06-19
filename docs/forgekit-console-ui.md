@@ -14,14 +14,23 @@ composer + 입력창 바로 아래 열리는 palette), `tui/transcript_store.py`
 
 ## 1. Layout — content-driven reading flow + 하단 고정 composer
 ```
-IntroHeader              (fixed top banner)
-SessionFlow              ← 유일한 vertical scroll owner. issue + transcript/help 만 (composer 제외).
-  #issue                   inline: height auto, max-height 100% (content-driven)
+SessionFlow              ← 유일한 vertical scroll owner. intro+issue+transcript/help (composer 제외).
+  #intro (IntroHeader)     첫 인상 요소 — flow 의 첫 child 라 대화가 쌓이면 위로 스크롤되어 사라짐
+  #issue                   inline: height auto, max-height 100% (content-driven). 현재 mode 라이브 표시
   #main (transcript XOR help, height auto)   full : height 1fr (alt-screen 채움)
-  #livestatus            (thinking→generating 마커)
+  #livestatus            (thinking→generating 마커 · mode 전환 flash)
 Composer                 ← inline 에서 dock:bottom. full 에서는 1fr flow 뒤 마지막 child(자연히 하단).
-                           입력 bar + palette(입력 바로 아래) + hint.
+                           입력 bar + palette(입력 바로 아래) + hint(현재 runtime mode 반영).
 ```
+**intro lifecycle:** IntroHeader 는 더 이상 flow 밖 고정 top chrome 가 아니라 **SessionFlow 의 첫
+child** 다. 첫 진입엔 보이고(첫 인상), 대화가 쌓여 viewport 를 넘으면 자연히 **위로 스크롤되어
+사라진다**(고정 panel 로 공간을 영구 점유하지 않음). inline 은 compact, full 은 hero→compact.
+
+**mode 전환(Shift+Tab)은 ephemeral:** 예전엔 `_cycle_runtime_mode` 가 매 키프레스마다
+`transcript.write(runtime_mode_line)` 해서 대화 로그를 mode 줄로 도배했다. 이제 **transcript append
+0** — 현재 mode 는 **교체형 live surface** 에만: `#issue`(`◆ <mode> · routing …`) + 하단 `#hint`
+(`▶▶ <mode> mode · …` — 고정 'operator' 아님) + 짧은 `▶▶ <mode> mode on` flash(#livestatus, dwell 후
+소멸). `/mode` 명령은 전체 표 유지용으로 남는다. 측정: `test_mode_intro_scroll`.
 **inline 누적 흐름(이번 라운드 핵심):** 예전엔 `Screen.-inline #flow { height: 14 }` 로 reading
 flow 를 **14줄 고정 박스**로 잘라, 출력이 길어지면 이전 내용이 그 작은 창 밖으로 밀려나 "내용이
 날아간다"는 느낌을 줬다. 이제 inline flow 는 **content-driven**(`height: auto; max-height: 100%`):
