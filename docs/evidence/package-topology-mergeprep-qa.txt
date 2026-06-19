@@ -1,0 +1,22 @@
+ForgeKit packages/ cleanup — MERGE-PREP QA (fix-forward verification)
+====================================================================
+verdict: MERGE-READY (no blockers; main already consistent)
+
+[A1] pyproject metadata drift — dir == name(dash) == python-pkg(underscore)
+     18/18 aligned, no drift. console script: forgekit = forgekit_console.app.main:main (intact).
+
+[A2] app->app direct imports (pre-existing, documented transitional debt — NOT from cleanup)
+     engineering-agent -> yule_discord, yule_planning   (apps->monolith, monorepo-structure.md §2)
+     discord-gateway   -> yule_engineering, yule_planning
+     forgekit-console  -> yule_engineering               (lazy handoff/status bridge)
+     => none introduced by the topology cleanup (which was metadata/docs only).
+
+[B] compat shim old-path IS new-path (object identity) — 17/17 OK:
+     all identity-preserved: True
+
+[C] topology doc <-> tree: 18/18 classified + have pyproject; only 'armory' is doc-only (planned, by design).
+[D] docs cross-links: all .md links in 6 entry docs resolve (pure-python normpath check).
+[E] compileall ForgeKit core packages: clean. Full CI suite: OK (skipped=110).
+
+must-fix-before-merge: NONE.
+can-fix-later (debt): app->app edges + forgekit-*->yule_engineering lazy bridges (agent-contracts 역전), 3x runtime rename, armory split.
