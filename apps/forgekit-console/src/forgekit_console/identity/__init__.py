@@ -1,21 +1,20 @@
-"""Canonical agent identity — the single SSoT for who an agent is across forgekit.
+"""Forward-compat shim — agent identity now lives in ``packages/forgekit-config``.
 
-Resolves manifest ids / vault-authorship abbreviations to ONE canonical identity
-(role label, department, git author, GitHub App env prefix, Obsidian css/callout/
-colour). Every surface (vault authorship, git attribution, doctor) reads from here so
-the abbreviated (`fe`) vs formal (`frontend-engineer`) drift is fixed in one place.
+Canonical: :mod:`forgekit_config.identity` (ForgeKit config core, WT2). This shim
+aliases the old dotted path (and every submodule: ``models`` / ``registry`` /
+``attribution``) to the canonical package via ``sys.modules``, preserving object
+identity so existing importers keep working:
+
+    from forgekit_console.identity import attribution   # → forgekit_config.identity.attribution
+    from forgekit_console.identity import registry       # same module object
+
+New code should import :mod:`forgekit_config.identity` directly. Owner matrix:
+``docs/forgekit-architecture-ownership.md``.
 """
 
-from .models import AgentIdentity
-from .registry import (
-    all_identities,
-    git_identity_for,
-    github_app_identity_for,
-    resolve_identity,
-    vault_identity_for,
-)
+from __future__ import annotations
 
-__all__ = (
-    "AgentIdentity", "all_identities", "resolve_identity",
-    "vault_identity_for", "git_identity_for", "github_app_identity_for",
-)
+from forgekit_console import _compat
+from forgekit_config import identity as _canon
+
+_compat.alias_package(__name__, _canon)

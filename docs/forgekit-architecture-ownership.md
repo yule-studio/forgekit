@@ -144,7 +144,7 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 | `notify/` | 336 | approval/alert inbox (operator action) | `packages/forgekit-runtime` | planned |
 | `security/` | 239 | red/blue 계획(plan-only) | `packages/forgekit-runtime` | planned |
 | `runtime_paths.py` | 78 | `~/.forgekit` 경로 해석 | `packages/forgekit-config` (`forgekit_config.paths`) | **done** (옛 경로 compat shim) |
-| `identity/` | 409 | agent identity(git author/app) | `packages/forgekit-config` | planned |
+| `identity/` | 409 | agent identity(git author/app) | `packages/forgekit-config` (`forgekit_config.identity`) | **done** (옛 경로 shim, self-contained) |
 | `data/status_loader.py` | 211 | 대시보드 데이터 bridge(→yule_engineering) | `packages/forgekit-config` adapter + console (bridge 잔존 debt) | planned |
 | `models.py` | 137 | command-result/work packet 스키마 | `packages/forgekit-contracts` (`forgekit_contracts.models`) | **done** (옛 경로 shim) |
 | `handoff/` | 396 | intake packet bridge | `packages/forgekit-contracts` (+ agent-contracts) | planned (yule_engineering lazy dep 분리 후) |
