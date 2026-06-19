@@ -8,12 +8,17 @@ import os
 from pathlib import Path
 import sqlite3
 import time
-from typing import TYPE_CHECKING, Any, Iterable, Optional
+from typing import Any, Iterable, Optional
 
 from ._sqlite import SQLITE_WRITE_LOCK
 
-if TYPE_CHECKING:
-    from yule_integrations.calendar.models import CalendarEvent, CalendarQueryResult, CalendarTodo
+# Persistence contract — structural shapes storage reads (no dependency on the
+# integrations adapter layer; RWT3 decouple). See calendar_contract for the rationale.
+from .calendar_contract import (
+    CalendarEventLike as CalendarEvent,
+    CalendarQueryResultLike as CalendarQueryResult,
+    CalendarTodoLike as CalendarTodo,
+)
 
 DEFAULT_CALENDAR_STATE_RETENTION_SECONDS = 30 * 24 * 60 * 60
 DEFAULT_SQLITE_BUSY_TIMEOUT_MS = 30_000
