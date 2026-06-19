@@ -98,6 +98,8 @@ class ForgekitConsoleApp(App):
         self._store = TranscriptStore()  # copyable plain-text model (/copy last|turn|block|all)
         from .attachment import AttachmentStore
         self._attachments = AttachmentStore()  # staged image/file attachments (honest staged_only)
+        from .paste_store import PasteStore
+        self._pastes = PasteStore()      # large-paste raw payloads (expand/resend/copy by id)
         self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
         self._suppress_refilter = False
         # Repeated-failure escalation: same blocked signature past the threshold
@@ -405,6 +407,9 @@ class ForgekitConsoleApp(App):
         if parsed.name == "attach":
             self._attach_dispatch(list(getattr(parsed, "args", ()) or ()))
             return
+        if parsed.name == "paste":
+            self._paste_dispatch(list(getattr(parsed, "args", ()) or ()))
+            return
         result = route(parsed, self.context)
         if result.kind == KIND_QUIT:
             self.exit()
@@ -465,14 +470,20 @@ class ForgekitConsoleApp(App):
         if not text:
             return
         self._transcript.begin_turn()       # vertical breathing room between turns
-        # huge paste → compact echo (first line + "[+N lines]"); submit the FULL text.
-        lines = text.splitlines()
-        if len(lines) > 8:
-            self._transcript.write_echo(f"{lines[0]}  [dim][+{len(lines) - 1} lines · {len(text)} chars][/dim]")
+        # large paste → store the RAW payload + show a compact block referencing its id
+        # (expand/resend/copy by id). The FULL text is still what gets submitted.
+        from . import ingest as _ingest
+        from . import paste_store as _ps
+        if _ps.is_large(text):
+            payload = self._pastes.add(
+                text, source=_ingest.SRC_REHYDRATED if res.rehydrated else _ingest.SRC_RAW_INPUT)
+            self._transcript.write_echo(payload.compact_label())
+            self._transcript.write(
+                f"[dim]↳ /paste expand {payload.id} · /paste resend {payload.id} · /copy paste {payload.id}[/dim]")
         else:
             self._transcript.write_echo(text)
-        if res.rehydrated:
-            self._transcript.write(f"[dim]↳ {res.note}[/dim]")
+            if res.rehydrated:
+                self._transcript.write(f"[dim]↳ {res.note}[/dim]")
         self._store.add_user(text)          # copyable FULL user turn (for /copy turn/all)
         self._surface_staged_attachments()  # honest staged_only (provider text-only)
         self._sync_intro()  # transcript now has content → compact working header
@@ -880,13 +891,18 @@ class ForgekitConsoleApp(App):
         self.call_from_thread(self._on_submit_result, result)
 
     def _copy_target(self, args):
-        """Resolve `/copy [last|all|turn <n>|block <n>]` → (label, plain_text|None)."""
+        """Resolve `/copy [last|all|turn <n>|block <n>|paste <id>]` → (label, text|None)."""
 
         sub = (args[0].lower() if args else "last")
         if sub in ("", "last"):
             return "last response", self._store.last_response()
         if sub == "all":
             return "all transcript", (self._store.all_text() or None)
+        if sub == "paste":
+            # copy the RAW large-paste payload (NOT the placeholder) — last or by id.
+            p = (self._pastes.get(int(args[1])) if len(args) >= 2 and args[1].isdigit()
+                 else self._pastes.last())
+            return (f"paste #{p.id}", p.raw_text) if p else ("paste", None)
         if sub in ("turn", "block") and len(args) >= 2 and args[1].isdigit():
             n = int(args[1])
             if sub == "turn":
@@ -959,6 +975,38 @@ class ForgekitConsoleApp(App):
                 self._transcript.write("[dim]사용법: /attach <path> · /attach status · /attach clear[/dim]")
                 for line in self._attachments.status_lines():
                     self._transcript.write(f"[dim]{line}[/dim]")
+        self._sync_intro()
+        self._follow_tail()
+
+    def _paste_dispatch(self, args) -> None:
+        """`/paste [list|expand <id>|resend <id>]` — operate on a preserved large paste.
+
+        The RAW payload of a large paste is kept (paste_store), so the compact block is
+        never a dead placeholder: `expand` shows the full body, `resend` re-submits the
+        raw text, `/copy paste <id>` copies it. honest 'no such paste' when id missing."""
+
+        sub = (args[0].lower() if args else "list")
+        self._transcript.begin_turn()
+        self._transcript.write_echo("/paste " + " ".join(args) if args else "/paste")
+        if sub == "list":
+            for line in self._pastes.list_lines():
+                self._transcript.write(f"[dim]{line}[/dim]")
+            self._sync_intro(); self._follow_tail(); return
+        if sub in ("expand", "resend") and len(args) >= 2 and args[1].isdigit():
+            payload = self._pastes.get(int(args[1]))
+            if payload is None:
+                self._transcript.write(f"[{theme.WARNING}]⚠ paste #{args[1]} 없음[/{theme.WARNING}]")
+                self._sync_intro(); self._follow_tail(); return
+            if sub == "expand":
+                self._transcript.write(f"[dim]── paste #{payload.id} 본문 ({payload.line_count} lines) ──[/dim]")
+                for line in payload.raw_text.splitlines():
+                    self._transcript.write(line)
+                self._transcript.write(f"[dim]── end paste #{payload.id} ──[/dim]")
+                self._sync_intro(); self._follow_tail(); return
+            # resend → re-run the raw payload through the free-text submit path.
+            self._submit_free_text(payload.raw_text)
+            return
+        self._transcript.write("[dim]사용법: /paste list · /paste expand <id> · /paste resend <id>[/dim]")
         self._sync_intro()
         self._follow_tail()
 
