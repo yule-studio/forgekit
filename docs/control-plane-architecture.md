@@ -148,7 +148,12 @@ flowchart LR
 - **probe 주입:** 연결 검사는 injectable probe(실 CLI/HTTP/env, 테스트는 fake) — 검증 못 하면
   `unknown`/`missing`, 절대 `connected` 거짓 금지.
 
-### 5.2 P0 design — toolchain switching
+### 5.2 P0 design — toolchain switching — **구현됨 (working)**
+> 구현: `packages/forgekit-toolchain` (detect/profile/manager/plan/surface) + console `/toolchain`
+> (detect·recommend·verify·drift·switch). mise = 1급 manager(injectable seam). repo-local 감지는
+> manager 없이도 동작, verify/drift/switch 는 mise 필요 — 없으면 `manager-missing` 으로 정직 거부
+> (fake switch 없음). global/install/destructive = approval-gated(`--approve`). 회귀
+> `tests/forgekit/test_toolchain.py`, evidence `apps/forgekit-console/examples/toolchain/`.
 - **현재 경계 인정:** Hephaistos `verifier` 는 "존재 확인(readiness)"만 — install/switch 없음.
   그 위에 **switch/equip 계층**을 얹는다(verifier 가 detect 만 하는 건 부작용 없는 안전 기본값).
 - **공통 manager 1급 후보 = `mise`** (다언어 단일 매니저, repo-local `.mise.toml`/`.tool-versions`

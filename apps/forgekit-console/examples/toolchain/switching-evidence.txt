@@ -1,0 +1,40 @@
+ForgeKit toolchain version switching — REAL machine (mise NOT installed here)
+========================================================================
+forgekit-toolchain: repo-local 감지 · loadout→profile · mise switch/verify/drift
+approval gate: global/install/destructive = 승인 필요. fake switch 금지.
+
+$ /toolchain detect
+  repo-local toolchain 감지 — 1 tool (실 manifest 파싱, 추측 없음):
+    python     >=3.9          ← pyproject.toml
+
+$ /toolchain recommend backend-java-local
+  추천 toolchain 프로파일 — loadout `backend-java-local` (+ repo-local 감지 병합):
+    python     >=3.9              · repo
+    java       21                 · loadout
+    gradle     (미지정/present-only) · loadout
+  다음: `/toolchain switch` (repo-local 적용) · `/toolchain verify` (활성과 대조).
+
+$ /toolchain recommend frontend-react-local
+  추천 toolchain 프로파일 — loadout `frontend-react-local` (+ repo-local 감지 병합):
+    python     >=3.9              · repo
+    node       lts                · loadout
+  다음: `/toolchain switch` (repo-local 적용) · `/toolchain verify` (활성과 대조).
+
+$ /toolchain verify backend-java-local
+  toolchain verify: mise(toolchain manager) 미설치 — 활성 버전 확인 불가.
+    설치: https://mise.jdx.dev  (`curl https://mise.run | sh`)
+    ※ 미설치 상태를 'in-sync' 로 위장하지 않음 — 검증은 manager 가 있어야 가능.
+
+$ /toolchain switch backend-java-local
+  toolchain switch 불가: mise 미설치 — fake switch 하지 않음.
+    설치 후 재시도: https://mise.jdx.dev
+    (manager 미설치 — 계획만 표시, 실행 불가)
+      install     mise install python@>=3.9
+      local       mise use python@>=3.9
+      install     mise install java@21
+      local       mise use java@21
+
+정직성: mise 미설치 → verify/drift/switch 가 'manager 미설치' 로 정직 거부 (가짜 전환/
+in-sync 위장 없음). detect/recommend 는 manager 없이도 동작(순수 manifest 파싱 + loadout
+변환). java 21 / python 3.13 / node lts 는 loadout 환경 가정에서 추출. switch 의 install/
+global 액션은 --approve 없이는 실행 안 됨(approval gate).
