@@ -87,13 +87,15 @@ class DockedLayoutTests(unittest.IsolatedAsyncioTestCase):
             flow = app.query_one(SessionFlow)
             self.assertGreaterEqual(comp.region.bottom, H - 1)          # docked at bottom
             flow_h_before = flow.region.height
-            # open palette → composer grows upward, flow region shrinks, input STAYS docked
+            # open palette → composer grows, flow region shrinks; palette is DIRECTLY
+            # BELOW the input bar (Claude), inside the bottom-docked composer zone.
             await pilot.press("slash", "h", "e")
             await pilot.pause()
             pal = app.query_one(CommandPalette)
-            self.assertLessEqual(pal.region.bottom, bar.region.y + 1)   # palette ABOVE input
-            self.assertGreaterEqual(comp.region.bottom, H - 1)          # input still docked
-            self.assertLess(flow.region.height, flow_h_before)         # flow pushed up
+            self.assertGreaterEqual(pal.region.y, bar.region.bottom)        # palette BELOW input
+            self.assertLessEqual(pal.region.y - bar.region.bottom, 1)       # flush (gap ≈ 0)
+            self.assertGreaterEqual(comp.region.bottom, H - 1)          # composer still docked
+            self.assertLess(flow.region.height, flow_h_before)         # transcript zone shrank
 
     async def test_session_flow_is_sole_owner_no_gutter(self) -> None:
         from forgekit_console.tui.session_flow import SessionFlow

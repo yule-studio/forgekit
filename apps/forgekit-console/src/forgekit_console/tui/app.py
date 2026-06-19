@@ -173,8 +173,8 @@ class ForgekitConsoleApp(App):
         # live status line — a TRANSIENT stage marker (thinking → generating) shown just
         # above the docked composer while a response is produced/revealed, then cleared.
         yield Static(id="livestatus")
-        # the DOCKED composer — slash palette (opens ABOVE the input, pushing the flow
-        # up) + the input bar + the sub-hint row. Pinned to the viewport bottom.
+        # the DOCKED composer — input bar + slash palette DIRECTLY BELOW it + sub-hint
+        # row. Pinned to the viewport bottom; the palette opens flush under the input.
         yield Composer(id="composer")
 
     def on_mount(self) -> None:
@@ -317,10 +317,10 @@ class ForgekitConsoleApp(App):
         self._refresh_chrome()
         self._sync_intro()  # opening the palette folds a fresh hero to compact
         # Auto-reveal policy (docked composer): the palette is ALWAYS visible (it opens
-        # above the docked input bar), so the operator never scrolls to see it. When the
-        # palette opens the flow region shrinks from the bottom — if the operator was at
-        # the tail we keep the newest line visible (follow_tail); if they were browsing
-        # history we PRESERVE their scroll position (the palette is visible regardless).
+        # DIRECTLY BELOW the docked input bar, inside the bottom-docked composer zone),
+        # so the operator never scrolls to see it. When the palette opens the flow region
+        # shrinks from the bottom — if the operator was at the tail we keep the newest
+        # line visible (follow_tail); if browsing history we PRESERVE their scroll.
         if is_open and self._at_tail():
             self._follow_tail()
         self._palette_was_open = is_open

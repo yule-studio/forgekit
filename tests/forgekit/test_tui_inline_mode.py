@@ -129,11 +129,11 @@ class InlineLayoutTests(unittest.IsolatedAsyncioTestCase):
             for i in range(40):
                 app._transcript.write(f"line {i}")   # overflow the bounded flow
             await pilot.pause()
-            # palette opens above the docked input (unchanged in inline)
+            # palette opens directly below the docked input (unchanged in inline)
             await pilot.press("slash", "h", "e")
             await pilot.pause()
             bar = app.query_one("#composer-input-shell")
-            self.assertLessEqual(app.query_one(CommandPalette).region.bottom, bar.region.y + 1)
+            self.assertGreaterEqual(app.query_one(CommandPalette).region.y, bar.region.bottom)
             self.assertTrue(app.query_one(SessionFlow).allow_vertical_scroll)   # single owner
             await pilot.press("escape")
             await pilot.pause()

@@ -1,12 +1,13 @@
-"""Command palette — a compact slash-command surface ABOVE the composer bar.
+"""Command palette — a compact slash-command surface DIRECTLY BELOW the input bar.
 
-A SEPARATE surface, not a popup box and NOT part of the input text box: it is the
-FIRST child of the :class:`tui.composer.Composer`, so it renders directly ABOVE the
-input bar (Claude-style upward palette). It filters as you type a slash. It is
-``height: auto`` and **caps the rows it renders** (``MAX_ROWS``) so a long match
-list never grows an inner scrollbar — the enclosing :class:`tui.session_flow.SessionFlow`
-stays the single scroll owner. It owns no logic — the app drives it via
-:meth:`show` / :meth:`hide` from a pure :class:`PaletteState`.
+A SEPARATE surface, not a popup box and NOT part of the input text box, and NOT part
+of the transcript: it is the child of :class:`tui.composer.Composer` placed right
+AFTER the input bar, so it renders flush UNDER the input box (gap ≈ 0 rows) inside the
+bottom-docked composer zone. It filters as you type a slash. It is ``height: auto`` and
+**caps the rows it renders** (``MAX_ROWS``) so a long match list never grows an inner
+scrollbar — the enclosing :class:`tui.session_flow.SessionFlow` stays the single scroll
+owner. It owns no logic — the app drives it via :meth:`show` / :meth:`hide` from a pure
+:class:`PaletteState`.
 """
 
 from __future__ import annotations
@@ -29,11 +30,12 @@ class CommandPalette(Static):
         display: none;
         /* a FLAT list (Claude): no left rule / side bar — rows separated by
            whitespace + alignment only. auto-height; rows are CAPPED in show() so
-           it never needs an inner scrollbar (SessionFlow owns scroll). */
+           it never needs an inner scrollbar (SessionFlow owns scroll). padding-top 0
+           so the list sits FLUSH directly under the input bar (gap ≈ 0 rows). */
         height: auto;
         overflow-y: hidden;
         scrollbar-size-vertical: 0;
-        padding: 0 1 1 1;   /* a blank line under the list separates it from the bar */
+        padding: 0 1 0 1;
         color: $text;
         background: $background;
     }

@@ -1,27 +1,27 @@
-"""Composer — a Claude-Code-style input BAR with the slash palette ABOVE it.
+"""Composer — a Claude-Code-style input BAR with the slash palette DIRECTLY BELOW it.
 
-Spec = the Claude Code terminal composer. The palette opens UPWARD (above the
-input), exactly like Claude — the hand stays on the input bar and the candidates
-float just above it:
+Spec = the Claude Code terminal composer. The composer is a BOTTOM-DOCKED zone (the
+transcript fills the space above it). When a slash is typed the command list opens
+flush UNDER the input box — instantly visible, no scroll — exactly like Claude:
 
-     skills                                       ← #palette  (opens ABOVE the bar,
-     /help    이 콘솔의 명령 목록                       only while typing a slash)
-     /copy    마지막 응답 클립보드 복사
     ──────────────────────────────────────────  ← top rule (light grey, full width)
      > /he                                        ← the input row (marker + input ONLY)
     ──────────────────────────────────────────  ← bottom rule (light grey, full width)
-     ▶▶ operator · /help · / palette · ^C quit    ← #hint   (secondary, BELOW the bar)
+     /help    이 콘솔의 명령 목록                       ← #palette  (DIRECTLY below the bar,
+     /hephaistos  Hephaistos skill-forge 상태          only while typing a slash)
+     ▶▶ operator · /help · / palette · ^C quit    ← #hint   (secondary, below the palette)
 
 Key points (Claude fidelity):
 
-* The slash palette (``#palette``) is the FIRST child — it renders ABOVE the input
-  bar so choosing a command happens right above where the cursor is, and the
-  candidates never push down as new content the user has to scroll to.
+* The input bar (``#composer-input-shell``) is FIRST; the slash palette (``#palette``)
+  is the next child so it opens DIRECTLY BELOW the input bar (gap ≈ 0 rows). The whole
+  composer is bottom-docked (see the app layout: SessionFlow ``1fr`` above, composer
+  ``auto`` below), so the palette is part of the COMMAND-ENTRY ZONE — never the
+  transcript — and is always on-screen the instant `/` is pressed.
 * The input bar is bounded by a **light/near-white** top + bottom rule (``$input-rule``)
   so it reads clearly as the input — full width, no side box.
 * The mode indicator (``#modepill``) and the shortcut / mode-switch line (``#hint``)
-  are SECONDARY and live BELOW the bar. In idle (operator, empty input) only the
-  ``#hint`` mode line shows; while typing it is reduced. The app drives visibility.
+  are SECONDARY and live below the palette. The app drives their visibility.
 
 It owns no command logic — the app drives ``#modepill`` / ``#hint`` / palette / focus.
 """
@@ -80,15 +80,16 @@ class Composer(Vertical):
     """
 
     def compose(self):
-        # the slash palette FIRST — it opens ABOVE the input bar (Claude-style upward
-        # palette). Hidden until a slash is typed; never pushes content below the bar.
-        yield CommandPalette(id="palette")
-        # the input BAR — full-width rule strip, marker `>` + input only.
+        # the input BAR FIRST — full-width rule strip, marker `>` + input only.
         with Horizontal(id="composer-input-shell"):
             yield Static(f"[{theme.ACCENT_PRIMARY}]>[/{theme.ACCENT_PRIMARY}]", id="marker")
             yield PromptArea(id="prompt")
-        # SECONDARY rows — BELOW the bar (never above it).
-        yield Static(id="modepill")   # mode indicator (agent/palette); hidden in idle operator
+        # the slash palette DIRECTLY BELOW the input bar (Claude-style): the command
+        # list opens flush under the input box, inside the bottom-docked composer zone,
+        # so it is instantly visible without any scroll. It is NOT part of the transcript.
+        yield CommandPalette(id="palette")
+        # SECONDARY rows — below the palette.
+        yield Static(id="modepill")   # mode indicator (agent); hidden in idle operator
         yield Static(id="hint")       # the shortcut / mode-switch line (idle only)
 
 
