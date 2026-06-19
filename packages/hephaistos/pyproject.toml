@@ -7,7 +7,7 @@ name = "hephaistos"
 version = "0.1.0"
 description = "Hephaistos — ForgeKit's skill-forging core. Resolves a request into an equip plan (agent + skills + loadout + weapons + work packet) from the Armory and verifies the local loadout. Pure, stdlib-first."
 requires-python = ">=3.9"
-dependencies = ["forgekit-config"]
+dependencies = ["forgekit-config", "armory"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

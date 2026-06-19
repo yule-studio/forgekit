@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yule-runtime-primitives"
+version = "0.1.0"
+description = "Shared infra — runtime PRIMITIVES (circuit breaker, service manifest, subprocess supervisor). Renamed from yule-runtime to disambiguate from forgekit-runtime / agent-runtime. Old yule_runtime import path kept as compat shim. See docs/package-topology.md."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

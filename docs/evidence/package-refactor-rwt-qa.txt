@@ -1,0 +1,30 @@
+ForgeKit 2차 구조 개편 (RWT1-3) — RWT4 integration + merge-prep QA
+=================================================================
+verdict: MERGE-READY (local commits only; no blockers)
+
+[RWT1] runtime rename — packages/runtime → runtime-primitives
+  canonical: yule_runtime_primitives | compat shim: yule_runtime (sys.modules alias, identity preserved)
+  consumers: engineering-agent 11 files still on yule_runtime shim (gradual migration, working)
+
+[RWT2] armory extraction — packages/armory (new)
+  armory.catalog (was hephaistos/armory.py) + armory.models (catalog vocab split from hephaistos.models)
+  armory = leaf (imports 0 from hephaistos) → hephaistos→armory one-way, NO cycle
+  compat: hephaistos.armory re-exports armory.catalog; hephaistos.models re-exports armory vocab
+  forge-output types (WorkPacketDraft/ResolvedForgePlan) stay in hephaistos
+
+[RWT3] storage ↔ integrations decouple
+  yule_storage.calendar_contract: structural Protocols (interface extraction)
+  storage→integrations edge REMOVED (was TYPE_CHECKING-only). storage = persistence leaf (deps [])
+  integrations→storage one-way. integrations concrete models satisfy the Protocol by shape
+
+[QA checks]
+  runtime: canonical+compat identity: True
+  armory leaf (no hephaistos import): True
+  hephaistos.models SkillSpec is armory.models.SkillSpec: True
+  storage→integrations edge: False
+  packages: 19 | all classified in package-topology.md + all have pyproject.toml
+  docs .md links: all resolve | stale packages/runtime refs: 0
+  full root CI suite: OK (skipped=110) | guards: topology/runtime-rename/armory/decouple all OK
+
+must-fix-before-merge: NONE
+can-fix-later (debt): engineering-agent → yule_runtime shim 점진 전환; console/hephaistos.armory shim 점진 전환; 2x contracts/2x memory rename(후속); forgekit-runtime→yule_engineering lazy bridge
