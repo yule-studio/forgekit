@@ -38,6 +38,7 @@ from .registry import (
     H_LOADOUT,
     H_PROVIDER,
     H_SETUP,
+    H_TOOLCHAIN,
     H_NEXUS,
     H_DAEMON,
     H_LAYOUT,
@@ -175,6 +176,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _provider_result(parsed)
     if handler == H_SETUP:
         return _setup_result(parsed)
+    if handler == H_TOOLCHAIN:
+        return _toolchain_result(parsed, ctx)
     if handler == H_NEXUS:
         return _nexus_result(parsed, ctx)
     if handler == H_DAEMON:
@@ -261,6 +264,39 @@ def _setup_result(parsed) -> CommandResult:
         return (CommandResult.info if ok else CommandResult.error)("setup", msg.split("\n"))
     from ..policy import provider_ops as ops
     return CommandResult.info("setup", cs.setup_status_lines(ops.load_raw_config()))
+
+
+def _toolchain_result(parsed, ctx) -> CommandResult:
+    # /toolchain [detect|recommend <loadout>|switch [global] [--approve]|verify|drift]
+    # repo-local version detection + loadout→profile + mise switch/verify/drift.
+    # Destructive/global writes are approval-gated; no fake switch (lazy import — the
+    # package is optional infra and the console must boot without it installed).
+    try:
+        from forgekit_toolchain import surface as ts
+    except ImportError:
+        return CommandResult.error(
+            "toolchain", ("forgekit-toolchain 미설치 — `pip install -e packages/forgekit-toolchain`.",))
+
+    root = getattr(ctx, "repo_root", None) or Path(".")
+    args = [a for a in (getattr(parsed, "args", ()) or ())]
+    sub = args[0].lower() if args else "detect"
+    rest = args[1:]
+    # a loadout id is the first non-flag token after the subcommand
+    loadout = next((a for a in rest if not a.startswith("-") and a not in ("global",)), "")
+    if sub == "detect":
+        return CommandResult.info("toolchain detect", ts.detect_lines(root))
+    if sub == "recommend":
+        return CommandResult.info("toolchain recommend", ts.recommend_lines(root, loadout))
+    if sub == "verify":
+        return CommandResult.info("toolchain verify", ts.verify_lines(root, loadout))
+    if sub == "drift":
+        return CommandResult.info("toolchain drift", ts.drift_lines(root, loadout))
+    if sub == "switch":
+        scope = "global" if "global" in rest else "local"
+        approve = "--approve" in rest or "approve" in rest
+        ok, lines = ts.apply_switch(root, loadout, approve=approve, scope=scope)
+        return (CommandResult.info if ok else CommandResult.error)("toolchain switch", lines)
+    return CommandResult.info("toolchain detect", ts.detect_lines(root))
 
 
 def _nexus_result(parsed, ctx) -> CommandResult:
