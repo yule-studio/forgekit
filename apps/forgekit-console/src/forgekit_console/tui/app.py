@@ -81,9 +81,14 @@ class ForgekitConsoleApp(App):
         config: Optional[dict] = None,
         notifier=None,
         usage_ledger_path=None,
+        inline: bool = False,
     ) -> None:
         super().__init__()
         self.repo_root = Path(repo_root)
+        # inline UI mode: a bounded terminal-flow region (no alt-screen), driven by the
+        # entrypoint's run(inline=True, mouse=False). The layout bounds the reading flow
+        # so the console reads as an inline tool, not a full-screen takeover.
+        self._ui_inline = bool(inline)
         self.context = context or build_default_context(self.repo_root)
         self.context.profile = self.context.profile or "operator"
         self.mode = MODE_OPERATOR
@@ -175,6 +180,9 @@ class ForgekitConsoleApp(App):
     def on_mount(self) -> None:
         self.title = render.BRAND
         self.sub_title = render.TAGLINE
+        if self._ui_inline:
+            # bounded terminal-flow layout (see styles.SCREEN_CSS `.-inline`).
+            self.screen.add_class("-inline")
         # Claude-style idle: the transcript starts EMPTY (no pre-filled welcome
         # banner). The same `/help · / palette · …` guidance lives in the composer
         # hint row, so the welcome line was redundant and showed as a stray band.
@@ -1220,6 +1228,11 @@ class ForgekitConsoleApp(App):
         try:
             intro = self._intro
         except Exception:  # noqa: BLE001 - intro not mounted yet
+            return
+        if self._ui_inline:
+            # inline mode is a bounded terminal-flow block — the tall hero art would
+            # dominate it, so the intro is always the COMPACT header here.
+            intro.set_mode(intro_state.INTRO_COMPACT)
             return
         mode = intro_state.resolve_intro_mode(
             hero_available=intro.hero_available(),
