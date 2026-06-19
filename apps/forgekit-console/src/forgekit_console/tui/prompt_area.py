@@ -31,7 +31,12 @@ class PromptArea(TextArea):
     PromptArea {
         width: 1fr;
         height: auto;       /* 1 row for one line, grows with real newlines */
-        max-height: 12;     /* then it (and only it) scrolls — composer never eats the screen */
+        max-height: 12;     /* bounded so the input never eats the screen … */
+        overflow-y: auto;
+        scrollbar-size-vertical: 0;   /* … but NO visible gutter — the only visible
+                                         scroll surface is the SessionFlow. (large
+                                         pastes become compact blocks, so the input
+                                         rarely overflows anyway). */
         border: none;
         padding: 0;
         background: $background;

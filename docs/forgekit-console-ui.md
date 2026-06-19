@@ -18,12 +18,20 @@ Composer           ← 하단 DOCK. 입력 bar + palette(입력 바로 아래) +
   일부이며 transcript 가 아니다. 수동 스크롤 없이 즉시 보인다. palette 가 열리면 composer 가
   자라 SessionFlow(1fr) 가 위로 밀린다(전사 zone 만 줄어듦). 측정: `test_tui_palette_below`.
 
-## 2. Scroll owner — SessionFlow 단독, gutter 없음
-- `SessionFlow` 만 `allow_vertical_scroll=True`. Transcript/Help/Palette/Composer 는 전부
-  자체 스크롤 없음(측정값 [B]).
-- SessionFlow 의 **scrollbar gutter 를 0** 으로(색으로 숨김이 아니라 size 0) — 내부 pane
-  처럼 보이는 세로 스크롤바 줄을 제거하고 터미널 세션처럼 읽히게 한다. 스크롤 자체는
-  유지(follow_tail 로 tail 추적).
+## 2. Scroll model — 읽기 흐름 단일 owner + visible gutter 0
+**선택한 모델: bounded app viewport, 단일 reading-flow scroll owner, gutter 없음**
+(inline 모드는 추가로 alt-screen/mouse capture 제거 — §6). 진짜 terminal-native scrollback
+누적(print-flow)은 다음 단계 seam(§6).
+
+런타임 감사(실 widget property, CSS 추측 아님 — `examples/tui-scroll/audit.txt`):
+- **content scroll owner = `SessionFlow` 단 하나.** Transcript/Help/Palette/Composer 는 전부
+  `allow_vertical_scroll=False` (자체 스크롤 없음 — nested content scroll 0).
+- **visible gutter = 어느 widget 도 안 그림(full·inline 둘 다 NONE).** SessionFlow·PromptArea·
+  Composer 모두 `scrollbar-size-vertical: 0` — 색으로 숨김이 아니라 gutter 자체를 0 폭으로.
+  내부 pane 세로바 존재감 제거 → 터미널 흐름처럼 읽힘.
+- **입력창(PromptArea)** 만 bounded(max-height 12) + **gutter-less** 내부 스크롤(Claude 의
+  입력창도 거대 입력 시 스크롤) — content pane 이 아니라 입력 편의이며 시각적 gutter 없음.
+- 스크롤 자체는 유지(follow_tail 로 tail 추적). 테스트 `test_tui_scroll_model`.
 
 ## 3. Copy — 명시 UX (`/copy`)
 plain-text snapshot 을 OS clipboard 로 **실제** 복사(markup/receipt 제외). 정책: 붙여넣을 때
