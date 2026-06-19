@@ -61,6 +61,7 @@ where = [
     "packages/forgekit-provider/src",
     "packages/forgekit-contracts/src",
     "packages/nexus/src",
+    "packages/armory/src",
     "packages/hephaistos/src",
     "packages/forgekit-runtime/src",
     "apps/forgekit-console/src",
