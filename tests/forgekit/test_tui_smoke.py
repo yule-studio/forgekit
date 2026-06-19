@@ -87,11 +87,10 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             # Claude-style idle: the mode pill is hidden (no `● operator` row)
             self.assertFalse(app.query_one("#modepill", Static).display)
 
-    async def test_composer_is_inline_not_docked_bottom(self) -> None:
-        """Composer is NOT dock:bottom — it flows inline right after the content.
-
-        On a short session it sits in the UPPER area with EMPTY space below (not
-        pinned to the viewport bottom, unlike the old footer).
+    async def test_composer_is_docked_at_viewport_bottom(self) -> None:
+        """Composer is DOCKED at the viewport bottom (Claude): the input bar stays at
+        the bottom edge on a short session — it does NOT float mid-screen — and the
+        conversation scrolls above it. (Parity hotfix 2: was inline/floating before.)
         """
         from forgekit_console.tui.prompt_area import PromptArea
         from forgekit_console.tui.composer import Composer
@@ -100,31 +99,29 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            # the composer carries NO dock (it is part of the inline session flow)
-            self.assertNotEqual(str(composer.styles.dock or "none").lower(), "bottom")
             self.assertTrue(composer.display)
             self.assertTrue(app.query_one("#prompt", PromptArea).display)
-            # short session → composer near the TOP, empty space below (not pinned)
-            self.assertLess(composer.region.bottom, app.size.height - 2)
-            self.assertLess(composer.region.y, app.size.height // 2)
+            # short session → composer sits at the BOTTOM edge (not floating in the upper half)
+            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
+            self.assertGreater(composer.region.y, app.size.height // 2)
 
-    async def test_composer_follows_content_as_transcript_grows(self) -> None:
-        """As the transcript grows, the inline composer is pushed DOWN (follows content)."""
+    async def test_composer_stays_docked_as_transcript_grows(self) -> None:
+        """As the transcript grows, the docked composer STAYS at the bottom (it does not
+        move) and the conversation scrolls above it."""
         from forgekit_console.tui.composer import Composer
 
         app = self._app()
         async with app.run_test(size=(100, 40)) as pilot:
             await pilot.pause()
             composer = app.query_one("#composer", Composer)
-            short_y = composer.region.y
-            # write several transcript entries
+            short_bottom = composer.region.bottom
             for _ in range(30):
                 app._execute("/status")
             await pilot.pause()
             await pilot.pause()
-            # the composer moved down (content pushed it), still visible
-            self.assertGreater(composer.region.y, short_y)
-            self.assertTrue(composer.display)
+            # the composer is still pinned at the bottom edge (did not drift up/down)
+            self.assertEqual(composer.region.bottom, short_bottom)
+            self.assertGreaterEqual(composer.region.bottom, app.size.height - 1)
 
     async def test_help_tabs_first_with_cyan_divider_no_branding(self) -> None:
         """Help reads tabs-first (Help General …, no 'forgekit help' header) with a
@@ -302,8 +299,8 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
 
         Stands in for an SVG snapshot (the CI sweep runs unittest, not the
         textual-snapshot pytest plugin): it asserts the y-order of the regions.
-        The composer renders right after the content (inline), NOT docked at the
-        viewport bottom — so on a short session it leaves empty space below.
+        The composer is DOCKED at the viewport bottom (Claude); the conversation
+        (intro · issue · content) sits above it.
         """
         from textual.widgets import Static
         from forgekit_console.tui.composer import Composer
@@ -318,15 +315,15 @@ class TuiSmokeTests(unittest.IsolatedAsyncioTestCase):
             log = app.query_one("#main", MainPanel).region
             composer = app.query_one("#composer", Composer).region
             hint = app.query_one("#hint", Static).region
-            # top → down: intro · issue · content · composer-bar (inline)
+            # top → down: intro · issue · content · (docked) composer-bar
             self.assertLessEqual(intro.y, issue.y)
             self.assertLessEqual(issue.y, log.y)
             self.assertLessEqual(log.bottom, composer.y)
-            # the hint is now the FOOT of the composer bar (inside it), not a stray line
+            # the hint is the FOOT of the composer bar (inside it), not a stray line
             self.assertGreaterEqual(hint.y, composer.y)
             self.assertLessEqual(hint.bottom, composer.bottom)
-            # composer bar is NOT pinned to the viewport bottom on a short session
-            self.assertLess(composer.bottom, app.size.height - 2)
+            # composer bar IS pinned to the viewport bottom (docked)
+            self.assertGreaterEqual(composer.bottom, app.size.height - 1)
 
     async def test_intro_avatar_renderer_selected(self) -> None:
         from forgekit_console.tui.header import IntroHeader

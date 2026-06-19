@@ -375,6 +375,14 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
         "  F1         help 토글",
         "",
         "탭은 제자리에서 바뀝니다 — 본문에 쌓이지 않습니다.",
+        "",
+        "[b]복사 (copy)[/b]",
+        "  /copy            마지막 응답 복사 (= /copy last)",
+        "  /copy turn <n>   n 번째 턴(질문+응답) 복사",
+        "  /copy block <n>  n 번째 블록 복사   ·   /copy all  전체 복사",
+        "  [dim]plain-text 로 OS clipboard 에 실제 복사됩니다 (pbcopy/xclip).[/dim]",
+        "  [dim]※ full-screen TUI 는 마우스를 캡처해 일반 드래그 선택이 막힙니다 —[/dim]",
+        "  [dim]   터미널 native 선택은 iTerm2 Option+드래그 / 기타 Shift+드래그로 우회.[/dim]",
     ))
     general = HelpSection("General", (
         "[b]forgekit[/b] — provider-agnostic 운영자 콘솔.",

@@ -1,21 +1,21 @@
-"""Session flow — the top-aligned vertical scroll that holds the live session.
+"""Session flow — the single vertical scroll region that holds the reading flow.
 
-This is the container that makes the console read like Claude Code: a single
-TOP-ALIGNED vertical flow of
+This is the container that makes the console read like Claude Code: a ``1fr`` region
+that fills the space between the intro banner and the DOCKED composer, holding only
+the reading flow:
 
-    issue line → active content (transcript XOR help view) → inline composer → hint
+    issue line → active content (transcript XOR help view)
 
-where the active content is ``height: auto`` and the composer renders IMMEDIATELY
-AFTER it. When the session is short the composer sits near the top with EMPTY
-space below (exactly the Claude screenshot); as the transcript grows, the content
-pushes the composer down and this :class:`~textual.containers.VerticalScroll`
-provides the overflow, auto-scrolling so the newest output + the composer stay in
-view.
+The composer is NOT inside it — it is docked below (see the app ``compose``), so the
+input bar stays pinned at the viewport bottom and the conversation scrolls ABOVE it,
+exactly like a terminal session. This is the **single scroll owner** of the app; the
+transcript/help/palette never own their own vertical scroll.
 
-The intro header is intentionally kept OUTSIDE this scroll (in the app's
-``compose``) as a fixed top banner; only the live session (issue/content/composer/
-hint) scrolls. :meth:`follow_tail` is called by the app after new input/output so
-the composer is kept visible.
+The scrollbar GUTTER is hidden (``scrollbar-size-vertical: 0``) so the flow reads as a
+continuous terminal session, NOT a boxed inner pane — but it is still genuinely
+scrollable (``overflow-y: auto`` is inherited; ``allow_vertical_scroll`` stays True),
+and :meth:`follow_tail` keeps the newest line in view. The intro header sits OUTSIDE
+this region (fixed top banner).
 """
 
 from __future__ import annotations
@@ -24,27 +24,29 @@ from textual.containers import VerticalScroll
 
 
 class SessionFlow(VerticalScroll):
-    """Top-aligned scroll holding issue → content → composer → hint inline."""
+    """The single 1fr scroll region (issue + transcript/help). Composer is docked below."""
 
     DEFAULT_CSS = """
     SessionFlow {
         width: 1fr;
         height: 1fr;
-        /* top-aligned: children stack from the top, NOT pinned to the bottom */
+        /* top-aligned: the reading flow stacks from the top of the region */
         align-vertical: top;
-        scrollbar-size-vertical: 1;
+        /* NO scrollbar gutter — reads as a terminal session, not a boxed pane.
+           Still the sole scroll owner (overflow auto; allow_vertical_scroll stays). */
+        scrollbar-size-vertical: 0;
+        padding: 0;
     }
     """
 
     def follow_tail(self) -> None:
-        """Scroll so the tail of the flow (newest content + composer) stays in view.
+        """Scroll so the tail of the reading flow (newest output) stays in view.
 
-        Called after a new transcript entry / command output so the inline
-        composer is kept visible as the session grows — the "typing at the end of
-        the current session" feel.
+        Called after new transcript output — and after the palette opens (which shrinks
+        this region from the bottom) — so the latest line stays visible just above the
+        docked composer. animate=False keeps it snappy + deterministic for pilot tests.
         """
 
-        # animate=False keeps it snappy + deterministic for pilot tests.
         self.scroll_end(animate=False)
 
 

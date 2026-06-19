@@ -74,7 +74,11 @@ class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(app._palette.is_open)
             self.assertLessEqual(pal.bottom, bar.y + 1)   # palette is ABOVE the bar
 
-    async def test_opening_palette_while_browsing_reveals_composer(self) -> None:
+    async def test_composer_docked_visible_even_while_browsing(self) -> None:
+        """Parity hotfix 2: the composer is DOCKED, so the operator NEVER has to scroll
+        to see the input/palette. Even after scrolling up to browse a long history,
+        pressing `/` shows the palette above the (still-docked, still-visible) input —
+        no manual scroll-down needed."""
         from forgekit_console.tui.composer import Composer
         from forgekit_console.tui.palette import CommandPalette
         from forgekit_console.tui.session_flow import SessionFlow
@@ -90,21 +94,21 @@ class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
             comp = app.query_one(Composer)
             flow.scroll_to(y=8, animate=False)       # scroll UP to browse history
             await pilot.pause()
-            self.assertFalse(_visible(flow, comp))   # composer is below the fold
-            await pilot.press("slash", "h")          # explicit command-entry intent
+            # docked → composer is STILL fully on-screen while browsing (no fold)
+            self.assertGreaterEqual(comp.region.bottom, app.size.height - 1)
+            await pilot.press("slash", "h")          # command-entry while scrolled up
             await pilot.pause()
-            self.assertTrue(_visible(flow, comp))     # …reveals the composer + palette
+            self.assertGreaterEqual(comp.region.bottom, app.size.height - 1)
             self.assertLessEqual(
                 app.query_one(CommandPalette).region.bottom,
-                app.query_one("#composer-input-shell").region.y + 1,
+                app.query_one("#composer-input-shell").region.y + 1,   # palette above bar
             )
 
-    async def test_reopen_after_close_still_reveals(self) -> None:
-        """Regression: closing the palette (Esc) must reset the open-transition flag so
-        a LATER `/` while browsing history is still detected as an opening and reveals
-        the composer (the flag used to stick True across a close)."""
+    async def test_reopen_after_close_keeps_palette_above_input(self) -> None:
+        """close→reopen regression: after Esc-close then reopen, the palette still opens
+        above the docked input (no stuck state)."""
         from forgekit_console.tui.composer import Composer
-        from forgekit_console.tui.session_flow import SessionFlow
+        from forgekit_console.tui.palette import CommandPalette
 
         app = _app()
         async with app.run_test(size=(90, 22)) as pilot:
@@ -113,18 +117,19 @@ class PaletteAboveAndRevealTests(unittest.IsolatedAsyncioTestCase):
             for i in range(120):
                 tr.write(f"history {i} ....................................")
             await pilot.pause()
-            flow = app.query_one(SessionFlow)
             comp = app.query_one(Composer)
-            await pilot.press("slash", "h")          # open once …
+            await pilot.press("slash", "h")          # open …
             await pilot.pause()
-            await pilot.press("escape")              # … and close
+            await pilot.press("escape")              # … close
             await pilot.pause()
-            flow.scroll_to(y=8, animate=False)       # browse history again
+            await pilot.press("slash", "p")          # reopen
             await pilot.pause()
-            self.assertFalse(_visible(flow, comp))
-            await pilot.press("slash", "p")          # reopen → must reveal again
-            await pilot.pause()
-            self.assertTrue(_visible(flow, comp))
+            self.assertTrue(app._palette.is_open)
+            self.assertGreaterEqual(comp.region.bottom, app.size.height - 1)
+            self.assertLessEqual(
+                app.query_one(CommandPalette).region.bottom,
+                app.query_one("#composer-input-shell").region.y + 1,
+            )
 
 
 # --------------------------------------------------------------------------- #
