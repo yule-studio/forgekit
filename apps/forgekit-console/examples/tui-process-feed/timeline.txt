@@ -1,0 +1,29 @@
+forgekit process event feed — 실제 행동 기반 타임라인 (가짜 Reading/Bash 없음)
+======================================================================
+
+[1] free-text live submit (chunked generate, NOT token streaming)
+    submit_start     [done] (0.0s)
+    submit_sent      [done] · Ollama
+    generate_start   [done] (0.3s) · 3 chunks
+    done             [done]
+    feed render(rendered):
+      • Submitting to provider (0.0s)
+      • Sent Ollama
+      • Generating 3 chunks (0.3s)
+      • Done
+
+[2] blocked/failed submit — category-specific (unsupported_in_console)
+    submit_start     [failed] (0.0s)
+    error            [failed] · unsupported_in_console
+
+[3] slash route command
+    route_start      [done] (0.0s)
+    route_done       [done] · whoami
+    done             [done]
+
+[4] copy success / paste expanded
+  /copy:
+    copy_success     [done] · last response
+
+[분리] process feed 는 transcript 가 아니다 → /copy 에 event noise 미포함(검증: test_tui_process_feed).
+[정직] token streaming 아님 — paragraph/line-group chunked append. generate 이벤트가 실제 chunk 수 반영.

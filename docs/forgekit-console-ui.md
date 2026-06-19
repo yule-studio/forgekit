@@ -139,3 +139,28 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 
 증거: `examples/tui-inline/` (idle/slash SVG + audit.txt), `examples/tui-full/` (idle/slash SVG),
 테스트 `test_tui_inline_mode`.
+
+## 7. Process event feed (실제 행동 타임라인)
+"무반응 후 결과가 툭" 대신 **진행 단계**를 보여준다. 단, **실제로 발생한 행동만** — 가짜
+`Reading`/`Bash`/`Thinking` 라벨 없음. ForgeKit 은 coding shell 이 아니라 provider 콘솔이라
+**ForgeKit 의 실제 행위**(route/submit/generate/copy/attach/paste)에 매핑한다. 코드:
+`tui/process_events.py`(순수 모델), `render.process_feed_lines`(line builder), `tui/app.py`(wiring만).
+
+- **모델**: `ProcessEvent`(kind/label/status/started_at/ended_at/**duration_ms**(실측)/detail/
+  source/severity) + `ProcessFeed`(turn 단위 group, 최근 window cap). `start`→`finish` 로 duration
+  **실측**; instant marker(route_done/copy_*)는 `duration_ms=None`(정직, 가짜 1초 없음).
+- **transcript 와 분리**: feed 는 `#livestatus` zone(입력 위, 별도 surface). transcript 본문에
+  안 섞임 → `/copy [last|turn|block|all]` 에 event noise **미포함**(검증).
+- **실제 순서**:
+  - free-text: `submit_start` → `submit_sent` → `generate_start`(실 chunk 수 반영) → `done`.
+  - blocked/failed: `submit_blocked`/`error` + **category-specific**(unsupported_in_console /
+    no_provider_configured / budget_throttled / transport_error …) — vague "실패" 뭉개기 없음.
+  - slash: `route_start` → `route_done` → `done`/`error`.
+  - copy: `copy_success`/`copy_failed`(empty payload). attach: `attach_staged`/`attach_blocked`.
+    paste: `paste_stored`/`paste_expanded`.
+- **chunked, NOT token streaming**: `generate_start` 이벤트 detail 이 실제 append 된 chunk 수를
+  반영. 가짜 typing 애니메이션 없음.
+- **history**: turn 단위 group(새 입력 시 reset), 최근 ~6개만 노출 — 무한 누적 없음. idle→빈
+  surface(0행). clear 시 feed 도 정리.
+
+증거: `examples/tui-process-feed/timeline.txt`, 테스트 `test_tui_process_feed`.

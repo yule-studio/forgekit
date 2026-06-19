@@ -661,6 +661,34 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
     return (header, *lines, "")
 
 
+def process_feed_lines(events: Sequence) -> Tuple[str, ...]:
+    """Render process events as compact, dim timeline lines (Claude tone, ForgeKit verbs).
+
+    `• <label> <detail> (<dur>s)  <status>` — the dot colour is the severity, the whole
+    line is dim (a step lighter than the assistant body). Running → `…`; blocked/error
+    → `— <reason>`; done → a quiet `done`. Duration only shows when it was measured."""
+
+    from . import process_events as pe
+
+    out = []
+    for ev in events:
+        dot = {pe.SEV_WARN: _WARN, pe.SEV_ERROR: _ERR}.get(ev.severity, _ACCENT)
+        detail = f" [dim]{ev.detail}[/dim]" if ev.detail else ""
+        dur = f" [dim]({ev.duration_ms / 1000:.1f}s)[/dim]" if ev.duration_ms else ""
+        if ev.status == pe.ST_RUNNING:
+            tail = " [dim]…[/dim]"
+        elif ev.status == pe.ST_BLOCKED:
+            tail = f" [{_WARN}]— {ev.detail or 'blocked'}[/{_WARN}]"
+            detail = ""  # the reason is in the tail
+        elif ev.status == pe.ST_FAILED:
+            tail = f" [{_ERR}]— {ev.detail or 'error'}[/{_ERR}]"
+            detail = ""
+        else:
+            tail = ""
+        out.append(f"[{dot}]•[/{dot}] [dim]{ev.label}[/dim]{detail}{dur}{tail}")
+    return tuple(out)
+
+
 def chunk_result_lines(lines: Sequence[str], max_lines: int = 3) -> Tuple[Tuple[str, ...], ...]:
     """Group response lines into small reveal chunks for progressive rendering.
 
@@ -691,5 +719,5 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
 )

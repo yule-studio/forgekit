@@ -100,6 +100,8 @@ class ForgekitConsoleApp(App):
         self._attachments = AttachmentStore()  # staged image/file attachments (honest staged_only)
         from .paste_store import PasteStore
         self._pastes = PasteStore()      # large-paste raw payloads (expand/resend/copy by id)
+        from .process_events import ProcessFeed
+        self._feed = ProcessFeed()       # real process timeline (route/submit/generate/…)
         self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
         self._suppress_refilter = False
         # Repeated-failure escalation: same blocked signature past the threshold
@@ -410,13 +412,21 @@ class ForgekitConsoleApp(App):
         if parsed.name == "paste":
             self._paste_dispatch(list(getattr(parsed, "args", ()) or ()))
             return
+        # slash routing — a real, fast event group: Routing → Routed → Done/Error.
+        from . import process_events as _pe
+        self._feed.begin_turn()
+        route_ev = self._feed_emit("start", _pe.KIND_ROUTE_START, f"Routing /{parsed.name}")
         result = route(parsed, self.context)
+        self._feed.finish(route_ev, _pe.ST_DONE)
+        self._feed_emit("mark", _pe.KIND_ROUTE_DONE, "Routed", detail=parsed.name)
         if result.kind == KIND_QUIT:
             self.exit()
             return
         if result.kind == KIND_CLEAR:
             self._transcript.clear()
             self._store.clear()   # copy model tracks the visible transcript
+            self._feed.clear()
+            self._render_feed()
             self._main.show_transcript()
             return
         if result.kind in (KIND_HELP, KIND_LAYOUT):
@@ -435,6 +445,10 @@ class ForgekitConsoleApp(App):
             self._refresh_chrome()
         if result.kind == KIND_ERROR:
             self._record_failure(parsed, result)
+            self._feed_emit("mark", _pe.KIND_ERROR, "Command error", status=_pe.ST_FAILED,
+                            detail=result.title, severity=_pe.SEV_ERROR)
+        else:
+            self._feed_emit("mark", _pe.KIND_DONE, "Done")
         if (parsed.name or "") == "render":
             self._observe_render()  # repeated blocked render → escalate w/ alternatives
         if parsed.name in _STATUS_COMMANDS:
@@ -458,12 +472,17 @@ class ForgekitConsoleApp(App):
 
         # rehydrate a host paste placeholder from the clipboard BEFORE submitting — the
         # FULL multiline payload goes to the provider, never the bare placeholder.
+        from . import process_events as _pe
+
+        self._feed.begin_turn()             # one event group per turn (real timeline)
         res = ingest.resolve_submit_text(raw, clipboard.read_text())
         if res.blocked:
             self._transcript.begin_turn()
             self._transcript.write_echo(raw)
             self._transcript.write(
                 f"[{theme.WARNING}]⚠ paste 차단[/{theme.WARNING}] [dim]{res.note}[/dim]")
+            self._feed_emit("mark", _pe.KIND_SUBMIT_BLOCKED, "Paste blocked",
+                            status=_pe.ST_BLOCKED, detail="raw payload unavailable", severity=_pe.SEV_WARN)
             self._follow_tail()
             return
         text = (res.text if res.rehydrated else raw).strip()
@@ -480,6 +499,8 @@ class ForgekitConsoleApp(App):
             self._transcript.write_echo(payload.compact_label())
             self._transcript.write(
                 f"[dim]↳ /paste expand {payload.id} · /paste resend {payload.id} · /copy paste {payload.id}[/dim]")
+            self._feed_emit("mark", _pe.KIND_PASTE_STORED, "Paste stored",
+                            detail=f"#{payload.id} · {payload.line_count} lines")
         else:
             self._transcript.write_echo(text)
             if res.rehydrated:
@@ -492,6 +513,9 @@ class ForgekitConsoleApp(App):
         # provider call; the held result is rendered. Logic lives in chat.policy_gate.
         from ..chat.policy_gate import evaluate_gate
 
+        provider = getattr(self._effective_policy, "main_provider", "") or "provider"
+        self._submit_ev = self._feed_emit("start", _pe.KIND_SUBMIT_START,
+                                          f"Submitting to {provider}", source=provider)
         ctx = self._build_submit_context()
         decision = evaluate_gate(ctx)
         if not decision.allowed:
@@ -499,11 +523,15 @@ class ForgekitConsoleApp(App):
             for line in result.to_lines():
                 self._transcript.write(line)
             self._record_usage(result)  # held/throttled events are in the ledger too
+            # honest blocked event with the SPECIFIC category (no "실패" 뭉개기).
+            self._feed.finish(self._submit_ev, _pe.ST_BLOCKED)
+            self._feed_emit("mark", _pe.KIND_SUBMIT_BLOCKED, "Blocked", status=_pe.ST_BLOCKED,
+                            detail=result.category, severity=_pe.SEV_WARN)
             self._follow_tail()
             return
-        # stage 1 — THINKING: a transient status line under the conversation while the
-        # provider call runs off the event loop (real stage, cleared when the reply lands).
-        self._set_live_status("[dim]● 생각 중…[/dim]")
+        # the submit event stays RUNNING ("Submitting to <provider>…") while the provider
+        # call runs off the event loop; it is finished in _on_submit_result.
+        self._render_feed()
         self._follow_tail()
         self.run_worker(
             lambda: self._submit_blocking(text, ctx), thread=True, group="submit", exclusive=False
@@ -924,21 +952,32 @@ class ForgekitConsoleApp(App):
 
         self._transcript.begin_turn()
         self._transcript.write_echo("/copy " + " ".join(args) if args else "/copy")
+        from . import process_events as _pe
+        self._feed.begin_turn()
         label, text = self._copy_target(args)
         if label is None:
             self._transcript.write(
                 f"[{theme.WARNING}]⚠ 사용법[/{theme.WARNING}] "
-                "[dim]/copy [last|all|turn <n>|block <n>][/dim]")
+                "[dim]/copy [last|all|turn <n>|block <n>|paste <id>][/dim]")
+            self._feed_emit("mark", _pe.KIND_COPY_FAILED, "Copy", status=_pe.ST_FAILED,
+                            detail="usage", severity=_pe.SEV_WARN)
         elif not (text or "").strip():
             # empty payload is a FAILURE — never claim a copy happened.
             self._transcript.write(
                 f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] "
                 f"[dim]{label}: 복사할 내용이 없습니다 — 먼저 질문/명령을 실행하세요.[/dim]")
+            self._feed_emit("mark", _pe.KIND_COPY_FAILED, "Copy failed", status=_pe.ST_FAILED,
+                            detail="empty payload", severity=_pe.SEV_WARN)
         else:
             ok, msg = clipboard.copy_text(text)
             self._transcript.write(
                 (f"[{theme.SUCCESS}]✓ 복사됨[/{theme.SUCCESS}] [dim]{label} · {msg}[/dim]")
                 if ok else f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] [dim]{label} · {msg}[/dim]")
+            if ok:
+                self._feed_emit("mark", _pe.KIND_COPY_SUCCESS, "Copied", detail=label)
+            else:
+                self._feed_emit("mark", _pe.KIND_COPY_FAILED, "Copy failed",
+                                status=_pe.ST_FAILED, detail=msg, severity=_pe.SEV_WARN)
         self._sync_intro()
         self._follow_tail()
 
@@ -952,8 +991,11 @@ class ForgekitConsoleApp(App):
 
         from . import attachment as att
 
+        from . import process_events as _pe
+
         sub = (args[0].lower() if args else "")
         self._transcript.begin_turn()
+        self._feed.begin_turn()
         self._transcript.write_echo("/attach " + " ".join(args) if args else "/attach")
         if sub == "status":
             for line in self._attachments.status_lines():
@@ -967,8 +1009,12 @@ class ForgekitConsoleApp(App):
                 self._attachments.add(attachment)
                 self._transcript.write(f"[{theme.SUCCESS}]✓ {state}[/{theme.SUCCESS}] [dim]{msg}[/dim]")
                 self._transcript.write(f"[dim]↳ {att.PROVIDER_TEXT_ONLY_REASON} — 제출 시 staged_only 로 표시[/dim]")
+                self._feed_emit("mark", _pe.KIND_ATTACH_STAGED, "Attached",
+                                detail=f"{attachment.preview_label} · staged_only")
             else:
                 self._transcript.write(f"[{theme.WARNING}]⚠ {state}[/{theme.WARNING}] [dim]{msg}[/dim]")
+                self._feed_emit("mark", _pe.KIND_ATTACH_BLOCKED, "Attach blocked",
+                                status=_pe.ST_BLOCKED, detail=state, severity=_pe.SEV_WARN)
         else:
             # no args, no subcommand → try the clipboard image, else show usage + status.
             if not self._stage_clipboard_image(origin="attach"):
@@ -998,10 +1044,14 @@ class ForgekitConsoleApp(App):
                 self._transcript.write(f"[{theme.WARNING}]⚠ paste #{args[1]} 없음[/{theme.WARNING}]")
                 self._sync_intro(); self._follow_tail(); return
             if sub == "expand":
+                from . import process_events as _pe
+                self._feed.begin_turn()
                 self._transcript.write(f"[dim]── paste #{payload.id} 본문 ({payload.line_count} lines) ──[/dim]")
                 for line in payload.raw_text.splitlines():
                     self._transcript.write(line)
                 self._transcript.write(f"[dim]── end paste #{payload.id} ──[/dim]")
+                self._feed_emit("mark", _pe.KIND_PASTE_EXPANDED, "Paste expanded",
+                                detail=f"#{payload.id} · {payload.line_count} lines")
                 self._sync_intro(); self._follow_tail(); return
             # resend → re-run the raw payload through the free-text submit path.
             self._submit_free_text(payload.raw_text)
@@ -1056,31 +1106,49 @@ class ForgekitConsoleApp(App):
         self._attachments.clear()
 
     def _on_submit_result(self, result) -> None:
+        from . import process_events as _pe
+
         # record the assistant reply as a copyable response block (plain text, no receipt).
         self._store.add_response(result.text or self._plain_from_lines(result.to_lines()))
         # WT2: record the usage event (live or estimate basis) to the ledger.
         self._record_usage(result)
-        # held/throttled are intentional POLICY decisions, not failures → no escalation.
+        # close the Submitting event with the real outcome.
+        ev = getattr(self, "_submit_ev", None)
+        if ev is not None:
+            self._feed.finish(ev, _pe.ST_DONE if result.ok else _pe.ST_FAILED)
         if not result.ok and not result.held:
             self._record_submit_failure(result)
-        # stage 2 — GENERATING: reveal the body progressively (paragraph/line-group
-        # chunks), then the receipt, then clear the live status. NOT fake typing — real
-        # content revealed in chunks so it accumulates instead of one giant frame.
+            # honest, category-specific (unsupported_in_console / auth_missing / transport…).
+            self._feed_emit("mark", _pe.KIND_ERROR, "Submit failed", status=_pe.ST_FAILED,
+                            detail=result.category, severity=_pe.SEV_ERROR)
+            self._refocus_prompt()
+            return
+        if result.ok:
+            self._feed_emit("mark", _pe.KIND_SUBMIT_SENT, "Sent",
+                            detail=result.provider_label or result.provider_id)
+        # stage 2 — GENERATING: reveal the body progressively (paragraph/line-group chunks).
+        # chunked append (NOT token streaming) — the generate event reflects real chunks.
         self._reveal_result(result)
 
     def _reveal_result(self, result) -> None:
+        from . import process_events as _pe
+
         lines = list(result.to_lines())
         receipt = lines.pop() if lines else ""   # the trailing dim receipt line
         chunks = list(render.chunk_result_lines(lines))
-        self._set_live_status("[dim]● 생성 중…[/dim]")
+        self._gen_ev = self._feed_emit("start", _pe.KIND_GENERATE_START, "Generating")
+        self._gen_chunks = 0
         # the FIRST chunk lands immediately (snappy); the rest reveal on a timer.
         if chunks:
             self._write_chunk(chunks.pop(0))
+            self._gen_chunks += 1
+            self._gen_ev.detail = f"{self._gen_chunks} chunk"
+            self._render_feed()
             self._follow_tail()
         self._reveal_rest(chunks, receipt)
 
     def _reveal_rest(self, chunks, receipt: str) -> None:
-        """Reveal remaining chunks on a timer, then the receipt, then clear status."""
+        """Reveal remaining chunks on a timer (real chunk append), then receipt + done."""
 
         if not chunks:
             self._finish_reveal(receipt)
@@ -1089,6 +1157,9 @@ class ForgekitConsoleApp(App):
         def step() -> None:
             if chunks:
                 self._write_chunk(chunks.pop(0))
+                self._gen_chunks += 1
+                self._gen_ev.detail = f"{self._gen_chunks} chunks"   # real chunk count
+                self._render_feed()
                 self._follow_tail()
             if not chunks:
                 timer.stop()
@@ -1097,9 +1168,14 @@ class ForgekitConsoleApp(App):
         timer = self.set_interval(self._reveal_interval, step)
 
     def _finish_reveal(self, receipt: str) -> None:
+        from . import process_events as _pe
+
         if receipt:
-            self._transcript.write(receipt)   # stage 3 — RECEIPT (who/usage/mode)
-        self._clear_live_status()
+            self._transcript.write(receipt)   # stage 3 — RECEIPT (who/usage/mode) → transcript
+        gen = getattr(self, "_gen_ev", None)
+        if gen is not None:
+            self._feed.finish(gen, _pe.ST_DONE)
+            self._feed_emit("mark", _pe.KIND_DONE, "Done")   # carries the turn's total feel
         self._follow_tail()
         self._refocus_prompt()
 
@@ -1114,14 +1190,28 @@ class ForgekitConsoleApp(App):
         body = [ln for ln in lines if not (ln or "").lstrip().startswith("[dim]↳")]
         return "\n".join(body).strip()
 
-    def _set_live_status(self, markup: str) -> None:
-        try:
-            self.query_one("#livestatus", Static).update(markup)
-        except Exception:  # noqa: BLE001 - livestatus not mounted yet
-            pass
+    # --- process event feed -------------------------------------------------
+    def _feed_emit(self, op: str, kind: str, label: str, **kw):
+        """Record a real process event and re-render the feed surface. Returns the event."""
 
-    def _clear_live_status(self) -> None:
-        self._set_live_status("")
+        ev = (self._feed.start if op == "start" else self._feed.mark)(kind, label, **kw)
+        self._render_feed()
+        return ev
+
+    def _render_feed(self) -> None:
+        """Render the recent process events into the #livestatus surface (feed zone).
+
+        Separate from the transcript: the feed is event-only, the transcript is the
+        conversation. /copy never touches this. Idle → empty (collapses to 0 rows)."""
+
+        try:
+            w = self.query_one("#livestatus", Static)
+        except Exception:  # noqa: BLE001 - not mounted yet
+            return
+        if self._feed.empty:
+            w.update("")
+            return
+        w.update("\n".join(render.process_feed_lines(self._feed.recent(6))))
 
     def _refocus_prompt(self) -> None:
         try:
