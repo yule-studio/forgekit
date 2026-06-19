@@ -1,4 +1,9 @@
-"""yule_runtime — cleanly-movable runtime primitives.
+"""yule_runtime_primitives — cleanly-movable runtime PRIMITIVES (shared infra).
+
+Renamed from ``yule_runtime`` to disambiguate from ``forgekit-runtime`` (ForgeKit
+execution core) and ``agent-runtime`` (engineering-agent decide/recall loop). The old
+``yule_runtime`` import path stays as a forward-compat shim. See
+``docs/package-topology.md``.
 
 This package holds the low-coupling runtime PRIMITIVES extracted from
 ``yule_engineering.runtime``: the circuit breaker, the service manifest

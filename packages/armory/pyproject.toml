@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "armory"
+version = "0.1.0"
+description = "Armory — ForgeKit's catalog / capability registry: the inventory of Skills / Loadouts / Weapons (and their spec vocabulary) that Hephaistos forges a plan from. Pure, stdlib-first, leaf."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]

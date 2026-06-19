@@ -43,7 +43,7 @@ safe-class boundaries are real, not decorative).
 | **ForgeKit** | the whole platform / execution environment | this repo |
 | **Hephaistos** | the *skill-forging core* — turns a request into an equip plan (agent + skills + loadout + weapons + work packet) | `forgekit_console/hephaistos/` |
 | **Nexus** | the external knowledge source (areas / patterns / snippets / troubleshooting) Hephaistos *reads* (never copies) | read path: `hephaistos/nexus_read.py` |
-| **Armory** | the catalog of Skills / Loadouts / Weapons Hephaistos forges from | `hephaistos/armory.py` |
+| **Armory** | the catalog of Skills / Loadouts / Weapons Hephaistos forges from | `packages/armory` (`armory.catalog` / `armory.models`) |
 | **Work Packet** | a structured, executable unit (goal / scope / forbidden / commands / verify / approval / evidence) | `hephaistos/models.py` |
 | **Runtime Mode** | the operator posture (Shift+Tab) that actually changes routing / budget / approval | `policy/runtime_mode.py` |
 
