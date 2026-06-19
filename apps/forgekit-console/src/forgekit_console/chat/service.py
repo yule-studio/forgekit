@@ -108,6 +108,19 @@ class SubmitService:
             return builtins.OLLAMA, m.SOURCE_LOCAL_DEFAULT
         return None, m.SOURCE_NONE
 
+    def _spec_for(self, provider_id: str) -> Optional[ProviderSpec]:
+        """Resolve ONE provider id → spec (builtin first, then a custom config entry)."""
+
+        pid = (provider_id or "").strip()
+        if not pid:
+            return None
+        if builtins.is_builtin(pid):
+            return builtins.BUILTIN_PROVIDERS[pid]
+        try:
+            return build_provider({**(self.config or {}), "id": pid})
+        except Exception:  # noqa: BLE001 - invalid custom config → not resolvable
+            return None
+
     # --- submit -------------------------------------------------------------
     def submit(self, prompt: str, *, prefer_provider: str = "", context=None) -> m.SubmitResult:
         # WT1 runtime-teeth: enforce the EffectivePolicy BEFORE touching a provider.
@@ -130,17 +143,62 @@ class SubmitService:
             # the mode's routing target steers the provider (gate wins over the arg).
             prefer_provider = gate.routing_target or prefer_provider
 
-        spec, source = self.resolve(prefer_provider=prefer_provider)
-        if spec is None:
+        from ..policy import routing as _routing
+        from ..policy.provider_config import SLOT_DEFAULT_CHAT, load_provider_config
+
+        brain = load_provider_config(self.config)
+        # Build the ORDERED attempt chain: routed/declared head + the operator's EXPLICIT
+        # fallback order (default_chat slot — the chat slot the gate routes to). This is
+        # where fallback_policy actually affects the submit path, not just the display.
+        configured = bool(brain.primary_provider) or (
+            bool(prefer_provider) and builtins.is_builtin(prefer_provider))
+        if configured:
+            chain = _routing.submit_chain(brain, SLOT_DEFAULT_CHAT, prefer=prefer_provider)
+            base_source = m.SOURCE_CONFIGURED
+        elif brain.implicit_local_fallback and self.transport.ollama_reachable(builtins.OLLAMA.endpoint):
+            # operator EXPLICITLY opted into implicit local fallback (and no primary set).
+            chain = (builtins.OLLAMA.id,)
+            base_source = m.SOURCE_LOCAL_DEFAULT
+        else:
+            chain = ()
+            base_source = m.SOURCE_NONE
+        if not chain:
+            # NO implicit ollama by default — operator must set a primary provider.
             return m.SubmitResult(
-                ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=source,
+                ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=base_source,
                 runtime_mode=runtime_mode,
                 text="primary provider 가 아직 설정되지 않았습니다 — free-text 를 보낼 대상이 없습니다.",
                 next_action="콘솔에서 `/provider set <id>` (claude/codex/gemini/ollama) 로 primary provider 를 "
                             "정하세요. ForgeKit 은 자동으로 ollama 를 쓰지 않습니다 — operator 가 정합니다.",
             )
+
+        head = chain[0]
+        last: Optional[m.SubmitResult] = None
+        for i, pid in enumerate(chain):
+            spec = self._spec_for(pid)
+            if spec is None:
+                continue
+            result = self._dispatch(prompt, spec, base_source, brain, runtime_mode=runtime_mode)
+            if result.ok:
+                if i > 0:  # the head was unusable → an EXPLICIT fallback answered. Be honest.
+                    from dataclasses import replace
+                    result = replace(result, fallback_used=True, routed_from=head)
+                return result
+            last = result
+            # non-ok → fall to the NEXT provider in the operator's declared order (if any).
+        # the chain is exhausted — return the most relevant error (the head's failure).
+        return last if last is not None else m.SubmitResult(
+            ok=False, mode=m.MODE_SETUP, category=m.CAT_NO_PROVIDER, source=base_source,
+            runtime_mode=runtime_mode, text="resolvable provider 가 없습니다.",
+            next_action="`/provider set <id>` 로 primary provider 를 설정하세요.",
+        )
+
+    def _dispatch(self, prompt: str, spec: ProviderSpec, source: str, brain,
+                  *, runtime_mode: str = "") -> m.SubmitResult:
+        """Submit to ONE resolved provider (openai-compat live, else honest unsupported)."""
+
         if spec.submit_compat == SUBMIT_OPENAI:
-            return self._submit_openai(prompt, spec, source, runtime_mode=runtime_mode)
+            return self._submit_openai(prompt, spec, source, brain, runtime_mode=runtime_mode)
         # CLI / native / custom-http → honestly not wired for console live-submit.
         return m.SubmitResult(
             ok=False, mode=m.MODE_ERROR, category=m.CAT_UNSUPPORTED, source=source,
@@ -150,7 +208,7 @@ class SubmitService:
             next_action="로컬 ollama 또는 openai-compatible provider 를 설정하면 free-text 가 live 로 동작합니다.",
         )
 
-    def _submit_openai(self, prompt: str, spec: ProviderSpec, source: str,
+    def _submit_openai(self, prompt: str, spec: ProviderSpec, source: str, brain=None,
                        *, runtime_mode: str = "") -> m.SubmitResult:
         # auth is the first precondition the operator must satisfy — check it before
         # the endpoint so an api-key provider reports the actionable "auth_missing".
@@ -173,7 +231,13 @@ class SubmitService:
                 text=f"{spec.label} endpoint 가 비어 있습니다.",
                 next_action="provider config 의 endpoint 를 설정하세요.",
             )
-        model = str((self.config or {}).get("model", "")).strip()
+        # model precedence: per-provider model_overrides[spec.id] (operator's explicit
+        # choice for THIS provider) → global config "model" → ollama-installed → id.
+        model = ""
+        if brain is not None:
+            model = brain.model_for(spec.id).strip()
+        if not model:
+            model = str((self.config or {}).get("model", "")).strip()
         if not model and spec.auth_kind == AUTH_NONE:  # ollama: pick an installed model
             models = self.transport.ollama_models(spec.endpoint)
             model = models[0] if models else ""

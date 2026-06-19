@@ -88,6 +88,10 @@ class SubmitResult:
     output_tokens: int = 0
     total_tokens: int = 0
     throttled: bool = False
+    # --- provider fallback (WT1 teeth): set when the declared/routed provider was
+    # unusable and the operator's EXPLICIT fallback order produced this provider. ---
+    fallback_used: bool = False
+    routed_from: str = ""     # the originally-intended provider (the chain head)
 
     @property
     def is_live(self) -> bool:
@@ -108,7 +112,10 @@ class SubmitResult:
         if self.total_tokens or self.usage_basis not in ("", USAGE_UNKNOWN):
             usage = f" · {self.total_tokens}tok({self.usage_basis})"
         thr = " · throttled" if self.throttled else ""
-        return f"[dim]↳ {who}{extra} · {tag} · {self.category}{mode}{usage}{thr}[/dim]"
+        # honest fallback note: show the operator the declared→actual hop so a routed
+        # fallback is never silent ("looks like claude answered" when gemini did).
+        fb = f" · fallback {self.routed_from}→{self.provider_id}" if self.fallback_used else ""
+        return f"[dim]↳ {who}{extra} · {tag} · {self.category}{mode}{usage}{thr}{fb}[/dim]"
 
     def to_lines(self) -> Tuple[str, ...]:
         """Transcript lines for this result (assistant reply + receipt, or why-not)."""
