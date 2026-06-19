@@ -33,5 +33,5 @@ shared infra vs transitional, plus where to add new work — is in
 - Live social/Figma scraping — **planned seams**, never faked live.
 - "Complete autonomous team" — agents are bounded and approval-gated by design.
 
-Related: [forgekit-architecture-ownership.md](forgekit-architecture-ownership.md) ·
+Related: [control-plane-architecture.md](control-plane-architecture.md) · [forgekit-architecture-ownership.md](forgekit-architecture-ownership.md) ·
 [hephaistos-runtime.md](hephaistos-runtime.md) · [README](../README.md).
