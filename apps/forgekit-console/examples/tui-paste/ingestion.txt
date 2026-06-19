@@ -1,0 +1,14 @@
+forgekit paste/attach ingestion — 실측 (placeholder rehydrate + staging)
+======================================================================
+
+[근본 원인] ForgeKit 은 [Pasted text #N]/[Image #N] 를 생성하지 않음(grep clean).
+  → host(터미널/IDE)가 치환. PromptArea(TextArea)는 진짜 멀티라인 paste 를 받음.
+  → 해결: placeholder 감지 → OS clipboard 에서 raw payload 복원/stage.
+
+[1] HOST placeholder PASTE → clipboard 에서 본문 rehydrate
+  붙여넣은 것: '[Pasted text #3 +24 lines]'  → composer buffer 줄 수: 23
+  clipboard 본문과 일치: True  (멀티라인 보존)
+  submit → provider 가 받은 줄 수: 23  placeholder 전송됨? False
+
+[2] placeholder 인데 clipboard 복구 불가 → 정직 blocked (제출 안 함)
+  제출 수 변화: 0 (0 = 미제출)  → placeholder 를 메시지로 안 보냄

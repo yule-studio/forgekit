@@ -63,3 +63,33 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 
 증거: `apps/forgekit-console/examples/tui-ux-v2/` (SVG 스크린샷 + measurements.txt),
 테스트 `test_tui_parity_hotfix2` · `test_tui_smoke` · `test_tui_scroll_copy` · `test_tui_ux_redesign`.
+
+## 5. Paste / attach ingestion (large paste · image)
+**근본 원인(실측):** ForgeKit 은 `[Pasted text #N]`/`[Image #N]` 를 **생성하지 않는다**(grep clean).
+이건 **host(터미널/IDE/wrapper)** 가 붙여넣기를 가로채 치환한 것이고, ForgeKit 은 placeholder
+문자열만 받는다. `PromptArea`(TextArea)는 **진짜 멀티라인 bracketed paste 를 정상 수신**한다
+(newline 보존, 더블삽입 없음 — 검증). 즉 "한 문장만 받는다"의 원인은 multiline 미지원이 아니라
+**host placeholder + rehydration 경로 부재**였다. 코드: `tui/ingest.py`, `tui/attachment.py`,
+`tui/clipboard.py`(image), `tui/app.py`(`on_paste`/submit rehydrate/`/attach`).
+
+- **large text** — `on_paste` 가 placeholder 를 감지하면 OS clipboard(pbpaste)에서 **raw 본문을
+  복원**해 composer buffer 를 multiline 으로 rehydrate. 제출 시에도 한 번 더 resolve → provider
+  는 **full 본문**을 받는다(placeholder 미전송). 8줄 초과는 transcript echo 만 compact, 실제
+  제출/`/copy` 는 full. clipboard 복구 불가면 **정직 blocked**(제출 안 함, 조용한 truncate 없음).
+- **image** — `/attach <path>` 파일 stage, 또는 `[Image #N]` paste / `/attach` 시 clipboard 이미지
+  (pngpaste/osascript/xclip)로 실파일 stage. `/attach status|clear`. honest 상태:
+  `staged`/`missing`/`blocked`/`no_attachment`.
+- **provider 전송** — console submit 은 **텍스트 전용** → 이미지는 `staged_only`(받아서 실파일로
+  보관했으나 **미전송**), 이유 표기. 가짜 업로드 없음. multimodal transport 는 planned.
+
+| 항목 | 상태 |
+| --- | --- |
+| 멀티라인 실제 paste 수신 | working (TextArea, newline 보존) |
+| large paste placeholder → clipboard rehydrate | working (`on_paste` + submit) |
+| rehydrate 불가 시 honest blocked | working (제출 안 함) |
+| `/attach <path>` 파일 staging | working (staged_only) |
+| clipboard 이미지 staging | working where reader 존재(pngpaste/osascript/xclip), 없으면 honest |
+| 이미지 provider 전송(multimodal) | **planned** (현재 staged_only) |
+
+증거: `examples/tui-paste/ingestion.txt`, `examples/tui-attach/staging.txt`,
+테스트 `test_tui_ingest_attach`.
