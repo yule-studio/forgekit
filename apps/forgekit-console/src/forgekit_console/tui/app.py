@@ -167,19 +167,18 @@ class ForgekitConsoleApp(App):
             profile=self.context.profile,
             id="intro",
         )
-        # THE SCROLL REGION (1fr) — only the reading flow scrolls: issue line + the
-        # transcript XOR help view. It is the SINGLE scroll owner. The composer is NOT
-        # inside it — it is DOCKED below (Claude: the input bar stays at the bottom of
-        # the viewport and the conversation scrolls above it).
+        # THE SESSION FLOW (1fr) — the SINGLE scroll owner, TOP-ALIGNED. The whole session
+        # stacks inside it: issue line → transcript/help → process feed → INLINE composer.
+        # The composer is INLINE (not docked): on an empty session it sits near the TOP
+        # with empty space below (Claude); as the transcript grows it is pushed down and
+        # follow_tail keeps it in view — "typing at the tail of the current session".
         with SessionFlow(id="flow"):
             yield Static(id="issue")               # one quiet status line at the top
             yield MainPanel(id="main")             # transcript XOR help (height: auto)
-        # live status line — a TRANSIENT stage marker (thinking → generating) shown just
-        # above the docked composer while a response is produced/revealed, then cleared.
-        yield Static(id="livestatus")
-        # the DOCKED composer — input bar + slash palette DIRECTLY BELOW it + sub-hint
-        # row. Pinned to the viewport bottom; the palette opens flush under the input.
-        yield Composer(id="composer")
+            # process event feed (route/submit/generate/…); empty → collapses to 0 rows.
+            yield Static(id="livestatus")
+            # inline composer — input bar + slash palette DIRECTLY BELOW it + sub-hint row.
+            yield Composer(id="composer")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
@@ -192,8 +191,22 @@ class ForgekitConsoleApp(App):
         # hint row, so the welcome line was redundant and showed as a stray band.
         self._refresh_issue()
         self._refresh_chrome()
+        # setup-required → a COPYABLE explanation block in the transcript (not UI-only).
+        # The issue line stays a short pill; this block is the readable, /copy-able guidance.
+        if getattr(self._setup, "blocked", False):
+            self._write_system(render.setup_explanation_lines())
         self._sync_intro()  # empty + idle → wide hero art; working state → compact
         self.query_one("#prompt", PromptArea).focus()
+        self._follow_tail()
+
+    def _write_system(self, lines) -> None:
+        """Write an operator-facing SYSTEM explanation block to the transcript AND the
+        plain-text store, so it is visible AND copyable (`/copy last|turn|all`). System
+        blocks are real content (setup guidance, mode-switch reasons), NOT UI chrome."""
+
+        for ln in lines:
+            self._transcript.write(ln)
+        self._store.add_lines("system", lines)   # copyable plain-text (markup stripped)
         self._follow_tail()
 
     # --- input / palette ----------------------------------------------------
@@ -320,12 +333,14 @@ class ForgekitConsoleApp(App):
             widget.hide()
         self._refresh_chrome()
         self._sync_intro()  # opening the palette folds a fresh hero to compact
-        # Auto-reveal policy (docked composer): the palette is ALWAYS visible (it opens
-        # DIRECTLY BELOW the docked input bar, inside the bottom-docked composer zone),
-        # so the operator never scrolls to see it. When the palette opens the flow region
-        # shrinks from the bottom — if the operator was at the tail we keep the newest
-        # line visible (follow_tail); if browsing history we PRESERVE their scroll.
-        if is_open and self._at_tail():
+        # Auto-reveal policy (INLINE composer): the composer lives in the scroll flow, so
+        # it is not structurally always-visible. On the OPEN transition — explicit
+        # command-entry intent — scroll the flow to the tail so the input + the palette
+        # (directly below it) are immediately on-screen, NO manual scroll. While the
+        # palette stays open and the operator is at the tail, keep following; if they
+        # scrolled up to browse mid-open we don't yank them.
+        opening = is_open and not self._palette_was_open
+        if is_open and (opening or self._at_tail()):
             self._follow_tail()
         self._palette_was_open = is_open
 
@@ -1408,8 +1423,13 @@ class ForgekitConsoleApp(App):
             self.query_one("#issue", Static).update(render.blocked_banner())
             return
         if self._setup.blocked:
-            # no provider configured → forgekit can't run; surface setup-required.
+            # no primary provider configured → forgekit can't run; surface setup-required.
             self.query_one("#issue", Static).update(render.setup_required_banner())
+            return
+        if not getattr(self._setup, "live_capable", True):
+            # configured (primary set) but no console live-submit path — honest, NOT blocked.
+            self.query_one("#issue", Static).update(
+                render.no_live_banner(getattr(self._setup, "primary_provider", "")))
             return
         pol = self._effective_policy
         if pol is not None:
@@ -1442,11 +1462,11 @@ class ForgekitConsoleApp(App):
         from ..policy import runtime_mode as rm
 
         if self._setup.blocked:
-            self._transcript.write(
-                "[dim]provider 미설정 — 모드 전환 전에 setup 이 필요합니다 (`/doctor`).[/dim]"
-            )
+            # copyable operator guidance (not UI-only) — goes to transcript + store.
+            self._write_system(
+                ("provider 미설정 — 모드 전환 전에 setup 이 필요합니다.",
+                 "  • `/provider set <id>` 로 primary provider 설정 · `/doctor` 로 점검"))
             self._sync_intro()
-            self._follow_tail()
             return
         self._runtime_mode = rm.cycle_mode(self._runtime_mode, direction)
         self._mode_pinned = True  # explicit operator action → auto won't override
@@ -1482,7 +1502,7 @@ class ForgekitConsoleApp(App):
         pol = self._effective_policy
         lines = [
             f"현재 모드: [b]{pol.mode_label}[/b]  (Shift+Tab 으로 순환)",
-            f"  main provider : {pol.main_provider}",
+            f"  primary provider : {pol.main_provider}",
             f"  routing       : {pol.provider_policy_mode}  → chat slot = {pol.routing_target()}",
             f"  usage         : {pol.usage.usage_mode} (reserve {pol.usage.reserve})",
             f"  autonomy      : {pol.autonomy}",
