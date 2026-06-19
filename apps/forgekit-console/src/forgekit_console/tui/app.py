@@ -89,7 +89,8 @@ class ForgekitConsoleApp(App):
         self.mode = MODE_OPERATOR
         self._palette = palette_state.CLOSED
         self._palette_was_open = False  # tracks open transitions for the auto-reveal policy
-        self._last_response = ""        # plain-text snapshot of the last response (for /copy)
+        from .transcript_store import TranscriptStore
+        self._store = TranscriptStore()  # copyable plain-text model (/copy last|turn|block|all)
         self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
         self._suppress_refilter = False
         # Repeated-failure escalation: same blocked signature past the threshold
@@ -155,23 +156,19 @@ class ForgekitConsoleApp(App):
             profile=self.context.profile,
             id="intro",
         )
-        # the live session is a single TOP-ALIGNED vertical flow that scrolls:
-        #   issue line → active content (transcript XOR help) → inline composer → hint.
-        # The composer renders right after the content (height: auto), so a short
-        # session leaves it near the top with empty space below; as content grows
-        # the flow scrolls to keep the composer in view.
+        # THE SCROLL REGION (1fr) — only the reading flow scrolls: issue line + the
+        # transcript XOR help view. It is the SINGLE scroll owner. The composer is NOT
+        # inside it — it is DOCKED below (Claude: the input bar stays at the bottom of
+        # the viewport and the conversation scrolls above it).
         with SessionFlow(id="flow"):
-            # one quiet issue line under the intro
-            yield Static(id="issue")
-            # main area — a transcript XOR help-view state machine (mutually exclusive)
-            yield MainPanel(id="main")
-            # live status line — a TRANSIENT stage marker (thinking → generating) shown
-            # right under the conversation while a response is being produced/revealed,
-            # then cleared. Empty (height collapses) when idle.
-            yield Static(id="livestatus")
-            # session-following inline composer BAR — slash palette (opens ABOVE the
-            # input) + input row + the sub-hint row, all inside one bar.
-            yield Composer(id="composer")
+            yield Static(id="issue")               # one quiet status line at the top
+            yield MainPanel(id="main")             # transcript XOR help (height: auto)
+        # live status line — a TRANSIENT stage marker (thinking → generating) shown just
+        # above the docked composer while a response is produced/revealed, then cleared.
+        yield Static(id="livestatus")
+        # the DOCKED composer — slash palette (opens ABOVE the input, pushing the flow
+        # up) + the input bar + the sub-hint row. Pinned to the viewport bottom.
+        yield Composer(id="composer")
 
     def on_mount(self) -> None:
         self.title = render.BRAND
@@ -274,13 +271,12 @@ class ForgekitConsoleApp(App):
             widget.hide()
         self._refresh_chrome()
         self._sync_intro()  # opening the palette folds a fresh hero to compact
-        # Auto-reveal policy (Claude-style): when the palette OPENS — or while it is
-        # open and the operator is already at the tail — bring the composer + palette
-        # block into view so they never have to scroll down to see the candidates.
-        # If they are browsing history (not at tail) we do NOT yank the viewport,
-        # UNLESS this is the open transition (explicit command-entry intent).
-        opening = is_open and not self._palette_was_open
-        if is_open and (opening or self._at_tail()):
+        # Auto-reveal policy (docked composer): the palette is ALWAYS visible (it opens
+        # above the docked input bar), so the operator never scrolls to see it. When the
+        # palette opens the flow region shrinks from the bottom — if the operator was at
+        # the tail we keep the newest line visible (follow_tail); if they were browsing
+        # history we PRESERVE their scroll position (the palette is visible regardless).
+        if is_open and self._at_tail():
             self._follow_tail()
         self._palette_was_open = is_open
 
@@ -359,7 +355,7 @@ class ForgekitConsoleApp(App):
             self._show_usage()
             return
         if parsed.name == "copy":
-            self._copy_last()
+            self._copy_dispatch(list(getattr(parsed, "args", ()) or ()))
             return
         if parsed.name == "attach":
             self._attach_seam(raw)
@@ -370,6 +366,7 @@ class ForgekitConsoleApp(App):
             return
         if result.kind == KIND_CLEAR:
             self._transcript.clear()
+            self._store.clear()   # copy model tracks the visible transcript
             self._main.show_transcript()
             return
         if result.kind in (KIND_HELP, KIND_LAYOUT):
@@ -380,7 +377,9 @@ class ForgekitConsoleApp(App):
         log.begin_turn()   # vertical breathing room between turns (Claude cadence)
         log.write_echo(raw)
         log.write_result(result.title, result.lines)
-        self._last_response = self._plain_from_lines(result.lines)   # copyable via /copy
+        # record copyable plain-text blocks (the command + its output) for /copy.
+        self._store.add_user(raw)
+        self._store.add_lines("response", result.lines)
         if result.kind == KIND_AGENT_MODE:
             self.mode = result.title  # router titles agent results as "agent:<id>"
             self._refresh_chrome()
@@ -410,6 +409,7 @@ class ForgekitConsoleApp(App):
             return
         self._transcript.begin_turn()       # vertical breathing room between turns
         self._transcript.write_echo(text)   # the user's message
+        self._store.add_user(text)          # copyable user turn (for /copy turn/all)
         self._sync_intro()  # transcript now has content → compact working header
         # RUNTIME-TEETH (WT1): enforce the EffectivePolicy via the chat policy gate
         # BEFORE any provider call. hold-all (approval-wait) / budget throttle → no
@@ -814,24 +814,50 @@ class ForgekitConsoleApp(App):
         result = self._submit_service.submit(text, context=ctx)
         self.call_from_thread(self._on_submit_result, result)
 
-    def _copy_last(self) -> None:
-        """`/copy` — copy the most recent response to the OS clipboard (real, honest)."""
+    def _copy_target(self, args):
+        """Resolve `/copy [last|all|turn <n>|block <n>]` → (label, plain_text|None)."""
+
+        sub = (args[0].lower() if args else "last")
+        if sub in ("", "last"):
+            return "last response", self._store.last_response()
+        if sub == "all":
+            return "all transcript", (self._store.all_text() or None)
+        if sub in ("turn", "block") and len(args) >= 2 and args[1].isdigit():
+            n = int(args[1])
+            if sub == "turn":
+                return f"turn {n}", self._store.turn(n)
+            blk = self._store.block(n)
+            return f"block {n}", (blk.text if blk else None)
+        return None, None   # unknown form
+
+    def _copy_dispatch(self, args) -> None:
+        """`/copy [last|all|turn <n>|block <n>]` — copy PLAIN text to the OS clipboard.
+
+        Policy: a plain-text snapshot is copied (markup/receipt stripped — what the
+        operator would actually paste), never the Rich markup. Empty payload is a
+        FAILURE (never a fake "copied"). The clipboard write is real (pbcopy/xclip);
+        success/failure is surfaced honestly.
+        """
 
         from . import clipboard
 
         self._transcript.begin_turn()
-        self._transcript.write_echo("/copy")
-        text = getattr(self, "_last_response", "") or ""
-        if not text.strip():
-            # empty payload is a FAILURE, not a quiet note — never claim a copy happened.
+        self._transcript.write_echo("/copy " + " ".join(args) if args else "/copy")
+        label, text = self._copy_target(args)
+        if label is None:
+            self._transcript.write(
+                f"[{theme.WARNING}]⚠ 사용법[/{theme.WARNING}] "
+                "[dim]/copy [last|all|turn <n>|block <n>][/dim]")
+        elif not (text or "").strip():
+            # empty payload is a FAILURE — never claim a copy happened.
             self._transcript.write(
                 f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] "
-                "[dim]복사할 최근 응답이 없습니다 — 먼저 질문/명령을 실행하세요.[/dim]"
-            )
+                f"[dim]{label}: 복사할 내용이 없습니다 — 먼저 질문/명령을 실행하세요.[/dim]")
         else:
             ok, msg = clipboard.copy_text(text)
-            self._transcript.write((f"[{theme.SUCCESS}]✓ 복사됨[/{theme.SUCCESS}] [dim]{msg}[/dim]")
-                                   if ok else f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] [dim]{msg}[/dim]")
+            self._transcript.write(
+                (f"[{theme.SUCCESS}]✓ 복사됨[/{theme.SUCCESS}] [dim]{label} · {msg}[/dim]")
+                if ok else f"[{theme.WARNING}]⚠ 복사 실패[/{theme.WARNING}] [dim]{label} · {msg}[/dim]")
         self._sync_intro()
         self._follow_tail()
 
@@ -852,8 +878,8 @@ class ForgekitConsoleApp(App):
         self._follow_tail()
 
     def _on_submit_result(self, result) -> None:
-        # plain-text snapshot for /copy — the reply TEXT only (no markup, no receipt).
-        self._last_response = result.text or self._plain_from_lines(result.to_lines())
+        # record the assistant reply as a copyable response block (plain text, no receipt).
+        self._store.add_response(result.text or self._plain_from_lines(result.to_lines()))
         # WT2: record the usage event (live or estimate basis) to the ledger.
         self._record_usage(result)
         # held/throttled are intentional POLICY decisions, not failures → no escalation.
@@ -1096,6 +1122,7 @@ class ForgekitConsoleApp(App):
 
     def action_clear_log(self) -> None:
         self._transcript.clear()
+        self._store.clear()
         self._main.show_transcript()
 
     def action_refresh_status(self) -> None:
@@ -1200,15 +1227,16 @@ class ForgekitConsoleApp(App):
         self._follow_tail()
 
     def _refresh_chrome(self) -> None:
-        mode = "palette" if self._palette.is_open else self.mode
         # Both the mode pill and the hint are SECONDARY rows BELOW the input bar
-        # (Claude-style). The mode pill only appears for agent / palette states; in
-        # the default operator state it is hidden. The hint is the bottom mode line.
+        # (Claude-style). The mode pill ONLY appears for an agent mode — NOT for the
+        # palette (the palette list above the input is self-evident; a "● palette" pill
+        # is just clutter) and NOT in the default operator state. The hint is the
+        # bottom mode line (empty while typing / palette open — see render.hint_line).
         modepill = self.query_one("#modepill", Static)
-        show_mode = self._palette.is_open or self.mode != MODE_OPERATOR
+        show_mode = self.mode != MODE_OPERATOR and not self._palette.is_open
         modepill.display = show_mode
         if show_mode:
-            modepill.update(render.mode_pill(mode, self.context.agents))
+            modepill.update(render.mode_pill(self.mode, self.context.agents))
         typing = bool((self._prompt_value() or "").strip())
         self.query_one("#hint", Static).update(
             render.hint_line(
