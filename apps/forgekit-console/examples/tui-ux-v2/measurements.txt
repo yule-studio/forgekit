@@ -1,0 +1,28 @@
+forgekit Claude-parity hotfix 2 — 실측 (pilot runtime properties)
+====================================================================
+
+[A] 입력창 DOCK (이전: 화면 중앙 부유 / 이후: 하단 고정)
+  screen H=28  composer.bottom=28  → docked at bottom: True
+
+[B] scroll owner (80줄 오버플로우 후)
+  SessionFlow  allow_v_scroll=True  scrollbar_gutter=0
+  Transcript   allow_v_scroll=False  scrollbar_gutter=0
+  Composer     allow_v_scroll=False  scrollbar_gutter=2
+  → 단일 owner=SessionFlow, gutter 0 (내부 pane scrollbar 제거)
+
+[C] slash open (long transcript) — palette 가 입력창 위, 입력창은 하단 고정
+  palette.bottom=24 <= input.y=24: True
+  input still docked: True
+  ● palette modepill 표시: False (제거됨)
+
+[D] /copy 실제 OS clipboard round-trip (pbcopy → pbpaste readback)
+  /copy last     → readback: 'Terraform 응답'
+  /copy turn 1   → readback: 'JWT 설명\nJWT 응답'
+  /copy block 1  → readback: 'JWT 설명'
+  /copy all      → readback: 'JWT 설명\n\nJWT 응답\n\nTerraform\n\nTerraform 응답'
+
+[E] 구조적 한계 (정직)
+  - full-screen TUI(alt-screen + mouse capture) 라 마우스 드래그 선택/네이티브 복사 불가.
+    → 우회: iTerm2 Option+드래그 / 기타 Shift+드래그 (터미널 native 선택).
+    → ForgeKit 명시 copy UX = /copy [last|turn|block|all] (위 D 가 실제 동작).
+  - alt-screen 라 터미널 native scrollback 없음 → 세션 스크롤은 SessionFlow 가 담당.
