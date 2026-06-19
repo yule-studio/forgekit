@@ -26,6 +26,21 @@ def _live_word(pid: str) -> str:
     return "live" if spec.submit_compat == SUBMIT_OPENAI else "unsupported_in_console"
 
 
+def _route_word(res) -> str:
+    """Honest one-word verdict for a slot resolution (declared → actual)."""
+
+    from . import routing as rt
+    if res.status == rt.RESOLVE_FALLBACK:
+        return f"live, fallback {res.declared_provider}→{res.actual_provider}"
+    if res.is_live_capable:
+        return "live"
+    if res.status == rt.RESOLVE_UNSUPPORTED:
+        return "routing only / no console submit"
+    if res.status == rt.RESOLVE_NO_CONFIG:
+        return "setup-required"
+    return res.status
+
+
 def provider_status_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
     """`/provider` — current brain: primary / linked / live-capable / setup verdict."""
 
@@ -39,11 +54,19 @@ def provider_status_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
         )
     parsed = pc.load_provider_config(cfg)
     bmap = ops.brain_map(parsed)
+    from . import routing as rt
+    dc = rt.resolve_routing(parsed, pc.SLOT_DEFAULT_CHAT)
+    ex = rt.resolve_routing(parsed, pc.SLOT_EXECUTION)
     lines = [
         f"provider: [{review.verdict}]",
-        f"  primary : {parsed.primary_provider} ({_live_word(parsed.primary_provider)})",
-        f"  linked  : {', '.join(parsed.linked_providers) or '-'}",
-        f"  live    : {', '.join(bmap.live_capable) or '(없음)'}",
+        f"  primary brain : {parsed.primary_provider} ({_live_word(parsed.primary_provider)})",
+        f"  linked        : {', '.join(parsed.linked_providers) or '-'}",
+        # the honest brain-vs-transport split: what each slot DECLARES vs the ACTUAL live
+        # provider a free-text submit reaches (declared may be a CLI brain; actual is the
+        # live console transport, with explicit fallback surfaced).
+        f"  default_chat  : declared {dc.declared_provider} → actual {dc.actual_provider} ({_route_word(dc)})",
+        f"  execution     : declared {ex.declared_provider} → actual {ex.actual_provider} ({_route_word(ex)})",
+        f"  live          : {', '.join(bmap.live_capable) or '(없음)'}",
         f"  unsupported_in_console: {', '.join(bmap.unsupported) or '-'}",
         f"  implicit local fallback: {'on' if parsed.implicit_local_fallback else 'off (기본)'}",
     ]
@@ -116,6 +139,34 @@ def _persist(new_cfg, env, path):
     return (True, "") if ok else (False, f"저장 실패: {where}")
 
 
+def apply_preset(name: str, *, env: Optional[Mapping[str, str]] = None,
+                 path: Optional[Path] = None) -> Tuple[bool, str]:
+    """`/provider preset <name>` — apply a multi-provider brain template + persist.
+
+    Writes a REAL config (primary + linked + slot_routing + fallback + model_overrides),
+    not just a label. The success line is honest about brain-vs-transport: the primary
+    brain may be claude while the actual free-text live lane is the default_chat slot
+    (gemini), with claude/codex as routing/brain participants only."""
+
+    name = (name or "").strip()
+    if name not in ops.PRESETS:
+        return False, f"알 수 없는 preset: {name or '(없음)'} (사용 가능: {', '.join(ops.PRESETS)})."
+    cur = ops.load_raw_config(env=env, path=path)
+    new_cfg = ops.PRESETS[name](cur)
+    ok, msg = _persist(new_cfg, env, path)
+    if not ok:
+        return False, msg
+    parsed = pc.load_provider_config(new_cfg)
+    dc = parsed.slot_target(pc.SLOT_DEFAULT_CHAT)
+    return True, (
+        f"preset '{name}' 저장됨 — primary brain = {parsed.primary_provider}, "
+        f"linked = {', '.join(parsed.linked_providers)}.\n"
+        f"  free-text live lane: default_chat → {dc} ({_live_word(dc)}); execution → "
+        f"{parsed.slot_target('execution')}. claude/codex 는 routing/brain participant "
+        f"(콘솔 live-submit 미구현). `/provider` 로 확인, `/mode` 로 routing."
+    )
+
+
 def apply_link(pid: str, *, env=None, path=None) -> Tuple[bool, str]:
     """`/provider link <id>` — add to linked providers + persist."""
 
@@ -183,5 +234,6 @@ def apply_route_clear(slot: str, *, env=None, path=None) -> Tuple[bool, str]:
 
 __all__ = (
     "provider_status_lines", "provider_list_lines", "provider_doctor_lines", "apply_set_primary",
-    "apply_link", "apply_unlink", "route_show_lines", "apply_route_set", "apply_route_clear",
+    "apply_preset", "apply_link", "apply_unlink", "route_show_lines", "apply_route_set",
+    "apply_route_clear",
 )

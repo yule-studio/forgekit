@@ -54,8 +54,11 @@ class SurfaceTests(unittest.TestCase):
 
     def test_status_after_primary(self) -> None:
         lines = "\n".join(ps.provider_status_lines({"primary_provider": "ollama"}))
-        self.assertIn("primary : ollama", lines)
+        self.assertIn("primary brain : ollama", lines)
         self.assertIn("implicit local fallback: off", lines)
+        # the brain-vs-transport split is surfaced (declared → actual per slot)
+        self.assertIn("default_chat", lines)
+        self.assertIn("actual ollama", lines)
 
 
 class LinkRouteTests(unittest.TestCase):

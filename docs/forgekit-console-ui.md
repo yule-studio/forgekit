@@ -1,5 +1,13 @@
 # ForgeKit 콘솔 UI — copy / scroll / palette 모델 (Claude parity)
 
+> **bare `forgekit` = inline 기본** (Claude-Code 처럼 기존 터미널 흐름 안 — alt-screen 미사용,
+> native scrollback/선택, 터미널 기본 배경 비침). `--full` / `FORGEKIT_UI_MODE=full` 은
+> alt-screen escape hatch. SSoT: `tui/ui_mode.py` (`resolve_ui_mode` 기본값 inline).
+>
+> **terminal-native 배경:** Screen·composer·palette·prompt_area background = `transparent` —
+> 터미널 기본 배경이 이어져 "별도 boxed app 창" 느낌 제거. 기본 텍스트 아바타(`_AVATAR_MARK`)는
+> foreground-only 라 검은 박스 없이 렌더. (PNG 그래픽-프로토콜 아바타는 이미지 자체 배경 — 에셋 한계.)
+
 콘솔 TUI 의 입력/복사/스크롤 동작 SSoT. 코드: `tui/app.py` (layout·copy dispatch),
 `tui/session_flow.py` (scroll owner), `tui/composer.py`·`tui/palette.py` (docked
 composer + 입력창 바로 아래 열리는 palette), `tui/transcript_store.py` (copy 모델), `tui/clipboard.py`.

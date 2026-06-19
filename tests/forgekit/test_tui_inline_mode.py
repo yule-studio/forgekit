@@ -32,9 +32,10 @@ class UiModeTests(unittest.TestCase):
 
     def test_env_and_default(self):
         from forgekit_console.tui import ui_mode as uim
+        self.assertEqual(uim.resolve_ui_mode({"FORGEKIT_UI_MODE": "full"}), "full")
+        self.assertEqual(uim.resolve_ui_mode({}), "inline")            # bare forgekit = inline (default)
+        self.assertEqual(uim.resolve_ui_mode({"FORGEKIT_UI_MODE": "auto"}), "inline")  # terminal-native default
         self.assertEqual(uim.resolve_ui_mode({"FORGEKIT_UI_MODE": "inline"}), "inline")
-        self.assertEqual(uim.resolve_ui_mode({}), "full")              # default
-        self.assertEqual(uim.resolve_ui_mode({"FORGEKIT_UI_MODE": "auto"}), "full")  # honest: no guess
 
     def test_run_kwargs_inline_avoids_altscreen_and_mouse(self):
         from forgekit_console.tui import ui_mode as uim
@@ -75,8 +76,15 @@ class LaunchWiringTests(unittest.TestCase):
         self.assertFalse(seen["kwargs"].get("mouse"))
         self.assertTrue(seen["inline_flag"])
 
-    def test_default_runs_full(self):
+    def test_default_runs_inline(self):
+        # bare forgekit = inline (Claude-Code-style terminal-native default)
         seen = self._capture([])
+        self.assertTrue(seen["kwargs"].get("inline"))
+        self.assertFalse(seen["kwargs"].get("mouse"))
+        self.assertTrue(seen["inline_flag"])
+
+    def test_full_flag_is_the_escape_hatch(self):
+        seen = self._capture(["--full"])
         self.assertEqual(seen["kwargs"], {})
         self.assertFalse(seen["inline_flag"])
 

@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from typing import Mapping, Optional
 
-MODE_FULL = "full"      # full-screen alternate-screen TUI (default, power-user)
-MODE_INLINE = "inline"  # inline terminal-flow (native scrollback + selection friendly)
+MODE_FULL = "full"      # full-screen alternate-screen TUI (escape hatch, power-user)
+MODE_INLINE = "inline"  # inline terminal-flow (native scrollback + selection friendly) — DEFAULT
 MODE_AUTO = "auto"
 
 ENV_UI_MODE = "FORGEKIT_UI_MODE"
@@ -30,20 +30,23 @@ _VALID = (MODE_FULL, MODE_INLINE, MODE_AUTO)
 
 
 def resolve_ui_mode(env: Optional[Mapping[str, str]] = None, *, cli: Optional[str] = None) -> str:
-    """Resolve the effective UI mode → ``full`` or ``inline``.
+    """Resolve the effective UI mode → ``inline`` (default) or ``full``.
 
-    Priority: explicit CLI flag → ``FORGEKIT_UI_MODE`` env → default ``full``.
-    ``auto`` resolves to ``full`` (no guessing — inline is opt-in).
+    Priority: explicit CLI flag → ``FORGEKIT_UI_MODE`` env → **default ``inline``**.
+    bare ``forgekit`` opens inline (Claude-Code-style: lives in the existing terminal
+    flow, native scrollback/selection). ``--full`` / ``FORGEKIT_UI_MODE=full`` is the
+    escape hatch to the alternate-screen TUI. ``auto`` resolves to ``inline`` (the
+    terminal-native default — no alt-screen takeover unless asked).
     """
 
     chosen = (cli or "").strip().lower()
     if chosen not in _VALID:
         environ = env or {}
         chosen = str(environ.get(ENV_UI_MODE, "") or "").strip().lower()
-    if chosen == MODE_INLINE:
-        return MODE_INLINE
-    # full / auto / anything-unknown → full (the conservative, tested default)
-    return MODE_FULL
+    if chosen == MODE_FULL:
+        return MODE_FULL
+    # inline / auto / unset / anything-unknown → inline (the terminal-native default)
+    return MODE_INLINE
 
 
 def run_kwargs(mode: str) -> dict:

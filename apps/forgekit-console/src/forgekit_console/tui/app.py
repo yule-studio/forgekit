@@ -1454,7 +1454,18 @@ class ForgekitConsoleApp(App):
         if profile is None:
             self._effective_policy = None
             return
-        self._effective_policy = rm.resolve_effective_policy(profile, self._runtime_mode)
+        # Honor the operator's slot_routing: pass the configured slots as overrides and the
+        # linked providers as available, so default_chat resolves to its DECLARED provider
+        # (e.g. gemini) and the policy's routing_target is the actual chat lane — NOT the
+        # primary brain. Without this, slots collapse to the primary (claude) and a
+        # free-text submit wrongly heads to claude and dies as unsupported_in_console.
+        from ..policy.provider_config import load_provider_config
+        brain = load_provider_config(self._config)
+        self._effective_policy = rm.resolve_effective_policy(
+            profile, self._runtime_mode,
+            overrides=brain.slot_routing,
+            available=brain.linked_providers,
+        )
 
     def _cycle_runtime_mode(self, direction: int = 1) -> None:
         """Shift+Tab: advance the runtime mode and recompute the real policy."""

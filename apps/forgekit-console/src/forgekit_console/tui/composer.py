@@ -43,14 +43,14 @@ class Composer(Vertical):
     Composer {
         height: auto;
         margin: 1 0 0 0;   /* a clear gap above; FULL width (no side inset) */
-        background: $background;
+        background: transparent;
         padding: 0;
         scrollbar-size-vertical: 0;   /* the composer never owns scroll — no gutter */
     }
     /* THE input bar — bounded by a light/near-white top + bottom rule (Claude). */
     Composer #composer-input-shell {
         height: auto;
-        background: $background;
+        background: transparent;
         border-top: solid $input-rule;
         border-bottom: solid $input-rule;
         padding: 0 1;
@@ -64,7 +64,7 @@ class Composer(Vertical):
     Composer #prompt {
         width: 1fr;
         border: none;
-        background: $background;
+        background: transparent;
         height: auto;
         padding: 0;
     }

@@ -39,10 +39,10 @@ class PromptArea(TextArea):
                                          rarely overflows anyway). */
         border: none;
         padding: 0;
-        background: $background;
+        background: transparent;
     }
     PromptArea > .text-area--cursor-line {
-        background: $background;   /* no full-width line highlight — reads like an input bar */
+        background: transparent;   /* no full-width line highlight — reads like an input bar */
     }
     """
 

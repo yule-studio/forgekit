@@ -37,7 +37,7 @@ class CommandPalette(Static):
         scrollbar-size-vertical: 0;
         padding: 0 1 0 1;
         color: $text;
-        background: $background;
+        background: transparent;
     }
     CommandPalette.-open { display: block; }
     """

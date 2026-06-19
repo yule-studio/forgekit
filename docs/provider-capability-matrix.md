@@ -1,5 +1,14 @@
 # Provider capability matrix — vendor-neutral capability → provider 배치
 
+> **brain(routing participant) ≠ console live transport.** ForgeKit brain 은 multi-provider
+> 조합이다. `primary_provider` 는 brain head 이지만 free-text 의 실제 live 전송은
+> `slot_routing.default_chat` 의 **actual live provider** 를 따른다. claude/codex 는 현재 콘솔
+> live-submit 미구현(`unsupported_in_console`) — routing/brain participant 로만 남고,
+> gemini/ollama 가 current live lane. 추천 구성은 한 명령으로 `/provider preset four-brain`
+> (primary=claude · default_chat/research→gemini · execution→codex · compression/classification
+> →ollama · safety/synthesis→claude · explicit fallback orders · no implicit ollama). UI
+> (`/provider`)는 slot 별 `declared X → actual Y (live/routing only)` 로 정직하게 표면화한다.
+>
 > 짝 문서 [`plugin-taxonomy.md`](plugin-taxonomy.md) 가 *개념 분리*를 정의한다.
 > 본 문서는 *배치* 를 정의한다: 어떤 capability 를 공통으로 두고, 어떤 것을
 > Claude/Codex/Gemini 로 투영하며, Ollama 를 어디에 backend 로 꽂는가.
