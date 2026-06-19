@@ -46,8 +46,28 @@ Evidence: `examples/provider-runtime-core/`, `test_provider_runtime_core`.
 | source | read status | restrictions | evidence |
 | --- | --- | --- | --- |
 | repo-local docs | working | — | `examples/sources/` |
-| Nexus vault | not_connected (until `FORGEKIT_NEXUS_ROOT`) | restricted projection for some roles | `examples/hephaistos/nexus-read-foundation/` |
+| Nexus vault | working (live read when connected via `/nexus set` / `FORGEKIT_NEXUS_ROOT` / config; not_connected default) | restricted projection for non-allowed roles | `examples/nexus-live-read/` |
 | restricted design source | blocked (TCC) | design role only (else projection) | `examples/design/` |
 | Figma | planned seam | — | — |
 | YouTube / Google / Instagram | planned | — | — |
 | GitHub / HN / Reddit / RSS | working (injected fetcher; free-first) | rate/ToS | `examples/sources/` |
+
+## Provider / Nexus / Always-on execution core (WT1–WT4) — honest status
+
+This round wired the three execution axes from "seam present" to "real teeth", with
+integration evidence. Truly working / partial / planned / blocked:
+
+| axis | truly working | partial | planned / blocked |
+| --- | --- | --- | --- |
+| **Provider runtime** | primary/slot routing → submit; **explicit `slot_fallback_orders` fallback** on unusable head; **`model_overrides` per provider**; no-implicit-ollama; unsupported_in_console honest; usage_basis live/estimate | fallback uses the `default_chat` slot order (mode→slot for non-chat slots not yet split in the gate) | per-provider `budget_policy` not yet enforced (global budget only); claude/codex live submit (CLI) |
+| **Nexus read** | live root via `/nexus set` / env / config; 5-way status (not_connected/exists/missing/blocked/restricted); real bounded `.md` reads; restricted → projection_only unless role-allowed; surfaced in `/nexus` `/resolve` `/skills` `/hephaistos` | role is a single context value (no per-command `--role`) | remote/non-filesystem Nexus transports |
+| **Always-on daemon** | bounded serve loop (heartbeat/kill-switch/max-ticks/cooldown/signals); CLI `serve\|once\|status\|stop`; **console `/daemon` `/daemon stop`** read the same heartbeat; safe-class autopilot tick; approval/alert → inbox + opt-in desktop; systemd/launchd units | TUI shows status only (no in-console approve/deny UI) | auto-install of units; macOS lid-close suspends (Linux/systemd is the 1급 path — honest) |
+
+**Integration evidence:** `examples/integration/scenarios.txt` runs three scenarios
+(Spring Boot JWT · Next.js UI · Terraform ECS/K3s) through provider resolution
+(+ fallback) → `/resolve` (Hephaistos + live Nexus line) → usage rollup → `/daemon`,
+proving the axes compose. Test: `test_integration_provider_nexus_daemon`.
+
+**Honesty rails kept:** no implicit ollama (no-config → setup-required, zero provider
+calls); Nexus never fakes a read (not_connected/missing/blocked surfaced as-is); the
+daemon `/daemon` surface shows honest `stopped` when no heartbeat exists.

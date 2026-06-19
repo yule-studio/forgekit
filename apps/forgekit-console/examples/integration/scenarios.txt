@@ -1,0 +1,23 @@
+forgekit 통합 시나리오 — provider + Nexus + usage + daemon 한 흐름
+========================================================================
+
+### 시나리오: backend-java — Spring Boot JWT refresh token MySQL
+  [provider] ok=True provider=ollama fallback=False model=llama3:70b basis=estimate
+  [resolve ] infer     : database/java/spring-boot/auth-jwt
+  [nexus   ] nexus     : connected · read 0 / missing 7 / blocked 0 / restricted 0
+
+### 시나리오: frontend-react — Next.js UI 레이아웃 개선 리팩토링
+  [provider] ok=True provider=ollama fallback=True routed_from=claude model=gemma3:latest basis=estimate
+  [resolve ] infer     : frontend/typescript/nextjs/layout
+  [nexus   ] nexus     : connected · read 0 / missing 3 / blocked 0 / restricted 0
+
+### 시나리오: devops-cloud — Terraform 으로 ECS / K3s 운영 자동화
+  [provider] ok=True provider=ollama fallback=True routed_from=gemini model=gemma3:latest basis=estimate
+  [resolve ] infer     : devops/-/-/terraform
+  [nexus   ] nexus     : connected · read 0 / missing 1 / blocked 0 / restricted 0
+
+### usage rollup (3 시나리오 누적)
+  total_tokens=23 by_provider={'ollama': 23}
+
+### daemon surface
+  forgekit always-on daemon — stopped
