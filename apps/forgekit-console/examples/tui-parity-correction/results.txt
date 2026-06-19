@@ -1,0 +1,14 @@
+ForgeKit parity correction — 실측 (입력 위치 / copyable setup / setup gate)
+======================================================================
+
+[1 입력 위치] idle empty: input y=11 (H=30) → 상단 근처:True, 아래 빈공간:True
+           long+tail: input bottom=29 → tail-follow 하단 visible:True
+[3 palette] below input:True gap=0
+
+[2 copyable setup] /copy all → pbpaste 에 setup 안내 포함:True
+   readback head: 'setup-required — primary provider 가 아직 설정되지 않았습니다.'
+
+[4 setup gate] /provider set claude persist→ {'primary_provider': 'claude', 'linked_providers': ['claude']}
+   재실행 state=configured-no-live blocked=False (canonical primary_provider 읽음 — 더 이상 setup-required 오인 X)
+   link ollama → state=ready live_capable=True
+[no config] state=setup-required · stale 'main_provider' wording 제거됨

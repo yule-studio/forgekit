@@ -27,9 +27,9 @@ def _ctx():
     return ConsoleContext(repo_root=Path("/tmp/repo"), agents=load_agents(), commands=load_commands())
 
 
-def _app(submit_service=None):
+def _app(submit_service=None, config=None):
     from forgekit_console.tui.app import ForgekitConsoleApp
-    return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_ctx(), submit_service=submit_service)
+    return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_ctx(), submit_service=submit_service, config=config)
 
 
 # --------------------------------------------------------------------------- #
@@ -73,29 +73,24 @@ class TranscriptStoreTests(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 @unittest.skipUnless(_TEXTUAL, "textual 필요")
 class DockedLayoutTests(unittest.IsolatedAsyncioTestCase):
-    async def test_input_docked_and_palette_pushes_flow_up(self) -> None:
+    async def test_input_inline_and_palette_directly_below(self) -> None:
         from forgekit_console.tui.composer import Composer
-        from forgekit_console.tui.session_flow import SessionFlow
         from forgekit_console.tui.palette import CommandPalette
 
-        app = _app()
+        app = _app(config={"primary_provider": "ollama", "linked_providers": ["ollama"]})
         async with app.run_test(size=(100, 28)) as pilot:
             await pilot.pause()
             H = app.size.height
             comp = app.query_one(Composer)
             bar = app.query_one("#composer-input-shell")
-            flow = app.query_one(SessionFlow)
-            self.assertGreaterEqual(comp.region.bottom, H - 1)          # docked at bottom
-            flow_h_before = flow.region.height
-            # open palette → composer grows, flow region shrinks; palette is DIRECTLY
-            # BELOW the input bar (Claude), inside the bottom-docked composer zone.
+            # INLINE: empty session → composer near the top, NOT docked at the bottom
+            self.assertLess(comp.region.bottom, H - 2)
+            # open palette → it opens DIRECTLY BELOW the input bar (flush, gap ≈ 0)
             await pilot.press("slash", "h", "e")
             await pilot.pause()
             pal = app.query_one(CommandPalette)
             self.assertGreaterEqual(pal.region.y, bar.region.bottom)        # palette BELOW input
             self.assertLessEqual(pal.region.y - bar.region.bottom, 1)       # flush (gap ≈ 0)
-            self.assertGreaterEqual(comp.region.bottom, H - 1)          # composer still docked
-            self.assertLess(flow.region.height, flow_h_before)         # transcript zone shrank
 
     async def test_session_flow_is_sole_owner_no_gutter(self) -> None:
         from forgekit_console.tui.session_flow import SessionFlow
@@ -161,7 +156,7 @@ class CopyVariantsTests(unittest.IsolatedAsyncioTestCase):
         orig = clipboard.copy_text
         clipboard.copy_text = lambda t: (captured.__setitem__("t", t) or (True, "stub"))
         try:
-            app = _app(self._svc(["답변A", "답변B"]))
+            app = _app(self._svc(["답변A", "답변B"]), config={"primary_provider": "ollama", "linked_providers": ["ollama"]})
             async with app.run_test(size=(100, 28)) as pilot:
                 await pilot.pause()
                 await self._two_turns(app, pilot)
@@ -197,7 +192,7 @@ class CopyVariantsTests(unittest.IsolatedAsyncioTestCase):
     async def test_copy_real_pbpaste_readback(self) -> None:
         from forgekit_console.tui import clipboard
 
-        app = _app(self._svc(["진짜 응답입니다"]))
+        app = _app(self._svc(["진짜 응답입니다"]), config={"primary_provider": "ollama", "linked_providers": ["ollama"]})
         async with app.run_test(size=(100, 28)) as pilot:
             await pilot.pause()
             app.query_one("#prompt").value = "질문"
