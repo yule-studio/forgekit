@@ -1,0 +1,24 @@
+ForgeKit Claude-parity QA — 실측 (geometry / clipboard round-trip / payload)
+======================================================================
+
+[A] slash palette 위치
+  palette.top(24) >= input.bottom(24): True · gap=0 · parent=Composer:True · 수동스크롤 불필요(visible):True
+  scroll owner 단일(reading): SessionFlow allow=True, Palette allow=False
+
+[B] copy / clipboard round-trip (kr/en, multiline)
+  /copy last → pbpaste: '응답'
+  /copy turn 1 → pbpaste: '질문 hello\n둘째\n응답'
+  empty payload 실패: True
+
+[C] long paste(250줄 kr/en) ingestion + lifecycle
+  raw 보존: store#1 lines=250 · provider got lines=250 · placeholder 미전송:True
+  /copy paste 1 raw readback 일치: True
+  /paste resend → full 재제출(250 lines)
+
+[E] image attachment lifecycle
+  stage_file → state=staged · real bytes=204 · ingest 성공 ≠ submit 가능: sendable=False(provider text-only → staged_only)
+
+[D] process status — 현황(정직)
+  현재: livestatus(thinking→generating) + 명령별 receipt 줄만 존재.
+  미구현: Reading/Routing/Bash/Done 류 구조화 event timeline(duration/status, feed 분리).
+  → 다음 전용 build 로 분리(가짜 status 안 만듦).

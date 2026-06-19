@@ -83,8 +83,13 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 
 - **large text** — `on_paste` 가 placeholder 를 감지하면 OS clipboard(pbpaste)에서 **raw 본문을
   복원**해 composer buffer 를 multiline 으로 rehydrate. 제출 시에도 한 번 더 resolve → provider
-  는 **full 본문**을 받는다(placeholder 미전송). 8줄 초과는 transcript echo 만 compact, 실제
-  제출/`/copy` 는 full. clipboard 복구 불가면 **정직 blocked**(제출 안 함, 조용한 truncate 없음).
+  는 **full 본문**을 받는다(placeholder 미전송). clipboard 복구 불가면 **정직 blocked**(제출
+  안 함, 조용한 truncate 없음).
+- **paste lifecycle** (`tui/paste_store.py`) — 큰 paste(>8줄)는 raw 를 `PasteStore` 에 id 로
+  **보존**하고 transcript 에는 compact block `[Pasted #<id> · N lines]` + seam 줄을 보인다.
+  `/paste list` · `/paste expand <id>`(본문 표시) · `/paste resend <id>`(raw 재제출) ·
+  `/copy paste <id>`(raw 복사 — placeholder 아님). 화면 표현과 저장 payload 분리 → "paste 성공"
+  은 raw 보존 시에만. 실측: `examples/tui-qa/qa-results.txt` [C], 테스트 `test_tui_paste_lifecycle`.
 - **image** — `/attach <path>` 파일 stage, 또는 `[Image #N]` paste / `/attach` 시 clipboard 이미지
   (pngpaste/osascript/xclip)로 실파일 stage. `/attach status|clear`. honest 상태:
   `staged`/`missing`/`blocked`/`no_attachment`.
