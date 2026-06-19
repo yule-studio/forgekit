@@ -45,6 +45,11 @@ class MainPanel(ContentSwitcher):
     MainPanel {
         width: 1fr;
         height: auto;
+        /* never own a scroll/gutter — SessionFlow is the sole scroll owner. height:auto
+           means this should never overflow, but zero the gutter so it can NEVER draw an
+           internal-pane scrollbar even transiently (structural, not a CSS cover-up). */
+        scrollbar-size-vertical: 0;
+        overflow-y: hidden;
     }
     """
 

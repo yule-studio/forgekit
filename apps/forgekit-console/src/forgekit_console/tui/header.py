@@ -33,6 +33,10 @@ class IntroHeader(Vertical):
     IntroHeader {
         height: auto;
         padding: 0 1 0 1;   /* no top padding — a tight product header */
+        /* the intro now lives INSIDE the SessionFlow (it scrolls away) — it must never own
+           a scroll/gutter of its own (SessionFlow is the sole scroll owner). */
+        scrollbar-size-vertical: 0;
+        overflow-y: hidden;
     }
     IntroHeader #intro-hero {
         height: auto;
