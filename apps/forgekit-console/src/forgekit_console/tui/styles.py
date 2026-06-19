@@ -23,6 +23,12 @@ Screen { layout: vertical; background: $background; }
 
 /* transient stage marker (thinking → generating); collapses to 0 rows when empty. */
 #livestatus { height: auto; padding: 0 1; color: $text-muted; }
+
+/* INLINE mode (`.-inline`, set on the Screen by the app when run inline): the console
+   is a BOUNDED terminal-flow region, not a full-screen takeover. The reading flow is
+   capped so the inline block stays compact (recent conversation + docked composer);
+   the terminal keeps its native scrollback above/below the region. */
+Screen.-inline #flow { height: 14; }
 """
 
 __all__ = ("SCREEN_CSS",)
