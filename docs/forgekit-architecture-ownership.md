@@ -107,9 +107,10 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 `packages/<dir>/src/<python_pkg>` 규칙은 그대로 따른다. ForgeKit 코어는 legacy `yule_*`
 인프라와 **구분되는 정체성** 이므로 `forgekit_*` python 패키지로 둔다(사용자 명명 기준).
 
-- `packages/runtime`(`yule_runtime` = circuit_breaker/subprocess 프리미티브) **≠**
+- `packages/runtime-primitives`(`yule_runtime_primitives` = circuit_breaker/subprocess
+  프리미티브; 구 `runtime`/`yule_runtime`, compat shim 유지) **≠**
   `packages/forgekit-runtime`(`forgekit_runtime` = daemon/serve loop/runtime_mode).
-  후자는 전자의 **프리미티브를 의존할 수 있으나 복제하지 않는다.**
+  후자는 전자의 **프리미티브를 의존할 수 있으나 복제하지 않는다.** (RWT1 에서 rename 완료)
 - `packages/agent-contracts`(`yule_agent_contracts` = agent↔agent 메시지) 와
   `packages/forgekit-contracts`(`forgekit_contracts` = operator command/event/work-packet)
   는 레이어가 다르다. WT2 에서 중복 여부를 재확인하고, 겹치면 forgekit-contracts 가
@@ -162,7 +163,7 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 | `sources/` (collectors/contract/registry) | ~463 | discovery source 카탈로그 (free-first) | `packages/nexus` (`nexus.sources`) | **done** (옛 경로 shim) |
 | `vault/` (authorship/note) | ~253 | Obsidian vault read + authorship | `packages/nexus` (`nexus.vault`) | **done** (옛 경로 shim, vault→`forgekit_config.identity`) |
 | `hephaistos/nexus_read.py` + `discovery/` + `design/` | ~1000 | bounded nexus read / discovery / restricted source | `packages/nexus` | planned (discovery→handoff, design→uiref/selfimprove, nexus_read→hephaistos.models 분리 후) |
-| `hephaistos/armory.py` (+ manifests) | 450 | skill/loadout/weapon **catalog** | `packages/armory` (현재 `hephaistos.armory`) | planned (models 분리 선행 — armory 타입 vs forge-output 타입을 나눠 hephaistos↔armory 순환 회피) |
+| `hephaistos/armory.py` (+ manifests) | 450 | skill/loadout/weapon **catalog** | `packages/armory` (`armory.catalog`/`armory.models`) | **done** (RWT2 — models 분할로 순환 회피, hephaistos→armory 단방향, compat shim) |
 
 > Hephaistos 는 ForgeKit **내부 코어**이지 slash command 하나가 아니다. Nexus 는 knowledge
 > **boundary**, Armory 는 **catalog**. console 은 이 셋의 **projection/surface** 만 가진다
