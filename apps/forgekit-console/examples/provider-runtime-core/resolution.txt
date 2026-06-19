@@ -1,0 +1,19 @@
+forgekit provider runtime core — fallback_policy + model_overrides 실제 submit 반영
+======================================================================
+
+[A] 공급자 attempt chain (slot_fallback_orders 가 실제 순서를 만든다)
+  config: primary=claude, fallback[default_chat]=[gemini,ollama]
+  submit_chain(default_chat) = ('claude', 'gemini', 'ollama')
+
+[B] unsupported primary(claude) → explicit fallback(ollama) 가 실제 응답
+  ok=True provider=ollama fallback_used=True routed_from=claude
+  receipt: [dim]↳ Ollama · gemma3:latest · live · ok · 2tok(estimate) · fallback claude→ollama[/dim]
+  실제 호출된 endpoint: http://localhost:11434  (claude 는 호출 안 됨 — CLI unsupported)
+
+[C] model_overrides[ollama] 가 실제 호출 model 로 사용됨
+  model_overrides={'ollama':'llama3:70b'} → 실제 호출 model = llama3:70b
+  receipt: [dim]↳ Ollama · llama3:70b · live · ok · 2tok(estimate)[/dim]
+
+[D] no-config → setup-required, ollama 가 떠 있어도 자동 사용 안 함
+  ok=False category=no_provider_configured provider_calls=0 (자동 ollama 호출 0)
+  next_action: 콘솔에서 `/provider set <id>` (claude/codex/gemini/ollama) 로 pri...
