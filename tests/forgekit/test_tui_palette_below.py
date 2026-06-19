@@ -17,23 +17,26 @@ from tests.forgekit import _SRC  # noqa: F401
 _TEXTUAL = importlib.util.find_spec("textual") is not None
 
 
-def _app():
+def _app(config=None):
     from forgekit_console.commands.registry import load_agents, load_commands
     from forgekit_console.commands.router import ConsoleContext
     from forgekit_console.tui.app import ForgekitConsoleApp
     ctx = ConsoleContext(repo_root=Path("/tmp/repo"), agents=load_agents(), commands=load_commands())
-    return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=ctx)
+    return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=ctx,
+                              config={"primary_provider": "ollama", "linked_providers": ["ollama"]}
+                              if config is None else config)
 
 
 @unittest.skipUnless(_TEXTUAL, "textual 필요")
 class PaletteBelowGeometryTests(unittest.IsolatedAsyncioTestCase):
-    async def test_input_bottom_anchored_before_slash(self):
+    async def test_input_inline_near_top_before_slash(self):
         from forgekit_console.tui.composer import Composer
         app = _app()
         async with app.run_test(size=(100, 28)) as pilot:
             await pilot.pause()
             comp = app.query_one(Composer).region
-            self.assertGreaterEqual(comp.bottom, app.size.height - 1)   # composer docked at bottom
+            # INLINE: empty session → composer near the TOP, not docked at the bottom
+            self.assertLess(comp.bottom, app.size.height - 2)
 
     async def test_palette_flush_below_input_and_visible(self):
         from forgekit_console.tui.palette import CommandPalette
@@ -61,10 +64,15 @@ class PaletteBelowGeometryTests(unittest.IsolatedAsyncioTestCase):
             await pilot.press("slash", "h")
             await pilot.pause()
             pal = app.query_one(CommandPalette)
-            # 4 (responsibility split): palette's parent is the Composer, NOT the SessionFlow
+            # 4 (responsibility split): palette's parent is the Composer, NOT the MainPanel
+            # (transcript). The composer is inline in the flow, but the palette belongs to
+            # the composer command-entry zone — never the transcript content.
+            from forgekit_console.tui.main_panel import MainPanel
             self.assertIsInstance(pal.parent, Composer)
-            flow = app.query_one(SessionFlow).region
-            self.assertGreaterEqual(pal.region.y, flow.bottom)    # below the transcript zone
+            self.assertNotIsInstance(pal.parent, MainPanel)
+            main = app.query_one(MainPanel).region
+            bar = app.query_one("#composer-input-shell").region
+            self.assertGreaterEqual(pal.region.y, bar.bottom)     # directly below the input bar
 
     async def test_long_transcript_palette_still_flush_below_input_no_scroll(self):
         from forgekit_console.tui.palette import CommandPalette

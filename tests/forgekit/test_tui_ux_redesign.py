@@ -28,11 +28,11 @@ def _fake_context():
     return ConsoleContext(repo_root=Path("/tmp/repo"), agents=load_agents(), commands=load_commands())
 
 
-def _app(submit_service=None):
+def _app(submit_service=None, config=None):
     from forgekit_console.tui.app import ForgekitConsoleApp
 
     return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=_fake_context(),
-                              submit_service=submit_service)
+                              submit_service=submit_service, config=config)
 
 
 def _visible(flow, w) -> bool:
@@ -216,7 +216,8 @@ class ProgressiveRenderTests(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(_TEXTUAL, "textual 필요")
 class TurnCadenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_begin_turn_inserts_blank_between_turns(self) -> None:
-        app = _app()
+        # configured provider → no setup-required explanation block → empty transcript start
+        app = _app(config={"primary_provider": "ollama", "linked_providers": ["ollama"]})
         async with app.run_test() as pilot:
             await pilot.pause()
             tr = app._transcript

@@ -103,14 +103,37 @@ class SetupGateTests(unittest.TestCase):
         self.assertTrue(state.blocked)
         self.assertEqual(state.state, ss.STATE_SETUP_REQUIRED)
         self.assertTrue(state.next_actions)
-        self.assertFalse(next(c for c in state.checks if c.name == "main provider").ok)
+        self.assertFalse(next(c for c in state.checks if c.name == "primary provider").ok)
 
-    def test_provider_present_is_ready(self) -> None:
-        state = ss.resolve_setup_state({"main_provider": "claude"})
+    def test_canonical_primary_provider_is_read(self) -> None:
+        # the bug fix: canonical primary_provider (live-capable) → ready, not setup-required
+        state = ss.resolve_setup_state({"primary_provider": "ollama", "linked_providers": ["ollama"]})
         self.assertTrue(state.ready)
-        self.assertEqual(state.main_provider, "claude")
-        self.assertIsNotNone(state.profile)
-        self.assertTrue(next(c for c in state.checks if c.name == "main provider").ok)
+        self.assertEqual(state.primary_provider, "ollama")
+        self.assertTrue(state.live_capable)
+        self.assertEqual(state.main_provider, "ollama")   # legacy alias still works
+
+    def test_legacy_main_provider_still_migrates(self) -> None:
+        # legacy field is read-compat only → migrated to primary
+        state = ss.resolve_setup_state({"main_provider": "ollama"})
+        self.assertTrue(state.ready)
+        self.assertEqual(state.primary_provider, "ollama")
+
+    def test_claude_only_is_configured_no_live_not_blocked(self) -> None:
+        # claude/codex are unsupported_in_console → CONFIGURED but no live path (honest),
+        # NOT setup-required (it IS configured) and NOT ready (no live submit).
+        state = ss.resolve_setup_state({"primary_provider": "claude", "linked_providers": ["claude", "codex"]})
+        self.assertEqual(state.state, ss.STATE_NO_LIVE)
+        self.assertFalse(state.blocked)
+        self.assertFalse(state.ready)
+        self.assertFalse(state.live_capable)
+
+    def test_claude_with_live_linked_is_ready(self) -> None:
+        # claude primary + a live-capable linked (gemini/ollama) → ready
+        state = ss.resolve_setup_state(
+            {"primary_provider": "claude", "linked_providers": ["claude", "codex", "gemini", "ollama"]})
+        self.assertTrue(state.ready)
+        self.assertTrue(state.live_capable)
 
     def test_ollama_ready_with_capability_warning(self) -> None:
         state = ss.resolve_setup_state({"main_provider": "ollama"})
