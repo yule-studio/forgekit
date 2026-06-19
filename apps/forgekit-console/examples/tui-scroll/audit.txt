@@ -1,0 +1,20 @@
+== FULL — scroll/gutter audit (80-line transcript + 20-line input) ==
+  widget           allow_v_scroll  visible_gutter(size>0 & show)
+  SessionFlow      True           False (size=0, show=True)
+  Transcript       False          False (size=0, show=False)
+  HelpPanel        False          False (size=0, show=False)
+  Composer         False          False (size=0, show=False)
+  CommandPalette   False          False (size=0, show=False)
+  PromptArea       True           False (size=0, show=True)
+  => widgets drawing a VISIBLE gutter: NONE
+
+== INLINE — scroll/gutter audit (80-line transcript + 20-line input) ==
+  widget           allow_v_scroll  visible_gutter(size>0 & show)
+  SessionFlow      True           False (size=0, show=True)
+  Transcript       False          False (size=0, show=False)
+  HelpPanel        False          False (size=0, show=False)
+  Composer         False          False (size=0, show=False)
+  CommandPalette   False          False (size=0, show=False)
+  PromptArea       True           False (size=0, show=True)
+  => widgets drawing a VISIBLE gutter: NONE
+
