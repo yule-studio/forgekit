@@ -153,11 +153,11 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 
 | 모듈 | LOC | 책임 | 목표 owner | 상태 |
 | --- | ---: | --- | --- | --- |
-| `hephaistos/` (resolve/equip/forge/models, **minus** nexus_read·armory) | ~900 | request → equip plan **forging core** | `packages/hephaistos` | planned |
+| `hephaistos/` (models/resolver/projection/verifier/nexus_read/nexus_ops + **armory**) | 1414 | request → equip plan **forging core** + 검증 + nexus reader | `packages/hephaistos` | **done** (옛 경로 shim, dep=forgekit-config) |
 | `sources/` (collectors/contract/registry) | ~463 | discovery source 카탈로그 (free-first) | `packages/nexus` (`nexus.sources`) | **done** (옛 경로 shim) |
 | `vault/` (authorship/note) | ~253 | Obsidian vault read + authorship | `packages/nexus` (`nexus.vault`) | **done** (옛 경로 shim, vault→`forgekit_config.identity`) |
 | `hephaistos/nexus_read.py` + `discovery/` + `design/` | ~1000 | bounded nexus read / discovery / restricted source | `packages/nexus` | planned (discovery→handoff, design→uiref/selfimprove, nexus_read→hephaistos.models 분리 후) |
-| `hephaistos/armory.py` (+ manifests) | ~500 | skill/loadout/weapon **catalog** | `packages/armory` | planned |
+| `hephaistos/armory.py` (+ manifests) | 450 | skill/loadout/weapon **catalog** | `packages/armory` (현재 `hephaistos.armory`) | planned (models 분리 선행 — armory 타입 vs forge-output 타입을 나눠 hephaistos↔armory 순환 회피) |
 
 > Hephaistos 는 ForgeKit **내부 코어**이지 slash command 하나가 아니다. Nexus 는 knowledge
 > **boundary**, Armory 는 **catalog**. console 은 이 셋의 **projection/surface** 만 가진다
@@ -211,11 +211,16 @@ packages/* ──X──▶ apps/*   (역방향 금지, 기존 hard rail 유지)
 > 동일 적용. 검증: root CI 6571 OK, console 서브셋 766 OK, provider standalone import OK.
 | **WT3** | `hephaistos`(forge core) · `nexus`(sources/vault/discovery/design/nexus_read) · `armory`(catalog) 승격 | 3 package + console 은 projection 만 | resolve/nexus/armory 테스트 green |
 
-> **WT3 진행:** `nexus`(1차) — `sources`(pure leaf) + `vault`(→`forgekit_config.identity` 1줄
-> absolute 화) → `nexus.{sources,vault}`. 옛 경로 `_compat.alias_package` shim. **forgekit-runtime
-> 의 선행조건**: runtime/autopilot/selfimprove 가 `..sources` 를 쓰므로, 이제 `nexus.sources` 를
-> 의존하도록 바꿀 수 있다. 잔여 nexus(`discovery`/`design`/`nexus_read`)는 각각 handoff·uiref/
-> selfimprove·hephaistos.models 분리에 묶여 있어 후속 increment.
+> **WT3 진행:**
+> - `nexus`(1차) — `sources`(pure leaf) + `vault`(→`forgekit_config.identity` 1줄 absolute) →
+>   `nexus.{sources,vault}`. **forgekit-runtime 의 선행조건 해소**(runtime/autopilot/selfimprove 의
+>   `..sources` → `nexus.sources`). 잔여 nexus(`discovery`/`design`)는 handoff·uiref/selfimprove
+>   분리에 묶여 후속.
+> - `hephaistos`(2차) — 전체 cluster(8 파일, 1414 LOC) → `packages/hephaistos`. 유일한 outward
+>   dep 1줄(`..runtime_paths`→`forgekit_config.paths`)만 수정, 나머지는 intra-package relative 로
+>   이동만에 생존. `nexus_read`/`nexus_ops` 는 smith 가 mine 을 읽는 **reader** 라 hephaistos-side
+>   유지(store 는 `nexus` package). `armory` 는 현재 `hephaistos.armory`; 독립 `packages/armory`
+>   승격은 `models` 분리(armory 타입 vs forge-output 타입) 선행 — hephaistos↔armory 순환 회피.
 | **WT4** | console 을 surface/TUI/CLI/render 로 축소 · app dependency 방향 최종 점검 · examples/docs/QA | import 방향 검증 스크립트 + evidence | 전체 suite green |
 
 **이동 우선순위(가장 먼저):**
