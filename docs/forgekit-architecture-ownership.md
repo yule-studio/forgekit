@@ -131,12 +131,12 @@ ForgeKit contracts/core 를 **공유**하는 실행 유닛이다.
 
 | 모듈 | LOC | 책임 | 목표 owner | 상태 |
 | --- | ---: | --- | --- | --- |
-| `policy/provider_config,provider_ops,provider_policy,provider_surface,routing,recommend,main_profile,usage_policy,setup_state,auto_mode` | ~1700 | provider routing/usage gate/policy/setup | `packages/forgekit-provider` | planned |
-| `providers/` (builtins/contract/registry) | 519 | provider spec 카탈로그 | `packages/forgekit-provider` | planned |
-| `chat/` (service/models/policy_gate/usage_parse) | 679 | submit service (routing → 실호출) | `packages/forgekit-provider` | planned |
-| `usage/` (ledger …) | 478 | usage ledger (live vs estimate) | `packages/forgekit-provider` | planned |
-| `brain/` | 515 | brain(=primary+linked) 구성/preset | `packages/forgekit-provider` | planned |
-| `policy/runtime_mode.py` | ~300 | runtime mode → 실 routing/budget/approval | `packages/forgekit-runtime` | planned |
+| `policy/{provider_config,provider_ops,provider_policy,provider_surface,routing,recommend,main_profile,usage_policy,setup_state,auto_mode}` | ~1700 | provider routing/usage gate/policy/setup | `packages/forgekit-provider` (`forgekit_provider.policy`) | **done** (옛 경로 shim) |
+| `providers/` (builtins/contract/registry) | 519 | provider spec 카탈로그 | `packages/forgekit-provider` (`forgekit_provider.providers`) | **done** (옛 경로 shim) |
+| `chat/` (service/models/policy_gate/usage_parse) | 679 | submit service (routing → 실호출) | `packages/forgekit-provider` (`forgekit_provider.chat`) | **done** (옛 경로 shim) |
+| `usage/` (ledger …) | 478 | usage ledger (live vs estimate) | `packages/forgekit-provider` (`forgekit_provider.usage`) | **done** (옛 경로 shim) |
+| `brain/` | 515 | brain(=primary+linked) 구성/preset | `packages/forgekit-provider` (`forgekit_provider.brain`) | **done** (옛 경로 shim) |
+| `policy/runtime_mode.py` | ~300 | runtime mode → 실 routing/budget/approval | `packages/forgekit-runtime` (현재 `forgekit_provider.policy.runtime_mode` 경유) | planned (runtime 추출 시 재배치) |
 | `runtime/` (daemon/loop/autopilot_tick/heartbeat/runbook/surface) | 780 | always-on bounded daemon core | `packages/forgekit-runtime` | planned |
 | `autopilot/` | 1012 | safe-class autopilot core | `packages/forgekit-runtime` | planned |
 | `lifecycle/` | 511 | 실패 escalation / 운영 메모리 bridge | `packages/forgekit-runtime` | planned |
@@ -195,11 +195,18 @@ packages/* ──X──▶ apps/*   (역방향 금지, 기존 hard rail 유지)
 | --- | --- | --- | --- |
 | **WT2** | `forgekit-provider`(provider/policy/usage/chat/brain) · `forgekit-runtime`(runtime/autopilot/lifecycle/notify/runtime_mode) · `forgekit-config`(paths/identity) · `forgekit-contracts`(models/handoff) 추출 | 4 package + console 옛 경로 compat shim | import smoke + 기존 테스트 green |
 
-> **WT2 진행:** `forgekit-config` 의 첫 추출 완료 — `runtime_paths.py` → `forgekit_config.paths`
-> (옛 경로 `forgekit_console.runtime_paths` 는 `sys.modules` alias compat shim, 객체 동일성
-> 보존). 10개 console importer 무수정 동작, root CI 6571 OK + package smoke 4 OK 검증. 이 패턴
-> (package 생성 → git mv → 옛 경로 shim → root `pyproject` where 등록 → editable 재설치 →
-> root `tests/` 회귀)이 나머지 provider/runtime/contracts 추출의 템플릿이다.
+> **WT2 진행:**
+> - `forgekit-config`(1차) — `runtime_paths.py` → `forgekit_config.paths`. 옛 경로
+>   `forgekit_console.runtime_paths` 는 `sys.modules` alias shim.
+> - `forgekit-provider`(2차) — `providers/policy/chat/usage/brain`(5 dir, ~3900 LOC) →
+>   `forgekit_provider.*`. 옛 5 경로는 `_compat.alias_package`(package+서브모듈 객체 동일성)
+>   shim. 핵심: intra-package relative import(`policy→providers`, `chat→policy/providers`)는
+>   이동만으로 그대로 동작했고, 유일한 outward dep 인 `runtime_paths` 4곳만 `forgekit_config.paths`
+>   로 absolute 화. 외부 dep 은 `forgekit-config` 하나뿐.
+>
+> 분리 패턴(템플릿): package 생성 → `git mv` → 옛 경로 shim(`_compat.alias_package`) →
+> root `pyproject` where 등록 → editable 재설치 → root `tests/` 회귀. runtime/contracts 추출에
+> 동일 적용. 검증: root CI 6571 OK, console 서브셋 766 OK, provider standalone import OK.
 | **WT3** | `hephaistos`(forge core) · `nexus`(sources/vault/discovery/design/nexus_read) · `armory`(catalog) 승격 | 3 package + console 은 projection 만 | resolve/nexus/armory 테스트 green |
 | **WT4** | console 을 surface/TUI/CLI/render 로 축소 · app dependency 방향 최종 점검 · examples/docs/QA | import 방향 검증 스크립트 + evidence | 전체 suite green |
 
