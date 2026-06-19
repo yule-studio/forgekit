@@ -14,7 +14,7 @@
 
 | 앱 | 책임 한 줄 | 현재 코드 위치 |
 | --- | --- | --- |
-| [`forgekit-console`](forgekit-console/README.md) | ForgeKit operator app — TUI/CLI/operator surface (보여주고 조작) | `apps/forgekit-console/src/forgekit_console/**` (현재 코어 혼재, packages 분리 진행 중) |
+| [`forgekit-console`](forgekit-console/README.md) | ForgeKit operator app — TUI/CLI/operator surface (보여주고 조작) | `apps/forgekit-console/src/forgekit_console/**` (코어는 packages/forgekit-*·hephaistos·nexus 로 분리됨; console 은 surface + 옛 경로 compat shim) |
 | [`engineering-agent`](engineering-agent/README.md) | 개발 작업 intake / 코드 작업 계획 / role deliberation / GitHub 연동 | `apps/engineering-agent/src/yule_engineering/agents/**`, `discord/engineering_channel_router/**` |
 | [`planning-agent`](planning-agent/README.md) | 일정·계획·브리핑, calendar 기반 작업 정리 | `apps/engineering-agent/src/yule_engineering/planning/**` |
 | [`discord-gateway`](discord-gateway/README.md) | Discord 메시지 수신/전송, agent runtime I/O 채널 연결 | `apps/engineering-agent/src/yule_engineering/discord/**` |
