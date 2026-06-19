@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
-from ..runtime_paths import config_path
+from forgekit_config.paths import config_path
 from . import nexus_read as nx
 
 
