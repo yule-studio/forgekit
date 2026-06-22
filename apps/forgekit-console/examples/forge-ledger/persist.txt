@@ -1,0 +1,60 @@
+=== forge governance ledger — persist + view operator path ===
+
+--- 1) preview (default, persist=False) — verdict 표시, ledger 미기록 ---
+$ /resolve Spring Boot JWT refresh token 구현
+  [info] resolve
+  hephaistos resolve — Spring Boot JWT refresh token 구현
+    infer     : backend/java/spring-boot/auth-jwt
+    agent     : backend-engineer
+    skills    : auth-jwt, java-spring, docker, mysql, oauth2, postgres, redis
+    loadout   : backend-java-local
+    weapons   : openjdk, gradle, docker, mysql, postgres, redis
+    nexus     : not_connected (FORGEKIT_NEXUS_ROOT 미설정 — 지식 source 미연결)
+    packet    : scope 15 / forbidden 8 / verify 12 / approval L2_internal_approve
+    [dim]상세: /skills <요청> · /loadout <id> · /hephaistos[/dim]
+  
+  ── governance ──
+  forge execution receipt — 인가됨 / executed
+  - request : Spring Boot JWT refresh token 구현
+  - equip   : agent=backend-engineer loadout=backend-java-local
+  - class   : safe (L2_internal_approve)
+  - approval: decision=Spring Boot JWT refresh token 구현;level=L2_internal_approve;signoff=tech-lead
+
+--- 2) ledger 보기 — 아직 비어 있음 (honest) ---
+$ /resolve ledger
+  [info] resolve ledger
+  forge governance ledger — 기록된 receipt 없음 (`/resolve apply <요청>` 로 영속)
+
+--- 3) apply — operator 가 명시적으로 receipt 를 ledger 에 영속 ---
+$ /resolve apply Spring Boot JWT refresh token 구현
+  [info] resolve apply
+  forge receipt 를 governance ledger 에 영속함 → /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp0ylyiox2/state/forge_receipts.jsonl
+  forge execution receipt — 인가됨 / executed
+  - request : Spring Boot JWT refresh token 구현
+  - equip   : agent=backend-engineer loadout=backend-java-local
+  - class   : safe (L2_internal_approve)
+  - approval: decision=Spring Boot JWT refresh token 구현;level=L2_internal_approve;signoff=tech-lead
+
+--- 4) ledger 보기 — 영속된 receipt 표시 ---
+$ /resolve ledger
+  [info] resolve ledger
+  forge governance ledger — 최근 1건 (오래된→최신):
+     1. 인가/executed [safe/L2_internal_approve] req='Spring Boot JWT refresh token 구현' signoff=decision=Spring Boot JWT refresh token 구
+
+--- 5) apply (destructive) — 미인가 → 가짜 성공 영속 거부 (honest) ---
+$ /resolve apply 프로덕션 DB 스키마 마이그레이션 배포 및 secret 교체
+  [error] resolve apply
+  forge plan 미인가 — ledger 에 영속하지 않음 (가짜 성공 금지).
+  forge execution receipt — 차단됨 / blocked
+  - request : 프로덕션 DB 스키마 마이그레이션 배포 및 secret 교체
+  - equip   : agent=security-engineer loadout=devops-cloud-local
+  - class   : destructive (L4_restricted)
+  - approval: -
+  - blocked : destructive(L4) — 자동 실행 금지, operator + runbook 전용; tech-lead 내부 승인(can_execute) 없음; safe class 아님(blocked) — 자동 실행 금지; 내부 chain 승인(can_execute) 없음 — safe-class 자동 실행만
+
+--- 6) ledger 보기 — blocked 는 기록되지 않음 (여전히 1건) ---
+$ /resolve ledger
+  [info] resolve ledger
+  forge governance ledger — 최근 1건 (오래된→최신):
+     1. 인가/executed [safe/L2_internal_approve] req='Spring Boot JWT refresh token 구현' signoff=decision=Spring Boot JWT refresh token 구
+
