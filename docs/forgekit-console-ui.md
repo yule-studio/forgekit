@@ -230,5 +230,9 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
   반영. 가짜 typing 애니메이션 없음.
 - **history**: turn 단위 group(새 입력 시 reset), 최근 ~6개만 노출 — 무한 누적 없음. idle→빈
   surface(0행). clear 시 feed 도 정리.
+- **active-state 가시성**: 실행 중(running) 이벤트는 **bold accent `▸` 마커 + 밝은 라벨**로
+  도드라지고(=지금 일어나는 일), 끝난 이벤트는 조용한 dim `•` + dim 라벨로 가라앉는다. 순수
+  `status==RUNNING` 기반 — 가짜 spinner/typing 아님. running 은 실측 duration 이 없으므로 정직하게
+  `…` 만(가짜 ~1초 없음), 끝나면 실측 `(N.Ns)`. 검증 `test_tui_process_feed`(ProcessFeedRenderTests).
 
 증거: `examples/tui-process-feed/timeline.txt`, 테스트 `test_tui_process_feed`.

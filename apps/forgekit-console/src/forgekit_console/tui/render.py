@@ -750,22 +750,28 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
 
 
 def process_feed_lines(events: Sequence) -> Tuple[str, ...]:
-    """Render process events as compact, dim timeline lines (Claude tone, ForgeKit verbs).
+    """Render process events as compact timeline lines (Claude tone, ForgeKit verbs).
 
-    `• <label> <detail> (<dur>s)  <status>` — the dot colour is the severity, the whole
-    line is dim (a step lighter than the assistant body). Running → `…`; blocked/error
-    → `— <reason>`; done → a quiet `done`. Duration only shows when it was measured."""
+    The ACTIVE (running) step stands out — a bold accent ``▸`` marker + a NON-dim label —
+    so the operator sees "what's happening now" at a glance; finished steps stay quiet
+    (a dim ``•`` + dim label). The dot colour is the severity. Running → ``…``; blocked/error
+    → ``— <reason>``; done → quiet. Duration only shows when it was MEASURED (no fake ~1s).
+    The active distinction is purely ``status``-driven — never a fake spinner/typing."""
 
     from . import process_events as pe
 
     out = []
     for ev in events:
-        dot = {pe.SEV_WARN: _WARN, pe.SEV_ERROR: _ERR}.get(ev.severity, _ACCENT)
         detail = f" [dim]{ev.detail}[/dim]" if ev.detail else ""
         dur = f" [dim]({ev.duration_ms / 1000:.1f}s)[/dim]" if ev.duration_ms else ""
         if ev.status == pe.ST_RUNNING:
-            tail = " [dim]…[/dim]"
-        elif ev.status == pe.ST_BLOCKED:
+            # active step: bold accent marker + bright label (the "now" line).
+            out.append(
+                f"[b {_ACCENT}]▸[/b {_ACCENT}] [{_ACCENT}]{ev.label}[/{_ACCENT}]"
+                f"{detail}{dur} [dim]…[/dim]")
+            continue
+        dot = {pe.SEV_WARN: _WARN, pe.SEV_ERROR: _ERR}.get(ev.severity, _ACCENT)
+        if ev.status == pe.ST_BLOCKED:
             tail = f" [{_WARN}]— {ev.detail or 'blocked'}[/{_WARN}]"
             detail = ""  # the reason is in the tail
         elif ev.status == pe.ST_FAILED:

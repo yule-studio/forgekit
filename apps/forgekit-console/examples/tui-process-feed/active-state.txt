@@ -1,0 +1,13 @@
+forgekit process feed — active-state 가시성 (running ▸ vs done •)
+재현: tests/forgekit/test_tui_process_feed.py (ProcessFeedRenderTests)
+======================================================================
+turn mid-flight — Generating 이 진행 중(active), 앞 단계는 완료:
+
+  [#00d8f0]•[/#00d8f0] [dim]Routing /usage[/dim] [dim](0.2s)[/dim]
+  [#00d8f0]•[/#00d8f0] [dim]Routed[/dim] [dim]usage[/dim]
+  [#00d8f0]•[/#00d8f0] [dim]Submitting to ollama[/dim] [dim](0.3s)[/dim]
+  [#00d8f0]•[/#00d8f0] [dim]Sent[/dim] [dim]Ollama[/dim]
+  [b #00d8f0]▸[/b #00d8f0] [#00d8f0]Generating[/#00d8f0] [dim]…[/dim]
+
+관찰: 완료 단계 = dim • + dim 라벨(+실측 (N.Ns)); 진행 단계 = bold accent ▸ + 밝은 라벨 + … (가짜 duration 없음).
+순수 status==RUNNING 기반 · 가짜 spinner/typing 0.

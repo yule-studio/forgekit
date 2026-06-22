@@ -155,5 +155,51 @@ class ProcessFeedPilotTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("copy_failed", self._kinds(app))
 
 
+class ProcessFeedRenderTests(unittest.TestCase):
+    """The feed render must make the ACTIVE (running) step stand out from finished steps,
+    purely from real status — never a fake spinner/typing."""
+
+    def _feed(self):
+        from forgekit_console.tui import process_events as pe
+        t = {"v": 0.0}
+        feed = pe.ProcessFeed(clock=lambda: t["v"])
+        return feed, t, pe
+
+    def test_running_event_is_visually_active(self):
+        from forgekit_console.tui import render, theme
+        feed, t, pe = self._feed()
+        feed.start(pe.KIND_SUBMIT_START, "Submitting to ollama")
+        line = render.process_feed_lines(feed.recent())[0]
+        # active marker (▸) + accent-coloured label + the honest running ellipsis
+        self.assertIn("▸", line)
+        self.assertIn(theme.ACCENT_PRIMARY, line)
+        self.assertIn("…", line)
+        # the active label is NOT wrapped in dim (it is the bright "now" line)
+        self.assertNotIn(f"[dim]Submitting to ollama", line)
+
+    def test_finished_event_is_quiet_dim(self):
+        from forgekit_console.tui import render
+        feed, t, pe = self._feed()
+        ev = feed.start(pe.KIND_SUBMIT_START, "Submitting")
+        t["v"] = 1.0
+        feed.finish(ev, pe.ST_DONE)
+        line = render.process_feed_lines(feed.recent())[0]
+        self.assertIn("•", line)            # quiet dot, not the active marker
+        self.assertNotIn("▸", line)
+        self.assertIn("[dim]Submitting[/dim]", line)
+        self.assertIn("(1.0s)", line)       # measured duration shown
+
+    def test_running_vs_done_render_differently(self):
+        from forgekit_console.tui import render
+        feed, t, pe = self._feed()
+        done = feed.start(pe.KIND_ROUTE_START, "Routing")
+        t["v"] = 0.4
+        feed.finish(done, pe.ST_DONE)
+        feed.start(pe.KIND_GENERATE_START, "Generating")   # still running
+        lines = render.process_feed_lines(feed.recent())
+        self.assertIn("•", lines[0])   # finished route = quiet dot
+        self.assertIn("▸", lines[1])   # active generate = active marker
+
+
 if __name__ == "__main__":
     unittest.main()
