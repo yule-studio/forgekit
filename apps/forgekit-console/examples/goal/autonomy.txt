@@ -1,0 +1,27 @@
+# AUTONOMY goal-execution core — collect → decompose → approval split → replan
+discovered 4 finding(s) across 3 area(s)
+is_big_goal -> True (≥2 areas → decompose)
+derive_plan_steps (one child per area):
+  - docs: 2 finding(s) in docs
+  - tests: 1 finding(s) in tests
+  - refactor: 1 finding(s) in refactor
+decompose -> parent goal-parent01 + 3 child goal:
+  goal-area01  [draft]  docs
+  goal-area02  [draft]  tests
+  goal-area03  [draft]  refactor
+
+# approval-needed vs autonomous-safe (a child's pending packets)
+  docs: autonomous_safe (exec tick 자동 실행 가능)
+  tests: needs_approval (operator 승인 전까지 실행 안 함)
+
+# replan policy (stuck = gate-blocked packet, nothing pending)
+  is_stuck -> True
+  replan #1 -> retry: unlink ['p-safe']  (retry 1/1: abandon blocked approach — gate refused: scope creep beyond signed level)
+  after RETRY: packets=[] stuck=False (dead approach abandoned, re-drivable)
+  replan #2 -> escalate  (escalate after 1 retry: gate refused again)
+  blocked_reason (persisted) -> 'gate refused again'
+
+# honest boundary: autonomy decides shape + next move; it executes NOTHING.
+# decompose/derive = plan records, approval split keeps risky work behind the
+# operator, replan NEVER re-runs a gate-refused packet — it abandons (bounded
+# retry) then escalates with the reason persisted. done stays evidence-gated.
