@@ -25,6 +25,8 @@ Honest status of each console surface (working / partial / planned). Code:
 | provider link / unlink / slot route | working | `/provider [link\|unlink\|route show\|route set <slot> <id>]` | `test_provider_surface` |
 | 4-provider brain preset (real config writer) | working | `/provider preset four-brain` | `test_four_brain_preset_and_routing` |
 | `/provider` declared→actual per slot (brain vs live transport) | working | `/provider` (default_chat/execution: declared X → actual Y) | `test_four_brain_preset_and_routing` |
+| provider onboarding wizard (connect 점검 → 추천 preset → save+verify) | working | `/setup` · `/setup apply` | `test_provider_connect` |
+| provider connect 진단 (CLI attach·API key·daemon, no fake-live) | working | `/provider connect\|disconnect\|test\|recommended <id>` | `test_provider_connect` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |

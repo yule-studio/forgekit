@@ -125,7 +125,12 @@ flowchart LR
 ### P2 — 확장
 - richer connectors / external discovery(Figma/YouTube/… planned seam) / advanced memory refinement.
 
-### 5.1 P0 design — provider onboarding (control plane)
+### 5.1 P0 design — provider onboarding (control plane) — **구현됨 (working)**
+
+> 상태: `packages/forgekit-provider-connect` + `/setup` wizard + `/provider connect|disconnect|
+> test|recommended` 구현 완료(`test_provider_connect`, evidence `examples/provider-connect/`).
+> 아래는 그 설계 그대로.
+
 - **계층 분리:** `forgekit-provider`(policy/routing/config core) 위에 **`forgekit-provider-connect`**
   (onboarding/connect/doctor/detect) 를 별도 package 경계로. console 은 surface 만.
 - **provider 유형별 연결(정직, no fake OAuth):**

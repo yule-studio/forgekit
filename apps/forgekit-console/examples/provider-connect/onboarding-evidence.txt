@@ -1,0 +1,46 @@
+ForgeKit provider onboarding — REAL machine detection (no fake-live)
+======================================================================
+forgekit-provider-connect: CLI attach(claude/codex) · API key(gemini) · daemon(ollama)
+
+$ /setup
+  /setup — provider onboarding  ·  verdict: ready
+    primary brain: claude
+    연결 상태 (brain participant vs live transport 분리):
+    ◐ claude  connected · routing only  — Claude Code CLI 세션 attach(heuristic) — routing/brain participant
+    ◐ codex   connected · routing only  — Codex CLI 세션 attach(heuristic) — routing/brain participant
+    ○ gemini  missing_key  — Gemini API 키 미설정 (GEMINI_API_KEY)
+    ● ollama  live  — Ollama 데몬+모델 OK (gemma3:latest)
+    live lane(검증됨): ollama   ·   추천 preset: four-brain
+    다음: `/setup apply` 로 추천 4-provider 브레인 저장 + 검증 (또는 `/provider preset four-brain`).
+    명령: `/setup apply` · `/provider connect <id>` · `/provider test <id>` · `/provider recommended`
+
+$ /provider recommended
+  추천 brain: four-brain  (primary=claude · live lane=gemini/ollama · execution=codex)
+    역할: claude=safety/synthesis(participant) · codex=execution(participant) · gemini=default_chat/research(live) · ollama=compression/classification(live)
+    현재 연결:
+    ◐ claude  connected · routing only  — Claude Code CLI 세션 attach(heuristic) — routing/brain participant
+    ◐ codex   connected · routing only  — Codex CLI 세션 attach(heuristic) — routing/brain participant
+    ○ gemini  missing_key  — Gemini API 키 미설정 (GEMINI_API_KEY)
+    ● ollama  live  — Ollama 데몬+모델 OK (gemma3:latest)
+    적용: `/setup apply` 또는 `/provider preset four-brain` (실제 config writer, persist).
+
+$ /provider test claude
+  provider test: claude → connected · routing only  (transport=cli)
+    live-capable(console live-submit): no
+    Claude Code CLI 세션 attach(heuristic) — routing/brain participant
+    다음: 콘솔 live-submit 은 미구현 — free-text 의 live lane 은 gemini/ollama
+
+$ /provider test gemini
+  provider test: gemini → missing_key  (transport=openai)
+    live-capable(console live-submit): no
+    Gemini API 키 미설정 (GEMINI_API_KEY)
+    다음: 환경변수 GEMINI_API_KEY 설정 후 `/provider connect gemini`
+
+$ /provider test ollama
+  provider test: ollama → live  (transport=openai)
+    live-capable(console live-submit): yes
+    Ollama 데몬+모델 OK (gemma3:latest)
+
+honesty: claude/codex = connected·routing only(participant), gemini = missing_key,
+ollama = live (실제 데몬+모델). '설치 안 됨'을 green 으로 보이게 하지 않음. /setup apply →
+four-brain preset 저장(canonical config) + 재진단 verify. 재실행 유지.

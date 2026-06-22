@@ -186,9 +186,10 @@ flowchart TD
 
 ## Operator 콘솔 한눈에
 
-`/resolve <req>` (equip plan) · `/hephaistos` (forge 상태) · `/skills <req>` · `/loadout <id>`
-(실 env 검증) · `/provider` · `/usage` · `/mode` · `/doctor` · `/render` · `/whoami` ·
-`/autopilot <repo>` · `/digest` · `/sources` · `/blocked`. 전체 정직 매트릭스:
+`/setup` (provider onboarding wizard) · `/resolve <req>` (equip plan) · `/hephaistos` (forge 상태) ·
+`/skills <req>` · `/loadout <id>` (실 env 검증) · `/provider [connect|test|recommended|preset four-brain]` ·
+`/usage` · `/mode` · `/doctor` · `/render` · `/whoami` · `/autopilot <repo>` · `/digest` · `/sources` ·
+`/blocked`. 전체 정직 매트릭스:
 [`docs/operator-surfaces.md`](docs/operator-surfaces.md).
 
 > 예 — `/resolve "Spring Boot JWT refresh token"` → `backend-engineer` + 스킬
