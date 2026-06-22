@@ -97,7 +97,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("attach", "첨부 staging — `/attach [<path>|status|clear]` 또는 이미지 붙여넣기. 실제 stage(미전송 staged_only — provider 텍스트 전용)", H_ATTACH, "status"),
     SlashCommand("paste", "보존된 large paste 조작 — `/paste [list|expand <id>|resend <id>]` (원문 보존, placeholder 아님)", H_PASTE, "status"),
     SlashCommand("whoami", "agent identity — git author / vault / GitHub App 자격 (`/whoami <agent>`)", H_WHOAMI, "status"),
-    SlashCommand("resolve", "Hephaistos — 요청을 skill/loadout/weapon/source/packet 으로 resolve (`/resolve <요청>`)", H_RESOLVE, "status"),
+    SlashCommand("resolve", "Hephaistos — 요청을 skill/loadout/weapon/source/packet 으로 resolve + governance verdict (`/resolve <요청>` 미리보기, `/resolve apply <요청>` = receipt 를 ledger 에 영속, `/resolve ledger` = forge governance ledger 보기)", H_RESOLVE, "status"),
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
