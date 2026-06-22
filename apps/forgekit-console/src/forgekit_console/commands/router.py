@@ -174,7 +174,7 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed, ctx)
     if handler == H_PROVIDER:
-        return _provider_result(parsed)
+        return _provider_result(parsed, ctx)
     if handler == H_SETUP:
         return _setup_result(parsed, ctx)
     if handler == H_TOOLCHAIN:
@@ -242,23 +242,26 @@ def _goal_result(parsed, ctx: ConsoleContext) -> CommandResult:
     return CommandResult.info("goal", gs.usage_lines())
 
 
-def _provider_result(parsed) -> CommandResult:
+def _provider_result(parsed, ctx: ConsoleContext) -> CommandResult:
     # /provider operator surface over policy.provider_surface (read) + provider_ops (persist).
     from ..policy import provider_ops as ops
     from ..policy import provider_surface as ps
 
     args = list(getattr(parsed, "args", ()) or ())
     sub = args[0].lower() if args else ""
-    cfg = ops.load_raw_config()
+    env = getattr(ctx, "env", None) or None
+    cfg = ops.load_raw_config(env=env)
+    if sub == "budget":
+        return _provider_budget_result(args, cfg, env, ps)
     if sub == "set":
-        ok, msg = ps.apply_set_primary(args[1] if len(args) > 1 else "")
+        ok, msg = ps.apply_set_primary(args[1] if len(args) > 1 else "", env=env)
         return (CommandResult.info if ok else CommandResult.error)("provider set", (msg,))
     if sub == "list":
         return CommandResult.info("provider list", ps.provider_list_lines(cfg))
     if sub == "doctor":
         return CommandResult.info("provider doctor", ps.provider_doctor_lines(cfg))
     if sub == "preset":
-        ok, msg = ps.apply_preset(args[1] if len(args) > 1 else "")
+        ok, msg = ps.apply_preset(args[1] if len(args) > 1 else "", env=env)
         return (CommandResult.info if ok else CommandResult.error)("provider preset", msg.split("\n"))
     if sub in ("connect", "disconnect", "test", "recommended"):
         from forgekit_provider_connect import surface as cs
@@ -270,21 +273,41 @@ def _provider_result(parsed) -> CommandResult:
         ok, msg = (cs.apply_connect(pid) if sub == "connect" else cs.apply_disconnect(pid))
         return (CommandResult.info if ok else CommandResult.error)(f"provider {sub}", msg.split("\n"))
     if sub == "link":
-        ok, msg = ps.apply_link(args[1] if len(args) > 1 else "")
+        ok, msg = ps.apply_link(args[1] if len(args) > 1 else "", env=env)
         return (CommandResult.info if ok else CommandResult.error)("provider link", (msg,))
     if sub == "unlink":
-        ok, msg = ps.apply_unlink(args[1] if len(args) > 1 else "")
+        ok, msg = ps.apply_unlink(args[1] if len(args) > 1 else "", env=env)
         return (CommandResult.info if ok else CommandResult.error)("provider unlink", (msg,))
     if sub == "route":
         op = args[1].lower() if len(args) > 1 else "show"
         if op == "set":
-            ok, msg = ps.apply_route_set(args[2] if len(args) > 2 else "", args[3] if len(args) > 3 else "")
+            ok, msg = ps.apply_route_set(args[2] if len(args) > 2 else "", args[3] if len(args) > 3 else "", env=env)
             return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
         if op == "clear":
-            ok, msg = ps.apply_route_clear(args[2] if len(args) > 2 else "")
+            ok, msg = ps.apply_route_clear(args[2] if len(args) > 2 else "", env=env)
             return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
         return CommandResult.info("provider route", ps.route_show_lines(cfg))
     return CommandResult.info("provider", ps.provider_status_lines(cfg))
+
+
+def _provider_budget_result(args, cfg, env, ps) -> CommandResult:
+    # /provider budget [<id> <limit> | show] — set/show per-provider daily token budgets.
+    # Thin: persist via provider_surface.apply_set_budget (logic in provider package); show
+    # renders honest spent/over from TODAY's usage ledger (no fake numbers, env-scoped).
+    op = args[1].lower() if len(args) > 1 else "show"
+    if op == "show":
+        from forgekit_provider.usage import read_events, today, usage_ledger_path
+
+        try:
+            rows = read_events(path=usage_ledger_path(env), day=today())
+        except Exception:  # noqa: BLE001 - ledger read must never break the surface
+            rows = ()
+        return CommandResult.info("provider budget", ps.budget_lines(cfg, rows))
+    # `/provider budget <id> <limit>` (op is the id; args[2] the limit).
+    pid = args[1]
+    limit = args[2] if len(args) > 2 else ""
+    ok, msg = ps.apply_set_budget(pid, limit, env=env)
+    return (CommandResult.info if ok else CommandResult.error)("provider budget", (msg,))
 
 
 def _setup_result(parsed, ctx) -> CommandResult:
