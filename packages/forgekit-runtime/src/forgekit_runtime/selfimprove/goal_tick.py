@@ -93,10 +93,35 @@ def tick_goal(
     """
 
     si = run_self_improvement(repo_root, signals=signals, limit=limit)
+    g, routes, waiting = link_packets(goal, si.packets, now=now)
+    return GoalTickResult(
+        goal=g,
+        result=si,
+        routes=tuple(routes),
+        proposed=len(si.packets),
+        approval_waiting=waiting,
+    )
+
+
+def link_packets(
+    goal: Goal,
+    packets: Sequence,
+    *,
+    now: Callable[[], str] = _utcnow,
+) -> Tuple[Goal, List[Tuple[str, str, str]], int]:
+    """Link a discovered packet list to ``goal`` + one ``proposal`` evidence each.
+
+    Shared by ``tick_goal`` (leaf goal) and the goal scheduler (routing a child
+    goal's area packets). Each packet is linked by its stable content id with a
+    ``[<risk>] <finding> -> <route>`` proposal record; if any RISKY/BLOCKED packet
+    appears, an ACTIVE goal is moved to ``awaiting_approval`` (the approval-needed
+    split — only a legal transition, never to ``done``). Returns the updated goal,
+    the per-packet routes, and the risky+blocked count. Executes nothing."""
 
     g = goal
     routes: List[Tuple[str, str, str]] = []
-    for pkt in si.packets:
+    risky_or_blocked = 0
+    for pkt in packets:
         pid = packet_id(pkt)
         route = route_packet(pkt)
         g = g.link_packet(pid, now=now)
@@ -107,21 +132,15 @@ def tick_goal(
             now=now,
         )
         routes.append((pid, pkt.risk, route))
+        if pkt.risk != P.RISK_SAFE:
+            risky_or_blocked += 1
 
-    waiting = len(si.risky) + len(si.blocked)
-    # Reflect operator-approval-wait on the goal when risky/blocked work appears.
-    # Only a legal ACTIVE -> awaiting_approval move; never forces an illegal one,
-    # and NEVER advances to done (that needs verified execution evidence).
-    if waiting > 0 and transitions.can_transition(g.status, GoalStatus.AWAITING_APPROVAL):
+    if risky_or_blocked > 0 and transitions.can_transition(
+        g.status, GoalStatus.AWAITING_APPROVAL
+    ):
         g = transitions.apply(g, GoalStatus.AWAITING_APPROVAL, now=now)
 
-    return GoalTickResult(
-        goal=g,
-        result=si,
-        routes=tuple(routes),
-        proposed=len(si.packets),
-        approval_waiting=waiting,
-    )
+    return g, routes, risky_or_blocked
 
 
-__all__ = ("GoalTickResult", "tick_goal", "packet_id")
+__all__ = ("GoalTickResult", "tick_goal", "link_packets", "packet_id")

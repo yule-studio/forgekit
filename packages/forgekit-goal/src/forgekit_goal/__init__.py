@@ -22,10 +22,16 @@ from .planning import (
     ContinuationAction,
     GoalProgress,
     PlanStep,
+    ReplanDecision,
+    approval_disposition,
+    blocked_reason,
     continuation_action,
     decompose,
+    derive_plan_steps,
     is_goal_complete,
+    is_stuck,
     progress,
+    replan,
 )
 from .store import GoalStore
 from .transitions import InvalidTransition
@@ -43,8 +49,14 @@ __all__ = (
     "PlanStep",
     "GoalProgress",
     "ContinuationAction",
+    "ReplanDecision",
     "decompose",
     "progress",
     "continuation_action",
     "is_goal_complete",
+    "replan",
+    "is_stuck",
+    "blocked_reason",
+    "approval_disposition",
+    "derive_plan_steps",
 )

@@ -147,23 +147,41 @@ class GoalContinuationServeTest(unittest.TestCase):
         reloaded = self.store.get(parent.id)
         self.assertNotEqual(reloaded.status, GoalStatus.DONE)  # no fake-green
 
-    # --- blocked child surfaces replan, never auto-completes ---------------
-    def test_blocked_step_surfaces_replan_not_done(self) -> None:
+    # --- blocked child: bounded replan RETRY abandons the dead packet ------
+    def test_blocked_step_replans_not_done(self) -> None:
         parent = self._planned_parent("auth 권한 흐름 대규모 변경")  # risky → gate-blocked
-        exec_t, cont_t = self._exec(), self._cont()
-        out = None
-        for n in range(1, 5):
-            cont_t.tick(n)
-            exec_t.tick(n)       # exec records a decision refusal (gate-blocked), no execution
-            out = cont_t.tick(100 + n)
+        exec_t, cont_t = self._exec(), self._cont()  # default max_replan_attempts=1
+        for n in range(1, 4):
+            cont_t.tick(n)          # advance draft child → active
+            exec_t.tick(n)          # exec gate-refuses → decision evidence, no execution
+            cont_t.tick(100 + n)    # replan RETRY: unlink dead packet + replan evidence
         reloaded = self.store.get(parent.id)
-        self.assertNotEqual(reloaded.status, GoalStatus.DONE)
+        self.assertNotEqual(reloaded.status, GoalStatus.DONE)  # never auto-completes
         child = self.store.get(parent.children[0])
-        # the child really ran the gate and was refused (decision evidence), not executed
-        self.assertIn("decision", [e.kind for e in child.evidence])
+        self.assertIn("decision", [e.kind for e in child.evidence])    # really gate-refused
         self.assertNotIn("execution", [e.kind for e in child.evidence])
-        # continuation surfaces it as needing operator attention (replan → waiting)
-        self.assertTrue(out.waiting)
+        # replan RETRY ran: a replan record was written and the dead packet was abandoned
+        self.assertIn("replan", [e.kind for e in child.evidence])
+        self.assertEqual(child.packets, ())  # exhausted packet unlinked (re-drivable)
+
+    # --- blocked child: escalates to operator once retries exhausted -------
+    def test_blocked_step_escalates_to_operator(self) -> None:
+        parent = self._planned_parent("auth 권한 흐름 대규모 변경")
+        exec_t = self._exec()
+        # max_replan_attempts=0 → first stuck detection escalates immediately (no retry)
+        cont_t = GoalContinuationTicker(repo_root=self.repo, env=self.env, max_replan_attempts=0)
+        ever_waiting = False
+        for n in range(1, 4):
+            cont_t.tick(n)
+            exec_t.tick(n)
+            ever_waiting = ever_waiting or cont_t.tick(100 + n).waiting
+        child = self.store.get(parent.children[0])
+        # escalated to operator with the blocked reason persisted (append-only)
+        self.assertEqual(child.status, GoalStatus.AWAITING_APPROVAL)
+        self.assertIn("blocked", [e.kind for e in child.evidence])
+        self.assertIsNotNone(planning.blocked_reason(child))
+        self.assertTrue(ever_waiting)  # the escalation tick surfaced operator-actionable
+        self.assertNotEqual(self.store.get(parent.id).status, GoalStatus.DONE)
 
     # --- idempotent: re-ticking a finished plan is a no-op -----------------
     def test_done_plan_is_idempotent(self) -> None:

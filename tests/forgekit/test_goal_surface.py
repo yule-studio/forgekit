@@ -119,6 +119,32 @@ class GoalSurfaceTest(unittest.TestCase):
         self.assertTrue(any("진척" in ln for ln in res.lines))
         self.assertTrue(any("다음:" in ln for ln in res.lines))
 
+    def test_progress_shows_approval_disposition(self) -> None:
+        # a leaf goal with a pending safe packet → progress surfaces "자율 안전"
+        from forgekit_goal import GoalStatus, GoalStore, planning, transitions
+        st = GoalStore(env=self.env)
+        gid = self._new("dispo goal")
+        _route(f"/goal activate {gid}", self.env)
+        g = st.get(gid).link_packet("p1")
+        g = g.add_evidence(planning.EV_PROPOSAL, "[safe] x -> route", ref="p1")
+        st.save(g)
+        res = _route(f"/goal progress {gid}", self.env)
+        self.assertTrue(any("자율 안전" in ln for ln in res.lines))
+
+    def test_progress_and_show_surface_blocked_reason(self) -> None:
+        from forgekit_goal import GoalStatus, GoalStore, planning, transitions
+        st = GoalStore(env=self.env)
+        gid = self._new("stuck goal")
+        _route(f"/goal activate {gid}", self.env)
+        g = st.get(gid).link_packet("p1")
+        g = g.add_evidence(planning.EV_PROPOSAL, "[safe] x -> route", ref="p1")
+        g = g.add_evidence(planning.EV_DECISION, "gate refused: scope creep", ref="p1")
+        st.save(g)
+        prog = _route(f"/goal progress {gid}", self.env)
+        self.assertTrue(any("막힘" in ln and "scope creep" in ln for ln in prog.lines))
+        show = _route(f"/goal show {gid}", self.env)
+        self.assertTrue(any("막힘 사유" in ln and "scope creep" in ln for ln in show.lines))
+
     def test_unknown_sub_shows_usage(self) -> None:
         res = _route("/goal frobnicate", self.env)
         self.assertEqual(res.kind, KIND_INFO)

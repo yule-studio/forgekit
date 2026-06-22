@@ -31,7 +31,7 @@ Owner: ``packages/forgekit-goal``. Roadmap/acceptance: ``docs/forgekit-goal-road
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .models import Goal, GoalStatus, _utcnow
 
@@ -43,6 +43,18 @@ EV_EXECUTION = "execution"
 EV_VERIFICATION = "verification"
 EV_DECISION = "decision"
 EV_PLAN = "plan"
+EV_REPLAN = "replan"      # a stuck approach was abandoned (bounded re-plan attempt)
+EV_BLOCKED = "blocked"    # a stuck goal escalated to the operator (reason persisted)
+
+# Replan policy actions (decided by ``replan``, applied by the continuation tick).
+REPLAN_RETRY = "retry"        # abandon the dead packet(s) + record attempt; re-drive
+REPLAN_ESCALATE = "escalate"  # bounded attempts exhausted → persist reason + operator
+REPLAN_NONE = "none"          # not stuck → nothing to replan
+
+# Approval disposition of a goal's *pending* (un-attempted) work.
+NEEDS_APPROVAL = "needs_approval"      # a risky/blocked-class packet awaits operator
+AUTONOMOUS_SAFE = "autonomous_safe"    # only safe-class work pending → may auto-run
+DISPO_NONE = "none"                    # nothing pending
 
 # Continuation action kinds — the next legal move for a parent's plan.
 ADVANCE = "advance"    # activate the next pending child step (safe-class progress)
@@ -138,13 +150,16 @@ class PacketTally:
 def tally_packets(goal: Goal) -> PacketTally:
     """Classify a goal's proposal packets by their durable evidence.
 
-    Only packets with a ``proposal`` record are counted (those the execute
-    bridge can resolve into a runnable packet). ``execution`` wins over
-    ``decision`` for the same packet (a packet executed after an earlier refusal
-    is executed), so a re-approved-and-run packet is never double-counted as
-    blocked."""
+    Only packets with a ``proposal`` record AND still in ``goal.packets`` are
+    counted (those the execute bridge can resolve into a runnable packet). The
+    ``goal.packets`` intersection matters for replan: a stuck packet that replan
+    *unlinks* drops out of the tally (evidence is append-only and stays, but the
+    dead packet no longer counts as blocked/pending), so the goal can be re-driven
+    without the exhausted approach. ``execution`` wins over ``decision`` for the
+    same packet (a packet executed after an earlier refusal is executed), so a
+    re-approved-and-run packet is never double-counted as blocked."""
 
-    proposed = _packet_refs(goal, EV_PROPOSAL)
+    proposed = _packet_refs(goal, EV_PROPOSAL) & set(goal.packets)
     executed_refs = _packet_refs(goal, EV_EXECUTION) & proposed
     decision_refs = _packet_refs(goal, EV_DECISION) & proposed
     blocked_refs = decision_refs - executed_refs
@@ -341,6 +356,172 @@ def continuation_action(parent: Goal, children: Iterable[Goal] = ()) -> Continua
                               f"all {len(kids)} step done — parent eligible for done")
 
 
+# --------------------------------------------------------------------------- #
+# Replan policy + stuck/blocked reason (bounded re-plan, honest escalation)
+# --------------------------------------------------------------------------- #
+def _proposal_risk(goal: Goal, pid: str) -> str:
+    """The risk tag a goal-tick stamped on a packet's proposal evidence.
+
+    Goal-tick writes each proposal as ``[<risk>] <finding> -> <route>``; we read
+    that leading tag back so the disposition/replan logic knows whether pending
+    work is safe (auto-OK) or risky/blocked (operator). Unknown → treated risky
+    (safe-by-rejection: an unreadable tag is never auto-run)."""
+
+    for e in goal.evidence:
+        if e.kind == EV_PROPOSAL and e.ref == pid:
+            s = e.summary.lstrip()
+            if s.startswith("[") and "]" in s:
+                return s[1:s.index("]")].strip().lower()
+    return "risky"
+
+
+def _pending_packet_ids(goal: Goal) -> List[str]:
+    """Linked, proposed packets with no execution/decision evidence yet (un-attempted)."""
+
+    proposed = _packet_refs(goal, EV_PROPOSAL) & set(goal.packets)
+    attempted = _packet_refs(goal, EV_EXECUTION) | _packet_refs(goal, EV_DECISION)
+    return [pid for pid in goal.packets if pid in proposed and pid not in attempted]
+
+
+def _blocked_packet_ids(goal: Goal) -> List[str]:
+    """Linked, proposed packets gate-refused (decision evidence) and not executed."""
+
+    proposed = _packet_refs(goal, EV_PROPOSAL) & set(goal.packets)
+    executed = _packet_refs(goal, EV_EXECUTION)
+    decided = _packet_refs(goal, EV_DECISION)
+    return [pid for pid in goal.packets
+            if pid in proposed and pid in decided and pid not in executed]
+
+
+def blocked_reason(goal: Goal) -> Optional[str]:
+    """The persisted stuck reason — the most recent gate refusal / blocked record.
+
+    Returns the latest ``decision`` or ``blocked`` evidence summary (what the
+    gate refused and why), or None if the goal was never gate-blocked. This is
+    the operator-visible "왜 막혔는지" that survives restarts (append-only)."""
+
+    for e in reversed(goal.evidence):
+        if e.kind in (EV_DECISION, EV_BLOCKED):
+            return e.summary
+    return None
+
+
+def approval_disposition(goal: Goal) -> str:
+    """Split a goal's pending work into NEEDS_APPROVAL vs AUTONOMOUS_SAFE.
+
+    Reads the risk tag on each pending packet's proposal evidence: any
+    risky/blocked-class pending packet → ``NEEDS_APPROVAL`` (operator must
+    approve before it runs); only safe-class pending → ``AUTONOMOUS_SAFE`` (the
+    exec tick may run it under the chain without a user decision); nothing
+    pending → ``DISPO_NONE``. This is the honest "approval 가능/불가" separation —
+    it never marks risky work auto-runnable."""
+
+    pending = _pending_packet_ids(goal)
+    if not pending:
+        return DISPO_NONE
+    for pid in pending:
+        if _proposal_risk(goal, pid) != "safe":
+            return NEEDS_APPROVAL
+    return AUTONOMOUS_SAFE
+
+
+@dataclass(frozen=True)
+class ReplanDecision:
+    """A bounded re-plan move for a stuck goal. Applies nothing (caller applies).
+
+    ``action`` is REPLAN_RETRY (abandon the dead packet(s) so the goal can be
+    re-driven, bounded by ``max_attempts``), REPLAN_ESCALATE (attempts exhausted →
+    persist the reason + hand to the operator), or REPLAN_NONE (not stuck).
+    ``unlink`` are the exhausted packet ids RETRY should drop; ``reason`` is the
+    persisted stuck reason; ``attempt`` is the new attempt count."""
+
+    action: str
+    reason: str
+    unlink: Tuple[str, ...] = ()
+    attempt: int = 0
+
+
+def _replan_attempts(goal: Goal) -> int:
+    return sum(1 for e in goal.evidence if e.kind == EV_REPLAN)
+
+
+def is_stuck(goal: Goal) -> bool:
+    """True iff the goal has gate-blocked packets, nothing pending, and isn't complete.
+
+    A stuck goal cannot make progress on its own — the exec tick will not retry a
+    gate-refused packet — so it needs a replan (abandon + re-drive) or operator
+    escalation."""
+
+    t = tally_packets(goal)
+    return t.blocked > 0 and t.pending == 0 and not is_goal_complete(goal)
+
+
+def replan(goal: Goal, *, max_attempts: int = 1) -> ReplanDecision:
+    """Decide the bounded re-plan move for a (possibly stuck) goal. Pure.
+
+    Not stuck → ``REPLAN_NONE``. Stuck with attempts remaining → ``REPLAN_RETRY``:
+    abandon (unlink) the gate-blocked packets so a later discovery can propose a
+    genuinely different approach (we never re-run the same gate-refused packet —
+    that would be fake progress). Stuck with attempts exhausted → ``REPLAN_ESCALATE``:
+    the reason is persisted and the goal is handed to the operator. ``max_attempts``
+    bounds the auto-retry so a permanently-blocked goal escalates instead of
+    looping forever."""
+
+    if not is_stuck(goal):
+        return ReplanDecision(REPLAN_NONE, "not stuck")
+    reason = blocked_reason(goal) or "gate-blocked (no recorded reason)"
+    attempts = _replan_attempts(goal)
+    if attempts < max_attempts:
+        return ReplanDecision(
+            REPLAN_RETRY,
+            f"retry {attempts + 1}/{max_attempts}: abandon blocked approach — {reason}",
+            unlink=tuple(_blocked_packet_ids(goal)),
+            attempt=attempts + 1,
+        )
+    return ReplanDecision(
+        REPLAN_ESCALATE,
+        f"escalate after {attempts} retry: {reason}",
+        attempt=attempts,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Autonomous decomposition — derive plan steps from discovered work
+# --------------------------------------------------------------------------- #
+def derive_plan_steps(items: Sequence[Tuple[str, str]]) -> Tuple[PlanStep, ...]:
+    """Group discovered work ``(area, finding)`` into ordered plan steps by area.
+
+    One step per distinct ``affected_area`` (first-seen order, stable), the step
+    intent listing how many findings fall under it. This is how a "big" goal —
+    discovery spanning several areas — is decomposed into child goals: the steps
+    come from REAL discovered work, never fabricated. An empty/blank area is
+    bucketed under ``general``."""
+
+    order: List[str] = []
+    counts: Dict[str, int] = {}
+    for area, _finding in items:
+        key = (area or "").strip() or "general"
+        if key not in counts:
+            counts[key] = 0
+            order.append(key)
+        counts[key] += 1
+    return tuple(
+        PlanStep(title=area, intent=f"{counts[area]} finding(s) in {area}")
+        for area in order
+    )
+
+
+def is_big_goal(items: Sequence[Tuple[str, str]]) -> bool:
+    """A goal is "big" (→ decompose) when discovered work spans ≥2 distinct areas.
+
+    Single-area (or trivial) work stays a leaf goal that the exec tick runs
+    directly — decomposing one area into one child adds nothing. This is the
+    honest "큰 goal 이면 무조건 packetized execution 으로 내려간다" threshold."""
+
+    areas = {((a or "").strip() or "general") for a, _ in items}
+    return len(areas) >= 2
+
+
 __all__ = (
     "PlanStep",
     "decompose",
@@ -361,4 +542,19 @@ __all__ = (
     "EV_VERIFICATION",
     "EV_DECISION",
     "EV_PLAN",
+    "EV_REPLAN",
+    "EV_BLOCKED",
+    "REPLAN_RETRY",
+    "REPLAN_ESCALATE",
+    "REPLAN_NONE",
+    "NEEDS_APPROVAL",
+    "AUTONOMOUS_SAFE",
+    "DISPO_NONE",
+    "ReplanDecision",
+    "replan",
+    "is_stuck",
+    "blocked_reason",
+    "approval_disposition",
+    "derive_plan_steps",
+    "is_big_goal",
 )
