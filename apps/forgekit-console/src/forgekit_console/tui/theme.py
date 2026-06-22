@@ -58,6 +58,12 @@ def css_variables() -> dict:
         "warning": WARNING,
         "success": SUCCESS,
         "error": ERROR,
+        # cross-widget drag-selection highlight (Textual `screen--selection`, full mode):
+        # brand desaturated-cyan (opaque) instead of Textual's default ~50%-alpha blue
+        # (`#0178D47F`) which blends to a muddy low-contrast block on near-black. Matches
+        # the composer's `text-area--selection` treatment so selection reads the same
+        # everywhere; the readable light foreground is forced in SCREEN_CSS.
+        "screen-selection-background": ACCENT_DIM,
     }
 
 
