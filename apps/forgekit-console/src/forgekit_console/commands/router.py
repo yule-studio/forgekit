@@ -44,6 +44,7 @@ from .registry import (
     H_DAEMON,
     H_GOAL,
     H_COUNCIL,
+    H_HANDOFF,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -191,6 +192,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _goal_result(parsed, ctx)
     if handler == H_COUNCIL:
         return _council_result(parsed, ctx)
+    if handler == H_HANDOFF:
+        return _handoff_result(parsed, ctx)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -603,6 +606,71 @@ def _council_result(parsed, ctx=None) -> CommandResult:
     trail = decision_trail_from_log(events)
     body = readiness.lines() + ("", "── 결정 트레일 (누가 무엇을) ──") + trail
     return CommandResult.info("council", head + body)
+
+
+def _work_order_lines(p: dict) -> tuple:
+    """Render a persisted handoff/briefing payload as a specialist work order. Reads the
+    enriched briefing shape; falls back to the bare handoff fields when not enriched."""
+
+    out = [f"work order {p.get('handoff_id', '')} → {p.get('executor_role', '')}"
+           + ("  · ⚠ operator 승인 필요" if p.get("operator_required") else "")]
+    if p.get("goal"):
+        out.append(f"  목표: {p['goal']}")
+    if p.get("proposed_stack"):
+        summary = p.get("proposed_stack_summary")
+        out.append(f"  제안 스택: {p['proposed_stack']}" + (f" — {summary}" if summary else ""))
+    if p.get("stack_rationale"):
+        out.append(f"  선택 이유: {p['stack_rationale']}")
+    for r in p.get("rejected_options") or ():
+        out.append(f"  ✗ 탈락: {r.get('name', '')} — {r.get('why_not', '')}")
+    if p.get("coding_conventions"):
+        out.append(f"  코딩 컨벤션: {p['coding_conventions']}")
+    if p.get("design_system"):
+        out.append(f"  디자인 시스템: {p['design_system']}")
+    for n in p.get("integration_notes") or ():
+        out.append(f"  · API/infra: {n}")
+    for s in p.get("scope") or ():
+        out.append(f"  ☐ scope: {s}")
+    for s in p.get("forbidden_scope") or ():
+        out.append(f"  ⊘ 금지: {s}")
+    if p.get("test_strategy"):
+        out.append(f"  test 전략: {p['test_strategy']}")
+    for a in p.get("acceptance_criteria") or ():
+        out.append(f"  ✓ acceptance: {a}")
+    return tuple(out)
+
+
+def _handoff_result(parsed, ctx=None) -> CommandResult:
+    """`/handoff <session>` — the specialist work order from the replayed decision log: the
+    materialized handoff packet (goal / proposed stack + why / rejected options / coding
+    conventions / design system / API·infra / scope / test / acceptance). Reads the latest
+    handoff event's payload (enriched with the briefing). Honest if none recorded yet."""
+
+    env = getattr(ctx, "env", None)
+    args = getattr(parsed, "args", ()) or ()
+    session = (args[0] if args else "").strip()
+    if not session:
+        return CommandResult.info(
+            "handoff",
+            ("specialist work order 를 봅니다 — `/handoff <session>`.",
+             "PM brief + tech-lead decision + handoff 로 합성된 작업 지시(목표/제안 스택/선택 이유/"
+             "탈락안/컨벤션/디자인·API·infra/scope/test/acceptance)를 replay 합니다.",
+             "기록은 `decision_lane.record_lane_artifacts(handoff=..., briefing=...)` 가 남깁니다."))
+    try:
+        from forgekit_runtime.decision_lane import KIND_HANDOFF, replay_governance_log
+    except Exception:  # noqa: BLE001
+        return CommandResult.error("handoff", ("governance 런타임 미가용.",))
+    events = replay_governance_log(session, env=env)
+    handoffs = [e for e in events if e.kind == KIND_HANDOFF]
+    if not handoffs:
+        return CommandResult.info(
+            "handoff",
+            (f"handoff — session={session}: 기록된 work order 없음 "
+             "(tech-lead 서명 + handoff 발행 후 표면화).",))
+    latest = handoffs[-1]
+    head = (f"handoff packet — session={session}"
+            + ("" if latest.valid else "  · ✗ thin (설계 맥락 미비 — specialist 실행 불가)"),)
+    return CommandResult.info("handoff", head + _work_order_lines(latest.payload or {}))
 
 
 def _whoami_result(parsed) -> CommandResult:

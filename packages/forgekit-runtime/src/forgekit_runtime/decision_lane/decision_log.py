@@ -152,6 +152,7 @@ def record_lane_artifacts(
     decision=None,
     approval=None,
     handoff=None,
+    briefing=None,
     env: Optional[Mapping[str, str]] = None,
     at: str = "",
 ) -> Tuple[GovernanceEvent, ...]:
@@ -163,7 +164,12 @@ def record_lane_artifacts(
     durable log preserves *what was decided* (design system / coding convention / stack /
     tradeoffs / acceptance), not just that a decision happened. ``payload`` is pure
     evidence — readiness keys only on ``valid``, never on the payload, so it can't fake a
-    gate. ``consult`` accepts a single :class:`ConsultNote` or an iterable of them."""
+    gate. ``consult`` accepts a single :class:`ConsultNote` or an iterable of them.
+
+    When a ``briefing`` (:class:`SpecialistBriefing`) is given, the handoff event is
+    enriched: its payload becomes the materialized work order (goal / proposed stack + why /
+    rejected options / conventions / design system / API·infra), and ``valid`` additionally
+    requires the briefing to carry that full design context (anti-thin-order)."""
 
     recorded = []
 
@@ -216,9 +222,14 @@ def record_lane_artifacts(
               getattr(approval, "decision_ref", ""), ap_payload)
     if handoff is not None:
         ok = (decision is not None) and (not validate_handoff(handoff, decision))
+        payload = _payload(handoff)
+        if briefing is not None:
+            from .validators import validate_specialist_briefing
+            ok = ok and (not validate_specialist_briefing(briefing))
+            payload = _payload(briefing)            # enrich: full work order is the payload
         _emit(KIND_HANDOFF, handoff.executor_role,
               f"handoff {handoff.handoff_id} → {handoff.executor_role}", ok,
-              handoff.handoff_id, _payload(handoff))
+              handoff.handoff_id, payload)
     return tuple(recorded)
 
 
@@ -299,6 +310,11 @@ def _trail_facts(ev: GovernanceEvent) -> str:
         return f"approved={p.get('approved', '')}"
     if k == KIND_HANDOFF:
         out = f"executor={p.get('executor_role', '')} · scope {len(p.get('scope') or [])}개"
+        # enriched (briefing) payload — surface the carried design context
+        if p.get("proposed_stack"):
+            out += f" · stack={p['proposed_stack']}"
+        if p.get("rejected_options"):
+            out += f" · 탈락 {len(p['rejected_options'])}개"
         return out + (" · operator 승인 필요" if p.get("operator_required") else "")
     return ""
 
