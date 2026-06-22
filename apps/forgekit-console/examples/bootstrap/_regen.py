@@ -14,6 +14,9 @@ from pathlib import Path
 from forgekit_console import bootstrap as b
 from forgekit_provider.policy import provider_ops as ops
 from forgekit_provider_connect import wizard
+from forgekit_runtime.runtime import heartbeat as HB
+from forgekit_runtime.runtime.daemon import BoundedDaemon, TickOutcome
+from forgekit_runtime.runtime import surface as daemon_surface
 from hephaistos import nexus_ops as nops
 
 
@@ -76,8 +79,21 @@ def main() -> None:
             print(ln)
 
         bs = b.assess_bootstrap(env=env, probe=live, repo_root=Path(repo))
-        banner("HONEST AGGREGATE (machine-readable)")
+        banner("HONEST AGGREGATE (machine-readable, incl. 5-state provider taxonomy)")
         print(json.dumps(bs.to_dict(), ensure_ascii=False, indent=2))
+
+        banner("STEP 5 — always-on daemon RESUME (restart continues tick numbering, not cold-start)")
+        # a prior run left off at tick 5; a restart (e.g. launchd KeepAlive) resumes continuity.
+        HB.write_heartbeat(HB.Heartbeat(status=HB.STATUS_STOPPED, tick=5, ts="(prev run)", pid=111,
+                                        note="prev run stopped"), env=env)
+        d = BoundedDaemon(max_ticks=2, env=env, sleep_fn=lambda s: None, pid=222, resume=True)
+        r = d.serve(lambda t: TickOutcome(summary=f"tick {t}"))
+        print(f"$ forgekit runtime serve --max-ticks 2   (prior heartbeat tick=5)")
+        print(f"  resumed_from = {r.resumed_from} · 이 run tick = {r.resumed_from+1}..{r.ticks} "
+              f"(this-run {r.ticks - r.resumed_from}, heartbeat tick 연속)")
+        print("$ /daemon  (status surface)")
+        for ln in daemon_surface.daemon_status_lines(env=env):
+            print(f"  {ln}")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ provider · knowledge(nexus/vault) · toolchain → 단일 canonical ~/.forgekit
 STEP 1 — `/setup` (fresh: no provider live lane, no nexus, manifest present)
 ==============================================================================
 ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provider · knowledge · toolchain)
-  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpoarrg4yl/config.json  (재실행 후에도 유지)
+  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json  (재실행 후에도 유지)
 
   ○ provider   setup-required — live 전송 가능한 provider 없음 — CLI(claude/codex)는 routing-only
       다음: `/setup apply` 로 추천 4-provider preset 저장 · `/provider connect <id>`
@@ -14,6 +14,9 @@ ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provid
       다음: `/nexus set <vault/repo 경로>` 로 지식 source 연결
   ◐ toolchain  detected       — 2 tool (repo-local manifest, 추측 없음): python@3.13.1, nodejs@20.11.0
       다음: `/toolchain verify` 로 mise 기반 검증(설치 시)
+
+[provider 상태 — 정직 taxonomy]
+  claude=setup-required · codex=setup-required · gemini=setup-required · ollama=setup-required
 
 [provider 상세]
   [b]/setup[/b] — provider onboarding  ·  verdict: [b]setup-required[/b]
@@ -37,13 +40,13 @@ setup 적용 — primary brain = claude, default_chat actual live = gemini.
   실제 live lane(검증됨): gemini. claude/codex 는 routing/brain participant.
   verdict: ready. `/provider` 로 declared→actual, `/setup` 로 연결 재점검.
 
-$ /nexus set /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpph26jja4
-  nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpph26jja4 (저장됨) · 상태: [exists] 연결됨
+$ /nexus set /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t
+  nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t (저장됨) · 상태: [exists] 연결됨
 
 ==============================================================================
 STEP 3 — RESTART SIMULATION: re-read canonical config from disk (no in-memory state)
 ==============================================================================
-$ cat /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpoarrg4yl/config.json
+$ cat /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json
 {
   "primary_provider": "claude",
   "linked_providers": [
@@ -97,19 +100,22 @@ $ cat /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpoarrg4yl/config.json
       ]
     }
   },
-  "nexus_root": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpph26jja4"
+  "nexus_root": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t"
 }
 
 ==============================================================================
 STEP 4 — `/setup` after restart (settings persisted → verdict ready)
 ==============================================================================
 ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provider · knowledge · toolchain)
-  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpoarrg4yl/config.json  (재실행 후에도 유지)
+  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json  (재실행 후에도 유지)
 
   ● provider   live           — live lane(검증됨): gemini · claude/codex 는 routing/brain participant
-  ◐ knowledge  connected      — /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpph26jja4
+  ◐ knowledge  connected      — /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t
   ◐ toolchain  detected       — 2 tool (repo-local manifest, 추측 없음): python@3.13.1, nodejs@20.11.0
       다음: `/toolchain verify` 로 mise 기반 검증(설치 시)
+
+[provider 상태 — 정직 taxonomy]
+  claude=unsupported · codex=unsupported · gemini=live · ollama=linked
 
 [provider 상세]
   [b]/setup[/b] — provider onboarding  ·  verdict: [b]ready[/b]
@@ -127,14 +133,32 @@ verdict: ready — provider live lane 있음. `/daemon` always-on · `/goal` 연
   지식/toolchain 은 non-blocking 정직 표면 — 미연결도 console 은 동작.
 
 ==============================================================================
-HONEST AGGREGATE (machine-readable)
+HONEST AGGREGATE (machine-readable, incl. 5-state provider taxonomy)
 ==============================================================================
 {
   "verdict": "ready",
   "ready": true,
-  "config_path": "/private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpoarrg4yl/config.json",
+  "config_path": "/private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json",
   "live_lane": [
     "gemini"
+  ],
+  "provider_states": [
+    {
+      "provider": "claude",
+      "state": "unsupported"
+    },
+    {
+      "provider": "codex",
+      "state": "unsupported"
+    },
+    {
+      "provider": "gemini",
+      "state": "live"
+    },
+    {
+      "provider": "ollama",
+      "state": "linked"
+    }
   ],
   "stages": [
     {
@@ -152,7 +176,7 @@ HONEST AGGREGATE (machine-readable)
       "status": "connected",
       "connected": true,
       "blocking": false,
-      "detail": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpph26jja4",
+      "detail": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t",
       "next_action": ""
     },
     {
@@ -166,3 +190,17 @@ HONEST AGGREGATE (machine-readable)
     }
   ]
 }
+
+==============================================================================
+STEP 5 — always-on daemon RESUME (restart continues tick numbering, not cold-start)
+==============================================================================
+$ forgekit runtime serve --max-ticks 2   (prior heartbeat tick=5)
+  resumed_from = 5 · 이 run tick = 6..7 (this-run 2, heartbeat tick 연속)
+$ /daemon  (status surface)
+  forgekit always-on daemon — stopped
+    status    : stopped · tick 7 · pid 222
+    last tick : 2026-06-22T11:43:51
+    last note : max_ticks(2)
+    kill-switch: clear
+    resume    : 다음 serve 는 tick 8 부터 이어집니다 (resume on; cooldown 연속성 유지)
+    [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]

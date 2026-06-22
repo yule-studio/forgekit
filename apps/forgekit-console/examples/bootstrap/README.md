@@ -18,6 +18,11 @@
    단일 canonical `~/.forgekit/config.json` 에 persist 되고, STEP 3 의 *restart 시뮬레이션*
    (in-memory state 없이 disk 재독)에서 그대로 살아남아 STEP 4 verdict 가 `ready` 로 뒤집힌다.
    같은 config 에 `slot_routing` + `fallback_policy`(routing/fallback)도 함께 보존된다.
+5. **provider 5-state taxonomy** — STEP 1/4 의 `[provider 상태 — 정직 taxonomy]` 줄이 각 provider 를
+   setup-required / configured / linked / live / unsupported 중 하나로 정직하게 표면화한다
+   (`live` 는 검증된 probe 일 때만).
+6. **always-on daemon resume** — STEP 5 가 직전 heartbeat tick=5 에서 재시작해 tick 6,7 로 **이어지는**
+   것을(cold-start 아님) `resumed_from`/`/daemon` 상태로 증명한다.
 
 재생성:
 

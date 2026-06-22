@@ -34,6 +34,23 @@ provider 하나뿐 — 콘솔 live-submit 은 실제 live 전송(gemini API / ol
 가능하고, claude/codex 는 CLI attach = `connected · routing only`(brain participant)이지 live
 전송이 아니다. **no fake-live**: 검증 못 한 lane 은 `connected` 로 표기하지 않는다.
 
+### 2.1 provider 5-state taxonomy (정직)
+
+`/setup` provider lane 은 각 built-in provider 를 **정확히 한 상태**로 표면화한다 — SSoT 는
+`forgekit_provider.policy.provider_surface.classify_provider_state`(코드), 코드는 config role +
+**검증된 probe 결과**만으로 판정한다(추측 금지).
+
+| state | 의미 |
+| --- | --- |
+| `setup-required` | brain 에 미포함(primary 도 linked 도 아님) — 쓰려면 설정 필요 |
+| `configured` | primary brain, console 전송 가능 타입, 아직 live 검증 안 됨 |
+| `linked` | linked participant, console 전송 가능 타입, 아직 live 검증 안 됨 |
+| `live` | **probe 로 검증된** console live 전송 (gemini key / ollama daemon+model) |
+| `unsupported` | brain 에 있으나 console live-submit 불가(CLI claude/codex = routing only) |
+
+판정 우선순위: 검증-live → not-in-brain → CLI-unsupported → primary(configured) → linked.
+`live` 는 **probe 가 True 일 때만** — 키/데몬 없이는 절대 live 로 위장하지 않는다.
+
 knowledge/toolchain 은 **non-blocking 정직 표면** — 미연결이어도 콘솔은 동작하지만 상태는
 숨기지 않는다(green-wash 금지).
 
@@ -64,6 +81,16 @@ fallback_policy · nexus_root)이 그대로 반영된다.
 
 evidence(`examples/bootstrap/setup-bootstrap-evidence.txt`)의 STEP 3 가 *restart 시뮬레이션*으로
 이를 증명한다 — in-memory state 없이 disk config 를 재독했을 때 verdict 가 `ready` 로 유지.
+
+### 4.1 always-on daemon resume (재시작 후 tick 연속)
+
+설정뿐 아니라 **always-on 런타임**도 재시작 후 이어진다. `BoundedDaemon.serve(resume=True)`(기본)
+는 시작 시 직전 heartbeat(`runtime-heartbeat.json`)를 읽어 tick 번호를 **이어서** 매긴다 — launchd
+`KeepAlive`/재부팅으로 프로세스가 재기동돼도 cooldown(`next_eligible_tick`) 연속성이 유지되고
+`DaemonResult.resumed_from` 으로 어디서 이어졌는지 정직하게 보고한다. **liveness 를 위조하지 않는다**:
+직전 프로세스가 살아있다고 가정하지 않고 tick 카운터 연속성만 복구한다. `max_ticks` 는 이 run 의
+tick 수만 제한(resume offset 과 무관). `/daemon` 상태 표면이 "다음 serve 는 tick N+1 부터" 를 보여준다.
+evidence STEP 5 참조. 코드 SSoT `forgekit_runtime.runtime.daemon`, 회귀 `test_runtime_daemon.py`.
 
 ## 5. routing / fallback / actual-live 표시
 
