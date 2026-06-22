@@ -1,0 +1,31 @@
+ForgeKit Nexus root / Obsidian vault bootstrap — deterministic evidence (no fake)
+재현: tests/forgekit/test_nexus_vault.py
+
+==============================================================================
+STEP 1 — inspect: 미연결 / 없음 / 빈 root (정직 상태, Obsidian 위조 없음)
+==============================================================================
+  none      → not_connected
+  missing   → missing
+  empty dir → state=empty · is_obsidian=False · notes=0
+
+==============================================================================
+STEP 2 — inspect 연결된 Obsidian vault (실 .obsidian + notes + KB layout)
+==============================================================================
+  state=connected · is_obsidian=True · notes=1 · KB present=['10-projects'] missing=['00-inbox', '20-areas', '30-resources']
+
+==============================================================================
+STEP 3 — /nexus bootstrap <vault> --create (영속 + scaffold, .obsidian 미생성)
+==============================================================================
+  ok=True
+  nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpgbm2ckw6 (저장됨)
+    vault: [connected] Obsidian vault · notes 1 · KB layout 1/4
+    Obsidian(.obsidian): 예 · notes 1
+    scaffold: 생성 [00-inbox, 20-areas, 30-resources] · 기존 [10-projects]
+  KB dirs on disk: ['00-inbox', '10-projects', '20-areas', '30-resources']
+  .obsidian 그대로(부트스트랩이 만들지 않음): True
+
+==============================================================================
+STEP 4 — 재실행(restart): 저장된 config.json 로드 → 연결 유지 + vault-aware status
+==============================================================================
+  config.json nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpgbm2ckw6
+  connection_status: status=exists connected=True is_vault=True note_count=1

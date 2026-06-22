@@ -50,6 +50,41 @@ def apply_set_root(path_str: str, *, env: Optional[Mapping[str, str]] = None,
     return True, f"nexus_root = {raw} (저장됨) · 상태: [{cs['status']}] {cs['reason']}"
 
 
+def apply_bootstrap(path_str: str, *, create: bool = False,
+                    env: Optional[Mapping[str, str]] = None,
+                    config_file: Optional[Path] = None) -> Tuple[bool, str]:
+    """`/nexus bootstrap <path> [--create]` — connect a vault root AND report/scaffold the KB layout.
+
+    Persists ``nexus_root`` (same canonical config as ``apply_set_root``), then inspects the vault
+    honestly (Obsidian? notes? KB layout?) and — only with ``create=True`` — makes the missing KB
+    dirs (never ``.obsidian``; no fake vault). The message reports the REAL resulting state."""
+
+    raw = (path_str or "").strip()
+    if not raw:
+        return False, "경로를 입력하세요 — `/nexus bootstrap <vault 경로> [--create]`"
+    ok, msg = apply_set_root(raw, env=env, config_file=config_file)
+    if not ok:
+        return False, msg
+    from . import nexus_vault as nv
+
+    insp = nv.inspect_vault(Path(raw))
+    lines = [
+        f"nexus_root = {raw} (저장됨)",
+        f"  vault: [{insp.state}] {insp.reason}",
+        f"  Obsidian(.obsidian): {'예' if insp.is_obsidian else '아니오(markdown root)'} · "
+        f"notes {insp.note_count}{'+' if insp.note_capped else ''}",
+    ]
+    if insp.connected:
+        scaf = nv.scaffold_vault(Path(raw), create=create)
+        if create:
+            lines.append(f"  scaffold: 생성 [{', '.join(scaf.created) or '없음'}] · "
+                         f"기존 [{', '.join(scaf.existing) or '없음'}]"
+                         + ("" if scaf.ok else f" — ⚠ {scaf.reason}"))
+        else:
+            lines.append(f"  KB layout: {scaf.reason} (생성하려면 `--create`)")
+    return True, "\n".join(lines)
+
+
 def apply_clear_root(*, env: Optional[Mapping[str, str]] = None,
                      config_file: Optional[Path] = None) -> Tuple[bool, str]:
     """Remove ``nexus_root`` from config → back to not_connected."""
@@ -66,4 +101,4 @@ def apply_clear_root(*, env: Optional[Mapping[str, str]] = None,
     return True, "nexus_root 해제됨 — not_connected (지식 source 미연결)"
 
 
-__all__ = ("apply_set_root", "apply_clear_root")
+__all__ = ("apply_set_root", "apply_clear_root", "apply_bootstrap")
