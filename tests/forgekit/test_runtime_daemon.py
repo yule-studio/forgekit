@@ -86,6 +86,28 @@ class DaemonTests(unittest.TestCase):
         self.assertEqual(hb.tick, 1)
         self.assertEqual(hb.status, HB.STATUS_IDLE)
 
+    def test_resume_continues_tick_numbering_from_prior_heartbeat(self) -> None:
+        # a previous run left off at tick 5 (e.g. process restarted under launchd KeepAlive).
+        HB.write_heartbeat(HB.Heartbeat(status=HB.STATUS_STOPPED, tick=5, ts="t0", pid=99), path=self.hb)
+        d = self._daemon(max_ticks=2, resume=True)
+        res = d.serve(lambda n: TickOutcome(summary=f"t{n}"))
+        self.assertEqual(res.resumed_from, 5)                 # honest: picked up the prior tick
+        self.assertEqual(res.ticks, 7)                        # continued 6, 7 (heartbeat tick continuous)
+        self.assertEqual(res.ticks - res.resumed_from, 2)     # max_ticks bounds ticks THIS run, not the offset
+        self.assertEqual(HB.read_heartbeat(path=self.hb).tick, 7)
+
+    def test_resume_disabled_is_cold_start(self) -> None:
+        HB.write_heartbeat(HB.Heartbeat(status=HB.STATUS_STOPPED, tick=9, ts="t0"), path=self.hb)
+        d = self._daemon(max_ticks=2, resume=False)
+        res = d.serve(lambda n: TickOutcome())
+        self.assertEqual(res.resumed_from, 0)                 # ignored the prior heartbeat
+        self.assertEqual(res.ticks, 2)
+
+    def test_resume_with_no_prior_heartbeat_is_cold_start(self) -> None:
+        d = self._daemon(max_ticks=1, resume=True)            # no heartbeat file written yet
+        res = d.serve(lambda n: TickOutcome())
+        self.assertEqual(res.resumed_from, 0)                 # nothing to resume → honest cold start
+
 
 class HeartbeatTests(unittest.TestCase):
     def test_roundtrip_and_kill(self) -> None:

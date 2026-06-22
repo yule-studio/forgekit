@@ -181,5 +181,25 @@ class SurfaceAndRouterTests(unittest.TestCase):
             self.assertIn("knowledge", joined)
 
 
+class ProviderTaxonomyInBootstrapTests(unittest.TestCase):
+    """The bootstrap surfaces the honest per-provider 5-state taxonomy (no fake-live)."""
+
+    def test_states_reflect_config_and_verified_probe(self) -> None:
+        from forgekit_provider.policy import provider_surface as ps
+
+        cfg = {"primary_provider": "claude", "linked_providers": ["claude", "gemini"]}
+        # gemini key present (verified live); claude is CLI (unsupported); ollama not in brain.
+        bs = b.assess_bootstrap(cfg, env={}, probe=FakeProbe(claude=True, gemini_key=True))
+        states = dict(bs.provider_states)
+        self.assertEqual(states["gemini"], ps.STATE_LIVE)            # verified
+        self.assertEqual(states["claude"], ps.STATE_UNSUPPORTED)     # CLI brain
+        self.assertEqual(states["ollama"], ps.STATE_SETUP_REQUIRED)  # not in brain
+        # surfaced in the lines + machine-readable dict.
+        text = "\n".join(b.bootstrap_lines(cfg, env={}, probe=FakeProbe(claude=True, gemini_key=True)))
+        self.assertIn("정직 taxonomy", text)
+        self.assertIn("gemini=live", text)
+        self.assertIn("provider_states", bs.to_dict())
+
+
 if __name__ == "__main__":
     unittest.main()
