@@ -31,6 +31,12 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     once.add_argument("--repo-root", default="")
     rsub.add_parser("status", help="heartbeat 상태 출력")
     rsub.add_parser("stop", help="kill switch 설정 (running serve 가 다음 tick 에 종료)")
+    inst = rsub.add_parser("install-unit",
+                           help="launchd LaunchAgent 자동 설치 (템플릿 치환+배치; macOS)")
+    inst.add_argument("--repo-root", default="", help="daemon 이 운영할 체크아웃 경로")
+    inst.add_argument("--bin", default="", help="forgekit 실행파일 경로 (기본 자동 감지)")
+    inst.add_argument("--load", action="store_true",
+                      help="작성 후 launchctl 로 즉시 로드 (operator 승인 — 기본은 파일만)")
 
 
 def _repo_root(args) -> str:
@@ -73,6 +79,16 @@ def handle(args: argparse.Namespace) -> int:
         HB.request_kill()
         print("kill switch 설정됨 — running serve 가 다음 tick 에 종료합니다.")
         return EXIT_OK
+
+    if cmd == "install-unit":
+        from .. import deploy_unit as du
+
+        ok, lines = du.install(
+            repo_root=_repo_root(args), env=dict(os.environ),
+            bin_path=getattr(args, "bin", "") or None, load=getattr(args, "load", False))
+        for ln in lines:
+            print(ln)
+        return EXIT_OK if ok else EXIT_ERROR
 
     repo = _repo_root(args)
     notifier = _build_notifier()
