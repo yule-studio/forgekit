@@ -23,6 +23,7 @@ from .schemas import (
     CONDITIONAL,
     DRAFT,
     ESCALATED,
+    NEEDS_INFO,
     SIGNED_OFF,
     EngineerHandoff,
     MeetingRecord,
@@ -196,6 +197,27 @@ def can_engineer_start(decision: Optional[TechLeadDecision],
     return True
 
 
+def tech_lead_request_more_info(
+    brief: PMBrief,
+    meeting: MeetingRecord,
+    *,
+    info_requested: Tuple[str, ...],
+    decision_id: str = "",
+    signoff_by: str = "tech-lead",
+) -> TechLeadDecision:
+    """Tech-lead's *request-more-info* verdict — the design inputs (stack / design system /
+    coding convention / tradeoff) are insufficient to sign, so the lane bounces back rather
+    than being approved or rejected. ``status=NEEDS_INFO``; the requested items ride in
+    ``conditions``. A ``needs_info`` decision is never executable (``can_engineer_start``
+    requires signed/conditional), so a specialist still cannot start off it."""
+
+    return TechLeadDecision(
+        decision_id=decision_id or f"decision:{meeting.meeting_id}",
+        pm_brief_ref=brief.topic, meeting_ref=meeting.meeting_id,
+        conditions=tuple(info_requested), signoff_by=signoff_by, status=NEEDS_INFO,
+        rationale="설계 입력(스택/디자인시스템/코딩컨벤션/tradeoff) 부족 — 추가정보 요청(승인/반려 아님)")
+
+
 # --- full pipeline -----------------------------------------------------------
 
 
@@ -256,5 +278,5 @@ def run_lane(
 
 __all__ = (
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
-    "handoff_to_engineer", "can_engineer_start", "run_lane",
+    "handoff_to_engineer", "can_engineer_start", "run_lane", "tech_lead_request_more_info",
 )
