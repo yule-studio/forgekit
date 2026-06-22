@@ -17,6 +17,7 @@ from .execute_bridge import (
     OUTCOME_ERROR,
     OUTCOME_EXECUTED,
     ExecuteOutcome,
+    apply_approved_packet,
     build_execution_commit_message,
     execute_approved_packet,
 )
@@ -27,5 +28,6 @@ __all__ = (
     "SelfImprovementResult", "run_self_improvement", "route_packet",
     # GW4-B execution bridge
     "OUTCOME_EXECUTED", "OUTCOME_BLOCKED", "OUTCOME_AWAITING", "OUTCOME_ERROR",
-    "ExecuteOutcome", "execute_approved_packet", "build_execution_commit_message",
+    "ExecuteOutcome", "execute_approved_packet", "apply_approved_packet",
+    "build_execution_commit_message",
 )
