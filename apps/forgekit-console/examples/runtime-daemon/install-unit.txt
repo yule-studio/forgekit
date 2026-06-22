@@ -1,0 +1,24 @@
+ForgeKit operator cockpit — `forgekit runtime install-unit` (launchd 자동설치, lane B)
+==============================================================================
+Method: 실 deploy_unit.install + 실 템플릿(deploy/launchd) 렌더. launchctl 은 미실행(파일만).
+수동 sed flow 대체: placeholder 4개 자동 치환 → ~/Library/LaunchAgents 배치. daemon 시작은
+operator 결정(--load opt-in). macOS 전용·lid-close suspend 한계 정직 표기.
+
+$ forgekit runtime install-unit --repo-root <checkout>   [ok=True]
+  ✓ LaunchAgent 작성됨: /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpwx57x1fm/LaunchAgents/com.forgekit.runtime.plist
+    bin=/Users/op/.venvs/forgekit/bin/forgekit  repo=/Users/masterway/local-dev/yule-studio-agent/.claude/worktrees/gw3-console-parity
+    FORGEKIT_HOME=/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpwx57x1fm/.forgekit
+    load(operator 승인 후): launchctl bootstrap gui/$(id -u) /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpwx57x1fm/LaunchAgents/com.forgekit.runtime.plist
+    자동 load 안 함 — daemon 시작은 operator 결정입니다 (`--load` 로 지금 로드).
+    honest: macOS lid-close 는 host 를 suspend — 24h 는 caffeinate/pmset 또는 systemd 경로.
+
+rendered plist (발췌 — placeholder 전부 치환됨):
+  ForgeKit control-plane daemon LaunchAgent (GW7).
+  Runs `forgekit runtime serve` as a per-USER LaunchAgent on a Mac mini host
+  (docs/control-plane-architecture.md §3: Mac mini = 1차 ForgeKit host). This is
+  Reproducible config: the daemon reads the SAME ~/.forgekit/config.json as the
+  /Users/op/.venvs/forgekit/bin/forgekit   absolute path to the installed `forgekit` entrypoint
+  (e.g. /Users/<you>/.venvs/forgekit/bin/forgekit)
+
+$ (Linux) forgekit runtime install-unit   [ok=False]
+  launchd 자동설치는 macOS 전용입니다 — Linux 는 systemd 경로(`deploy/systemd/`, 수동)를 쓰세요.
