@@ -176,7 +176,7 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     if handler == H_PROVIDER:
         return _provider_result(parsed)
     if handler == H_SETUP:
-        return _setup_result(parsed)
+        return _setup_result(parsed, ctx)
     if handler == H_TOOLCHAIN:
         return _toolchain_result(parsed, ctx)
     if handler == H_NEXUS:
@@ -279,17 +279,24 @@ def _provider_result(parsed) -> CommandResult:
     return CommandResult.info("provider", ps.provider_status_lines(cfg))
 
 
-def _setup_result(parsed) -> CommandResult:
-    # /setup [apply] — provider onboarding wizard (connect checks → recommended preset → save+verify).
-    from forgekit_provider_connect import surface as cs
-
+def _setup_result(parsed, ctx) -> CommandResult:
+    # /setup [apply [preset]] — unified control-plane bootstrap (docs/forgekit-setup-bootstrap.md):
+    # composes provider + knowledge(nexus/vault) + toolchain into ONE honest screen, persisted in
+    # the single canonical ~/.forgekit/config.json. `apply` writes the recommended provider preset
+    # (the only lane with a one-shot recommended default) then re-verifies; knowledge/toolchain are
+    # connected per-lane (`/nexus set`, `/toolchain`). No lane is ever faked into green.
     args = list(getattr(parsed, "args", ()) or ())
     sub = args[0].lower() if args else ""
     if sub == "apply":
+        from forgekit_provider_connect import surface as cs
+
         ok, msg = cs.apply_setup(args[1] if len(args) > 1 else "four-brain")
         return (CommandResult.info if ok else CommandResult.error)("setup", msg.split("\n"))
-    from ..policy import provider_ops as ops
-    return CommandResult.info("setup", cs.setup_status_lines(ops.load_raw_config()))
+    from .. import bootstrap as bs
+
+    env = getattr(ctx, "env", None) or None
+    repo_root = getattr(ctx, "repo_root", None)
+    return CommandResult.info("setup", bs.bootstrap_lines(env=env, repo_root=repo_root))
 
 
 def _toolchain_result(parsed, ctx) -> CommandResult:
