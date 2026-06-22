@@ -40,6 +40,14 @@ def palette_matches(
 
     Empty when the line isn't a slash. For ``/`` it returns every command; for
     ``/st`` it returns commands whose name starts with ``st``.
+
+    Matching is **prefix-first with a substring fallback**: prefix matches are returned
+    as-is (so ``/st`` → ``status`` and ``/p`` → the p-prefixed set keep their order). Only
+    when NO command name starts with the query does it fall back to substring matches — so a
+    meaningful word that previously dead-ended to an EMPTY palette now reaches the command
+    that contains it (``/improve`` → ``self-improve``, ``/blue`` → ``red-blue``,
+    ``/observer`` → ``ops-observer``). The fallback never shadows prefix results, so existing
+    prefix behaviour is unchanged — it only turns dead-ends into hits.
     """
 
     raw = (raw or "").strip()
@@ -49,7 +57,11 @@ def palette_matches(
     cmds = tuple(commands) if commands is not None else load_commands()
     if not prefix:
         return cmds
-    return tuple(c for c in cmds if c.name.startswith(prefix))
+    starts = tuple(c for c in cmds if c.name.startswith(prefix))
+    if starts:
+        return starts
+    # no prefix hit → substring fallback (dead-end → reachable), source order preserved.
+    return tuple(c for c in cmds if prefix in c.name)
 
 
 __all__ = ("parse_input", "palette_matches")

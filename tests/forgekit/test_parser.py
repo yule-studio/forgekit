@@ -53,6 +53,12 @@ class PaletteTests(unittest.TestCase):
         names = {c.name for c in palette_matches("/a")}
         self.assertEqual(names, {"agents", "about", "always-on", "auto", "autopilot", "attach"})
 
+    def test_substring_fallback_only_when_no_prefix(self) -> None:
+        # prefix exists → exact prefix set (no widening); no prefix → substring fallback.
+        self.assertEqual({c.name for c in palette_matches("/st")}, {"status"})  # unchanged
+        self.assertIn("self-improve", {c.name for c in palette_matches("/improve")})
+        self.assertEqual(palette_matches("/zzz"), ())  # nonsense still empty (honest)
+
 
 if __name__ == "__main__":
     unittest.main()
