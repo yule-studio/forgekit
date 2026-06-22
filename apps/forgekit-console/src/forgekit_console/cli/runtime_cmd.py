@@ -52,17 +52,46 @@ def _repo_root(args) -> str:
 
 
 def _build_tick_fn(repo_root: str):
-    """A bounded tick that DRIVES autopilot execution (WT2 #241).
+    """A bounded tick that DRIVES autopilot execution + approved-goal execution.
 
-    observe repo-local → internal chain → safe-class real mutation (BoundedMutator) →
-    verify → record, with cross-tick dedupe + cooldown. risky/restricted stay surfaced.
+    Two bounded passes per tick, composed so ``forgekit runtime serve`` reaches both:
+
+    1. **autopilot pass (WT2 #241)** — observe repo-local → internal chain → safe-class
+       real mutation (BoundedMutator) → verify → record, with dedupe + cooldown.
+    2. **goal-exec pass (G1)** — load ACTIVE (operator-approved) goals from the GoalStore
+       and physically run their linked safe-class packets via ``apply_approved_packet``
+       (3-gate + BoundedMutator; risky/destructive recorded-not-executed; idempotent).
+
+    The combined ``TickOutcome`` merges both so heartbeat/status surface what each did.
     """
 
     from pathlib import Path
 
     from ..runtime.autopilot_tick import AutopilotTicker
+    from ..runtime.goal_exec_tick import GoalExecTicker
 
-    return AutopilotTicker(repo_root=Path(repo_root)).tick_fn()
+    autopilot = AutopilotTicker(repo_root=Path(repo_root)).tick_fn()
+    goal_exec = GoalExecTicker(repo_root=Path(repo_root)).tick_fn()
+
+    def _combined(n: int):
+        from ..runtime.daemon import TickOutcome
+
+        a = autopilot(n)
+        g = goal_exec(n)
+        summary = a.summary
+        if g.summary:
+            summary = f"{summary} | {g.summary}" if summary else g.summary
+        return TickOutcome(
+            summary=summary,
+            waiting=a.waiting or g.waiting,
+            blocked_count=a.blocked_count + g.blocked_count,
+            executed=a.executed + g.executed,
+            executed_paths=tuple(a.executed_paths) + tuple(g.executed_paths),
+            skipped_reason=a.skipped_reason,
+            next_eligible_tick=a.next_eligible_tick,
+        )
+
+    return _combined
 
 
 def handle(args: argparse.Namespace) -> int:

@@ -1,0 +1,32 @@
+=== forgekit runtime serve — goal-exec pass (G1) 실측 ===
+FORGEKIT_HOME=/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpingnfuju
+repo=/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmpv6obxnp_
+
+초기 goal 상태:
+  - goal-f8ae59ecdf9d [awaiting_approval] packets=1 :: self-manage ForgeKit (await)
+  - goal-b8cd4a682dbd [active] packets=1 :: self-manage ForgeKit (risky)
+  - goal-3a3512165fc0 [active] packets=1 :: self-manage ForgeKit (safe)
+
+tick 1:
+  summary : tick 1: goal-exec 1 실행 / 1 게이트차단 · runs/forgekit/selfimprove/콘솔-도움말-문구-개선-packet-e0191b811b01.md
+  executed=1  blocked=1  waiting=True
+  wrote   : runs/forgekit/selfimprove/콘솔-도움말-문구-개선-packet-e0191b811b01.md
+
+tick 1 후 commit log:
+  0ca1ed0 ✅ forgekit 자가개선 실행: 콘솔 도움말 문구 개선
+  d5d3d97 seed
+
+tick 2 (idempotency — 이미 실행된 packet 재실행 안 함):
+  summary : tick 2: goal-exec 0 실행 / 2 완료-skip
+  executed=0  (재실행 0 = idempotent)
+
+=== goal evidence (실행/검증/거부 기록) ===
+goal goal-3a3512165fc0 [active] :: self-manage ForgeKit (safe)
+  [execution] safe-class 실제 실행 — packet packet-e0191b811b01: 콘솔 도움말 문구 개선 [executor=backend-engineer author=Forgekit Backend
+  [verification] 실행 검증 통과 — bounded write 재읽기 검증 + 3-gate(chain/decision-lane/validate) 통과, commit=0ca1ed05ff202160054bb42af56b
+
+goal goal-b8cd4a682dbd [active] :: self-manage ForgeKit (risky)
+  [decision] execute 거부 — packet packet-b204066fabee (risky): risky(L3) — operator 승인 없음; tech-lead 내부 승인(can_execute) 없음; 
+
+goal goal-f8ae59ecdf9d [awaiting_approval] :: self-manage ForgeKit (await)
+
