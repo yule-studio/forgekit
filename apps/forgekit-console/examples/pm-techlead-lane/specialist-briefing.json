@@ -1,0 +1,73 @@
+{
+  "note": "specialist briefing 강제 — PM brief+decision+handoff 로 합성된 work order. 실 run_lane→record→replay 결과.",
+  "session": "design-알림",
+  "engineer_may_start": true,
+  "trace": [
+    "gateway:route→tech-lead",
+    "tech-lead:signed_off/L2_internal_approve",
+    "engineer:handoff→be",
+    "briefing:ok",
+    "engineer:start"
+  ],
+  "work_order_render": [
+    "work order handoff:decision:m1 → be",
+    "  목표: 운영자가 실패를 늦게 안다 → 실패 즉시 통지",
+    "  제안 스택: SSE — server-sent events",
+    "  선택 이유: 단방향 알림은 SSE 로 충분",
+    "  ✗ 탈락: WebSocket — 인프라 복잡; 비용",
+    "  코딩 컨벤션: ruff+black+isort",
+    "  디자인 시스템: forgekit-ds",
+    "  · API/infra: GET /events SSE 엔드포인트",
+    "  · API/infra: Redis pub/sub fanout",
+    "  · API/infra: nginx proxy_buffering off",
+    "  ☐ scope: notify/sse.py",
+    "  ☐ scope: notify/dedup.py",
+    "  ⊘ 금지: auth/",
+    "  test 전략: unit+integration",
+    "  rollback: feature flag off",
+    "  ✓ acceptance: 실패 30초내 통지",
+    "  ✓ acceptance: 중복 억제"
+  ],
+  "persisted_handoff_payload": {
+    "handoff_id": "handoff:decision:m1",
+    "executor_role": "be",
+    "decision_ref": "decision:m1",
+    "goal": "운영자가 실패를 늦게 안다 → 실패 즉시 통지",
+    "proposed_stack": "SSE",
+    "proposed_stack_summary": "server-sent events",
+    "stack_rationale": "단방향 알림은 SSE 로 충분",
+    "rejected_options": [
+      {
+        "name": "WebSocket",
+        "why_not": "인프라 복잡; 비용"
+      }
+    ],
+    "coding_conventions": "ruff+black+isort",
+    "design_system": "forgekit-ds",
+    "integration_notes": [
+      "GET /events SSE 엔드포인트",
+      "Redis pub/sub fanout",
+      "nginx proxy_buffering off"
+    ],
+    "scope": [
+      "notify/sse.py",
+      "notify/dedup.py"
+    ],
+    "forbidden_scope": [
+      "auth/"
+    ],
+    "test_strategy": "unit+integration",
+    "rollback_plan": "feature flag off",
+    "acceptance_criteria": [
+      "실패 30초내 통지",
+      "중복 억제"
+    ],
+    "operator_required": false
+  },
+  "decision_trail": [
+    " 1. ✓ [brief] product-manager: PM brief: 실시간 알림 — acceptance 2개 · metric 1개 · priority=normal",
+    " 2. ✓ [meeting] tech-lead: meeting m1 (2 참석) — 참석 [tech-lead, be]",
+    " 3. ✓ [decision] tech-lead: decision decision:m1 (signed_off/L2_internal_approve) — design=forgekit-ds · convention=ruff+black+isort · stack=SSE · approval=L2_internal_approve · tradeoff 1개",
+    " 4. ✓ [handoff] be: handoff handoff:decision:m1 → be — executor=be · scope 2개 · stack=SSE · 탈락 1개"
+  ]
+}
