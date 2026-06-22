@@ -191,5 +191,103 @@ class ContinuationTest(unittest.TestCase):
         self.assertEqual(act.target_id, kids[0].id)
 
 
+class ApprovalDispositionTest(unittest.TestCase):
+    def _leaf(self, now, risk: str, pid: str = "p1") -> Goal:
+        g = _active("leaf", now).link_packet(pid, now=now)
+        return g.add_evidence(planning.EV_PROPOSAL, f"[{risk}] x -> route", ref=pid, now=now)
+
+    def test_safe_pending_is_autonomous_safe(self) -> None:
+        now = _clock()
+        self.assertEqual(planning.approval_disposition(self._leaf(now, "safe")),
+                         planning.AUTONOMOUS_SAFE)
+
+    def test_risky_pending_needs_approval(self) -> None:
+        now = _clock()
+        self.assertEqual(planning.approval_disposition(self._leaf(now, "risky")),
+                         planning.NEEDS_APPROVAL)
+
+    def test_blocked_pending_needs_approval(self) -> None:
+        now = _clock()
+        self.assertEqual(planning.approval_disposition(self._leaf(now, "blocked")),
+                         planning.NEEDS_APPROVAL)
+
+    def test_no_pending_is_none(self) -> None:
+        now = _clock()
+        g = self._leaf(now, "safe")
+        g = g.add_evidence(planning.EV_EXECUTION, "applied", ref="p1", now=now)
+        self.assertEqual(planning.approval_disposition(g), planning.DISPO_NONE)
+
+    def test_unknown_risk_tag_treated_as_needs_approval(self) -> None:
+        # safe-by-rejection: an unreadable risk tag is never auto-run
+        now = _clock()
+        g = _active("leaf", now).link_packet("p1", now=now)
+        g = g.add_evidence(planning.EV_PROPOSAL, "no tag here", ref="p1", now=now)
+        self.assertEqual(planning.approval_disposition(g), planning.NEEDS_APPROVAL)
+
+
+class ReplanPolicyTest(unittest.TestCase):
+    def _stuck_leaf(self, now, pid: str = "p1") -> Goal:
+        """An ACTIVE leaf whose only packet was gate-refused (stuck)."""
+        g = _active("leaf", now).link_packet(pid, now=now)
+        g = g.add_evidence(planning.EV_PROPOSAL, f"[safe] x -> route", ref=pid, now=now)
+        return g.add_evidence(planning.EV_DECISION, "gate refused: scope creep", ref=pid, now=now)
+
+    def test_not_stuck_returns_none(self) -> None:
+        now = _clock()
+        g = _active("leaf", now).link_packet("p1", now=now)
+        g = g.add_evidence(planning.EV_PROPOSAL, "[safe] x", ref="p1", now=now)  # pending, not stuck
+        self.assertFalse(planning.is_stuck(g))
+        self.assertEqual(planning.replan(g).action, planning.REPLAN_NONE)
+
+    def test_first_stuck_retries_and_unlinks_dead_packet(self) -> None:
+        now = _clock()
+        g = self._stuck_leaf(now)
+        self.assertTrue(planning.is_stuck(g))
+        d = planning.replan(g, max_attempts=1)
+        self.assertEqual(d.action, planning.REPLAN_RETRY)
+        self.assertEqual(d.unlink, ("p1",))
+        self.assertIn("scope creep", d.reason)  # persisted blocked reason carried
+
+    def test_unlinking_dead_packet_clears_stuck(self) -> None:
+        # applying RETRY (unlink) makes the goal no longer stuck (tally respects packets)
+        now = _clock()
+        g = self._stuck_leaf(now)
+        g2 = g.unlink_packet("p1", now=now)
+        self.assertFalse(planning.is_stuck(g2))
+        self.assertEqual(planning.tally_packets(g2).total, 0)  # dead packet dropped
+
+    def test_attempts_exhausted_escalates(self) -> None:
+        now = _clock()
+        g = self._stuck_leaf(now)
+        g = g.add_evidence(planning.EV_REPLAN, "retry 1/1", now=now)  # one prior attempt
+        d = planning.replan(g, max_attempts=1)
+        self.assertEqual(d.action, planning.REPLAN_ESCALATE)
+        self.assertIn("escalate", d.reason)
+
+    def test_blocked_reason_is_latest_refusal(self) -> None:
+        now = _clock()
+        g = self._stuck_leaf(now)
+        self.assertEqual(planning.blocked_reason(g), "gate refused: scope creep")
+        g2 = _active("clean", now)
+        self.assertIsNone(planning.blocked_reason(g2))
+
+
+class DerivePlanStepsTest(unittest.TestCase):
+    def test_groups_by_area_first_seen_order(self) -> None:
+        items = [("docs", "fix readme"), ("tests", "add case"), ("docs", "typo")]
+        steps = planning.derive_plan_steps(items)
+        self.assertEqual([s.title for s in steps], ["docs", "tests"])  # first-seen order
+        self.assertIn("2 finding", steps[0].intent)  # docs had 2
+
+    def test_blank_area_bucketed_general(self) -> None:
+        steps = planning.derive_plan_steps([("", "x")])
+        self.assertEqual(steps[0].title, "general")
+
+    def test_is_big_goal_threshold(self) -> None:
+        self.assertTrue(planning.is_big_goal([("docs", "a"), ("tests", "b")]))
+        self.assertFalse(planning.is_big_goal([("docs", "a"), ("docs", "b")]))  # one area
+        self.assertFalse(planning.is_big_goal([]))
+
+
 if __name__ == "__main__":
     unittest.main()
