@@ -63,6 +63,10 @@ def goal_show_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ..
                 out.append(f"    - {kid.id}  [{kid.status.value}]  {kid.title}")
     if g.packets:
         out.append("  linked packets: " + ", ".join(g.packets))
+    # persisted stuck reason so the operator sees WHY a goal is blocked (append-only)
+    reason = planning.blocked_reason(g)
+    if reason and planning.is_stuck(g):
+        out.append(f"  막힘 사유: {reason}")
     if g.evidence:
         out.append("  recent evidence:")
         for e in g.evidence[-5:]:
@@ -90,6 +94,15 @@ def progress_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ...
         out.append(f"  다음: {action.kind} — {action.reason}")
     elif prog.next_step_id:
         out.append(f"  다음 packet: {prog.next_step_id}")
+    # approval-needed vs autonomous-safe split (leaf goals' pending work)
+    dispo = planning.approval_disposition(g)
+    if dispo == planning.NEEDS_APPROVAL:
+        out.append("  승인 필요: pending packet 에 risky/blocked 포함 — operator 승인 후 실행")
+    elif dispo == planning.AUTONOMOUS_SAFE:
+        out.append("  자율 안전: pending packet 전부 safe — exec tick 이 자동 실행")
+    # persisted stuck/blocked reason (survives restarts, append-only)
+    if planning.is_stuck(g):
+        out.append(f"  ⚠️ 막힘: {planning.blocked_reason(g) or '게이트 차단'}  (replan/escalate 대상)")
     if prog.complete:
         out.append("  ✅ 모든 step 완료 — goal 종료 가능(evidence-gated)")
     return tuple(out)
