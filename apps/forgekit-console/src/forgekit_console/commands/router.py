@@ -297,8 +297,22 @@ def _provider_result(parsed, ctx: ConsoleContext) -> CommandResult:
         if op == "clear":
             ok, msg = ps.apply_route_clear(args[2] if len(args) > 2 else "", env=env)
             return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
-        return CommandResult.info("provider route", ps.route_show_lines(cfg))
-    return CommandResult.info("provider", ps.provider_status_lines(cfg))
+        return CommandResult.info("provider route", ps.route_show_lines(cfg, live_map=_provider_live_map(cfg, env)))
+    return CommandResult.info("provider", ps.provider_status_lines(cfg, live_map=_provider_live_map(cfg, env)))
+
+
+def _provider_live_map(cfg, env):
+    """Probe-backed pid→verified-live_capable so `/provider` surfaces show ACTUAL readiness
+    (gemini keyed / ollama daemon up), not transport capability faked as live. Best-effort:
+    reuses the connect wizard's honest probe (the same signal `/setup` uses); on any failure
+    returns ``None`` so the surface degrades to honest "live-capable(미검증)" instead of fake-live."""
+
+    try:
+        from forgekit_provider_connect import wizard
+        statuses = wizard.assess(cfg, env=env).statuses
+        return {s.provider_id: bool(s.live_capable) for s in statuses}
+    except Exception:  # noqa: BLE001 - a probe failure must never break the surface
+        return None
 
 
 def _provider_budget_result(args, cfg, env, ps) -> CommandResult:
