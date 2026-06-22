@@ -1,0 +1,25 @@
+ForgeKit console — slash palette matching (prefix-first + substring fallback)
+재현: tests/forgekit/test_palette.py · test_parser.py
+
+==============================================================================
+PREFIX (기존 동작·순서 유지 — fallback 이 넓히지 않음)
+==============================================================================
+  /st        → ['status']
+  /he        → ['help', 'hephaistos']
+  /p         → ['paste', 'provider', 'pm-agent', 'planning-agent']
+  /a         → ['about', 'agents', 'always-on', 'auto', 'autopilot', 'attach']
+
+==============================================================================
+SUBSTRING FALLBACK (prefix 0건 → 이전엔 빈 palette = dead-end)
+==============================================================================
+  /improve   → ['self-improve']
+  /blue      → ['red-blue']
+  /observer  → ['ops-observer']
+
+==============================================================================
+NONSENSE (정직 — 여전히 빈 결과)
+==============================================================================
+  /zzz       → []
+  /qqqq      → []
+
+(끝) — prefix 우선, prefix 0건일 때만 substring · 회귀 0 · 가짜 0

@@ -43,6 +43,12 @@ flow 를 **14줄 고정 박스**로 잘라, 출력이 길어지면 이전 내용
   사라지지 않는다.
 - `/` 입력 시 palette 가 **입력 bar 바로 아래**(flush, gap ≈ 0)에 열리고, composer 가 위로 자란다
   (command area — bounded pane 아님). 측정: `test_tui_palette_below` · `test_inline_accumulating_flow`.
+- **매칭은 prefix-first + substring fallback** (`commands/parser.py` `palette_matches`): 이름이
+  query 로 시작하는 명령이 있으면 그 set 을 그대로(기존 동작·순서 유지), **하나도 없을 때만**
+  substring fallback 으로 넘어가 query 를 포함하는 명령을 surface 한다 — 의미 있는 단어가 빈
+  palette 로 dead-end 되던 것을 해소(`/improve`→`self-improve`, `/blue`→`red-blue`,
+  `/observer`→`ops-observer`). fallback 은 prefix 결과를 절대 넓히지 않아 회귀 0. 측정:
+  `test_palette`·`test_parser`, 증거 `examples/tui-palette-below/palette-matching.txt`.
 
 > **정직한 한계:** 이건 "viewport 까지 누적 + 그 뒤 단일 스크롤"이지 **진짜 terminal-native
 > scrollback 누적(print-flow)은 아직 아니다.** Textual inline 은 매 프레임 region 을 다시 그려서,
