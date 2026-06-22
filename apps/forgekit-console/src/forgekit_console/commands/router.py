@@ -40,6 +40,7 @@ from .registry import (
     H_SETUP,
     H_TOOLCHAIN,
     H_NEXUS,
+    H_DISCOVERY,
     H_DAEMON,
     H_GOAL,
     H_COUNCIL,
@@ -182,6 +183,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _toolchain_result(parsed, ctx)
     if handler == H_NEXUS:
         return _nexus_result(parsed, ctx)
+    if handler == H_DISCOVERY:
+        return _discovery_result(parsed, ctx)
     if handler == H_DAEMON:
         return _daemon_result(parsed, ctx)
     if handler == H_GOAL:
@@ -382,6 +385,66 @@ def _nexus_result(parsed, ctx) -> CommandResult:
         return (CommandResult.info if ok else CommandResult.error)("nexus clear", (msg,))
     return CommandResult.info(
         "nexus", _proj.nexus_surface_lines(env=ctx.env, config=ctx.config))
+
+
+def _discovery_result(parsed, ctx) -> CommandResult:
+    # /discovery [promote <n> | save <n>] — run a free-first discovery sweep and show
+    # the operator digest (왜 올라왔는지/다음 질문). promote → PM handoff 제안(실행 아님),
+    # save → 연결된 Nexus vault 에 retrieval-friendly authored note (미연결이면 정직 실패).
+    from .. import discovery as D
+
+    repo_root = getattr(ctx, "repo_root", None) or Path(".")
+    args = list(getattr(parsed, "args", ()) or ())
+    sub = args[0].lower() if args else ""
+
+    def _pick(idx_token: str):
+        sweep = D.run_discovery_sweep(repo_root)
+        briefs = sweep.briefs
+        if not briefs:
+            return sweep, None, "승격할 brief 가 없습니다 — 먼저 `/discovery` 로 신호를 수집하세요."
+        try:
+            n = int(idx_token)
+        except (TypeError, ValueError):
+            n = 1
+        if n < 1 or n > len(briefs):
+            return sweep, None, f"brief 번호 범위 밖 (1~{len(briefs)})."
+        return sweep, briefs[n - 1], ""
+
+    if sub == "promote":
+        sweep, brief, err = _pick(args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery promote", (err,))
+        ho = D.promote_brief(brief)
+        lines = (
+            f"승격(제안): {brief.title}",
+            f"- handoff: {ho.trace[0].handoff_from} → … → {ho.trace[-1].handoff_to} "
+            f"(최종 phase {ho.trace[-1].phase})",
+            f"- role tasks {len(ho.split.tasks)}개 · blocked {len(ho.split.blocked)}개",
+            "주의: PM→gateway→tech-lead 제안 packet 일 뿐, 실행은 승인 게이트 통과 후.",
+        )
+        return CommandResult.info("discovery promote", lines)
+
+    if sub == "save":
+        sweep, brief, err = _pick(args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery save", (err,))
+        from hephaistos.nexus_read import nexus_root
+
+        root = nexus_root(getattr(ctx, "env", None), getattr(ctx, "config", None))
+        if not root:
+            return CommandResult.error(
+                "discovery save",
+                ("Nexus vault 미연결 — `/nexus set <path>` 로 먼저 연결하세요 (fake-write 안 함).",))
+        path = D.persist_brief(brief, root)
+        if not path:
+            return CommandResult.error(
+                "discovery save", (f"vault 쓰기 실패 (root={root}) — 권한/경로 확인.",))
+        return CommandResult.info(
+            "discovery save",
+            (f"authored note 기록: {path}", "- author user-researcher · 00-inbox/discovery (raw intake)"))
+
+    sweep = D.run_discovery_sweep(repo_root)
+    return CommandResult.info("discovery", sweep.digest.lines())
 
 
 def _daemon_result(parsed, ctx) -> CommandResult:
