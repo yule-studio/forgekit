@@ -97,8 +97,9 @@ def recommend(cfg: pc.ProviderConfig, mode_id: str, *,
                 f"slot '{slot}' 는 현재 {target} 인데 {better} 가 {cap} capability 를 가집니다",
                 f"`/provider route {slot} {better}`", slot=slot, provider=better))
 
-    # 2) active-mode submit slot must be live-capable — surface unsupported as blocked.
-    res = rt.resolve_submit(cfg, mode_id)
+    # 2) active-mode WORK slot must be live-capable — surface unsupported as blocked.
+    #    (non-chat work routes by the mode's slot; chat always uses default_chat separately.)
+    res = rt.resolve_submit(cfg, mode_id, kind=rt.WORK_NONCHAT)
     if res.status == rt.RESOLVE_UNSUPPORTED:
         live_alt = _provider_with_cap(CAP_CHEAP, linked) or \
             next((p for p in linked if rt.submit_supported(builtins.builtin(p))), "")

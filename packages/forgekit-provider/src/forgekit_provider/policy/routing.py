@@ -34,8 +34,14 @@ RESOLVE_FALLBACK = "fallback"                 # declared unusable → explicit f
 RESOLVE_UNSUPPORTED = "unsupported_in_console"  # selected provider has no console transport
 RESOLVE_NO_CONFIG = "no_config"               # nothing configured → setup required
 
-# mode → which brain slot a free-text submit should use (mode actually steers routing).
-_MODE_SLOT = {
+# work kind — a submit is either an operator CHAT turn or an autonomous NON-CHAT work item.
+WORK_CHAT = "chat"          # operator free-text conversation → always the default_chat slot
+WORK_NONCHAT = "nonchat"    # autonomous work (execution/research/…) → the mode's WORK slot
+
+# mode → the brain slot the mode's autonomous NON-CHAT work uses (mode steers work routing).
+# Chat is deliberately ABSENT here: an operator chat turn is never silently routed to a work
+# slot by the mode (that conflated chat with work) — chat is always default_chat.
+_MODE_WORK_SLOT = {
     rm.MODE_RESEARCH: pc.SLOT_RESEARCH,
     rm.MODE_IDEA_DISCOVERY: pc.SLOT_RESEARCH,
     rm.MODE_DELIVERY: pc.SLOT_EXECUTION,
@@ -44,14 +50,33 @@ _MODE_SLOT = {
     rm.MODE_COST_SAVE: pc.SLOT_COMPRESSION,    # cheapest slot
     rm.MODE_WATCH: pc.SLOT_CLASSIFICATION,
     rm.MODE_RED_BLUE: pc.SLOT_SAFETY,
-    # interactive / auto / approval-wait / video-watch → default_chat
+    # modes with no distinct work slot fall back to default_chat.
 }
 
 
-def mode_submit_slot(mode_id: str) -> str:
-    """Which brain slot the active mode routes a free-text submit to."""
+def mode_work_slot(mode_id: str) -> str:
+    """The brain slot the active mode's autonomous NON-CHAT work routes to."""
 
-    return _MODE_SLOT.get(mode_id, pc.SLOT_DEFAULT_CHAT)
+    return _MODE_WORK_SLOT.get(mode_id, pc.SLOT_DEFAULT_CHAT)
+
+
+def slot_for(mode_id: str, kind: str = WORK_CHAT) -> str:
+    """The brain slot for a submit of *kind* under *mode_id*.
+
+    ``chat`` → ``default_chat`` ALWAYS (an operator chat turn is chat, never re-routed to a
+    work slot by the mode — matches the live submit path, which uses ``default_chat``).
+    ``nonchat`` → the mode's work slot (:func:`mode_work_slot`)."""
+
+    return pc.SLOT_DEFAULT_CHAT if kind == WORK_CHAT else mode_work_slot(mode_id)
+
+
+def mode_submit_slot(mode_id: str) -> str:
+    """Back-compat: the mode's NON-CHAT work slot (== :func:`mode_work_slot`).
+
+    Retained for existing callers; new code should call :func:`slot_for` with an explicit
+    ``kind`` so chat (default_chat) and non-chat work (mode slot) stay separated."""
+
+    return mode_work_slot(mode_id)
 
 
 def submit_supported(spec: Optional[ProviderSpec]) -> bool:
@@ -146,10 +171,15 @@ def resolve_routing(
     )
 
 
-def resolve_submit(cfg: pc.ProviderConfig, mode_id: str, **kw) -> RoutingResolution:
-    """Top-level: mode → slot → resolved routing for a free-text submit."""
+def resolve_submit(cfg: pc.ProviderConfig, mode_id: str, *,
+                   kind: str = WORK_CHAT, **kw) -> RoutingResolution:
+    """Top-level: (mode, kind) → slot → resolved routing.
 
-    return resolve_routing(cfg, mode_submit_slot(mode_id), **kw)
+    ``kind=chat`` (default) resolves the ``default_chat`` slot — the honest answer for an
+    operator chat turn (and what the live submit path actually uses). ``kind=nonchat``
+    resolves the mode's WORK slot, so autonomous work routes by the mode, not by chat."""
+
+    return resolve_routing(cfg, slot_for(mode_id, kind), **kw)
 
 
 def submit_chain(cfg: pc.ProviderConfig, slot: str, *, prefer: str = "") -> Tuple[str, ...]:
@@ -181,6 +211,7 @@ def submit_chain(cfg: pc.ProviderConfig, slot: str, *, prefer: str = "") -> Tupl
 
 __all__ = (
     "RESOLVE_OK", "RESOLVE_FALLBACK", "RESOLVE_UNSUPPORTED", "RESOLVE_NO_CONFIG",
-    "mode_submit_slot", "submit_supported", "RoutingResolution",
+    "WORK_CHAT", "WORK_NONCHAT", "mode_work_slot", "slot_for", "mode_submit_slot",
+    "submit_supported", "RoutingResolution",
     "resolve_routing", "resolve_submit", "submit_chain",
 )
