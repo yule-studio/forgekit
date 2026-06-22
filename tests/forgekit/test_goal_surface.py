@@ -6,6 +6,8 @@ Proves the operator surface over forgekit_goal:
 - `/goal show <id>` renders status/packets/evidence;
 - `/goal activate <id>` does a legal draft->active transition (illegal surfaced);
 - `/goal evidence <id>` lists evidence;
+- `/goal plan <id> s1 | s2` decomposes into child goals (executes nothing);
+- `/goal progress <id>` renders derived progress + next continuation action;
 - unknown subcommand → usage help.
 
 Surface stays thin: it only reads/writes the goal store (pointed at a tmp
@@ -86,6 +88,36 @@ class GoalSurfaceTest(unittest.TestCase):
         res = _route("/goal show goal-nope", self.env)
         self.assertEqual(res.kind, KIND_INFO)
         self.assertIn("없음", res.lines[0])
+
+    def test_plan_decomposes_into_children(self) -> None:
+        gid = self._new("DB 마이그레이션")
+        res = _route(f"/goal plan {gid} 스키마 설계 | 마이그레이션 | 회귀 테스트", self.env)
+        self.assertEqual(res.kind, KIND_INFO)
+        self.assertIn("3 step", res.lines[0])
+        # show now renders a steps tree under the parent (executes nothing)
+        show = _route(f"/goal show {gid}", self.env)
+        self.assertTrue(any("steps:" in ln for ln in show.lines))
+        self.assertTrue(any("스키마 설계" in ln for ln in show.lines))
+
+    def test_plan_without_steps_rejected(self) -> None:
+        gid = self._new("no steps")
+        res = _route(f"/goal plan {gid}", self.env)
+        self.assertEqual(res.kind, KIND_ERROR)
+
+    def test_plan_twice_rejected(self) -> None:
+        gid = self._new("re-plan guard")
+        _route(f"/goal plan {gid} a | b", self.env)
+        res = _route(f"/goal plan {gid} c | d", self.env)
+        self.assertEqual(res.kind, KIND_ERROR)
+        self.assertIn("이미", res.lines[0])
+
+    def test_progress_renders_steps_and_next_action(self) -> None:
+        gid = self._new("progress goal")
+        _route(f"/goal plan {gid} step a | step b", self.env)
+        res = _route(f"/goal progress {gid}", self.env)
+        self.assertEqual(res.kind, KIND_INFO)
+        self.assertTrue(any("진척" in ln for ln in res.lines))
+        self.assertTrue(any("다음:" in ln for ln in res.lines))
 
     def test_unknown_sub_shows_usage(self) -> None:
         res = _route("/goal frobnicate", self.env)

@@ -234,6 +234,11 @@ def _goal_result(parsed, ctx: ConsoleContext) -> CommandResult:
         return (CommandResult.info if ok else CommandResult.error)("goal activate", (msg,))
     if sub == "evidence":
         return CommandResult.info("goal evidence", gs.goal_evidence_lines(env, args[1] if len(args) > 1 else ""))
+    if sub == "plan":
+        ok, lines = gs.apply_plan(env, args[1] if len(args) > 1 else "", args[2:])
+        return (CommandResult.info if ok else CommandResult.error)("goal plan", lines)
+    if sub == "progress":
+        return CommandResult.info("goal progress", gs.progress_lines(env, args[1] if len(args) > 1 else ""))
     if sub in ("awaiting", "pending"):
         return CommandResult.info("goal awaiting", gs.awaiting_lines(env))
     if sub == "approve":
