@@ -103,6 +103,24 @@ slot → capability 매핑(optimized): execution→`execution`, research→`rese
 fallback 해소를 **숨기지 않는다**. 회귀 `tests/forgekit/test_provider_surface.py`
 (`RouteShowResolutionTests`), evidence `examples/provider-route/`.
 
+### 2.3 verified-live vs transport-capable (fake-live 금지)
+
+openai-compat transport 를 가진 provider 는 *live-capable* 이지만, 그것이 **지금 live** 라는 뜻은
+아니다 — gemini 는 API 키가, ollama 는 동작 중인 daemon 이 있어야 한다. routing 표면(`/provider
+route show`, `/provider`)이 transport capability 만으로 bare "live" 를 단언하면 그게 바로 lane 이
+금지하는 **fake-live** 다. 그래서 표면은 **probe 로 검증된 `live_map`**(pid → verified live_capable,
+5-state taxonomy/bootstrap 과 같은 신호)를 받아:
+
+- `live(검증됨)` — probe 가 reachable+authed 확인 (● 또는 fallback live).
+- `미검증 · 연결/인증 필요` — transport 는 가능하나 probe 가 not-reachable/authed (○, 지금은 live 아님).
+- `live-capable(미검증)` — probe 안 한 순수 표면 기본값 — **절대 bare "live" 로 위장하지 않음**.
+
+console 은 `/provider`·`/provider route show` 에서 connect wizard 의 정직한 probe(`wizard.assess`,
+`/setup` 과 동일 신호)로 `live_map` 을 만들어 넘긴다(`commands/router._provider_live_map`,
+best-effort — 실패 시 `None` → live-capable 까지만). `/provider` status 는 `live(검증됨)` 와
+`live-capable(미검증)` 줄을 분리한다. 회귀 `tests/forgekit/test_provider_surface.py`
+(`VerifiedLiveTests`), evidence `examples/provider-route/route-resolution-evidence.txt`.
+
 ## 3. Main-provider 기본값 (`policy/main_profile.py`)
 
 setup 의 단 하나의 결정 — "어느 provider 가 네 것인가" — 에서 기본값을 파생한다.

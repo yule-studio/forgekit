@@ -10,6 +10,9 @@ its ACTUAL live provider via the explicit fallback — instead of printing a bar
 - **[B]** a slot whose declared + entire fallback are all routing-only shows an honest
   `○ (live 경로 없음)` plus the exact next action — no fake live, no dead-end.
 - **[C]** no primary → `setup-required` with the `/setup` hint.
+- **[D]** verified-live vs transport-capable — with a probe-backed `live_map` the surface shows
+  `live(검증됨)` only when gemini's key / ollama's daemon is actually verified; unprobed says
+  `live-capable(미검증)` and a failed probe says `○ 미검증/연결 필요`. **No fake-live.**
 
 Regenerate (deterministic, pure, no net):
 

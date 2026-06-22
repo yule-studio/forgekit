@@ -163,6 +163,56 @@ class RouteShowResolutionTests(unittest.TestCase):
         self.assertIn("routing-only", joined)   # claude/codex framed as brain participants, honestly
 
 
+class VerifiedLiveTests(unittest.TestCase):
+    """Routing surfaces must distinguish probe-VERIFIED live from mere transport capability.
+
+    The lane forbids fake-live: `/provider route show` and `/provider` must not assert bare
+    "live" from openai-compat capability alone (gemini needs a key, ollama needs a daemon).
+    A probe-backed `live_map` upgrades to live(검증됨) or honestly downgrades to 미검증."""
+
+    def test_unprobed_never_claims_bare_live(self) -> None:
+        # live_map=None → capable but unproven; must say 미검증, never a bare "live" verdict.
+        lines = ps.route_show_lines(ops.preset_four_brain({}))
+        joined = "\n".join(lines)
+        self.assertIn("live-capable", joined)
+        self.assertIn("미검증", joined)
+        dc = next(l for l in lines if "default_chat" in l and "gemini" in l)
+        self.assertNotIn("· 검증됨", dc)            # no fake verified-live without a probe
+
+    def test_probe_verified_shows_live_checked(self) -> None:
+        lm = {"gemini": True, "ollama": True, "claude": False, "codex": False}
+        lines = ps.route_show_lines(ops.preset_four_brain({}), live_map=lm)
+        dc = next(l for l in lines if "default_chat" in l and "gemini" in l)
+        self.assertTrue(dc.lstrip().startswith("●"))
+        self.assertIn("검증됨", dc)
+        # fallback work slot (execution: codex→gemini) inherits gemini's verified state.
+        ex = next(l for l in lines if "execution" in l)
+        self.assertIn("codex → gemini", ex)
+        self.assertIn("검증됨", ex)
+
+    def test_probe_unreachable_is_honest_not_live(self) -> None:
+        # gemini declared live-capable but probe says NOT reachable/authed → ○, not live.
+        lm = {"gemini": False, "ollama": False}
+        lines = ps.route_show_lines(ops.preset_four_brain({}), live_map=lm)
+        dc = next(l for l in lines if "default_chat" in l and "gemini" in l)
+        self.assertTrue(dc.lstrip().startswith("○"))
+        self.assertIn("연결/인증 필요", dc)
+        self.assertNotIn("· 검증됨", dc)
+
+    def test_status_splits_verified_vs_capable(self) -> None:
+        lines = ps.provider_status_lines(ops.preset_four_brain({}), live_map={"gemini": True, "ollama": False})
+        joined = "\n".join(lines)
+        verified = next(l for l in lines if "live(검증됨)" in l)
+        capable = next(l for l in lines if "live-capable" in l)
+        self.assertIn("gemini", verified)        # probe-verified
+        self.assertNotIn("ollama", verified)     # ollama not verified → not listed as live
+        self.assertIn("ollama", capable)         # capable-but-unverified
+
+    def test_status_unprobed_says_probe_not_run(self) -> None:
+        joined = "\n".join(ps.provider_status_lines(ops.preset_four_brain({})))
+        self.assertIn("probe 안 함", joined)      # honest: we didn't verify live
+
+
 class RoutingTests(unittest.TestCase):
     def test_provider_subcommands_route(self) -> None:
         from forgekit_console.commands.parser import parse_input
