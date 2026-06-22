@@ -16,8 +16,65 @@ the same command — only the surrounding supervision differs.
 - `yule-run-service@.service` — template unit. `%i` is the service id.
 - `yule.target` — umbrella target so `systemctl start yule.target`
   brings up every enabled instance.
+- `forgekit-runtime.service` — ForgeKit control-plane daemon unit
+  (`forgekit runtime serve`), the Linux/systemd counterpart of
+  `deploy/launchd/com.forgekit.runtime.plist`. Installed as a **per-user**
+  unit. See "ForgeKit runtime daemon" below.
 
-## Install
+## ForgeKit runtime daemon (`forgekit-runtime.service`)
+
+`forgekit runtime serve` is the bounded always-on control-plane daemon
+(heartbeat / kill-switch / cooldown). On Linux it is the **1급 always-on
+path**; the macOS launchd unit (`deploy/launchd/`) is the Mac mini sibling.
+Both invoke the same CLI and read the same `~/.forgekit/config.json` — only
+the supervisor differs.
+
+### Install (recommended — automated)
+
+`forgekit runtime install-unit` renders the template (Python sed-equivalent)
+and installs it. On Linux it defaults to systemd; pass `--systemd` to force
+it. Dry-run first — it executes **nothing**:
+
+```bash
+# Preview (renders + prints commands, runs nothing):
+forgekit runtime install-unit --systemd --dry-run \
+    --repo-root /opt/yule-studio-agent --interval 300
+
+# Install for real (writes ~/.config/systemd/user/forgekit-runtime.service,
+# then daemon-reload + enable --now — idempotent):
+forgekit runtime install-unit --systemd \
+    --repo-root /opt/yule-studio-agent --interval 300
+
+# Headless host (no active login session): enable lingering once so the
+# per-user unit runs at boot without a logged-in session:
+loginctl enable-linger "$USER"
+```
+
+`--interval` is the serve poll interval (seconds). See
+`apps/forgekit-console/examples/deploy/install-unit.txt` for full dry-run output.
+
+### Install (manual `sed` — fallback)
+
+```bash
+FORGEKIT_BIN="$(command -v forgekit)"
+REPO_ROOT=/opt/yule-studio-agent
+FORGEKIT_HOME="$HOME/.forgekit"
+sed -e "s#__FORGEKIT_BIN__#$FORGEKIT_BIN#g" \
+    -e "s#__REPO_ROOT__#$REPO_ROOT#g" \
+    -e "s#__FORGEKIT_HOME__#$FORGEKIT_HOME#g" \
+    -e "s#__INTERVAL__#300#g" \
+    deploy/systemd/forgekit-runtime.service \
+    > "$HOME/.config/systemd/user/forgekit-runtime.service"
+systemctl --user daemon-reload
+systemctl --user enable --now forgekit-runtime.service
+```
+
+## Engineering runtime workers (`yule run-service@`)
+
+These are system-level units for the engineering queue workers — separate from
+the per-user ForgeKit control-plane daemon above.
+
+### Install
 
 ```bash
 sudo cp yule-run-service@.service /etc/systemd/system/

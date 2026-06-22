@@ -31,6 +31,18 @@ def add_parser(subparsers: argparse._SubParsersAction) -> None:
     once.add_argument("--repo-root", default="")
     rsub.add_parser("status", help="heartbeat 상태 출력")
     rsub.add_parser("stop", help="kill switch 설정 (running serve 가 다음 tick 에 종료)")
+    inst = rsub.add_parser(
+        "install-unit",
+        help="always-on supervisor unit(launchd/systemd) 렌더 + 설치",
+    )
+    grp = inst.add_mutually_exclusive_group()
+    grp.add_argument("--launchd", action="store_true", help="macOS LaunchAgent 강제")
+    grp.add_argument("--systemd", action="store_true", help="Linux systemd --user 강제")
+    inst.add_argument("--dry-run", action="store_true",
+                      help="렌더된 unit + 설치 명령만 출력 (아무것도 실행/기록 안 함)")
+    inst.add_argument("--repo-root", default="", help="데몬이 관측할 repo 경로")
+    inst.add_argument("--interval", type=int, default=300,
+                      help="serve poll 간격(초, 기본 300)")
 
 
 def _repo_root(args) -> str:
@@ -74,6 +86,9 @@ def handle(args: argparse.Namespace) -> int:
         print("kill switch 설정됨 — running serve 가 다음 tick 에 종료합니다.")
         return EXIT_OK
 
+    if cmd == "install-unit":
+        return _handle_install_unit(args)
+
     repo = _repo_root(args)
     notifier = _build_notifier()
     daemon = BoundedDaemon(
@@ -99,6 +114,50 @@ def handle(args: argparse.Namespace) -> int:
         return EXIT_OK
 
     return EXIT_ERROR
+
+
+def _handle_install_unit(args: argparse.Namespace) -> int:
+    """Render + install the always-on supervisor unit (lane B / axis 4).
+
+    Rendering is pure (`unit_install.build_plan`); the install side-effect runs
+    through an injectable runner. Default-safe: `--dry-run` prints the rendered
+    unit + exact commands and executes NOTHING.
+    """
+
+    import os
+    import shutil
+    from pathlib import Path
+
+    from . import unit_install as U
+
+    if getattr(args, "launchd", False):
+        backend = U.LAUNCHD
+    elif getattr(args, "systemd", False):
+        backend = U.SYSTEMD
+    else:
+        backend = U.detect_backend()
+
+    repo_root = Path(_repo_root(args))
+    user_home = Path.home()
+    forgekit_home = Path(
+        os.environ.get("FORGEKIT_HOME") or (user_home / ".forgekit")
+    )
+    forgekit_bin = shutil.which("forgekit") or "forgekit"
+
+    try:
+        plan = U.build_plan(
+            backend=backend,
+            repo_root=repo_root,
+            forgekit_bin=forgekit_bin,
+            forgekit_home=forgekit_home,
+            user_home=user_home,
+            interval=int(getattr(args, "interval", 300)),
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"install-unit 실패: {exc}")
+        return EXIT_ERROR
+
+    return U.apply_plan(plan, dry_run=bool(getattr(args, "dry_run", False)))
 
 
 def _build_notifier():

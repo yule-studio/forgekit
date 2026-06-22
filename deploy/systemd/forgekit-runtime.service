@@ -1,0 +1,42 @@
+[Unit]
+# ForgeKit control-plane daemon (Linux/systemd 1급 always-on path).
+#
+# Counterpart of deploy/launchd/com.forgekit.runtime.plist — runs the SAME
+# `forgekit runtime serve` loop and reads the SAME ~/.forgekit/config.json. Only
+# the supervisor (systemd vs launchd) differs; do NOT bake machine-specific
+# hacks here. The serve loop is itself bounded (heartbeat / kill-switch /
+# cooldown); Restart=on-failure brings it back if it crashes.
+#
+# Installed as a per-USER unit (systemctl --user) so it needs no root and keeps
+# logs / state in the user's scope. For a headless host that must run without an
+# active login session, enable lingering once: `loginctl enable-linger <user>`.
+#
+# Placeholders substituted by `forgekit runtime install-unit --systemd`
+# (see README.md for the manual sed fallback):
+#   __FORGEKIT_BIN__   absolute path to the installed `forgekit` entrypoint
+#   __REPO_ROOT__      absolute path to the checkout the daemon operates on
+#   __FORGEKIT_HOME__  data home (default ~/.forgekit)
+#   __INTERVAL__       serve poll interval in seconds
+Description=ForgeKit control-plane runtime daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_ROOT__
+Environment=FORGEKIT_HOME=__FORGEKIT_HOME__
+ExecStart=__FORGEKIT_BIN__ runtime serve --interval __INTERVAL__ --repo-root __REPO_ROOT__
+Restart=on-failure
+RestartSec=30s
+# Don't hammer-restart a misconfigured daemon.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+StandardOutput=journal
+StandardError=journal
+# forgekit runtime serve installs its own kill-switch handling; give the
+# in-flight tick time to finish on SIGTERM.
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=default.target

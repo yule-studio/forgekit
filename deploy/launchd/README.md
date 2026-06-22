@@ -23,7 +23,31 @@ sleep, so "24h always-on" on a laptop/lid-closed Mac mini is not real without:
 
 This template does not pretend the daemon runs through sleep.
 
-## Install
+## Install (recommended — automated)
+
+`forgekit runtime install-unit` renders this template (the sed-equivalent, in
+Python) and installs it. On macOS it defaults to launchd; pass `--launchd` to
+force it. Always dry-run first to inspect the rendered plist + the exact
+`launchctl` commands — dry-run executes **nothing**:
+
+```bash
+# 1) Preview (renders + prints commands, runs nothing):
+forgekit runtime install-unit --launchd --dry-run \
+    --repo-root "$HOME/local-dev/yule-studio-agent" --interval 300
+
+# 2) Install for real (writes the plist, mkdir -p the log dir, then
+#    launchctl bootout-then-bootstrap = idempotent reload):
+forgekit runtime install-unit --launchd \
+    --repo-root "$HOME/local-dev/yule-studio-agent" --interval 300
+```
+
+`--interval` is the serve poll interval (seconds). `forgekit_bin` is resolved via
+`shutil.which("forgekit")`; `FORGEKIT_HOME` from `$FORGEKIT_HOME` or `~/.forgekit`.
+The command is idempotent — re-running bootout-then-bootstraps the unit.
+
+See `apps/forgekit-console/examples/deploy/install-unit.txt` for full dry-run output.
+
+## Install (manual `sed` — fallback)
 
 ```bash
 # 1) Substitute placeholders into a real plist:
@@ -34,6 +58,7 @@ sed -e "s#__FORGEKIT_BIN__#$FORGEKIT_BIN#g" \
     -e "s#__REPO_ROOT__#$REPO_ROOT#g" \
     -e "s#__FORGEKIT_HOME__#$FORGEKIT_HOME#g" \
     -e "s#__USER_HOME__#$HOME#g" \
+    -e "s#__INTERVAL__#300#g" \
     deploy/launchd/com.forgekit.runtime.plist \
     > "$HOME/Library/LaunchAgents/com.forgekit.runtime.plist"
 
