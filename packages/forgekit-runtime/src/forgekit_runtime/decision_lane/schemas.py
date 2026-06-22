@@ -195,6 +195,7 @@ class TechLeadDecision:
     coding_convention: str = ""                  # 코딩 컨벤션 결정/참조
     stack_decision: "StackComparison | None" = None
     tradeoffs: Tuple[str, ...] = ()
+    integration_notes: Tuple[str, ...] = ()      # design system / API / infra 고려사항
     risk_class: str = "safe"                     # safe / risky / blocked
     approval_level: str = ""                     # autopilot.approval L*
     conditions: Tuple[str, ...] = ()
@@ -208,7 +209,8 @@ class TechLeadDecision:
             "meeting_ref": self.meeting_ref, "design_system": self.design_system,
             "coding_convention": self.coding_convention,
             "stack_decision": self.stack_decision.to_dict() if self.stack_decision else None,
-            "tradeoffs": list(self.tradeoffs), "risk_class": self.risk_class,
+            "tradeoffs": list(self.tradeoffs), "integration_notes": list(self.integration_notes),
+            "risk_class": self.risk_class,
             "approval_level": self.approval_level, "conditions": list(self.conditions),
             "rationale": self.rationale, "signoff_by": self.signoff_by, "status": self.status,
         }
@@ -241,9 +243,95 @@ class EngineerHandoff:
                 "operator_required": self.operator_required}
 
 
+# --- specialist briefing (the materialized work order) -----------------------
+
+
+@dataclass(frozen=True)
+class RejectedOption:
+    """A stack option that was considered and NOT chosen — carried so the specialist
+    sees what was weighed and why it lost (no silent 'just use X')."""
+
+    name: str
+    why_not: str = ""                            # 왜 탈락했나 (cons/risk 요약)
+
+    def to_dict(self) -> dict:
+        return {"name": self.name, "why_not": self.why_not}
+
+
+@dataclass(frozen=True)
+class SpecialistBriefing:
+    """The full work briefing a specialist receives — composed from PM brief + tech-lead
+    decision + engineer handoff. A real-company work order, not a bare 'go build it':
+    goal, proposed stack + WHY, the REJECTED options, coding conventions, design-system,
+    API/infra considerations, scope, test strategy, and acceptance. Built by
+    :func:`build_specialist_briefing`; a briefing missing the design context is rejected by
+    :func:`validate_specialist_briefing`, so a specialist never starts off a thin order
+    (the point: reduce 'design 없이 바로 구현')."""
+
+    handoff_id: str
+    executor_role: str
+    decision_ref: str
+    goal: str = ""                               # PM 목표 (problem → user_value)
+    proposed_stack: str = ""                     # 채택된 스택/접근
+    proposed_stack_summary: str = ""
+    stack_rationale: str = ""                    # 왜 이 스택
+    rejected_options: Tuple[RejectedOption, ...] = ()   # 탈락안 + 왜
+    coding_conventions: str = ""
+    design_system: str = ""
+    integration_notes: Tuple[str, ...] = ()      # design system / API / infra 고려
+    scope: Tuple[str, ...] = ()
+    forbidden_scope: Tuple[str, ...] = ()
+    test_strategy: str = ""
+    rollback_plan: str = ""
+    acceptance_criteria: Tuple[str, ...] = ()
+    operator_required: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "handoff_id": self.handoff_id, "executor_role": self.executor_role,
+            "decision_ref": self.decision_ref, "goal": self.goal,
+            "proposed_stack": self.proposed_stack,
+            "proposed_stack_summary": self.proposed_stack_summary,
+            "stack_rationale": self.stack_rationale,
+            "rejected_options": [r.to_dict() for r in self.rejected_options],
+            "coding_conventions": self.coding_conventions, "design_system": self.design_system,
+            "integration_notes": list(self.integration_notes), "scope": list(self.scope),
+            "forbidden_scope": list(self.forbidden_scope), "test_strategy": self.test_strategy,
+            "rollback_plan": self.rollback_plan,
+            "acceptance_criteria": list(self.acceptance_criteria),
+            "operator_required": self.operator_required,
+        }
+
+    def lines(self) -> Tuple[str, ...]:
+        """Operator/specialist-readable work order."""
+        out = [f"work order {self.handoff_id} → {self.executor_role}"
+               + ("  · ⚠ operator 승인 필요" if self.operator_required else ""),
+               f"  목표: {self.goal}",
+               f"  제안 스택: {self.proposed_stack}"
+               + (f" — {self.proposed_stack_summary}" if self.proposed_stack_summary else ""),
+               f"  선택 이유: {self.stack_rationale}"]
+        for r in self.rejected_options:
+            out.append(f"  ✗ 탈락: {r.name} — {r.why_not}")
+        out.append(f"  코딩 컨벤션: {self.coding_conventions}")
+        out.append(f"  디자인 시스템: {self.design_system}")
+        for n in self.integration_notes:
+            out.append(f"  · API/infra: {n}")
+        for s in self.scope:
+            out.append(f"  ☐ scope: {s}")
+        for s in self.forbidden_scope:
+            out.append(f"  ⊘ 금지: {s}")
+        out.append(f"  test 전략: {self.test_strategy}")
+        if self.rollback_plan:
+            out.append(f"  rollback: {self.rollback_plan}")
+        for a in self.acceptance_criteria:
+            out.append(f"  ✓ acceptance: {a}")
+        return tuple(out)
+
+
 __all__ = (
     "PMBrief", "StackOption", "StackComparison", "ConsultNote", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
+    "RejectedOption", "SpecialistBriefing",
     "DISSENT_STANCES", "ALL_STANCES",
     "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DECISION_STATUSES",
 )
