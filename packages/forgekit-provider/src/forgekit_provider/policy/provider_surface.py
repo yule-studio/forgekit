@@ -121,6 +121,9 @@ def provider_status_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
         f"  unsupported_in_console: {', '.join(bmap.unsupported) or '-'}",
         f"  implicit local fallback: {'on' if parsed.implicit_local_fallback else 'off (기본)'}",
     ]
+    # per-provider daily budget (configured policy, cfg-pure — live spend is in `/usage`).
+    from ..usage import provider_budget as _pb
+    lines.extend(_pb.limit_lines(cfg))
     if not review.ready:
         lines += [f"  ⚠ {i}" for i in review.issues]
     lines.append("  명령: /provider set <id> · /provider list · /provider doctor")
