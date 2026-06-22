@@ -73,7 +73,13 @@ gutter 없음** (inline 모드는 추가로 alt-screen/mouse capture 제거 — 
 - **입력창 텍스트 선택 contrast**: in-app 선택(`.text-area--selection`)은 브랜드 `$accent-dim`
   배경 + `$text` 전경으로 정합 — transparent 다크 테마 위에서 FG-on-selection 대비 ≈4.75:1 로
   또렷(Textual 기본 저대비 대체). 런타임 property 검증 `test_tui_selection_contrast`, 증거
-  `examples/tui-ux/selection-contrast.txt`. (마우스 드래그 native 선택은 §4 구조 한계.)
+  `examples/tui-ux/selection-contrast.txt`.
+- **transcript(크로스위젯) 드래그-선택 contrast**: full-screen 이 마우스를 캡처하면 Textual 8.x
+  의 `screen--selection` 으로 transcript 를 드래그 선택할 수 있다. 이 하이라이트도 브랜드
+  `$accent-dim` 배경 + `$text` 전경으로 테마(`theme.css_variables` 의 `screen-selection-background`
+  + `styles.py` 의 `color`) — Textual 기본 ~50%-alpha blue(`#0178D47F`, 근-검정에서 저대비) 대체,
+  런타임 실측 4.75:1(WCAG AA). 검증 `test_tui_transcript_selection`, 증거+SVG
+  `examples/selection-contrast/`. 선택·복사 안내는 mode-aware(§3).
 - 스크롤 자체는 유지(follow_tail 로 tail 추적). 테스트 `test_tui_scroll_model`.
 
 ## 3. Copy — 명시 UX (`/copy`)

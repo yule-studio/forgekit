@@ -420,10 +420,45 @@ def mode_badge(mode: str, agents: Sequence[AgentInfo] = ()) -> str:
     return f"[reverse] {mode.upper()} [/reverse]"
 
 
-def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[HelpSection, ...]:
+def selection_copy_lines(inline: bool) -> Tuple[str, ...]:
+    """Mode-aware select & copy guidance — HONEST about what actually works per UI mode.
+
+    The selection path is a real behavioural fact of the run mode (verified in
+    :mod:`tui.ui_mode`): inline runs with ``mouse=False`` so the TERMINAL owns drag-select
+    (native selection + the terminal's own copy); full-screen captures the mouse so the APP
+    owns selection (in-app drag + ``Ctrl+C``) and a plain terminal drag is blocked. ``/copy``
+    works in BOTH modes (plain-text → OS clipboard). The selection highlight is the brand
+    desaturated-cyan (``accent-dim``) at a measured 4.75:1 contrast (see
+    ``test_tui_selection_contrast``). Pure → unit-testable without a terminal."""
+
+    common = (
+        "  /copy            마지막 응답 복사 (= /copy last)",
+        "  /copy turn <n>   n 번째 턴(질문+응답)   ·   /copy block <n>  n 번째 블록",
+        "  /copy all        전체 복사   ·   /copy paste <id>  보존된 large paste",
+        "  [dim]plain-text 로 OS clipboard 에 실제 복사 (pbcopy/xclip) — 빈 내용은 실패로 정직 표기.[/dim]",
+        "  [dim]선택 하이라이트 = brand accent-dim (대비 4.75:1).[/dim]",
+    )
+    if inline:
+        return (
+            "[b]선택 · 복사 (select & copy)[/b]  [dim]— inline 모드 (현재)[/dim]",
+            "  드래그로 [b]터미널 native 선택[/b] → 터미널 복사 (마우스 캡처 안 함)",
+            *common,
+        )
+    return (
+        "[b]선택 · 복사 (select & copy)[/b]  [dim]— full-screen 모드 (현재)[/dim]",
+        "  앱 내 [b]드래그 선택 → Ctrl+C[/b] 로 복사 (마우스 캡처)",
+        "  [dim]일반 터미널 드래그는 막힘 — iTerm2 Option+드래그 / 기타 Shift+드래그로 native 우회.[/dim]",
+        *common,
+    )
+
+
+def help_sections(
+    commands: Sequence, agents: Sequence[AgentInfo], *, inline: bool = False,
+) -> Tuple[HelpSection, ...]:
     """Build the help tabs — short, scannable. Order: Help · General · Commands · Agents.
 
-    ``General`` is the default-open tab (see :func:`default_help_tab`).
+    ``General`` is the default-open tab (see :func:`default_help_tab`). ``inline`` selects
+    the mode-aware select/copy guidance (see :func:`selection_copy_lines`).
     """
 
     help_tab = HelpSection("Help", (
@@ -435,13 +470,7 @@ def help_sections(commands: Sequence, agents: Sequence[AgentInfo]) -> Tuple[Help
         "",
         "탭은 제자리에서 바뀝니다 — 본문에 쌓이지 않습니다.",
         "",
-        "[b]복사 (copy)[/b]",
-        "  /copy            마지막 응답 복사 (= /copy last)",
-        "  /copy turn <n>   n 번째 턴(질문+응답) 복사",
-        "  /copy block <n>  n 번째 블록 복사   ·   /copy all  전체 복사",
-        "  [dim]plain-text 로 OS clipboard 에 실제 복사됩니다 (pbcopy/xclip).[/dim]",
-        "  [dim]※ full-screen TUI 는 마우스를 캡처해 일반 드래그 선택이 막힙니다 —[/dim]",
-        "  [dim]   터미널 native 선택은 iTerm2 Option+드래그 / 기타 Shift+드래그로 우회.[/dim]",
+        *selection_copy_lines(inline),
     ))
     general = HelpSection("General", (
         "[b]forgekit[/b] — provider-agnostic 운영자 콘솔.",
@@ -776,7 +805,7 @@ __all__ = (
     "issue_line", "agent_pane_lines",
     "status_pane_lines",
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
-    "status_pill", "hint_line", "help_sections",
+    "status_pill", "hint_line", "help_sections", "selection_copy_lines",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
     "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
 )
