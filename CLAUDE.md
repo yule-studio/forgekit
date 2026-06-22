@@ -62,6 +62,7 @@
 | 모노레포 구조 / packages·apps 추가 / compat shim | + `docs/monorepo-structure.md` (현황·의존 규칙·shim 카탈로그·로드맵 SSoT) |
 | ForgeKit 플랫폼 경계 / console=operator app / 코어 packages 분리(WT1~4) | + `docs/forgekit-architecture-ownership.md` (owner 매트릭스·import 경계·이전 우선순위 SSoT) |
 | packages/* 분류 / 네이밍 충돌 / 어디에 새 기능 추가 / transitional debt | + `docs/package-topology.md` (18 package 분류표·migration matrix·결정 트리 SSoT) |
+| control-plane 방향 / OpenClaw·Harness·Hermes 흡수 / onboarding bootstrap / P0~P2 우선순위 / Mac mini host | + `docs/control-plane-architecture.md` (역할·소유 경계·우선순위 로드맵 SSoT) |
 
 전체 매핑은 `AGENTS.md` §2.
 

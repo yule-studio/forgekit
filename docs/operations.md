@@ -1,5 +1,9 @@
 # Operations — Always-on engineering runtime
 
+> ForgeKit control-plane host 경로(**1차 Mac mini/launchd, 2차 Linux/systemd/OCI**)와 sleep/
+> reboot/secret/logs/upgrade 전략은 [`control-plane-architecture.md §3`](control-plane-architecture.md)
+> 가 SSoT. 본 문서는 그중 engineering-agent 상시 운영(systemd)의 구체 절차다.
+
 이 문서는 engineering-agent 를 상시 서비스로 운영하기 위한 가이드다. **M8 이후 운영 1급 경로는 `yule runtime up` / `yule run-service` / `yule runtime status` 세 가지뿐이다.** `yule discord up` 은 dev/test launcher 로만 남고, **queue 워커를 띄우지 않으므로 단독으로는 실제 작업을 처리할 수 없다.** 운영자가 어떤 프로세스를 켜야 queue 가 실제 처리되는지 헷갈리지 않게 — production 경로와 dev 경로를 한눈에 구분할 수 있는 표를 §0.1 에 둔다.
 
 ## 0. 빠른 시작 (M8)

@@ -211,6 +211,7 @@ queue, Obsidian 미러) — [`docs/operations.md`](docs/operations.md).
 | 주제 | 문서 |
 | --- | --- |
 | 비전 / 왜 나눴나 | [docs/vision.md](docs/vision.md) |
+| **control-plane 방향 + 우선순위(P0/P1/P2)** | [docs/control-plane-architecture.md](docs/control-plane-architecture.md) |
 | 패키지 토폴로지 (apps vs packages·분류표·어디에 추가) | [docs/package-topology.md](docs/package-topology.md) |
 | 아키텍처 ownership | [docs/forgekit-architecture-ownership.md](docs/forgekit-architecture-ownership.md) |
 | Hephaistos 런타임 | [docs/hephaistos-runtime.md](docs/hephaistos-runtime.md) |
@@ -229,8 +230,13 @@ queue, Obsidian 미러) — [`docs/operations.md`](docs/operations.md).
 
 ## 로드맵 / non-goals
 
-**다음:** Nexus live 연결 · per-provider usage 표면 · GitHub-App doctor/commit 경로 ·
-print-flow scrollback 누적.
+ForgeKit 은 console 이 아니라 **control plane**(provider / agent / tool / memory / runtime 조정)으로
+간다 — 방향·우선순위 SSoT 는 [`docs/control-plane-architecture.md`](docs/control-plane-architecture.md).
+
+- **P0**: provider onboarding(`/setup` + connect) · toolchain version switching · runtime daemon
+  productionization(launchd/systemd).
+- **P1**: Nexus live 연결 · notification/action surface · self-improvement execute teeth(bounded).
+- **P2**: richer connectors / external discovery / advanced memory.
 
 **non-goals (지금):** 완전 자율·무감독 코드 변경(safe-class·operator-gated 만), live 소셜/Figma
 스크래핑, "완전 자율 팀".
