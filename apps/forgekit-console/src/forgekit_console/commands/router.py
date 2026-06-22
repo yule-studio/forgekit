@@ -174,7 +174,7 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
     if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed, ctx)
     if handler == H_PROVIDER:
-        return _provider_result(parsed)
+        return _provider_result(parsed, ctx)
     if handler == H_SETUP:
         return _setup_result(parsed, ctx)
     if handler == H_TOOLCHAIN:
@@ -242,7 +242,7 @@ def _goal_result(parsed, ctx: ConsoleContext) -> CommandResult:
     return CommandResult.info("goal", gs.usage_lines())
 
 
-def _provider_result(parsed) -> CommandResult:
+def _provider_result(parsed, ctx=None) -> CommandResult:
     # /provider operator surface over policy.provider_surface (read) + provider_ops (persist).
     from ..policy import provider_ops as ops
     from ..policy import provider_surface as ps
@@ -284,6 +284,18 @@ def _provider_result(parsed) -> CommandResult:
             ok, msg = ps.apply_route_clear(args[2] if len(args) > 2 else "")
             return (CommandResult.info if ok else CommandResult.error)("provider route", (msg,))
         return CommandResult.info("provider route", ps.route_show_lines(cfg))
+    if sub == "budget":
+        from .. import provider_budget_surface as pbs
+
+        env = getattr(ctx, "env", None) or None
+        op = args[1].lower() if len(args) > 1 else "show"
+        if op == "set":
+            ok, msg = pbs.apply_set_budget(args[2] if len(args) > 2 else "",
+                                           args[3] if len(args) > 3 else "", env=env)
+            return (CommandResult.info if ok else CommandResult.error)("provider budget", (msg,))
+        if op in ("show", ""):
+            return CommandResult.info("provider budget", pbs.budget_lines(env=env))
+        return CommandResult.info("provider budget", pbs.usage_lines())
     return CommandResult.info("provider", ps.provider_status_lines(cfg))
 
 
