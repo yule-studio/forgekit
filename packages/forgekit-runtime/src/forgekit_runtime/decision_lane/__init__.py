@@ -19,6 +19,7 @@ from .schemas import (
     NEEDS_INFO,
     SIGNED_OFF,
     DISSENT_STANCES,
+    ConsultNote,
     EngineerHandoff,
     MeetingRecord,
     ParticipantPosition,
@@ -28,6 +29,7 @@ from .schemas import (
     TechLeadDecision,
 )
 from .validators import (
+    validate_consult,
     validate_handoff,
     validate_meeting,
     validate_pm_brief,
@@ -91,6 +93,7 @@ from .decision_log import (
     KIND_HANDOFF,
     KIND_MEETING,
     GovernanceEvent,
+    decision_trail_from_log,
     governance_log_path,
     readiness_from_log,
     record_governance_event,
@@ -100,11 +103,11 @@ from .decision_log import (
 
 __all__ = (
     # schemas
-    "PMBrief", "StackOption", "StackComparison", "ParticipantPosition",
+    "PMBrief", "StackOption", "StackComparison", "ConsultNote", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
     "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DISSENT_STANCES",
     # validators
-    "validate_pm_brief", "validate_stack_comparison", "validate_meeting",
+    "validate_pm_brief", "validate_stack_comparison", "validate_consult", "validate_meeting",
     "validate_tech_lead_decision", "validate_handoff",
     # lane
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
@@ -126,5 +129,5 @@ __all__ = (
     "KIND_BRIEF", "KIND_CONSULT", "KIND_GATEWAY", "KIND_MEETING", "KIND_DECISION",
     "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS", "GovernanceEvent",
     "governance_log_path", "record_governance_event", "replay_governance_log",
-    "record_lane_artifacts", "readiness_from_log",
+    "record_lane_artifacts", "readiness_from_log", "decision_trail_from_log",
 )

@@ -1,0 +1,85 @@
+{
+  "note": "governance artifact 강제 — payload 영속 + consult artifact + 결정 트레일 (decision_trail_from_log). 실 record→replay 결과.",
+  "session": "design-알림",
+  "recorded_kinds": [
+    "brief",
+    "consult",
+    "gateway",
+    "meeting",
+    "decision",
+    "handoff"
+  ],
+  "decision_payload_persisted": {
+    "decision_id": "decision:m1",
+    "pm_brief_ref": "알림",
+    "meeting_ref": "m1",
+    "design_system": "forgekit-ds",
+    "coding_convention": "ruff+black+isort",
+    "stack_decision": {
+      "decision_topic": "알림 전송",
+      "options": [
+        {
+          "name": "SSE",
+          "summary": "",
+          "pros": [
+            "단순",
+            "프록시 친화"
+          ],
+          "cons": [
+            "단방향"
+          ],
+          "risk": "",
+          "fit": 0
+        },
+        {
+          "name": "WebSocket",
+          "summary": "",
+          "pros": [
+            "양방향"
+          ],
+          "cons": [
+            "인프라 복잡"
+          ],
+          "risk": "",
+          "fit": 0
+        }
+      ],
+      "recommended": "SSE",
+      "rationale": "단방향 알림은 SSE 로 충분",
+      "tradeoffs": [
+        "양방향 상호작용 포기"
+      ],
+      "assumptions": []
+    },
+    "tradeoffs": [
+      "양방향 상호작용 포기"
+    ],
+    "risk_class": "safe",
+    "approval_level": "L2_internal_approve",
+    "conditions": [],
+    "rationale": "단방향 알림 → SSE",
+    "signoff_by": "tech-lead",
+    "status": "signed_off"
+  },
+  "consult_payload_persisted": {
+    "consult_id": "c1",
+    "topic": "전송 방식",
+    "by_role": "tech-lead",
+    "to_roles": [
+      "be",
+      "fe"
+    ],
+    "question": "SSE vs WebSocket — 단방향 알림에 무엇?",
+    "note": "단방향이라 SSE 충분",
+    "refs": []
+  },
+  "decision_trail": [
+    " 1. ✓ [brief] product-manager: PM brief: 알림 — acceptance 2개 · metric 1개 · priority=normal",
+    " 2. ✓ [consult] tech-lead: consult c1: tech-lead→[be, fe] (전송 방식) — → [be, fe]: SSE vs WebSocket — 단방향 알림에 무엇?",
+    " 3. ✓ [gateway] gateway: gateway approve: 알림 — verdict=approve",
+    " 4. ✓ [meeting] tech-lead: meeting m1 (2 참석) — 참석 [tech-lead, be]",
+    " 5. ✓ [decision] tech-lead: decision decision:m1 (signed_off/L2_internal_approve) — design=forgekit-ds · convention=ruff+black+isort · stack=SSE · approval=L2_internal_approve · tradeoff 1개",
+    " 6. ✓ [handoff] be: handoff handoff:decision:m1 → be — executor=be · scope 1개"
+  ],
+  "readiness_executable": true
+}

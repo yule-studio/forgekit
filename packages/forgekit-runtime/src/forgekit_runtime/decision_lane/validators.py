@@ -29,6 +29,7 @@ from .schemas import (
     CONDITIONAL,
     ESCALATED,
     SIGNED_OFF,
+    ConsultNote,
     EngineerHandoff,
     MeetingRecord,
     PMBrief,
@@ -92,6 +93,35 @@ def validate_stack_comparison(cmp: StackComparison) -> Tuple[str, ...]:
         v.append("stack: 권고 근거(rationale) 없음")
     if not cmp.tradeoffs:
         v.append("stack: tradeoff 최소 1개 필요 — 공짜 선택은 없음")
+    return tuple(v)
+
+
+# --- consult note (anti-fake, non-gating) ------------------------------------
+
+
+def validate_consult(note: ConsultNote) -> Tuple[str, ...]:
+    """A real consult names a requester role, ≥1 consultee role, and a substantive
+    question. Roles resolve through the registry SSoT. Non-gating (it never advances the
+    lane) but it is NOT freeform prose — an empty question or no consultee is rejected, so
+    'we consulted X' cannot be a bare claim."""
+
+    v = []
+    if _blank(note.consult_id):
+        v.append("consult: consult_id 비어 있음")
+    if _blank(note.topic):
+        v.append("consult: topic 비어 있음")
+    if _blank(note.by_role):
+        v.append("consult: by_role(요청자) 비어 있음")
+    elif not canonical_id(note.by_role):
+        v.append(f"consult: by_role '{note.by_role}' 이 식별자 레지스트리에 없음")
+    if not note.to_roles:
+        v.append("consult: to_roles(consult 대상) 최소 1개 필요 — 혼잣말은 consult 아님")
+    else:
+        for r in note.to_roles:
+            if not canonical_id(r):
+                v.append(f"consult: to_role '{r}' 이 식별자 레지스트리에 없음")
+    if _blank(note.question):
+        v.append("consult: question(무엇을 묻는지) 비어 있음 — freeform prose 금지")
     return tuple(v)
 
 
@@ -200,6 +230,7 @@ def validate_handoff(handoff: EngineerHandoff, decision: TechLeadDecision) -> Tu
 
 
 __all__ = (
-    "validate_pm_brief", "validate_stack_comparison", "validate_meeting",
-    "validate_tech_lead_decision", "validate_handoff", "NON_EXECUTOR_ROLES",
+    "validate_pm_brief", "validate_stack_comparison", "validate_consult",
+    "validate_meeting", "validate_tech_lead_decision", "validate_handoff",
+    "NON_EXECUTOR_ROLES",
 )

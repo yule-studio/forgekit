@@ -93,6 +93,32 @@ class StackComparison:
                 "tradeoffs": list(self.tradeoffs), "assumptions": list(self.assumptions)}
 
 
+# --- consult note ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ConsultNote:
+    """A recorded consult — one role asking another for input BEFORE a decision is fixed.
+
+    The "consult like a company" artifact: **non-gating** (it does not advance the lane)
+    but **real** — a topic, a requester role, ≥1 named consultee role, and a substantive
+    question. So "we consulted X" leaves a durable, attributable trace instead of a claim;
+    a consult with no consultee or no question is rejected by :func:`validate_consult`."""
+
+    consult_id: str
+    topic: str
+    by_role: str                                 # 묻는 역할 (requester)
+    to_roles: Tuple[str, ...] = ()               # consult 대상 역할 (≥1)
+    question: str = ""                            # 무엇을 묻는지 (비어 있으면 fake)
+    note: str = ""                               # 응답/논의 요약 (선택)
+    refs: Tuple[str, ...] = ()                   # 참조 artifact id (brief/meeting/decision)
+
+    def to_dict(self) -> dict:
+        return {"consult_id": self.consult_id, "topic": self.topic, "by_role": self.by_role,
+                "to_roles": list(self.to_roles), "question": self.question,
+                "note": self.note, "refs": list(self.refs)}
+
+
 # --- meeting artifact --------------------------------------------------------
 
 
@@ -216,7 +242,7 @@ class EngineerHandoff:
 
 
 __all__ = (
-    "PMBrief", "StackOption", "StackComparison", "ParticipantPosition",
+    "PMBrief", "StackOption", "StackComparison", "ConsultNote", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
     "DISSENT_STANCES", "ALL_STANCES",
     "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DECISION_STATUSES",
