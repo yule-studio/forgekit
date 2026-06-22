@@ -70,6 +70,10 @@ gutter 없음** (inline 모드는 추가로 alt-screen/mouse capture 제거 — 
   내부 pane 세로바 존재감 제거 → 터미널 흐름처럼 읽힘.
 - **입력창(PromptArea)** 만 bounded(max-height 12) + **gutter-less** 내부 스크롤(Claude 의
   입력창도 거대 입력 시 스크롤) — content pane 이 아니라 입력 편의이며 시각적 gutter 없음.
+- **입력창 텍스트 선택 contrast**: in-app 선택(`.text-area--selection`)은 브랜드 `$accent-dim`
+  배경 + `$text` 전경으로 정합 — transparent 다크 테마 위에서 FG-on-selection 대비 ≈4.75:1 로
+  또렷(Textual 기본 저대비 대체). 런타임 property 검증 `test_tui_selection_contrast`, 증거
+  `examples/tui-ux/selection-contrast.txt`. (마우스 드래그 native 선택은 §4 구조 한계.)
 - 스크롤 자체는 유지(follow_tail 로 tail 추적). 테스트 `test_tui_scroll_model`.
 
 ## 3. Copy — 명시 UX (`/copy`)
