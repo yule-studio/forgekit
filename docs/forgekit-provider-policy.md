@@ -68,6 +68,20 @@ slot → capability 매핑(optimized): execution→`execution`, research→`rese
 `execution→codex`, `research→gemini`, `synthesis→claude`, `fallback→gemini`,
 `default_chat→claude`.
 
+### 2.1 mode→slot: chat vs 비-chat 분리 (`policy/routing.py`)
+
+제출은 두 종류다 — operator **CHAT** turn 과 자율 **NON-CHAT** work item. routing 은 이 둘을
+분리한다(`WORK_CHAT` / `WORK_NONCHAT`):
+
+- **chat** → 항상 `default_chat` slot. mode 가 chat 을 work slot 으로 몰래 끌고 가지 않는다
+  (이전엔 delivery 모드의 chat 이 execution slot 으로 가는 conflation 이 있었음). 이는 live submit
+  경로(`chat/service` 가 `default_chat` 사용)와 정확히 일치한다.
+- **nonchat work** → `mode_work_slot(mode)`(research→research, delivery→execution, …). 자율 작업만
+  mode 가 slot 을 결정한다.
+
+`slot_for(mode, kind)` / `resolve_submit(cfg, mode, kind=WORK_CHAT)` 가 진입점. `mode_submit_slot`
+은 back-compat(=`mode_work_slot`). 회귀 `tests/forgekit/test_routing.py`.
+
 ## 3. Main-provider 기본값 (`policy/main_profile.py`)
 
 setup 의 단 하나의 결정 — "어느 provider 가 네 것인가" — 에서 기본값을 파생한다.
@@ -105,6 +119,23 @@ subscription→subscription_aware, api→adaptive, local→local_first, enterpri
 `should_throttle(policy, spent, budget)`: strict 는 `spent >= budget`, 그 외는
 `spent >= reserve_floor(budget)`. budget<=0(unbounded/무비용)은 strict 가 아니면
 throttle 안 함.
+
+### 4.1 per-provider 일일 budget (`usage/provider_budget.py`)
+
+global daily budget(`daily_token_budget`) 위에 **provider 별** 일일 token 한도를 둔다 —
+한 brain 이 전체 예산을 태우지 못하게 하고, 유료 provider 를 ring-fence 한다. config:
+
+```jsonc
+"budget_policy": { "provider_daily_limits": { "gemini": 50000, "ollama": 0 } }
+```
+
+`0`/absent = **unbounded**(정직 — 한도를 임의로 만들지 않음). spend 는 ledger 의 **성공·non-throttle**
+제출만 합산(held/throttle 는 태운 게 없음). 강제는 **routing 의 `available` seam**으로: 한도 초과
+provider 는 *unavailable* → `resolve_routing` 이 다음 후보로 **정직하게 fallback**, live submit 체인
+(`chat/service`)도 동일하게 over-budget head 를 skip(faked send 없음). chain 전부 초과면
+`budget_throttled`. 영속 writer 는 `provider_ops.set_provider_budget`(canonical config, reload 유지),
+표면은 `/provider`(`provider_surface` 가 설정 한도 표기). provider-neutral(특정 vendor 분기 없음).
+회귀 `tests/forgekit/test_provider_budget.py`, evidence `examples/provider-budget/`.
 
 ## 5. Enterprise / internal seam (`providers/registry.py`)
 

@@ -1,0 +1,29 @@
+ForgeKit per-provider budget + mode→slot 분리 — deterministic evidence (no fake)
+재현: tests/forgekit/test_provider_budget.py · test_routing.py
+
+==============================================================================
+STEP 1 — per-provider 한도 영속 (set_provider_budget → persist → reload)
+==============================================================================
+$ /provider budget gemini 100  → 저장 ok=True
+$ cat config.json  (재실행 후)
+  budget_policy = {"provider_daily_limits": {"gemini": 100}}
+  provider_limits(reload) = {'gemini': 100}  (재실행-후-유지)
+
+==============================================================================
+STEP 2 — 한도 초과 → routing 정직 fallback (gemini ring-fenced → ollama)
+==============================================================================
+  오늘 gemini spent=150 / limit=100 → over=['gemini']
+  resolve default_chat → actual=ollama (status=fallback, fallback_used=True)  ← gemini 건너뛰고 정직 fallback
+
+==============================================================================
+STEP 3 — live submit 경로도 동일 강제 (over-budget head skip → live fallback)
+==============================================================================
+  submit → ok=True, provider=ollama, fallback_used=True (gemini 예산초과 → ollama live)
+  전 chain 초과 → ok=False, category=budget_throttled, throttled=True (faked send 없음)
+
+==============================================================================
+STEP 4 — mode→slot: chat 은 항상 default_chat, 비-chat work 만 mode slot
+==============================================================================
+  research 모드 CHAT  → slot=default_chat → ollama (chat 은 mode 로 안 끌려감)
+  research 모드 WORK  → slot=research     → gemini (비-chat work 만 mode slot)
+  slot_for(research, chat)=default_chat · slot_for(research, nonchat)=research
