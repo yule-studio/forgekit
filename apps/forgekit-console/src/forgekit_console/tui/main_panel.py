@@ -75,14 +75,15 @@ class MainPanel(ContentSwitcher):
     def help_open(self) -> bool:
         return self.current == _HELP_ID
 
-    def show_help(self, commands, agents, *, focus_title: str = None) -> None:
+    def show_help(self, commands, agents, *, focus_title: str = None,
+                  inline: bool = False) -> None:
         """Switch the whole main area to the help view (transcript hidden).
 
         ``focus_title`` (e.g. "About") opens directly on that tab; otherwise the
-        default (General) tab.
+        default (General) tab. ``inline`` selects the mode-aware select/copy guidance.
         """
 
-        self.help_panel.open_default(commands, agents)
+        self.help_panel.open_default(commands, agents, inline=inline)
         if focus_title:
             self.help_panel.focus_tab(focus_title)
         self.current = _HELP_ID

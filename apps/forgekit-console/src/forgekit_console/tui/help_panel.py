@@ -55,7 +55,11 @@ class HelpPanel(Vertical):
         super().__init__(**kwargs)
         self._commands = ()
         self._agents = ()
+        self._inline = False   # drives the mode-aware select/copy guidance
         self._active = 0
+
+    def _sections(self):
+        return render.help_sections(self._commands, self._agents, inline=self._inline)
 
     def compose(self):
         yield Static(id="help-tabs", markup=True)
@@ -65,24 +69,25 @@ class HelpPanel(Vertical):
     def active_tab(self) -> int:
         return self._active
 
-    def set_registry(self, commands, agents) -> None:
-        """Bind the command/agent registries used to build the tab documents."""
+    def set_registry(self, commands, agents, *, inline: bool = False) -> None:
+        """Bind the command/agent registries (+ UI mode) used to build the tab documents."""
 
         self._commands = commands
         self._agents = agents
+        self._inline = bool(inline)
 
-    def open_default(self, commands, agents) -> None:
+    def open_default(self, commands, agents, *, inline: bool = False) -> None:
         """Open the help view on the default tab (General) and render it."""
 
-        self.set_registry(commands, agents)
-        sections = render.help_sections(commands, agents)
+        self.set_registry(commands, agents, inline=inline)
+        sections = self._sections()
         self._active = render.default_help_tab(sections)
         self._render_active()
 
     def focus_tab(self, title: str) -> None:
         """Jump the active tab to the section whose title matches *title* (if any)."""
 
-        sections = render.help_sections(self._commands, self._agents)
+        sections = self._sections()
         for i, section in enumerate(sections):
             if section.title == title:
                 self._active = i
@@ -92,14 +97,14 @@ class HelpPanel(Vertical):
     def switch_tab(self, direction: int) -> None:
         """Move the active tab by *direction* and re-render the SAME widget in place."""
 
-        sections = render.help_sections(self._commands, self._agents)
+        sections = self._sections()
         if not sections:
             return
         self._active = (self._active + direction) % len(sections)
         self._render_active()
 
     def _render_active(self) -> None:
-        sections = render.help_sections(self._commands, self._agents)
+        sections = self._sections()
         # update() REPLACES the content of each part — tab-switch is in-place, never
         # an accumulating append. The tab strip + the active body are separate so the
         # cyan divider (CSS border) sits cleanly between them.

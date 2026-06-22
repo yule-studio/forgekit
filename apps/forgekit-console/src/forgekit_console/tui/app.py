@@ -1368,6 +1368,7 @@ class ForgekitConsoleApp(App):
         self._main.show_help(
             self.context.commands, self.context.agents,
             focus_title="About" if about else None,
+            inline=self._ui_inline,
         )
         self.query_one("#composer", Composer).display = False
         self._refresh_chrome()
@@ -1401,7 +1402,8 @@ class ForgekitConsoleApp(App):
 
         if not self._main.help_open:
             return False
-        sections = render.help_sections(self.context.commands, self.context.agents)
+        sections = render.help_sections(self.context.commands, self.context.agents,
+                                        inline=self._ui_inline)
         idx = self._main.help_panel.active_tab
         return 0 <= idx < len(sections) and sections[idx].title == "About"
 
