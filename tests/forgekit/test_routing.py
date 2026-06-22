@@ -44,13 +44,20 @@ class ResolveTests(unittest.TestCase):
         self.assertTrue(res.submit_supported)
         self.assertFalse(res.fallback_used)
 
-    def test_mode_changes_actual_provider(self) -> None:
-        # research slot routed to gemini → research mode resolves to gemini (live-capable)
+    def test_mode_steers_nonchat_work_but_chat_stays_default_chat(self) -> None:
+        # research slot routed to gemini. A NON-CHAT work item in research mode resolves to the
+        # research slot (gemini); a CHAT turn stays on default_chat (ollama) regardless of mode —
+        # chat is never silently re-routed to a work slot by the mode (the honest separation).
         cfg = _cfg(linked_providers=["ollama", "gemini"], slot_routing={"research": "gemini"})
-        interactive = r.resolve_submit(cfg, rm.MODE_INTERACTIVE)
-        research = r.resolve_submit(cfg, rm.MODE_RESEARCH)
-        self.assertEqual(interactive.actual_provider, "ollama")
-        self.assertEqual(research.actual_provider, "gemini")  # mode actually changed routing
+        chat_research = r.resolve_submit(cfg, rm.MODE_RESEARCH)                      # default kind=chat
+        work_research = r.resolve_submit(cfg, rm.MODE_RESEARCH, kind=r.WORK_NONCHAT)
+        chat_interactive = r.resolve_submit(cfg, rm.MODE_INTERACTIVE)
+        self.assertEqual(chat_research.actual_provider, "ollama")   # chat → default_chat, not research
+        self.assertEqual(chat_interactive.actual_provider, "ollama")
+        self.assertEqual(work_research.actual_provider, "gemini")   # non-chat work → mode's research slot
+        # the separation helpers agree.
+        self.assertEqual(r.slot_for(rm.MODE_RESEARCH, r.WORK_CHAT), "default_chat")
+        self.assertEqual(r.slot_for(rm.MODE_RESEARCH, r.WORK_NONCHAT), "research")
 
     def test_cli_provider_is_unsupported_not_faked(self) -> None:
         # claude routes (declared) but has no console transport → unsupported, never live

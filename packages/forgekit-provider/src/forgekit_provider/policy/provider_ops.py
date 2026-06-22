@@ -79,6 +79,25 @@ def set_implicit_fallback(cfg: Optional[Mapping], enabled: bool) -> dict:
     return out
 
 
+def set_provider_budget(cfg: Optional[Mapping], pid: str, daily_token_limit: int) -> dict:
+    """Set (or clear) a provider's per-provider daily token limit under
+    ``budget_policy.provider_daily_limits`` — persisted in the same canonical config.
+
+    ``daily_token_limit <= 0`` removes the limit (unbounded, honest — never invents one).
+    Routing/submit enforce it (over → honest fallback to the next candidate)."""
+
+    out = _clone(cfg)
+    pol = dict(out.get("budget_policy") or {})
+    limits = dict(pol.get("provider_daily_limits") or {})
+    if daily_token_limit and int(daily_token_limit) > 0:
+        limits[pid] = int(daily_token_limit)
+    else:
+        limits.pop(pid, None)
+    pol["provider_daily_limits"] = limits
+    out["budget_policy"] = pol
+    return out
+
+
 # --- presets (multi-provider brain templates) -------------------------------
 def preset_four_brain(cfg: Optional[Mapping]) -> dict:
     """The recommended 4-provider brain: claude(primary/safety/synthesis) + codex(execution)
@@ -198,5 +217,6 @@ def setup_review(cfg: Optional[Mapping]) -> SetupReview:
 __all__ = (
     "REVIEW_READY", "REVIEW_INCOMPLETE", "REVIEW_MISCONFIGURED", "REVIEW_NO_LIVE",
     "set_primary", "link_provider", "unlink_provider", "route_slot", "set_implicit_fallback",
+    "set_provider_budget",
     "load_raw_config", "persist_config", "BrainMap", "brain_map", "SetupReview", "setup_review",
 )

@@ -77,6 +77,21 @@ class SubmitService:
         if self.config is None:
             self.config = load_config(self.env)
 
+    def _over_budget_providers(self):
+        """Providers over their per-provider daily token limit (honest). Empty (and zero IO)
+        when no per-provider limit is configured — so this is a no-op for existing setups."""
+
+        from ..usage import provider_budget as pb
+
+        if not pb.provider_limits(self.config):
+            return frozenset()
+        from ..usage import ledger
+        try:
+            rows = ledger.read_events(env=self.env, day=ledger.today(self.env))
+        except Exception:  # noqa: BLE001 - ledger unreadable → treat as no spend (never raise on submit)
+            rows = ()
+        return pb.over_budget_providers(self.config, rows)
+
     # --- resolution ---------------------------------------------------------
     def resolve(self, *, prefer_provider: str = "") -> Tuple[Optional[ProviderSpec], str]:
         """Return ``(spec, source)``. Configured provider, else zero-config local ollama.
@@ -173,10 +188,21 @@ class SubmitService:
             )
 
         head = chain[0]
+        over_budget = self._over_budget_providers()   # per-provider daily limit (honest fallback)
         last: Optional[m.SubmitResult] = None
         for i, pid in enumerate(chain):
             spec = self._spec_for(pid)
             if spec is None:
+                continue
+            if pid in over_budget:
+                # honest: this provider hit its OWN daily budget → skip to the next candidate
+                # (never a faked send). If the whole chain is exhausted this is the returned reason.
+                last = m.SubmitResult(
+                    ok=False, mode=m.MODE_HELD, category=m.CAT_BUDGET_THROTTLED,
+                    provider_id=pid, provider_label=spec.label, source=base_source,
+                    runtime_mode=runtime_mode, throttled=True,
+                    text=f"{spec.label} 는 per-provider 일일 token budget 초과 — 다음 후보로 fallback.",
+                    next_action="`budget_policy.provider_daily_limits` 상향 또는 다른 provider 로 routing.")
                 continue
             result = self._dispatch(prompt, spec, base_source, brain, runtime_mode=runtime_mode)
             if result.ok:
