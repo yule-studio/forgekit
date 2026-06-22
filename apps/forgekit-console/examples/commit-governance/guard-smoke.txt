@@ -1,0 +1,8 @@
+# GW2 commit-governance guard smoke
+commits in main..HEAD: 4
+  d8a951784379  📝 로드맵 GW1 완료 반영(reality matrix #5, GW1 acceptance)
+  f25fe343b61c  ✅ goal core 회귀 테스트 + round-trip evidence 추가
+  f860601e3925  ✨ forgekit-goal 패키지(goal plane 코어, GW1) 추가
+  91bb46adff04  📝 ForgeKit goal control-plane 로드맵 SSoT 추가
+co-authored-by / format violations (fake-ok validator): 0
+synthetic Co-Authored-By commit -> violations: 1 reason=co_authored_by_forbidden
