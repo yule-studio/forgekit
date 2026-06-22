@@ -1,0 +1,91 @@
+{
+  "result": {
+    "routing": {
+      "topic": "운영 콘솔 실패 알림",
+      "forwarded": true,
+      "to_role": "tech-lead",
+      "blocking_violations": [],
+      "reason": "brief+meeting 실재 확인 — tech-lead 기술 승인으로 라우팅"
+    },
+    "decision": {
+      "decision_id": "decision:m-notify-1",
+      "pm_brief_ref": "운영 콘솔 실패 알림",
+      "meeting_ref": "m-notify-1",
+      "design_system": "forgekit tokens v2",
+      "coding_convention": "ruff+black, 한글 gitmoji commit",
+      "stack_decision": {
+        "decision_topic": "알림 전달 메커니즘",
+        "options": [
+          {
+            "name": "webhook+queue",
+            "summary": "자체 큐",
+            "pros": [
+              "단순",
+              "관측 쉬움"
+            ],
+            "cons": [
+              "재시도 직접 구현"
+            ],
+            "risk": "",
+            "fit": 80
+          },
+          {
+            "name": "saas-bus",
+            "summary": "관리형 버스",
+            "pros": [
+              "관리형 재시도"
+            ],
+            "cons": [
+              "비용",
+              "vendor lock-in"
+            ],
+            "risk": "",
+            "fit": 55
+          }
+        ],
+        "recommended": "webhook+queue",
+        "rationale": "운영 단순성과 관측 가능성 우선",
+        "tradeoffs": [
+          "재시도 로직 직접 구현 부담"
+        ],
+        "assumptions": [
+          "일 알림량 < 10k"
+        ]
+      },
+      "tradeoffs": [
+        "재시도 로직 직접 구현 부담"
+      ],
+      "risk_class": "risky",
+      "approval_level": "L3_user_approve",
+      "conditions": [],
+      "rationale": "운영 단순성과 관측 가능성 우선",
+      "signoff_by": "tech-lead",
+      "status": "signed_off"
+    },
+    "handoff": {
+      "handoff_id": "handoff:decision:m-notify-1",
+      "decision_ref": "decision:m-notify-1",
+      "executor_role": "be",
+      "scope": [
+        "auth 권한 모델 변경"
+      ],
+      "forbidden_scope": [],
+      "test_strategy": "unit + integration + 회귀",
+      "rollback_plan": "",
+      "acceptance_criteria": [
+        "실패 1건당 1개 알림",
+        "5초 내 발송"
+      ],
+      "operator_required": true
+    },
+    "engineer_may_start": true,
+    "operator_required": true,
+    "violations": [],
+    "trace": [
+      "gateway:route→tech-lead",
+      "tech-lead:signed_off/L3_user_approve",
+      "engineer:handoff→be",
+      "engineer:start"
+    ]
+  }
+}

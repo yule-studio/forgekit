@@ -1,0 +1,179 @@
+{
+  "brief": {
+    "topic": "운영 콘솔 실패 알림",
+    "problem": "운영자가 실패를 늦게 인지",
+    "user_value": "평균 인지 시간(MTTA) 단축",
+    "target_users": [
+      "operator"
+    ],
+    "acceptance_criteria": [
+      "실패 1건당 1개 알림",
+      "5초 내 발송"
+    ],
+    "success_metrics": [
+      "MTTA 50% 감소"
+    ],
+    "constraints": [],
+    "out_of_scope": [],
+    "priority": "normal",
+    "requested_by": "operator"
+  },
+  "meeting": {
+    "meeting_id": "m-notify-1",
+    "topic": "알림 전달 스택",
+    "agenda": [
+      "스택 비교",
+      "운영 리스크"
+    ],
+    "participants": [
+      {
+        "role": "tech-lead",
+        "stance": "support",
+        "position": "웹훅+큐가 단순",
+        "concerns": []
+      },
+      {
+        "role": "be",
+        "stance": "conditional",
+        "position": "rate-limit 선행 필요",
+        "concerns": [
+          "폭주 시 스팸"
+        ]
+      }
+    ],
+    "decisions": [
+      "webhook+queue 채택"
+    ],
+    "open_questions": [],
+    "round_index": 1,
+    "escalated": false
+  },
+  "stack": {
+    "decision_topic": "알림 전달 메커니즘",
+    "options": [
+      {
+        "name": "webhook+queue",
+        "summary": "자체 큐",
+        "pros": [
+          "단순",
+          "관측 쉬움"
+        ],
+        "cons": [
+          "재시도 직접 구현"
+        ],
+        "risk": "",
+        "fit": 80
+      },
+      {
+        "name": "saas-bus",
+        "summary": "관리형 버스",
+        "pros": [
+          "관리형 재시도"
+        ],
+        "cons": [
+          "비용",
+          "vendor lock-in"
+        ],
+        "risk": "",
+        "fit": 55
+      }
+    ],
+    "recommended": "webhook+queue",
+    "rationale": "운영 단순성과 관측 가능성 우선",
+    "tradeoffs": [
+      "재시도 로직 직접 구현 부담"
+    ],
+    "assumptions": [
+      "일 알림량 < 10k"
+    ]
+  },
+  "result": {
+    "routing": {
+      "topic": "운영 콘솔 실패 알림",
+      "forwarded": true,
+      "to_role": "tech-lead",
+      "blocking_violations": [],
+      "reason": "brief+meeting 실재 확인 — tech-lead 기술 승인으로 라우팅"
+    },
+    "decision": {
+      "decision_id": "decision:m-notify-1",
+      "pm_brief_ref": "운영 콘솔 실패 알림",
+      "meeting_ref": "m-notify-1",
+      "design_system": "forgekit tokens v2",
+      "coding_convention": "ruff+black, 한글 gitmoji commit",
+      "stack_decision": {
+        "decision_topic": "알림 전달 메커니즘",
+        "options": [
+          {
+            "name": "webhook+queue",
+            "summary": "자체 큐",
+            "pros": [
+              "단순",
+              "관측 쉬움"
+            ],
+            "cons": [
+              "재시도 직접 구현"
+            ],
+            "risk": "",
+            "fit": 80
+          },
+          {
+            "name": "saas-bus",
+            "summary": "관리형 버스",
+            "pros": [
+              "관리형 재시도"
+            ],
+            "cons": [
+              "비용",
+              "vendor lock-in"
+            ],
+            "risk": "",
+            "fit": 55
+          }
+        ],
+        "recommended": "webhook+queue",
+        "rationale": "운영 단순성과 관측 가능성 우선",
+        "tradeoffs": [
+          "재시도 로직 직접 구현 부담"
+        ],
+        "assumptions": [
+          "일 알림량 < 10k"
+        ]
+      },
+      "tradeoffs": [
+        "재시도 로직 직접 구현 부담"
+      ],
+      "risk_class": "safe",
+      "approval_level": "L2_internal_approve",
+      "conditions": [],
+      "rationale": "운영 단순성과 관측 가능성 우선",
+      "signoff_by": "tech-lead",
+      "status": "signed_off"
+    },
+    "handoff": {
+      "handoff_id": "handoff:decision:m-notify-1",
+      "decision_ref": "decision:m-notify-1",
+      "executor_role": "be",
+      "scope": [
+        "packages/forgekit-runtime/src/forgekit_runtime/notify/webhook.py"
+      ],
+      "forbidden_scope": [],
+      "test_strategy": "unit + integration",
+      "rollback_plan": "",
+      "acceptance_criteria": [
+        "실패 1건당 1개 알림",
+        "5초 내 발송"
+      ],
+      "operator_required": false
+    },
+    "engineer_may_start": true,
+    "operator_required": false,
+    "violations": [],
+    "trace": [
+      "gateway:route→tech-lead",
+      "tech-lead:signed_off/L2_internal_approve",
+      "engineer:handoff→be",
+      "engineer:start"
+    ]
+  }
+}
