@@ -58,5 +58,15 @@ yule harness eval [--slug <slug>] [--date <YYYY-MM-DD>] [--json]
   schema 변경 없이 추가된다 — 후속 디자인 품질 축(reference adherence 등)을 여기 붙인다.
 - cost/latency 는 proxy/fixture — 변형 간 *상대* 비교용.
 
+## 4.1 always-on runtime — goal-continuity 가시성 (#372)
+
+`forgekit runtime status` / `/daemon`(`runtime/surface.daemon_status_lines`)은 daemon heartbeat
+뿐 아니라 **goal-driven continuity** 도 표면한다(`runtime/goal_status.goal_continuity_lines`):
+`goal-loop : active N(serve 자동 진행) · awaiting N(operator 승인 필요) · blocked · done` + awaiting
+시 **action-needed**(`/goal approve <id>`) + **last work**(실제 execution/verification evidence).
+goal store 를 직접 읽어 정직(없으면 "활성 goal 없음" / store 없음 — fake 진행 표기 없음). 즉 always-on
+loop 이 goal 을 진행하는지·무엇이 승인 대기인지 operator 가 runtime status 한 곳에서 본다. 회귀
+`test_goal_status_visibility`, evidence `examples/goal-visibility/`.
+
 ## 5. 관련
 - [`provider-capability-matrix.md`](provider-capability-matrix.md) · [`llm-minimization-policy.md`](llm-minimization-policy.md) · [`operations.md`](operations.md) · [`m13-readiness.md`](m13-readiness.md)

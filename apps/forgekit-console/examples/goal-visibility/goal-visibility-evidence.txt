@@ -1,0 +1,27 @@
+ForgeKit always-on runtime — goal-continuity 가시성 (operator-visible) — deterministic evidence
+재현: tests/forgekit/test_goal_status_visibility.py
+
+==============================================================================
+STEP 1 — goal 없음: 정직 표기(fake 진행 없음)
+==============================================================================
+forgekit always-on daemon — stopped
+  goal-loop : 활성 goal 없음 (`/goal new <제목>` → `/goal activate <id>` 로 시작)
+
+==============================================================================
+STEP 2 — active(진행) 1 + awaiting(승인 필요) 1: runtime status 가 둘 다 표면
+==============================================================================
+forgekit always-on daemon — stopped
+  status    : stopped · tick 0
+  last tick : -
+  last note : no heartbeat
+  kill-switch: clear
+  (데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 bounded 시작)
+  goal-loop : active 1 (serve 가 자동 진행) · awaiting 1 (operator 승인 필요) · blocked 0 · done 0
+      ⚠ action-needed: 1 goal awaiting_approval — `/goal awaiting` → `/goal approve <id>`
+      last work: bounded write 재읽기 검증 통과 (goal-dc8d57609f6f)
+  [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]
+
+==============================================================================
+STEP 3 — machine-readable status
+==============================================================================
+{'available': True, 'total': 2, 'active': 1, 'awaiting_approval': 1, 'blocked': 0, 'done': 0, 'last_work': 'bounded write 재읽기 검증 통과', 'last_work_goal': 'goal-dc8d57609f6f', 'reason': 'ok'}
