@@ -44,6 +44,14 @@ class PromptArea(TextArea):
     PromptArea > .text-area--cursor-line {
         background: transparent;   /* no full-width line highlight — reads like an input bar */
     }
+    PromptArea > .text-area--selection {
+        /* Operator text-selection in the input must be clearly readable against the
+           transparent brand theme — Textual's default selection is off-brand/low-contrast
+           on this dark surface. Desaturated-cyan block keeps the light FG text legible
+           (real selection contrast, not a CSS no-op). */
+        background: $accent-dim;
+        color: $text;
+    }
     """
 
     class Submitted(events.Message):

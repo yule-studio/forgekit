@@ -1,0 +1,12 @@
+ForgeKit console parity — input selection contrast (runtime resolved property)
+==============================================================================
+Method: 실 app pilot mount → PromptArea.get_component_styles('text-area--selection').
+CSS-string 추측 아님 — Textual 이 실제 resolve 한 Color property 검증.
+
+  selection.background = #2F6F7A  (brand $accent-dim #2f6f7a)
+  selection.color      = #E8EAF0  (brand $text #e8eaf0)
+  screen background    = #0b0d12
+  contrast(FG on selection) = 4.75:1  (>3:1 readable)
+
+→ 입력창 텍스트 선택이 transparent 다크 테마 위에서 또렷하게 읽힘(기존 Textual 기본값 대체).
+  마우스 드래그 native 선택(터미널)은 inline 모드/터미널 소관(구조 한계 — 별도 문서).
