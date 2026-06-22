@@ -52,9 +52,11 @@ from .enforcement import (
     OperatorApproval,
     assert_executable,
     authorize_execution,
+    authorize_runtime_execution,
     bridge_to_autopilot,
     classify_action,
     execution_commit_trailers,
+    make_runtime_authorizer,
     validate_execution_trailers,
 )
 
@@ -73,5 +75,6 @@ __all__ = (
     "SAFE", "RISKY", "DESTRUCTIVE", "ExecutionBlocked",
     "ActionRequest", "OperatorApproval", "ExecutionVerdict",
     "classify_action", "authorize_execution", "assert_executable",
+    "authorize_runtime_execution", "make_runtime_authorizer",
     "bridge_to_autopilot", "execution_commit_trailers", "validate_execution_trailers",
 )

@@ -37,7 +37,8 @@ from .schemas import (
 )
 
 # canonical roles that may NOT be the single engineer executor (they decide/route)
-_NON_EXECUTOR = frozenset({"gateway", "tech-lead", "product-manager"})
+NON_EXECUTOR_ROLES = frozenset({"gateway", "tech-lead", "product-manager"})
+_NON_EXECUTOR = NON_EXECUTOR_ROLES  # backward-compat alias
 
 
 def _blank(s: str) -> bool:
@@ -200,5 +201,5 @@ def validate_handoff(handoff: EngineerHandoff, decision: TechLeadDecision) -> Tu
 
 __all__ = (
     "validate_pm_brief", "validate_stack_comparison", "validate_meeting",
-    "validate_tech_lead_decision", "validate_handoff",
+    "validate_tech_lead_decision", "validate_handoff", "NON_EXECUTOR_ROLES",
 )
