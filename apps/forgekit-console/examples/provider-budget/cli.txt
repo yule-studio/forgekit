@@ -1,0 +1,50 @@
+ForgeKit `/provider budget` 운영 콘솔 표면 — deterministic evidence (no fake, no net)
+재현: tests/forgekit/test_provider_budget_cli.py
+
+==============================================================================
+STEP 0 — 브레인 구성 (budget 는 기존 브레인의 ring-fencing — 빈 config 영속 거부)
+==============================================================================
+$ /provider set gemini   [info]
+  primary provider = gemini 저장됨. `/provider` 로 확인, `/mode` 로 routing.
+$ /provider link ollama   [info]
+  ollama linked (live).
+
+==============================================================================
+STEP 1 — 한도 설정 + 영속 (set → reload show)
+==============================================================================
+$ /provider budget gemini 50000   [info]
+  per-provider budget gemini = 50000tok/day 저장됨 (초과 시 routing 이 정직하게 fallback/거부). `/provider budget show` 로 확인.
+$ /provider budget show   [info]
+  per-provider budget (오늘 기준):
+    gemini     0/50000tok (0%)
+    초과 provider 는 routing 이 정직하게 fallback/거부합니다 (가짜 전송 없음).
+    한도 없는 provider 는 표시되지 않음 = unbounded (global budget 만 적용).
+
+==============================================================================
+STEP 2 — 오늘 spent/over 정직 표시 (usage ledger 기반, 가짜 숫자 없음)
+==============================================================================
+$ /provider budget show   [info]
+  per-provider budget (오늘 기준):
+    gemini     55000/50000tok (110%) ⚠ OVER
+    초과 provider 는 routing 이 정직하게 fallback/거부합니다 (가짜 전송 없음).
+    한도 없는 provider 는 표시되지 않음 = unbounded (global budget 만 적용).
+
+==============================================================================
+STEP 3 — 해제 = unbounded (0 이하 → 한도 제거, 절대 0 으로 invent 안 함)
+==============================================================================
+$ /provider budget gemini 0   [info]
+  per-provider budget gemini 해제됨 (unbounded — global budget 만 적용). `/provider budget show` 로 확인.
+$ /provider budget show   [info]
+  per-provider budget: 미설정
+    설정된 provider 한도 없음 — 전 provider unbounded (global budget 만 적용).
+    설정: `/provider budget <id> <limit>` (예: gemini 50000). 해제: `/provider budget <id> 0`.
+
+==============================================================================
+STEP 4 — 정직한 에러 (unknown id / non-integer / missing limit, silent no-op 없음)
+==============================================================================
+$ /provider budget bogus 1000   [error]
+  알 수 없는 provider: bogus (built-in: claude, codex, gemini, ollama). custom 은 config 로 추가하세요.
+$ /provider budget gemini lots   [error]
+  limit 는 정수여야 합니다 (받은 값: 'lots'). 예: `/provider budget gemini 50000`.
+$ /provider budget gemini   [error]
+  limit(일일 토큰 한도, 정수)이 필요합니다 — `/provider budget <id> <limit>` (0 이하 = 해제).
