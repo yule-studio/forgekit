@@ -301,15 +301,55 @@ def budget_lines(cfg: Optional[Mapping], rows: Sequence[Mapping] = ()) -> Tuple[
     return tuple(lines)
 
 
+def _slot_route_line(parsed, slot: str) -> str:
+    """One honest `declared → actual` line for *slot*, resolving the EXPLICIT fallback.
+
+    The point of this surface: a non-chat work slot often DECLARES a CLI brain
+    (codex/claude = routing-only) yet has an explicit fallback to a live transport
+    (gemini/ollama). Showing only the declared target made those slots look broken
+    (`execution → codex (unsupported_in_console)`); resolving them shows the ACTUAL
+    live provider the fallback reaches — or an honest "no live path" when it can't."""
+
+    res = rt.resolve_routing(parsed, slot)
+    # default_chat is the ONE slot the live submit path actually drives today; mark it ●.
+    is_chat = slot == pc.SLOT_DEFAULT_CHAT
+    if res.status == rt.RESOLVE_FALLBACK:
+        glyph = "●" if is_chat else "◐"
+        return (f"  {glyph} {slot:<14} {res.declared_provider} → {res.actual_provider}"
+                f"   [dim]declared routing-only → fallback live[/dim]")
+    if res.is_live_capable:                      # declared provider is itself a live transport
+        glyph = "●" if is_chat else "◐"
+        return f"  {glyph} {slot:<14} {res.actual_provider}   [dim]live[/dim]"
+    if res.status == rt.RESOLVE_UNSUPPORTED:      # declared + every fallback are routing-only
+        return (f"  ○ {slot:<14} {res.declared_provider} → (live 경로 없음)"
+                f"   [dim]routing-only, fallback 도 live 불가 — `/provider route set {slot} <gemini|ollama>`[/dim]")
+    # no primary at all → setup-required (caller already guards, but stay honest per-line).
+    return f"  ○ {slot:<14} (미설정)   [dim]{res.reason}[/dim]"
+
+
 def route_show_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
-    """`/provider route show` — slot routing + fallback policy 가시화."""
+    """`/provider route show` — slot routing resolved to the ACTUAL live provider per slot.
+
+    Each slot is resolved through :func:`routing.resolve_routing` (declared + explicit
+    fallback), so the operator sees, per slot, the real live transport — not a bare
+    `unsupported_in_console` on every CLI-declared work slot. Chat (``default_chat``) is the
+    one slot the live submit path drives today; the rest are routing DECLARATIONS for
+    autonomous non-chat work, resolved with the same honest fallback."""
 
     parsed = pc.load_provider_config(cfg)
-    lines = ["slot routing (declared → primary if unset):"]
+    if not parsed.primary_provider:
+        return (
+            "slot routing: [setup-required] primary provider 미설정",
+            "  `/provider set <id>` 또는 `/provider preset four-brain` 후 다시 보세요.",
+        )
+    lines = ["slot routing — declared brain → actual live provider (explicit fallback 반영):",
+             "  [dim]default_chat(●) = 실제 live submit 경로 · 그 외(◐/○) = 자율 non-chat work routing 선언[/dim]"]
     for slot in pc.ROUTING_SLOTS:
-        tgt = parsed.slot_target(slot)
-        lines.append(f"  {slot:<14} → {tgt} ({_live_word(tgt)})")
+        lines.append(_slot_route_line(parsed, slot))
     lines.append(f"  fallback: implicit_local={'on' if parsed.implicit_local_fallback else 'off (기본)'}")
+    lines.append("  [dim]범례: ● live submit · ◐ routing 선언(live 도달) · ○ live 경로 없음.[/dim]")
+    lines.append("  [dim]claude/codex 는 routing-only(brain participant) — 실제 전송은 fallback 의 "
+                 "live transport(gemini/ollama)가 담당.[/dim]")
     return tuple(lines)
 
 

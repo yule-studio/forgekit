@@ -112,6 +112,57 @@ class LinkRouteTests(unittest.TestCase):
         self.assertIn("implicit_local", lines)
 
 
+class RouteShowResolutionTests(unittest.TestCase):
+    """`/provider route show` must resolve EACH slot to its ACTUAL live provider via the
+    explicit fallback — not print a bare `unsupported_in_console` on every CLI-declared
+    work slot. This is the non-chat slot fallback / declared-vs-actual confusion the lane
+    closes: an operator must see that `execution → codex` actually reaches gemini."""
+
+    def test_four_brain_work_slots_show_fallback_to_live(self) -> None:
+        fb = ops.preset_four_brain({})
+        lines = ps.route_show_lines(fb)
+        joined = "\n".join(lines)
+        # execution DECLARES codex (CLI, routing-only) but its fallback is [codex, gemini, ollama]
+        # → the surface must resolve it to the live transport, NOT leave it looking broken.
+        self.assertTrue(any("execution" in l and "codex → gemini" in l for l in lines),
+                        f"execution slot should resolve codex→gemini fallback:\n{joined}")
+        self.assertTrue(any("safety" in l and "claude → gemini" in l for l in lines),
+                        f"safety slot should resolve claude→gemini fallback:\n{joined}")
+        # default_chat is the one true live submit slot → marked ● and resolves to gemini.
+        self.assertTrue(any(l.lstrip().startswith("●") and "default_chat" in l and "gemini" in l
+                            for l in lines), f"default_chat should be ● live gemini:\n{joined}")
+        # no work slot may be left showing a bare unsupported word when a live fallback exists.
+        self.assertNotIn("unsupported_in_console", joined)
+        self.assertNotIn("(live 경로 없음)", joined)
+
+    def test_no_live_fallback_is_honest_no_path_with_next_action(self) -> None:
+        # safety declared claude with a fallback of ONLY routing-only brains → genuinely no live path.
+        cfg = {
+            "primary_provider": "claude",
+            "linked_providers": ["claude", "codex"],
+            "slot_routing": {"safety": "claude"},
+            "fallback_policy": {"slot_fallback_orders": {"safety": ["claude", "codex"]}},
+        }
+        lines = [l for l in ps.route_show_lines(cfg) if "safety" in l]
+        self.assertTrue(lines, "safety slot line missing")
+        line = lines[0]
+        self.assertIn("(live 경로 없음)", line)               # honest: no faked live
+        self.assertIn("/provider route set safety", line)     # actionable next step (no dead-end)
+        self.assertTrue(line.lstrip().startswith("○"))
+
+    def test_setup_required_when_no_primary(self) -> None:
+        lines = "\n".join(ps.route_show_lines({}))
+        self.assertIn("setup-required", lines)
+        self.assertIn("/provider set", lines)
+
+    def test_legend_separates_chat_vs_nonchat(self) -> None:
+        joined = "\n".join(ps.route_show_lines(ops.preset_four_brain({})))
+        # the surface explicitly tells the operator chat = live submit, others = routing declaration.
+        self.assertIn("live submit", joined)
+        self.assertIn("routing 선언", joined)
+        self.assertIn("routing-only", joined)   # claude/codex framed as brain participants, honestly
+
+
 class RoutingTests(unittest.TestCase):
     def test_provider_subcommands_route(self) -> None:
         from forgekit_console.commands.parser import parse_input

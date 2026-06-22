@@ -82,6 +82,27 @@ slot → capability 매핑(optimized): execution→`execution`, research→`rese
 `slot_for(mode, kind)` / `resolve_submit(cfg, mode, kind=WORK_CHAT)` 가 진입점. `mode_submit_slot`
 은 back-compat(=`mode_work_slot`). 회귀 `tests/forgekit/test_routing.py`.
 
+### 2.2 `/provider route show` — slot 별 declared → **actual** (fallback 반영)
+
+`/provider route show`(`provider_surface.route_show_lines`)는 각 slot 을 **선언값이 아니라
+`resolve_routing` 으로 해소한 실제 live provider**로 보여준다. 이전엔 slot 의 declared target 과
+그 transport word 만 찍어서, four-brain 처럼 work slot 이 CLI brain 을 declare 하면
+`execution → codex (unsupported_in_console)` 로 보였다 — fallback 이 gemini 로 닿는데도 **망가진
+것처럼** 보이는 게 운영자 혼란의 핵심이었다. 이제:
+
+- `default_chat`(●) — **실제 live submit 경로**(`chat/service` 가 쓰는 단 하나의 slot). 그 외
+  slot(◐/○)은 자율 **non-chat work** 의 routing 선언이며 같은 explicit fallback 으로 해소된다.
+- declared 가 routing-only(claude/codex)여도 explicit fallback 이 live transport(gemini/ollama)에
+  닿으면 `declared → actual` 로 표기(예: `execution  codex → gemini`). **fake-live 아님** —
+  `resolve_routing` 의 검증된 결과만 표기한다.
+- declared + 전체 fallback 이 전부 routing-only 면 `○ … → (live 경로 없음)` 로 **정직하게** 막힌
+  상태와 다음 액션(`/provider route set <slot> <gemini|ollama>`)을 보여준다 — dead-end 없음.
+- primary 미설정이면 `setup-required` 로 `/setup` 안내.
+
+요점: chat(live submit) 과 non-chat(routing 선언)을 **표면에서 분리**하고, non-chat slot 의
+fallback 해소를 **숨기지 않는다**. 회귀 `tests/forgekit/test_provider_surface.py`
+(`RouteShowResolutionTests`), evidence `examples/provider-route/`.
+
 ## 3. Main-provider 기본값 (`policy/main_profile.py`)
 
 setup 의 단 하나의 결정 — "어느 provider 가 네 것인가" — 에서 기본값을 파생한다.
