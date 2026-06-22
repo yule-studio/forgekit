@@ -56,6 +56,11 @@ class DifferentiationHypothesis:
     def to_dict(self) -> dict:
         return {"hypothesis": self.hypothesis, "rationale": self.rationale}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "DifferentiationHypothesis":
+        d = d or {}
+        return cls(hypothesis=d.get("hypothesis", ""), rationale=d.get("rationale", ""))
+
 
 @dataclass(frozen=True)
 class NextExperiment:
@@ -64,6 +69,12 @@ class NextExperiment:
 
     def to_dict(self) -> dict:
         return {"experiment": self.experiment, "success_metric": self.success_metric}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "NextExperiment":
+        d = d or {}
+        return cls(experiment=d.get("experiment", ""),
+                   success_metric=d.get("success_metric", ""))
 
 
 @dataclass(frozen=True)
@@ -84,6 +95,18 @@ class IdeaBrief:
             "next_experiment": self.next_experiment.to_dict(),
             "references": list(self.references), "score": self.score,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "IdeaBrief":
+        d = d or {}
+        return cls(
+            title=d.get("title", ""), problem=d.get("problem", ""),
+            target_user=d.get("target_user", "일반 사용자"),
+            differentiation=DifferentiationHypothesis.from_dict(d.get("differentiation")),
+            next_experiment=NextExperiment.from_dict(d.get("next_experiment")),
+            references=tuple(d.get("references", ()) or ()),
+            score=float(d.get("score", 0.0) or 0.0),
+        )
 
 
 @dataclass(frozen=True)
