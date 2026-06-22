@@ -256,7 +256,13 @@ def connection_status(env: Optional[Mapping[str, str]] = None,
     if not readable:
         return {"status": SRC_BLOCKED, "root": str(root), "connected": False,
                 "reason": "root 읽기 불가(permission/TCC)"}
-    return {"status": SRC_EXISTS, "root": str(root), "connected": True, "reason": "연결됨"}
+    # connected — enrich with honest vault awareness (is it an Obsidian vault? how many notes?).
+    # Back-compat: status/root/connected/reason keys unchanged; is_vault/note_count are additive.
+    from . import nexus_vault as _vault
+    insp = _vault.inspect_vault(root)
+    return {"status": SRC_EXISTS, "root": str(root), "connected": True, "reason": "연결됨",
+            "is_vault": insp.is_obsidian, "note_count": insp.note_count,
+            "empty": insp.note_count == 0, "kb_present": list(insp.present_dirs)}
 
 
 __all__ = (
