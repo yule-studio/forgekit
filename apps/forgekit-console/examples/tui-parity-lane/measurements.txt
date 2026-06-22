@@ -17,7 +17,7 @@ No CSS reading, no faked numbers, no fake typing.
 
 [5] process event feed — REAL ordered events (Routing/Submit/Generate/Done)
   feed_order=['submit_start', 'submit_sent', 'generate_start', 'done']
-  generate_start.duration_ms=26 (measured, not faked)
+  generate_start.duration_ms=23 (measured, not faked)
 
 [6] progressive reveal — real content-derived chunk append (no fake typing)
   expected_chunks=3  revealed_chunks=3  event_detail='3 chunks'

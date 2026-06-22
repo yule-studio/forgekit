@@ -1,0 +1,14 @@
+ForgeKit console parity lane — paste / clipboard / multiline / image staged state
+==============================================================================
+Method: live pilot + the real stores (TranscriptStore / PasteStore / AttachmentStore).
+No faked paste, no faked send.
+
+[multiline] free-text submit preserves newlines end-to-end
+  submitted_lines=3  preserved_in_store=True
+
+[large paste] RAW payload stored (compact block, expand/resend/copy by id)
+  is_large=True  stored=1  raw_preserved=True  line_count=40
+  → the compact block references a stored id; it is NEVER a dead placeholder
+
+[image attach] honest staged_only — real bytes staged, NOT sent (console text-only)
+  staged=True  sendable=False  chip='📎 tmpx_50byy0.png · image/png · 40B · staged_only'

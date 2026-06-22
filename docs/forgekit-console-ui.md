@@ -117,8 +117,13 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 > chunk reveal)를 **한 harness** 로 런타임 측정한다 — geometry(region) + counter(`_turns_finalized`,
 > `_gen_chunks`) + 측정 duration + content-derived chunk 수. CSS 추측·가짜 숫자·fake typing 없음.
 > 코드 `test_tui_console_parity_lane.py`, 증거 `examples/tui-parity-lane/measurements.txt`
-> (`FORGEKIT_PARITY_EVIDENCE=<path>` 로 재생성). copy 는 pbcopy/pbpaste 존재 시 **실 round-trip**
-> 검증(없으면 honest skip).
+> (+ `measurements-ingest.txt` = paste/clipboard/multiline/image staged 상태) —
+> `FORGEKIT_PARITY_EVIDENCE=<path>` 로 재생성. copy 는 pbcopy/pbpaste 존재 시 **실 round-trip**
+> 검증(없으면 honest skip), multiline 은 store 보존, large paste 는 raw 보존, image 는 staged_only.
+>
+> **process feed 어휘(정직):** 실제 행동에만 매핑 — `Routing /x` → `Routed` → `Submitting to <provider>`
+> → `Sent` → `Generating`(실 chunk 수) → `Done`. coding shell 이 아니라 provider 콘솔이라 가짜
+> `Reading`/`Thinking` 라벨은 두지 않는다(없는 단계를 만들지 않음). 코드 `tui/process_events.py`.
 
 ## 5. Paste / attach ingestion (large paste · image)
 **근본 원인(실측):** ForgeKit 은 `[Pasted text #N]`/`[Image #N]` 를 **생성하지 않는다**(grep clean).

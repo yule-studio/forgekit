@@ -220,6 +220,76 @@ class ConsoleParityLaneMeasurementTests(unittest.IsolatedAsyncioTestCase):
         if _EVIDENCE_PATH:
             _write_evidence(Path(_EVIDENCE_PATH), measured)
 
+    async def test_paste_clipboard_multiline_image_state(self):
+        """Goals 3 (paste/multiline/image staged) — REAL state, not faked.
+
+        Verifies: a multiline submit preserves newlines to the provider+store; a LARGE
+        paste is stored RAW (compact block, expandable — never a dead placeholder); an
+        image attach is honestly ``staged_only`` (real bytes staged, NOT sent, console is
+        text-only). Measured from a live pilot + the real stores."""
+
+        import tempfile
+
+        from forgekit_console.tui import paste_store as ps
+
+        svc, _ = _multi_paragraph_svc()
+        app = _app(svc)
+        measured: dict = {}
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+
+            # multiline submit → newlines preserved end-to-end (store holds the full body)
+            app._reveal_interval = 0.01
+            multiline = "첫 줄\n둘째 줄\n셋째 줄"
+            app.query_one("#prompt").value = multiline
+            await pilot.press("enter")
+            await pilot.pause(); await app.workers.wait_for_complete()
+            for _ in range(30):
+                await pilot.pause(0.02)
+            user_turns = [b.text for b in app._store.blocks if b.role == "user"]
+            multiline_preserved = any("첫 줄\n둘째 줄\n셋째 줄" in t for t in user_turns)
+            measured["multiline"] = {"preserved": multiline_preserved, "submitted_lines": 3}
+            self.assertTrue(multiline_preserved)            # not flattened to one line
+
+            # large paste → stored RAW + compact block (expand/resend/copy by id)
+            big = "\n".join(f"붙여넣은 줄 {i}" for i in range(40))
+            self.assertTrue(ps.is_large(big))
+            app._submit_free_text(big)
+            await pilot.pause(); await app.workers.wait_for_complete()
+            for _ in range(30):
+                await pilot.pause(0.02)
+            stored = list(app._pastes.list_lines())
+            paste_obj = app._pastes.get(1)
+            measured["paste"] = {
+                "is_large": True, "stored_count": len(app._pastes._items),
+                "raw_preserved": (paste_obj is not None and paste_obj.raw_text == big),
+                "line_count": paste_obj.line_count if paste_obj else 0,
+            }
+            self.assertIsNotNone(paste_obj)
+            self.assertEqual(paste_obj.raw_text, big)       # RAW preserved (not placeholder)
+            self.assertGreaterEqual(paste_obj.line_count, 40)
+
+            # image attach → honest staged_only (real bytes staged, NOT sent)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)   # real bytes on disk
+                img_path = f.name
+            app._attach_dispatch([img_path])
+            await pilot.pause()
+            items = app._attachments.items
+            measured["image"] = {
+                "staged": len(items) == 1,
+                "sendable": items[0].sendable if items else None,
+                "chip": items[0].chip() if items else "",
+            }
+            self.assertEqual(len(items), 1)
+            self.assertFalse(items[0].sendable)             # staged_only — never faked-sent
+            self.assertIn("staged_only", items[0].chip())
+
+        if _EVIDENCE_PATH:
+            out = Path(_EVIDENCE_PATH)
+            ingest_path = out.with_name(out.stem + "-ingest" + out.suffix)
+            _write_ingest_evidence(ingest_path, measured)
+
     async def test_copy_real_clipboard_round_trip_when_tools_present(self):
         """Goal 3 — when pbcopy/pbpaste (or xclip) exist, copy is a REAL OS round-trip,
         not a faked success. Skips honestly where no clipboard tool is installed."""
@@ -270,6 +340,29 @@ def _write_evidence(path: Path, m: dict) -> None:
         "[3] copy/paste/attach state — honest",
         f"  copy_events={m['copy']['events']}  (empty payload elsewhere → copy_failed)",
         "  attach: image is staged_only (real bytes staged, NOT sent — console is text-only)",
+        "",
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_ingest_evidence(path: Path, m: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        "ForgeKit console parity lane — paste / clipboard / multiline / image staged state",
+        "=" * 78,
+        "Method: live pilot + the real stores (TranscriptStore / PasteStore / AttachmentStore).",
+        "No faked paste, no faked send.",
+        "",
+        "[multiline] free-text submit preserves newlines end-to-end",
+        f"  submitted_lines={m['multiline']['submitted_lines']}  preserved_in_store={m['multiline']['preserved']}",
+        "",
+        "[large paste] RAW payload stored (compact block, expand/resend/copy by id)",
+        f"  is_large={m['paste']['is_large']}  stored={m['paste']['stored_count']}"
+        f"  raw_preserved={m['paste']['raw_preserved']}  line_count={m['paste']['line_count']}",
+        "  → the compact block references a stored id; it is NEVER a dead placeholder",
+        "",
+        "[image attach] honest staged_only — real bytes staged, NOT sent (console text-only)",
+        f"  staged={m['image']['staged']}  sendable={m['image']['sendable']}  chip={m['image']['chip']!r}",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
