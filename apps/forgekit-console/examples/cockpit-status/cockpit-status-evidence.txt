@@ -1,0 +1,31 @@
+ForgeKit console — operator cockpit status line — deterministic evidence
+재현: tests/forgekit/test_tui_cockpit_status.py
+
+==============================================================================
+STEP 1 — 기본(승인대기 0 · budget 미설정): 기존과 동일, 배지 없음
+==============================================================================
+[#00d8f0]◆[/#00d8f0] [b]auto[/b] [dim]· routing balanced · usage live · approval internal · loop on[/dim]
+
+==============================================================================
+STEP 2 — 승인대기 goal 1 (warn 배지 + 행동 포인터)
+==============================================================================
+[#00d8f0]◆[/#00d8f0] [b]auto[/b] [dim]· routing balanced · usage live · approval internal · loop on[/dim] [#e0b020]· 1 승인대기 (/goal awaiting)[/#e0b020]
+
+==============================================================================
+STEP 3 — budget 42% (여유 → dim) vs 95% (한계 근접 → warn)
+==============================================================================
+[#00d8f0]◆[/#00d8f0] [b]auto[/b] [dim]· routing balanced · usage live · approval internal · loop on[/dim] [dim]· budget 42%[/dim]
+[#00d8f0]◆[/#00d8f0] [b]auto[/b] [dim]· routing balanced · usage live · approval internal · loop on[/dim] [#e0b020]· budget 95%[/#e0b020]
+
+==============================================================================
+STEP 4 — 둘 다: 승인대기 2 + budget 93% (operator 가 한눈에)
+==============================================================================
+[#00d8f0]◆[/#00d8f0] [b]auto[/b] [dim]· routing balanced · usage live · approval internal · loop on[/dim] [#e0b020]· budget 93%[/#e0b020] [#e0b020]· 2 승인대기 (/goal awaiting)[/#e0b020]
+
+==============================================================================
+STEP 5 — 실제 goal store 카운트 (재구현 없이 goal_continuity_status 재사용)
+==============================================================================
+goal store awaiting_approval 실측: 2
+[#00d8f0]◆[/#00d8f0] [b]auto[/b] [dim]· routing balanced · usage live · approval internal · loop on[/dim] [#e0b020]· 2 승인대기 (/goal awaiting)[/#e0b020]
+
+(끝) — 모든 숫자는 실제 store/ledger 에서 측정 · CSS 아닌 구조 · 가짜 0

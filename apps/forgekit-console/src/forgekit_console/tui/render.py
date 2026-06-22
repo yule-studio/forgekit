@@ -152,19 +152,37 @@ def submit_held_line(mode_label: str, action: str) -> str:
 
 
 def runtime_mode_line(
-    label: str, policy_mode: str, usage_mode: str, approval: str, *, loop: bool
+    label: str, policy_mode: str, usage_mode: str, approval: str, *, loop: bool,
+    awaiting: int = 0, budget_ratio: Optional[float] = None,
 ) -> str:
     """A compact one-line summary of the current runtime mode + its real posture.
 
     Shown on the operator surface (issue line / mode change) so Shift+Tab is never
     "just a label" — the resolved routing / usage / approval / loop are visible.
+
+    Operator-cockpit badges (GW5) extend the line with the two control-plane facts an
+    operator otherwise had to POLL for: ``awaiting`` (goals parked in awaiting_approval —
+    a real count from the goal store) and ``budget_ratio`` (today's token spend ÷ budget,
+    real from the usage ledger). Both default OFF so existing callers/tests are unchanged;
+    the awaiting badge is warn-coloured + carries the action pointer so it can't be missed,
+    and the budget badge turns warn at ≥90%. Numbers only — never a fabricated posture.
     """
 
     loop_s = "loop on" if loop else "loop off"
-    return (
+    line = (
         f"[{_ACCENT}]◆[/{_ACCENT}] [b]{label}[/b] "
         f"[dim]· routing {policy_mode} · usage {usage_mode} · approval {approval} · {loop_s}[/dim]"
     )
+    if budget_ratio is not None:
+        pct = int(budget_ratio * 100)
+        if budget_ratio >= 0.9:
+            line += f" [{_WARN}]· budget {pct}%[/{_WARN}]"
+        else:
+            line += f" [dim]· budget {pct}%[/dim]"
+    if awaiting > 0:
+        word = "승인대기"
+        line += f" [{_WARN}]· {awaiting} {word} (/goal awaiting)[/{_WARN}]"
+    return line
 
 
 def issue_line(summary: StatusSummary) -> str:
