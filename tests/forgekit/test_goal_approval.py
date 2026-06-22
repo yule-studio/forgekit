@@ -105,6 +105,36 @@ class GoalApprovalTest(unittest.TestCase):
             self.assertNotIn("safe·게이트 통과", e.summary)
             self.assertNotIn("실행 인가", e.summary)
 
+    def test_approve_executed_packet_preserves_bridge_evidence(self) -> None:
+        # A safe, executable packet → GW4-B runs the real gate and writes
+        # execution+verification evidence + persists. The surface must RELOAD that
+        # authoritative goal, NOT overwrite it with a stale copy (the integration bug
+        # this guards). Reload must show the bridge's real evidence + the operator decision.
+        import tempfile
+
+        from forgekit_runtime.selfimprove import goal_tick
+
+        class _Sig:
+            def __init__(self, t: str) -> None:
+                self.text = t
+
+        repo = tempfile.mkdtemp()
+        g = Goal.create("self-manage ForgeKit", mode="auto")
+        g = transitions.apply(g, GoalStatus.ACTIVE)
+        res = goal_tick.tick_goal(g, repo, signals=[_Sig("콘솔 도움말 문구 개선")])
+        self.assertEqual(len(res.goal.packets), 1)               # a real linked packet
+        parked = transitions.apply(res.goal, GoalStatus.AWAITING_APPROVAL)
+        GoalStore(env=self.env).save(parked)
+
+        out = _route(f"/goal approve {parked.id}", self.env)
+        self.assertEqual(out.kind, KIND_INFO)
+        self.assertIn("실행됨", out.lines[0])                     # REAL executed outcome surfaced
+        reloaded = self._get(parked.id)
+        kinds = [e.kind for e in reloaded.evidence]
+        self.assertIn("execution", kinds)                        # bridge evidence PRESERVED
+        self.assertIn("verification", kinds)                     # (not overwritten by surface)
+        self.assertIn("decision", kinds)                         # operator decision also kept
+
     def test_approve_missing_goal_is_error(self) -> None:
         res = _route("/goal approve goal-nope", self.env)
         self.assertEqual(res.kind, KIND_ERROR)

@@ -1,33 +1,31 @@
-ForgeKit operator cockpit — in-console approve/deny (real router + goal store)
+ForgeKit operator cockpit — approve/deny + GW4-B 실행 연결 (real router+store+bridge)
 ==============================================================================
-Method: 실 router(route) + 실 GoalStore(tmp FORGEKIT_HOME). no mock, no fake execute.
-승인=awaiting_approval→active+decision evidence, 거부=→blocked+decision evidence.
-GW4-B 실행 bridge 미연결 → approve 는 '실행 대기' 정직 표기(execution evidence 없음).
+Method: 실 route + 실 GoalStore + 실 GW4-B execute_approved_packet. mock/fake 없음.
+approve = awaiting_approval→active + decision evidence, 그 뒤 GW4-B 실행 bridge 호출.
+bridge 가 execution+verification evidence 를 직접 persist → surface 는 RELOAD(덮어쓰기 금지).
+safe packet → 실행됨, risky packet → 실행 거부(가짜 실행 없음). 실제 outcome 을 콘솔에 표면.
 
 $ /goal awaiting  [info]
   2 goal 승인 대기:
-    goal-5a7a0763ab2a  스키마 마이그레이션
-      linked packets: packet-migrate-1
-      승인: `/goal approve goal-5a7a0763ab2a [메모]`   거부: `/goal deny goal-5a7a0763ab2a [메모]`
-    goal-bc4df3a6e234  배포 파이프라인 구성
-      linked packets: packet-deploy-1, packet-deploy-2
-      승인: `/goal approve goal-bc4df3a6e234 [메모]`   거부: `/goal deny goal-bc4df3a6e234 [메모]`
+    goal-7d92df0edc26  auth 대규모 변경
+      linked packets: packet-b204066fabee
+      승인: `/goal approve goal-7d92df0edc26 [메모]`   거부: `/goal deny goal-7d92df0edc26 [메모]`
+    goal-08921ea58a7c  self-manage ForgeKit
+      linked packets: packet-e0191b811b01
+      승인: `/goal approve goal-08921ea58a7c [메모]`   거부: `/goal deny goal-08921ea58a7c [메모]`
 
-$ /goal approve goal-bc4df3a6e234 운영자 승인  [info]
-  goal-bc4df3a6e234 승인 -> active  · 승인됨(실행 대기 — GW4-B 실행 bridge 미연결)
+$ /goal approve goal-08921ea58a7c 운영자 승인  (safe packet)  [info]
+  goal-08921ea58a7c 승인 -> active  · 실행됨(safe·게이트 통과 · execution+verification 기록 · executor=backend-engineer)
 
-$ /goal deny goal-5a7a0763ab2a 마이그레이션 범위 밖  [info]
-  goal-5a7a0763ab2a 거부 -> blocked  · 거부됨(blocked, 재검토 가능)
+$ /goal evidence goal-08921ea58a7c  (decision+execution+verification 보존)  [info]
+  goal-08921ea58a7c evidence (4):
+    - 2026-06-22T04:27:17.604726+00:00  [proposal] [safe] 콘솔 도움말 문구 개선 -> safe → tech-lead ready (승인 체계 내 자동 가능)  (packet-e0191b811b01)
+    - 2026-06-22T04:27:17.605897+00:00  [decision] operator 승인: 운영자 승인
+    - 2026-06-22T04:27:17.606184+00:00  [execution] safe-class 실행 인가 — packet packet-e0191b811b01: 콘솔 도움말 문구 개선 [executor=backend-engineer author=Forgekit Backend <be@forgekit.local> approver=operator approval=decision=콘솔 도움말 문구 개선;level=L2_internal_approve;signoff=tech-lead] (실제 파일 mutation 은 BoundedMutator 게이트 — 본 단계는 인가+검증 기록)  (packet-e0191b811b01)
+    - 2026-06-22T04:27:17.606193+00:00  [verification] 실행 게이트 재검증 통과 — chain(can_execute)+decision-lane(authorize)+validate_execution 모두 통과, action_class=safe, approval=decision=콘솔 도움말 문구 개선;level=L2_internal_approve;signoff=tech-lead  (packet-e0191b811b01)
 
-$ /goal awaiting  (결정 후)  [info]
-  승인 대기 goal 없음 — runtime 이 risky/restricted packet 을 만들면 awaiting_approval 로 여기 모입니다.
+$ /goal approve goal-7d92df0edc26 위험 검토  (risky packet → 게이트 거부)  [info]
+  goal-7d92df0edc26 승인 -> active  · 실행 거부(게이트: risky(L3) — operator 승인 없음, tech-lead 내부 승인(can_execute) 없음, safe class 아님(risky) — 자동 실행 금지, 내부 chain 승인(can_execute) 없음) — decision 기록, 가짜 실행 없음
 
-$ /goal evidence goal-bc4df3a6e234  [info]
-  goal-bc4df3a6e234 evidence (1):
-    - 2026-06-22T03:16:20.119796+00:00  [decision] operator 승인: 운영자 승인
-
-$ /goal approve goal-nope  [error]
-  goal 'goal-nope' 없음 — `/goal awaiting` 로 확인
-
-$ /goal approve goal-c78582c701c7  (draft, 승인 대상 아님)  [error]
-  goal-c78582c701c7 는 승인 대기 아님(현재 draft) — approve 는 awaiting_approval goal 만 대상
+$ /goal approve goal-d5d0428b1925  (draft, 승인 대상 아님)  [error]
+  goal-d5d0428b1925 는 승인 대기 아님(현재 draft) — approve 는 awaiting_approval goal 만 대상
