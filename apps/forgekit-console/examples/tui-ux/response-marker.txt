@@ -1,0 +1,14 @@
+forgekit transcript — turn 마커 vocabulary (› you · ● assistant · » command)
+재현: tests/forgekit/test_tui_response_marker.py
+======================================================================
+free-text 응답(전): role 마커 없이 본문만 echo 뒤에 떠서 응답 시작 구분 어려움
+free-text 응답(후): 첫 비어있지 않은 줄에 magenta ● 마커(렌더 전용, /copy 본문엔 없음)
+
+  [#00d8f0]›[/#00d8f0] 설명해줘            ← 사용자 turn (cyan ›)
+  [b #f23ccf]●[/b #f23ccf] 응답 첫 문단입니다.
+
+  두 번째 문단으로 이어집니다.
+
+  마무리 문단.
+
+관찰: ● 는 첫 비어있지 않은 줄 한 곳에만(magenta=brand kit half). 빈 줄/이후 줄 미표시. /copy 는 마커 제외 plain-text.

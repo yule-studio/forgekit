@@ -26,6 +26,12 @@ Composer                 ← inline 에서 dock:bottom. full 에서는 1fr flow 
 child** 다. 첫 진입엔 보이고(첫 인상), 대화가 쌓여 viewport 를 넘으면 자연히 **위로 스크롤되어
 사라진다**(고정 panel 로 공간을 영구 점유하지 않음). inline 은 compact, full 은 hero→compact.
 
+**transcript turn 마커 vocabulary:** 한 turn 을 스캔하기 쉽게 역할별 마커를 둔다 — 사용자 입력은
+cyan `›`(`write_echo`), slash 결과는 `» <title>`(`result_block`), **free-text LLM 응답은 magenta
+`●`**(`render.RESPONSE_MARKER`, 응답 첫 비어있지 않은 줄에 1회). 예전엔 free-text 응답이 마커 없이
+echo 뒤에 본문만 떠서 응답 시작 구분이 어려웠다. 마커는 **렌더 전용** — `/copy` plain-text 엔 미포함.
+측정: `test_tui_response_marker`, 증거 `examples/tui-ux/response-marker.txt`.
+
 **mode 전환(Shift+Tab)은 ephemeral:** 예전엔 `_cycle_runtime_mode` 가 매 키프레스마다
 `transcript.write(runtime_mode_line)` 해서 대화 로그를 mode 줄로 도배했다. 이제 **transcript append
 0** — 현재 mode 는 **교체형 live surface** 에만: `#issue`(`◆ <mode> · routing …`) + 하단 `#hint`
