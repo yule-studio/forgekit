@@ -13,6 +13,7 @@ requires-python = ">=3.9"
 # terminal graphics protocol (Kitty/iTerm2/Sixel) — the primary avatar path.
 dependencies = [
   "textual>=0.50",
+  "forgekit-goal",
 ]
 
 [project.optional-dependencies]

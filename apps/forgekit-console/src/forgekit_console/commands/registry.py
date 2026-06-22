@@ -35,6 +35,7 @@ H_SETUP = "setup"
 H_TOOLCHAIN = "toolchain"
 H_NEXUS = "nexus"
 H_DAEMON = "daemon"
+H_GOAL = "goal"
 H_COPY = "copy"
 H_ATTACH = "attach"
 H_PASTE = "paste"
@@ -105,6 +106,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("toolchain", "language/runtime 버전 전환 — `/toolchain [detect|recommend <loadout>|switch [global] [--approve]|verify|drift]` (repo-local 감지·mise 기반, global/install 은 승인 게이트)", H_TOOLCHAIN, "status"),
     SlashCommand("nexus", "Nexus 지식 source — `/nexus [set <path>|clear]` 연결/해제 + live 상태(connected/not_connected/missing/blocked/restricted)", H_NEXUS, "status"),
     SlashCommand("daemon", "always-on 데몬 heartbeat — state/tick/last_tick/pid/kill-switch (`/daemon [stop]`); CLI `forgekit runtime serve|status|stop`", H_DAEMON, "status"),
+    SlashCommand("goal", "장기 목표 control plane — `/goal [list|new <제목>|show <id>|activate <id>|evidence <id>]` (forgekit_goal 영속, tick 은 runtime/GW4)", H_GOAL, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),

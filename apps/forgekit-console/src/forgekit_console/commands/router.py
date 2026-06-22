@@ -41,6 +41,7 @@ from .registry import (
     H_TOOLCHAIN,
     H_NEXUS,
     H_DAEMON,
+    H_GOAL,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -182,6 +183,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _nexus_result(parsed, ctx)
     if handler == H_DAEMON:
         return _daemon_result(parsed, ctx)
+    if handler == H_GOAL:
+        return _goal_result(parsed, ctx)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -206,6 +209,29 @@ def _help_result(ctx: ConsoleContext) -> CommandResult:
     lines.append("")
     lines.append("일반 텍스트는 provider 로 live-submit 됩니다 (provider 미설정 시 setup 안내).")
     return CommandResult(kind=KIND_HELP, title="help", lines=tuple(lines))
+
+
+def _goal_result(parsed, ctx: ConsoleContext) -> CommandResult:
+    # /goal operator surface over forgekit_goal (store read + small mutations).
+    # Thin: rendering/CRUD only; goal logic lives in the package (ownership §3.1).
+    from .. import goal_surface as gs
+
+    args = list(getattr(parsed, "args", ()) or ())
+    sub = args[0].lower() if args else "list"
+    env = ctx.env
+    if sub == "list":
+        return CommandResult.info("goal", gs.goal_list_lines(env))
+    if sub == "new":
+        ok, msg = gs.apply_new(env, " ".join(args[1:]))
+        return (CommandResult.info if ok else CommandResult.error)("goal new", (msg,))
+    if sub == "show":
+        return CommandResult.info("goal show", gs.goal_show_lines(env, args[1] if len(args) > 1 else ""))
+    if sub == "activate":
+        ok, msg = gs.apply_activate(env, args[1] if len(args) > 1 else "")
+        return (CommandResult.info if ok else CommandResult.error)("goal activate", (msg,))
+    if sub == "evidence":
+        return CommandResult.info("goal evidence", gs.goal_evidence_lines(env, args[1] if len(args) > 1 else ""))
+    return CommandResult.info("goal", gs.usage_lines())
 
 
 def _provider_result(parsed) -> CommandResult:
