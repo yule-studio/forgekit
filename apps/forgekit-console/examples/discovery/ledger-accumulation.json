@@ -1,0 +1,176 @@
+{
+  "sweep1": {
+    "new": 3,
+    "updated": 0
+  },
+  "sweep2_dedup": {
+    "new": 0,
+    "updated": 3
+  },
+  "after_decisions_summary": {
+    "total": 3,
+    "pending": 1,
+    "promoted": 1,
+    "saved": 0,
+    "parked": 1,
+    "by_status": {
+      "promoted": 1,
+      "parked": 1,
+      "seen": 1
+    }
+  },
+  "ledger": {
+    "ideas": {
+      "8ad28c86c168": {
+        "fingerprint": "8ad28c86c168",
+        "title": "아이디어: apps/sync.py: 3 TODO/FIXME 누적",
+        "problem": "apps/sync.py: 3 TODO/FIXME 누적",
+        "score": 4.0,
+        "source_id": "repo-local",
+        "why": "pain 신호 · 출처 repo-local · score 4.0",
+        "status": "promoted",
+        "first_seen": "2026-06-22T10:00:00",
+        "last_seen": "2026-06-22T11:00:00",
+        "seen_count": 2,
+        "next_questions": [
+          "핵심 사용자(target_user)는 누구인가? — 지금은 기본값 '일반 사용자'",
+          "어떤 경쟁/대체재를 기준으로 차별화 가설을 검증할까?",
+          "이 문제에 사용자가 비용을 낼 의향(pricing 가설)은?",
+          "다음 실험을 실제로 돌릴까? — 'apps/sync.py: 3 TODO/FIXME 누적' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰"
+        ],
+        "note_path": "",
+        "brief": {
+          "title": "아이디어: apps/sync.py: 3 TODO/FIXME 누적",
+          "problem": "apps/sync.py: 3 TODO/FIXME 누적",
+          "target_user": "일반 사용자",
+          "differentiation": {
+            "hypothesis": "'apps/sync.py: 3 TODO/FIXME 누적' 를 기존 대체재보다 더 단순/저비용으로 해결",
+            "rationale": "경쟁 1개 대비 gap 2개 관측"
+          },
+          "next_experiment": {
+            "experiment": "'apps/sync.py: 3 TODO/FIXME 누적' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰",
+            "success_metric": "핵심 작업 완료율 / 재방문 의향"
+          },
+          "references": [
+            {
+              "source_id": "repo-local",
+              "title": "apps/sync.py: 3 TODO/FIXME 누적",
+              "url": ""
+            },
+            {
+              "source_id": "operator",
+              "title": "노트 동기화 느려서 불편",
+              "url": ""
+            },
+            {
+              "source_id": "operator",
+              "title": "AI 메모 정리 트렌드 급상승",
+              "url": ""
+            }
+          ],
+          "score": 4.0
+        }
+      },
+      "c55ecfe9ea89": {
+        "fingerprint": "c55ecfe9ea89",
+        "title": "아이디어: 노트 동기화 느려서 불편",
+        "problem": "노트 동기화 느려서 불편",
+        "score": 1.0,
+        "source_id": "repo-local",
+        "why": "pain 신호 · 출처 operator · score 1.0",
+        "status": "parked",
+        "first_seen": "2026-06-22T10:00:00",
+        "last_seen": "2026-06-22T11:00:00",
+        "seen_count": 2,
+        "next_questions": [
+          "핵심 사용자(target_user)는 누구인가? — 지금은 기본값 '일반 사용자'",
+          "어떤 경쟁/대체재를 기준으로 차별화 가설을 검증할까?",
+          "이 문제에 사용자가 비용을 낼 의향(pricing 가설)은?",
+          "다음 실험을 실제로 돌릴까? — '노트 동기화 느려서 불편' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰"
+        ],
+        "note_path": "",
+        "brief": {
+          "title": "아이디어: 노트 동기화 느려서 불편",
+          "problem": "노트 동기화 느려서 불편",
+          "target_user": "일반 사용자",
+          "differentiation": {
+            "hypothesis": "'노트 동기화 느려서 불편' 를 기존 대체재보다 더 단순/저비용으로 해결",
+            "rationale": "경쟁 1개 대비 gap 2개 관측"
+          },
+          "next_experiment": {
+            "experiment": "'노트 동기화 느려서 불편' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰",
+            "success_metric": "핵심 작업 완료율 / 재방문 의향"
+          },
+          "references": [
+            {
+              "source_id": "repo-local",
+              "title": "apps/sync.py: 3 TODO/FIXME 누적",
+              "url": ""
+            },
+            {
+              "source_id": "operator",
+              "title": "노트 동기화 느려서 불편",
+              "url": ""
+            },
+            {
+              "source_id": "operator",
+              "title": "AI 메모 정리 트렌드 급상승",
+              "url": ""
+            }
+          ],
+          "score": 1.0
+        }
+      },
+      "253679654eb1": {
+        "fingerprint": "253679654eb1",
+        "title": "아이디어: AI 메모 정리 트렌드 급상승",
+        "problem": "AI 메모 정리 트렌드 급상승",
+        "score": 1.0,
+        "source_id": "repo-local",
+        "why": "trend 신호 · 출처 operator · score 1.0",
+        "status": "seen",
+        "first_seen": "2026-06-22T10:00:00",
+        "last_seen": "2026-06-22T11:00:00",
+        "seen_count": 2,
+        "next_questions": [
+          "핵심 사용자(target_user)는 누구인가? — 지금은 기본값 '일반 사용자'",
+          "어떤 경쟁/대체재를 기준으로 차별화 가설을 검증할까?",
+          "이 문제에 사용자가 비용을 낼 의향(pricing 가설)은?",
+          "다음 실험을 실제로 돌릴까? — 'AI 메모 정리 트렌드 급상승' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰"
+        ],
+        "note_path": "",
+        "brief": {
+          "title": "아이디어: AI 메모 정리 트렌드 급상승",
+          "problem": "AI 메모 정리 트렌드 급상승",
+          "target_user": "일반 사용자",
+          "differentiation": {
+            "hypothesis": "'AI 메모 정리 트렌드 급상승' 를 기존 대체재보다 더 단순/저비용으로 해결",
+            "rationale": "경쟁 1개 대비 gap 2개 관측"
+          },
+          "next_experiment": {
+            "experiment": "'AI 메모 정리 트렌드 급상승' 핵심 흐름의 최소 프로토타입 + 5명 사용자 인터뷰",
+            "success_metric": "핵심 작업 완료율 / 재방문 의향"
+          },
+          "references": [
+            {
+              "source_id": "repo-local",
+              "title": "apps/sync.py: 3 TODO/FIXME 누적",
+              "url": ""
+            },
+            {
+              "source_id": "operator",
+              "title": "노트 동기화 느려서 불편",
+              "url": ""
+            },
+            {
+              "source_id": "operator",
+              "title": "AI 메모 정리 트렌드 급상승",
+              "url": ""
+            }
+          ],
+          "score": 1.0
+        }
+      }
+    }
+  }
+}

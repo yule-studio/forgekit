@@ -20,8 +20,11 @@ Honest status of each console surface (working / partial / planned). Code:
 | agent identity (git author / app status) | working | `/whoami` | `test_identity_attribution` |
 | discovery collectors (free-first) | working; YouTube/IG/Google planned | `/sources` | `examples/sources/` |
 | discovery sweep → digest (왜/다음 질문) | working | `/discovery` | `examples/discovery/sweep-digest.json`, `test_discovery_sweep` |
-| discovery brief → PM handoff (제안) | working | `/discovery promote <n>` | `test_discovery_sweep` |
+| discovery 아이디어 누적/dedup/lifecycle (영속 ledger) | working | `/discovery` · `/discovery pending` | `examples/discovery/ledger-accumulation.json`, `test_discovery_ledger` |
+| operator-tunable 수집 토픽 (HN/subreddits/GitHub/RSS) | working | config `discovery` 블록 | `test_discovery_ledger` |
+| discovery brief → PM handoff (제안) | working | `/discovery promote <n>` | `test_discovery_ledger` |
 | discovery brief → authored vault note | working (연결 시; 미연결 정직 실패) | `/discovery save <n>` | `examples/discovery/idea-brief-note.md` |
+| discovery 아이디어 보류 | working | `/discovery park <n>` | `test_discovery_ledger` |
 | design restricted source | blocked (real TCC) — honest | `/design` | `examples/design/` |
 | red/blue planning (owned assets) | working (plan-only) | `/red-blue` | `examples/security/` |
 | `/provider` console config (set primary / list / doctor) | working | `/provider [set <id>\|list\|doctor]` | `test_provider_surface` |
