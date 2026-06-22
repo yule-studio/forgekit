@@ -1,0 +1,60 @@
+GW4-B physical execution — approved safe-class packet → REAL bounded write + real git
+commit + evidence (goal store + Nexus vault). Honest boundary: only safe-class is auto;
+risky/destructive stays approval-gated; caps/verify failure → rollback (no commit).
+
+Generated against a TEMP git repo (tempfile) via the opt-in apply path
+(`apply_approved_packet` / `execute_approved_packet(..., apply=True, mutator=...)`).
+The DEFAULT console-approve path (`execute_approved_packet(goal, env=env)`) is UNCHANGED.
+
+
+=== [1] SAFE — real bounded write + real commit + vault note ===
+outcome      : executed applied= True
+executor     : backend-engineer action_class= safe
+changed_path : runs/forgekit/selfimprove/콘솔-도움말-문구-개선-packet-<id>.md
+commit_sha   : 5c961e99772dbfa753235b11e9f8658142d41e48
+vault_note   : <FORGEKIT_NEXUS_ROOT>/00-inbox/forgekit/selfimprove/exec-콘솔-도움말-문구-개선-packet-<id>.md
+git HEAD     : 5c961e99772dbfa753235b11e9f8658142d41e48   (== commit_sha — real commit)
+committed tree:
+  README.md
+  runs/forgekit/selfimprove/콘솔-도움말-문구-개선-packet-<id>.md   (NEW — real file change)
+commit author/trailer:
+  author=Forgekit Backend <be@forgekit.local>            (executor identity, not seed)
+  Forgekit-Agent: backend-engineer                       (is_known → #346 validator OK)
+goal evidence kinds: ['proposal', 'execution', 'verification', 'verification']
+  - execution    : carries commit sha + file + executor + approval
+  - verification : 3-gate re-check + bounded-write verify; 2nd = vault note written
+goal status        : active (NEVER done — done needs verified evidence we don't manufacture)
+NOTE: BoundedMutator re-reads every write; git commit uses explicit pathspec; NEVER pushes.
+
+
+=== [2] RISKY — blocked, NO write, NO commit ===
+outcome      : blocked applied= False
+reasons      : risky(L3) — operator 승인 없음
+commit_sha   : ''
+git HEAD unchanged: True
+working tree clean: True
+(decision evidence records the honest refusal; risky needs a real operator grant.)
+
+
+=== [3] CAPS exceeded — rollback, NO commit ===
+outcome      : blocked applied= False
+reasons      : diff 6 > 한도 1            (BoundedMutator diff cap, max_diff_lines=1)
+commit_sha   : ''
+git HEAD unchanged: True
+working tree clean (rollback): True       (any partial write rolled back; never committed)
+
+
+=== [4] DEFAULT path (execute_approved_packet, env only) — UNCHANGED, no mutation ===
+outcome      : executed executed= True applied= False
+commit_sha   : ''  changed_path= ''
+git HEAD unchanged: True
+working tree clean: True
+(console approve / #348 surface behaviour preserved — authorize + evidence only, no repo
+mutation. The real-execution path is opt-in for the bounded runtime/daemon caller only.)
+
+
+Vault behaviour (honest):
+  - FORGEKIT_NEXUS_ROOT (or config['nexus_root']) set + real dir → an authored evidence
+    note is written under 00-inbox/forgekit/selfimprove/ and recorded as verification.
+  - unset / not a dir → vault write SKIPPED honestly (vault_note=''), goal-store evidence
+    still recorded. No fake note, no error.
