@@ -9,8 +9,10 @@ FORGEKIT_HOME), not mocks:
 - ``/goal approve <id> [note]`` → legal ``awaiting_approval -> active`` + an
   append-only ``decision`` evidence record;
 - ``/goal deny <id> [note]`` → legal ``awaiting_approval -> blocked`` + evidence;
-- approve is HONEST about execution: with no GW4-B bridge merged it says
-  "실행 대기" and writes NO ``execution`` evidence (never a fake "executed");
+- approve is HONEST about execution: the GW4-B bridge is now connected, but a
+  goal with NO linked/resolvable packet has nothing to execute → the bridge
+  returns an honest "실행 불가/대기" and writes NO ``execution`` evidence (never a
+  fake "executed");
 - missing id / non-awaiting goal are surfaced as errors (no silent no-op).
 
 Surface stays thin (render / CRUD / legal transition) — it owns no goal logic.
@@ -86,14 +88,22 @@ class GoalApprovalTest(unittest.TestCase):
         self.assertIn("승인", decisions[0].summary)
         self.assertIn("운영자 확인", decisions[0].summary)       # the operator note is kept
 
-    def test_approve_is_honest_about_missing_execution_bridge(self) -> None:
+    def test_approve_with_no_packet_is_honest_no_fake_execution(self) -> None:
+        # GW4-B bridge is connected, but this goal has NO linked packet → nothing to
+        # execute. The bridge must report that honestly — never a fake "executed".
         gid = self._awaiting("실행 대기 확인")
         res = _route(f"/goal approve {gid}", self.env)
         self.assertEqual(res.kind, KIND_INFO)
-        self.assertIn("실행 대기", res.lines[0])                  # honest: approved, not executed
+        self.assertIn("active", res.lines[0])                  # legal transition still happens
+        self.assertNotIn("safe·게이트 통과", res.lines[0])       # NOT a fake "executed"
+        self.assertNotIn("실행 인가됨", res.lines[0])            # NOT authorized either
         g = self._get(gid)
-        # no GW4-B bridge merged → NO fake execution evidence
-        self.assertEqual([e for e in g.evidence if e.kind == "execution"], [])
+        # the surface records the bridge note (honest string), but it must NOT claim a
+        # real authorized execution — no "safe·게이트 통과" / "인가" execution record.
+        exec_records = [e for e in g.evidence if e.kind == "execution"]
+        for e in exec_records:
+            self.assertNotIn("safe·게이트 통과", e.summary)
+            self.assertNotIn("실행 인가", e.summary)
 
     def test_approve_missing_goal_is_error(self) -> None:
         res = _route("/goal approve goal-nope", self.env)
