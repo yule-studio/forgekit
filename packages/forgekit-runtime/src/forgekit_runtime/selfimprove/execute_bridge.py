@@ -41,8 +41,11 @@ execution logic; it only renders the outcome string this returns.
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
 from forgekit_config.identity.attribution import commit_trailers, git_author_for
@@ -81,6 +84,11 @@ _EXECUTOR_FALLBACK = "backend-engineer"
 # execution-time classifier keeps it safe instead of bumping it to risky).
 _SAFE_KIND = "note"
 
+# env var that points the Nexus vault root (same key hephaistos reads). When set + a
+# real dir, an authorized real-execution run also lands an authored evidence note there;
+# unset → skip honestly (no fake write). config['nexus_root'] is an accepted fallback.
+_ENV_NEXUS_ROOT = "FORGEKIT_NEXUS_ROOT"
+
 # parse a tick ``proposal`` evidence summary: ``[<risk>] <finding> -> <route>``
 _PROPOSAL_RE = re.compile(r"^\[(?P<risk>[^\]]+)\]\s*(?P<finding>.*?)\s*->\s*(?P<route>.*)$")
 
@@ -99,6 +107,11 @@ class ExecuteOutcome:
     commit_message: str = ""
     reasons: Tuple[str, ...] = ()
     detail: str = ""
+    # real-execution (opt-in apply path) evidence — empty on the default authorize-only path.
+    applied: bool = False          # True only after a verified bounded write + real commit
+    commit_sha: str = ""           # the real commit sha (apply path), "" otherwise
+    changed_path: str = ""         # the repo-relative file the bounded write touched
+    vault_note: str = ""           # vault note path written ("" = unset/skip — honest)
 
     def to_dict(self) -> dict:
         return {
@@ -106,6 +119,8 @@ class ExecuteOutcome:
             "packet_id": self.packet_id, "action_class": self.action_class,
             "executor_id": self.executor_id, "approval_metadata": self.approval_metadata,
             "reasons": list(self.reasons), "detail": self.detail,
+            "applied": self.applied, "commit_sha": self.commit_sha,
+            "changed_path": self.changed_path, "vault_note": self.vault_note,
         }
 
     def __str__(self) -> str:  # the console surface renders this directly
@@ -197,6 +212,133 @@ def build_execution_commit_message(verdict, finding: str, *, env=None) -> str:
     return subject + "\n\n" + body + "\n" + "\n".join(trailers) + "\n"
 
 
+# --- real-execution helpers (opt-in apply path only) -------------------------
+
+def _slug(text: str) -> str:
+    return "".join(c if c.isalnum() else "-" for c in (text or "").lower())[:40].strip("-") or "task"
+
+
+def _build_safe_task(pid: str, finding: str):
+    """A safe-class ``note`` ExecTask under an ALLOWED_WRITE_PREFIX (``runs/``).
+
+    The BoundedMutator re-validates path + caps + verifies the write; this only shapes
+    the bounded note content. Lazy import keeps the module importable without runner."""
+
+    from ..autopilot.runner import ACTION_NOTE, ExecTask
+
+    rel = f"runs/forgekit/selfimprove/{_slug(finding)}-{_slug(pid)}.md"
+    content = (
+        f"# self-improvement note — packet {pid}\n\n"
+        f"- finding: {finding}\n"
+        "- class: safe (internal-approved: PM→gateway→tech-lead + decision-lane)\n"
+        "- action: 안전 클래스 note 기록 (실제 bounded write · BoundedMutator 검증)\n"
+    )
+    return ExecTask(ACTION_NOTE, rel, content=content, summary=finding)
+
+
+def _git(repo_root: str, *args: str):
+    """Run ``git -C repo_root <args>`` — captured, never raises (returns CompletedProcess)."""
+
+    return subprocess.run(["git", "-C", str(repo_root), *args],
+                          capture_output=True, text=True, check=False)
+
+
+def _git_pre_state(repo_root: str, rel_path: str) -> Tuple[bool, str]:
+    """Whether *rel_path* is tracked (HEAD has it) — drives rollback (restore vs rm).
+
+    Returns ``(tracked, head_sha)``. A non-git repo → ``(False, "")`` so the caller can
+    refuse a real commit honestly instead of pretending."""
+
+    head = _git(repo_root, "rev-parse", "HEAD")
+    head_sha = head.stdout.strip() if head.returncode == 0 else ""
+    tracked = _git(repo_root, "ls-files", "--error-unmatch", rel_path).returncode == 0
+    return tracked, head_sha
+
+
+def _git_rollback(repo_root: str, rel_path: str, tracked: bool) -> None:
+    """Undo a bounded write: restore a tracked file from HEAD, else delete the new file.
+    Best-effort — a rollback failure must not crash the decision (already refused)."""
+
+    target = Path(repo_root) / rel_path
+    if tracked:
+        _git(repo_root, "checkout", "--", rel_path)
+    else:
+        try:
+            if target.exists():
+                target.unlink()
+        except OSError:
+            pass
+
+
+def _git_commit(repo_root: str, rel_path: str, author: str, message: str) -> Tuple[bool, str, str]:
+    """Stage exactly *rel_path* + commit with *author* and *message*. NEVER pushes.
+
+    Returns ``(ok, sha, error)``. ``ok=False`` → no commit happened (caller rolls back).
+    Uses an explicit pathspec (no ``git add .``) and ``-F -`` for the message via stdin so
+    the trailer-stamped body lands verbatim. ``GIT_*`` committer env keeps it deterministic."""
+
+    add = _git(repo_root, "add", "--", rel_path)
+    if add.returncode != 0:
+        return False, "", f"git add 실패: {add.stderr.strip()}"
+    env = dict(os.environ)
+    # committer mirrors the author so the commit is fully attributed to the executor.
+    name = author.split(" <")[0].strip() if " <" in author else author
+    email = author.split("<", 1)[1].rstrip(">").strip() if "<" in author else "forgekit@forgekit.local"
+    env.update({"GIT_COMMITTER_NAME": name, "GIT_COMMITTER_EMAIL": email})
+    cp = subprocess.run(
+        ["git", "-C", str(repo_root), "commit", "--no-verify", "--author", author, "-F", "-"],
+        input=message, capture_output=True, text=True, check=False, env=env)
+    if cp.returncode != 0:
+        return False, "", f"git commit 실패: {cp.stderr.strip() or cp.stdout.strip()}"
+    sha = _git(repo_root, "rev-parse", "HEAD").stdout.strip()
+    return True, sha, ""
+
+
+def _resolve_vault_root(env, config) -> Optional[Path]:
+    """Configured Nexus vault root (env ``FORGEKIT_NEXUS_ROOT`` or ``config['nexus_root']``).
+    None → not connected → vault write skipped honestly (no fake)."""
+
+    e = os.environ if env is None else env
+    raw = str(e.get(_ENV_NEXUS_ROOT, "") or (config or {}).get("nexus_root", "") or "").strip()
+    if not raw:
+        return None
+    root = Path(raw)
+    return root if root.is_dir() else None
+
+
+def _write_vault_evidence(vault_root: Path, *, executor: str, pid: str, finding: str,
+                          rel_path: str, sha: str, approval: str, created_at: str = "") -> Optional[Path]:
+    """Author a real evidence note into the vault (best-effort, guarded). Returns the
+    path written or None (failure / unavailable). Lazy import keeps nexus optional."""
+
+    try:
+        from nexus.vault.note import build_authored_note, write_note
+    except Exception:  # noqa: BLE001 — nexus optional; skip honestly
+        return None
+    body = (
+        "## 핵심 요약\n"
+        f"- self-improvement packet {pid} 의 safe-class 작업이 실제 실행됨 (bounded write + commit).\n\n"
+        "## 내 해석\n"
+        f"- finding: {finding}\n"
+        f"- 실행 파일: {rel_path}\n"
+        f"- commit: {sha}\n"
+        f"- approval: {approval}\n\n"
+        "## 적용 맥락\n"
+        "- PM→gateway→tech-lead 내부 승인 + decision-lane 실행 게이트 통과분만 실행.\n"
+        "- 실제 파일 mutation 은 BoundedMutator 검증(재읽기) 후에만 commit. 파괴적/risky 는 approval-gated.\n\n"
+        "## 관련 노트\n- (자동 생성 evidence)\n\n"
+        "## 참고\n- GW4-B physical-execution + evidence→vault.\n"
+    )
+    content = build_authored_note(
+        executor,
+        title=f"self-improvement 실행 evidence — {finding[:32]}",
+        body=body, kind="execution-evidence", status="done", created_at=created_at,
+        phase="execute", source_flow="selfimprove-execute",
+        tags=("forgekit", "self-improvement", "execution"), related=())
+    subpath = f"00-inbox/forgekit/selfimprove/exec-{_slug(finding)}-{_slug(pid)}.md"
+    return write_note(content, vault_root, subpath)
+
+
 def execute_approved_packet(
     goal: Goal,
     packet_id: Optional[str] = None,
@@ -205,6 +347,9 @@ def execute_approved_packet(
     approver: str = "operator",
     env: Optional[Mapping[str, str]] = None,
     persist: bool = True,
+    apply: bool = False,
+    mutator: Optional[object] = None,
+    config: Optional[Mapping] = None,
 ) -> ExecuteOutcome:
     """Bridge an approved goal's linked packet into the REAL gated execution path.
 
@@ -292,6 +437,16 @@ def execute_approved_packet(
             g.status, GoalStatus.ACTIVE):
         g = transitions.apply(g, GoalStatus.ACTIVE)
 
+    # OPT-IN real-execution path (GW4-B physical). Default authorize-only callers
+    # (``execute_approved_packet(goal, env=env)``) never enter this — ``apply`` is False
+    # and no mutator is supplied — so console-approve / #348 behaviour is unchanged.
+    if apply and mutator is not None and repo_root and risk_class == P.RISK_SAFE:
+        return _apply_real_execution(
+            g, pid=pid, finding=pkt.finding, verdict=verdict, executor=executor,
+            author=author, commit_message=commit_message, mutator=mutator,
+            repo_root=str(repo_root), approver=approver, env=env, config=config,
+            persist=persist)
+
     exec_summary = (
         f"safe-class 실행 인가 — packet {pid}: {pkt.finding} "
         f"[executor={executor} author={author} approver={approver} "
@@ -315,6 +470,116 @@ def execute_approved_packet(
         detail=f"{pkt.finding} (safe·게이트 통과·evidence 기록)")
 
 
+def _apply_real_execution(
+    goal: Goal, *, pid: str, finding: str, verdict, executor: str, author: str,
+    commit_message: str, mutator, repo_root: str, approver: str,
+    env: Optional[Mapping[str, str]], config: Optional[Mapping], persist: bool,
+) -> ExecuteOutcome:
+    """Authorized safe-class → REAL bounded write + real git commit + evidence (incl. vault).
+
+    Only reached from the opt-in apply path after a full 3-gate PASS. Performs the
+    bounded write through the injected ``BoundedMutator`` (hard caps + re-read verify),
+    then a real ``git -C repo_root`` commit (NEVER push). On any caps-exceeded /
+    verify-fail / non-verified outcome it ROLLS BACK (no commit) and returns an honest
+    ``blocked`` outcome — it never fakes "applied" and never marks the goal ``done``."""
+
+    task = _build_safe_task(pid, finding)
+
+    # capture pre-state for rollback BEFORE the write (tracked vs new file).
+    tracked, _head = _git_pre_state(repo_root, task.rel_path)
+
+    outcome = mutator.execute(task)   # REAL bounded write — caps + re-read verify inside
+    if not (outcome.executed and outcome.verified):
+        # caps exceeded / verify fail / non-safe path / no-op → rollback, no commit.
+        _git_rollback(repo_root, task.rel_path, tracked)
+        reason = outcome.refused_reason or "bounded write 미검증"
+        if persist:
+            gg = goal.add_evidence(
+                "decision", f"apply 거부 — packet {pid}: {reason} (rollback, 커밋 안 함)", ref=pid)
+            _save(gg, env)
+        return ExecuteOutcome(
+            OUTCOME_BLOCKED, executed=False, applied=False, packet_id=pid,
+            action_class=verdict.action_class, executor_id=executor,
+            reasons=(reason,),
+            detail=f"bounded write 실패/한도초과 — rollback (no commit): {reason}")
+
+    # verified write landed → real git commit (explicit pathspec, no push).
+    ok, sha, cerr = _git_commit(repo_root, task.rel_path, author, commit_message)
+    if not ok:
+        _git_rollback(repo_root, task.rel_path, tracked)
+        if persist:
+            gg = goal.add_evidence(
+                "decision", f"apply 커밋 실패 — packet {pid}: {cerr} (rollback)", ref=pid)
+            _save(gg, env)
+        return ExecuteOutcome(
+            OUTCOME_BLOCKED, executed=False, applied=False, packet_id=pid,
+            action_class=verdict.action_class, executor_id=executor,
+            changed_path=task.rel_path, reasons=(cerr,),
+            detail=f"commit 실패 — rollback (no commit): {cerr}")
+
+    # real execution succeeded → execution + verification evidence (with the commit sha).
+    g = goal
+    exec_summary = (
+        f"safe-class 실제 실행 — packet {pid}: {finding} "
+        f"[executor={executor} author={author} approver={approver} "
+        f"approval={verdict.approval_metadata} file={task.rel_path} commit={sha}] "
+        f"(BoundedMutator 검증 + git -C 커밋, push 안 함)")
+    g = g.add_evidence("execution", exec_summary, ref=pid)
+    verify_summary = (
+        f"실행 검증 통과 — bounded write 재읽기 검증 + 3-gate(chain/decision-lane/validate) 통과, "
+        f"commit={sha}, action_class={verdict.action_class}, approval={verdict.approval_metadata}")
+    g = g.add_evidence("verification", verify_summary, ref=pid)
+
+    # vault evidence note — only when a real vault root is configured (else skip honestly).
+    vault_root = _resolve_vault_root(env, config)
+    vault_note_path = ""
+    if vault_root is not None:
+        written = _write_vault_evidence(
+            vault_root, executor=executor, pid=pid, finding=finding,
+            rel_path=task.rel_path, sha=sha, approval=verdict.approval_metadata)
+        if written is not None:
+            vault_note_path = str(written)
+            g = g.add_evidence("verification", f"vault evidence note 기록 — {vault_note_path}", ref=pid)
+
+    if persist:
+        _save(g, env)
+
+    return ExecuteOutcome(
+        OUTCOME_EXECUTED, executed=True, applied=True, packet_id=pid,
+        action_class=verdict.action_class, executor_id=executor,
+        approval_metadata=verdict.approval_metadata, commit_message=commit_message,
+        commit_sha=sha, changed_path=task.rel_path, vault_note=vault_note_path,
+        detail=f"{finding} (safe·실제 실행·commit={sha[:12]}"
+               + (f"·vault note 기록" if vault_note_path else "·vault 미설정 skip") + ")")
+
+
+def apply_approved_packet(
+    goal: Goal,
+    mutator: object,
+    repo_root: str,
+    packet_id: Optional[str] = None,
+    *,
+    approver: str = "operator",
+    env: Optional[Mapping[str, str]] = None,
+    config: Optional[Mapping] = None,
+    persist: bool = True,
+) -> ExecuteOutcome:
+    """REAL-execution sibling of :func:`execute_approved_packet` (GW4-B physical).
+
+    Explicit caller (bounded runtime / daemon) only — requires a ``BoundedMutator`` and a
+    ``repo_root``. Runs the SAME 3-gate authorization; on a safe + authorized verdict it
+    performs a verified bounded write + a real git commit (no push) + evidence (goal store
+    and, when ``FORGEKIT_NEXUS_ROOT``/``config['nexus_root']`` is set, a vault note).
+    risky/destructive/caps-exceeded/verify-fail → rollback, no commit, honest outcome.
+
+    This NEVER changes the default ``execute_approved_packet(goal, env=env)`` surface
+    behaviour; it is a separate opt-in entry point."""
+
+    return execute_approved_packet(
+        goal, packet_id, repo_root, approver=approver, env=env, persist=persist,
+        apply=True, mutator=mutator, config=config)
+
+
 def _save(goal: Goal, env: Optional[Mapping[str, str]]) -> None:
     """Persist the updated goal so the closed loop survives (best-effort, lazy import
     to keep this module importable without a store/home configured)."""
@@ -328,5 +593,6 @@ def _save(goal: Goal, env: Optional[Mapping[str, str]]) -> None:
 
 __all__ = (
     "OUTCOME_EXECUTED", "OUTCOME_BLOCKED", "OUTCOME_AWAITING", "OUTCOME_ERROR",
-    "ExecuteOutcome", "execute_approved_packet", "build_execution_commit_message",
+    "ExecuteOutcome", "execute_approved_packet", "apply_approved_packet",
+    "build_execution_commit_message",
 )
