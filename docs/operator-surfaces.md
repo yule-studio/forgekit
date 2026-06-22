@@ -24,6 +24,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | `/provider` console config (set primary / list / doctor) | working | `/provider [set <id>\|list\|doctor]` | `test_provider_surface` |
 | provider link / unlink / slot route | working | `/provider [link\|unlink\|route show\|route set <slot> <id>]` | `test_provider_surface` |
 | 4-provider brain preset (real config writer) | working | `/provider preset four-brain` | `test_four_brain_preset_and_routing` |
+| per-provider 일일 token budget (gw2 #343 enforcement 의 operator 표면) | working (show=설정한도+오늘 live spend, set/0-clear=canonical config 영속; 정책이 routing fallback 으로 강제) | `/provider budget [show\|set <id> <토큰>]` | `examples/provider-budget/surface.txt`, `test_provider_budget_surface` |
 | `/provider` declared→actual per slot (brain vs live transport) | working | `/provider` (default_chat/execution: declared X → actual Y) | `test_four_brain_preset_and_routing` |
 | provider onboarding wizard (connect 점검 → 추천 preset → save+verify) | working | `/setup` · `/setup apply` | `test_provider_connect` |
 | provider connect 진단 (CLI attach·API key·daemon, no fake-live) | working | `/provider connect\|disconnect\|test\|recommended <id>` | `test_provider_connect` |
