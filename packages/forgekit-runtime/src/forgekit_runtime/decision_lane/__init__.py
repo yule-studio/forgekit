@@ -59,6 +59,32 @@ from .enforcement import (
     make_runtime_authorizer,
     validate_execution_trailers,
 )
+from .readiness import (
+    STAGE_DECISION_PENDING,
+    STAGE_EXECUTABLE,
+    STAGE_HANDOFF_PENDING,
+    STAGE_MEETING_PENDING,
+    STAGE_NO_PM_BRIEF,
+    STAGE_ORDER,
+    LaneReadiness,
+    assess_lane_readiness,
+)
+from .decision_log import (
+    EVENT_KINDS,
+    KIND_APPROVAL,
+    KIND_BRIEF,
+    KIND_CONSULT,
+    KIND_DECISION,
+    KIND_EXECUTION,
+    KIND_HANDOFF,
+    KIND_MEETING,
+    GovernanceEvent,
+    governance_log_path,
+    readiness_from_log,
+    record_governance_event,
+    record_lane_artifacts,
+    replay_governance_log,
+)
 
 __all__ = (
     # schemas
@@ -77,4 +103,13 @@ __all__ = (
     "classify_action", "authorize_execution", "assert_executable",
     "authorize_runtime_execution", "make_runtime_authorizer",
     "bridge_to_autopilot", "execution_commit_trailers", "validate_execution_trailers",
+    # readiness gate
+    "STAGE_NO_PM_BRIEF", "STAGE_MEETING_PENDING", "STAGE_DECISION_PENDING",
+    "STAGE_HANDOFF_PENDING", "STAGE_EXECUTABLE", "STAGE_ORDER",
+    "LaneReadiness", "assess_lane_readiness",
+    # replay-able decision log
+    "KIND_BRIEF", "KIND_CONSULT", "KIND_MEETING", "KIND_DECISION", "KIND_APPROVAL",
+    "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS", "GovernanceEvent",
+    "governance_log_path", "record_governance_event", "replay_governance_log",
+    "record_lane_artifacts", "readiness_from_log",
 )

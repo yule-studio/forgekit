@@ -1,0 +1,98 @@
+{
+  "note": "PM→tech-lead→specialist readiness gate — enforced precondition ladder + replay-able decision log",
+  "no_pm_brief": {
+    "stage": "no_pm_brief",
+    "executable": false,
+    "confirmed": [],
+    "missing": [
+      "PM brief — 문제 / 사용자가치 / acceptance / 성공지표"
+    ],
+    "blocking": [],
+    "next_action": "PM 이 brief 를 확정해야 tech-lead lane 진입 가능 (PM artifact 없이는 실행 불가)",
+    "progress": "1/5"
+  },
+  "no_decision_specialist_blocked": {
+    "stage": "decision_pending",
+    "executable": false,
+    "confirmed": [
+      "PM brief: 알림",
+      "meeting: m1 (2 참석)"
+    ],
+    "missing": [
+      "tech-lead decision — design system+convention+stack+tradeoff+approval, 서명"
+    ],
+    "blocking": [],
+    "next_action": "tech-lead 서명 필요 — decision 없이는 specialist 실행 불가",
+    "progress": "3/5"
+  },
+  "full_executable": {
+    "stage": "executable",
+    "executable": true,
+    "confirmed": [
+      "PM brief: 알림",
+      "meeting: m1 (2 참석)",
+      "tech-lead decision: decision:m1 (signed_off/L2_internal_approve)",
+      "handoff: handoff:decision:m1 → be"
+    ],
+    "missing": [],
+    "blocking": [],
+    "next_action": "specialist 실행 인가 — 모든 precondition 확정, execution gate 통과 가능",
+    "progress": "5/5"
+  },
+  "replay_events": [
+    {
+      "session_id": "demo",
+      "kind": "brief",
+      "actor": "product-manager",
+      "summary": "PM brief: 알림",
+      "valid": true,
+      "ref": "알림",
+      "seq": 0,
+      "at": "2026-06-22"
+    },
+    {
+      "session_id": "demo",
+      "kind": "meeting",
+      "actor": "tech-lead",
+      "summary": "meeting m1 (2 참석)",
+      "valid": true,
+      "ref": "m1",
+      "seq": 1,
+      "at": "2026-06-22"
+    },
+    {
+      "session_id": "demo",
+      "kind": "decision",
+      "actor": "tech-lead",
+      "summary": "decision decision:m1 (signed_off/L2_internal_approve)",
+      "valid": true,
+      "ref": "decision:m1",
+      "seq": 2,
+      "at": "2026-06-22"
+    },
+    {
+      "session_id": "demo",
+      "kind": "handoff",
+      "actor": "be",
+      "summary": "handoff handoff:decision:m1 → be",
+      "valid": true,
+      "ref": "handoff:decision:m1",
+      "seq": 3,
+      "at": "2026-06-22"
+    }
+  ],
+  "readiness_from_replay": {
+    "stage": "executable",
+    "executable": true,
+    "confirmed": [
+      "PM brief: 알림",
+      "meeting m1 (2 참석)",
+      "decision decision:m1 (signed_off/L2_internal_approve)",
+      "handoff handoff:decision:m1 → be"
+    ],
+    "missing": [],
+    "blocking": [],
+    "next_action": "specialist 실행 인가 — replay 확인 완료",
+    "progress": "5/5"
+  }
+}
