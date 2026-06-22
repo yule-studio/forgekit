@@ -31,7 +31,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | toolchain verify/drift (required vs ACTIVE, mise; no manager→honest) | working (needs mise to verify; manager-missing surfaced) | `/toolchain verify\|drift [<loadout>]` | `test_toolchain` |
 | toolchain switch (mise; global/install **approval-gated**, no fake switch) | working (local 적용; gated 액션은 `--approve`) | `/toolchain switch [global] [--approve]` | `test_toolchain` |
 | goal control plane (장기 목표 model/transition/append-only evidence/packet·child linkage, 영속) | working (surface CRUD; tick=runtime/GW4) | `/goal [list\|new <제목>\|show <id>\|activate <id>\|evidence <id>]` | `examples/goal/`, `test_goal_core`·`test_goal_surface`·`test_goal_tick` |
-| in-console approve/deny (awaiting_approval goal + linked packets → operator 결정) | working (legal transition + decision evidence; 실행=GW4-B 머지 시, 미연결이면 "실행 대기" 정직) | `/goal awaiting` · `/goal approve <id> [메모]` · `/goal deny <id> [메모]` | `examples/goal/approval.txt`, `test_goal_approval` |
+| in-console approve/deny + GW4-B 실행 연결 (awaiting_approval goal → operator 결정 → 실제 게이트 실행) | working (legal transition + decision evidence → GW4-B execute_approved_packet 호출: safe=실행됨(execution+verification 보존, surface 는 reload·비덮어쓰기), risky/blocked=실행 거부, 가짜 실행 0) | `/goal awaiting` · `/goal approve <id> [메모]` · `/goal deny <id> [메모]` | `examples/goal/approval.txt`, `test_goal_approval`·`test_execute_bridge` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |
