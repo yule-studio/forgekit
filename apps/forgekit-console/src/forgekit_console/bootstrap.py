@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Mapping, Optional, Tuple
 
 from forgekit_provider.policy import provider_ops as ops
+from forgekit_provider.policy import provider_surface as psurf
 from forgekit_provider_connect import surface, wizard
 from forgekit_provider_connect.probe import ConnectionProbe
 
@@ -72,6 +73,8 @@ class ControlPlaneBootstrap:
     provider: wizard.BootstrapStatus
     config_path: str = ""                       # where the canonical config persists
     live_lane: Tuple[str, ...] = field(default_factory=tuple)
+    # honest per-provider 5-state taxonomy (setup-required/configured/linked/live/unsupported).
+    provider_states: Tuple[Tuple[str, str], ...] = field(default_factory=tuple)
 
     @property
     def ready(self) -> bool:
@@ -89,6 +92,7 @@ class ControlPlaneBootstrap:
         return {
             "verdict": self.verdict, "ready": self.ready,
             "config_path": self.config_path, "live_lane": list(self.live_lane),
+            "provider_states": [{"provider": p, "state": s} for p, s in self.provider_states],
             "stages": [s.to_dict() for s in self.stages],
         }
 
@@ -183,10 +187,14 @@ def assess_bootstrap(config: Optional[Mapping] = None, *,
         _knowledge_stage(env, cfg),
         _toolchain_stage(repo_root),
     )
+    # honest per-provider taxonomy — live asserted only from the VERIFIED probe (no fake).
+    live_map = {s.provider_id: bool(s.live_capable) for s in prov.statuses}
+    provider_states = psurf.provider_state_map(cfg, live_map=live_map)
     from forgekit_config.paths import config_path
     return ControlPlaneBootstrap(
         stages=stages, provider=prov,
         config_path=str(config_path(env)), live_lane=tuple(prov.live_lane),
+        provider_states=provider_states,
     )
 
 
@@ -211,6 +219,11 @@ def bootstrap_lines(config: Optional[Mapping] = None, *,
         out.append(f"  {st.glyph} {st.label:<10} {st.status:<14} — {st.detail}")
         if st.next_action:
             out.append(f"      다음: {st.next_action}")
+    out.append("")
+
+    # honest per-provider state taxonomy (setup-required / configured / linked / live / unsupported).
+    out.append("[provider 상태 — 정직 taxonomy]")
+    out.append("  " + " · ".join(f"{pid}={state}" for pid, state in bs.provider_states))
     out.append("")
 
     # the authoritative per-provider connection rows (brain vs live transport, no greenwash).

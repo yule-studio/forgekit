@@ -26,6 +26,57 @@ def _live_word(pid: str) -> str:
     return "live" if spec.submit_compat == SUBMIT_OPENAI else "unsupported_in_console"
 
 
+# ── honest per-provider state taxonomy (single SSoT for the 5 operator-facing states) ──
+# A provider is reported as exactly ONE state. `live` is asserted ONLY from a VERIFIED probe
+# result (no fake-live): without a probe we never claim live, we fall back to the config role
+# (configured/linked) or its console transport capability (unsupported for CLI brains).
+STATE_SETUP_REQUIRED = "setup-required"   # not part of the configured brain (primary nor linked)
+STATE_CONFIGURED = "configured"           # the primary brain, console-capable, not verified live yet
+STATE_LINKED = "linked"                   # a linked participant, console-capable, not verified live yet
+STATE_LIVE = "live"                       # verified live console transport right now
+STATE_UNSUPPORTED = "unsupported"         # in brain but console live-submit unsupported (CLI claude/codex)
+
+PROVIDER_STATES = (
+    STATE_SETUP_REQUIRED, STATE_CONFIGURED, STATE_LINKED, STATE_LIVE, STATE_UNSUPPORTED,
+)
+
+
+def classify_provider_state(pid: str, parsed, *, live_capable: Optional[bool] = None) -> str:
+    """Honest single-state verdict for *pid* given the parsed brain config.
+
+    ``live_capable`` is the VERIFIED probe result (True/False) or ``None`` when not probed.
+    Precedence (most decision-relevant first): verified-live → not-in-brain → CLI-unsupported →
+    primary(configured) → linked. ``live`` is never inferred — only a True probe yields it."""
+
+    in_brain = (pid == parsed.primary_provider) or (pid in parsed.linked_providers)
+    if live_capable is True:
+        return STATE_LIVE
+    if not in_brain:
+        return STATE_SETUP_REQUIRED
+    spec = builtins.builtin(pid)
+    if spec is not None and spec.submit_compat != SUBMIT_OPENAI:
+        # in the brain but its console transport can never live-submit (CLI attach = routing only).
+        return STATE_UNSUPPORTED
+    if pid == parsed.primary_provider:
+        return STATE_CONFIGURED
+    return STATE_LINKED
+
+
+def provider_state_map(cfg: Optional[Mapping], *,
+                       live_map: Optional[Mapping[str, bool]] = None) -> Tuple[Tuple[str, str], ...]:
+    """`(pid, state)` for every built-in provider, honest per :func:`classify_provider_state`.
+
+    ``live_map`` maps pid→verified live_capable (from a connect probe); absent entries are
+    treated as unprobed (``None``) so no provider is faked into ``live``."""
+
+    parsed = pc.load_provider_config(cfg)
+    lm = dict(live_map or {})
+    return tuple(
+        (pid, classify_provider_state(pid, parsed, live_capable=lm.get(pid)))
+        for pid in builtins.BUILTIN_PROVIDERS
+    )
+
+
 def _route_word(res) -> str:
     """Honest one-word verdict for a slot resolution (declared → actual)."""
 
@@ -236,4 +287,6 @@ __all__ = (
     "provider_status_lines", "provider_list_lines", "provider_doctor_lines", "apply_set_primary",
     "apply_preset", "apply_link", "apply_unlink", "route_show_lines", "apply_route_set",
     "apply_route_clear",
+    "STATE_SETUP_REQUIRED", "STATE_CONFIGURED", "STATE_LINKED", "STATE_LIVE", "STATE_UNSUPPORTED",
+    "PROVIDER_STATES", "classify_provider_state", "provider_state_map",
 )
