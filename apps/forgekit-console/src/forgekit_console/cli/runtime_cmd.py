@@ -52,24 +52,29 @@ def _repo_root(args) -> str:
 
 
 def _build_tick_fn(repo_root: str):
-    """A bounded tick that DRIVES autopilot execution + approved-goal execution + plan continuation.
+    """A bounded tick that DRIVES the full always-on goal loop: collect → execute → continue.
 
-    Three bounded passes per tick, composed so ``forgekit runtime serve`` reaches all three:
+    Four bounded passes per tick, composed so ``forgekit runtime serve`` runs the whole loop:
 
     1. **autopilot pass (WT2 #241)** — observe repo-local → internal chain → safe-class
        real mutation (BoundedMutator) → verify → record, with dedupe + cooldown.
-    2. **goal-exec pass (G1)** — load ACTIVE (operator-approved) goals from the GoalStore
+    2. **goal-scheduler pass (AUTONOMY)** — the loop's FRONT: for ACTIVE goals with no work
+       yet, run discovery (``run_self_improvement``) to collect+link packets, and if the
+       work spans ≥2 areas autonomously decompose into one child goal per area. Risky work
+       parks at ``awaiting_approval`` (approval-needed split). Executes nothing.
+    3. **goal-exec pass (G1)** — load ACTIVE (operator-approved) goals from the GoalStore
        and physically run their linked safe-class packets via ``apply_approved_packet``
        (3-gate + BoundedMutator; risky/destructive recorded-not-executed; idempotent).
-    3. **goal-continuation pass (GW-EXEC)** — sequence decomposed goal plans: roll up a
-       child whose packets are all verified to ``done``, activate the next draft child,
-       and close a parent whose every step finished. Executes nothing — it advances goal
-       *status* + writes roll-up evidence, evidence-gated (no fake-green). This is what
-       actually *closes* a long-term goal once its steps have run.
+    4. **goal-continuation pass (GW-EXEC + replan)** — sequence decomposed goal plans: roll
+       up a child whose packets are all verified to ``done``, activate the next draft child,
+       close a parent whose every step finished, and REPLAN a stuck child (abandon the dead
+       packet for one bounded retry, else escalate + persist the blocked reason). Executes
+       nothing — it advances goal *status* + writes roll-up/replan evidence, evidence-gated.
 
-    The combined ``TickOutcome`` merges all three so heartbeat/status surface what each did.
-    Order matters: continuation runs LAST so it sees the execution evidence the goal-exec
-    pass just wrote this tick (a step that finishes can roll up without a tick of lag).
+    The combined ``TickOutcome`` merges all four so heartbeat/status surface what each did.
+    Order matters: scheduler runs FIRST (a freshly-activated goal is packetized before exec
+    looks for runnable packets); continuation runs LAST so it sees the execution evidence the
+    exec pass just wrote this tick (a step that finishes can roll up without a tick of lag).
     """
 
     from pathlib import Path
@@ -77,8 +82,10 @@ def _build_tick_fn(repo_root: str):
     from ..runtime.autopilot_tick import AutopilotTicker
     from ..runtime.goal_continuation_tick import GoalContinuationTicker
     from ..runtime.goal_exec_tick import GoalExecTicker
+    from ..runtime.goal_scheduler_tick import GoalSchedulerTicker
 
     autopilot = AutopilotTicker(repo_root=Path(repo_root)).tick_fn()
+    goal_sched = GoalSchedulerTicker(repo_root=Path(repo_root)).tick_fn()
     goal_exec = GoalExecTicker(repo_root=Path(repo_root)).tick_fn()
     goal_cont = GoalContinuationTicker(repo_root=Path(repo_root)).tick_fn()
 
@@ -86,13 +93,14 @@ def _build_tick_fn(repo_root: str):
         from ..runtime.daemon import TickOutcome
 
         a = autopilot(n)
+        s = goal_sched(n)
         g = goal_exec(n)
         c = goal_cont(n)
-        parts = [o.summary for o in (a, g, c) if o.summary]
+        parts = [o.summary for o in (a, s, g, c) if o.summary]
         summary = " | ".join(parts)
         return TickOutcome(
             summary=summary,
-            waiting=a.waiting or g.waiting or c.waiting,
+            waiting=a.waiting or s.waiting or g.waiting or c.waiting,
             blocked_count=a.blocked_count + g.blocked_count + c.blocked_count,
             executed=a.executed + g.executed + c.executed,
             executed_paths=tuple(a.executed_paths) + tuple(g.executed_paths),
