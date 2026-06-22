@@ -1,0 +1,38 @@
+ForgeKit `/provider route show` — slot 별 declared → actual (fallback 반영) evidence
+재현: tests/forgekit/test_provider_surface.py::RouteShowResolutionTests
+
+==============================================================================
+[A] four-brain preset — work slot 이 CLI brain 을 declare 해도 live 로 해소
+==============================================================================
+config: primary=claude · default_chat=gemini · execution=codex · safety/synthesis=claude
+        fallback: execution=[codex,gemini,ollama] · safety=[claude,gemini] · synthesis=[claude,gemini,ollama]
+
+slot routing — declared brain → actual live provider (explicit fallback 반영):
+  [dim]default_chat(●) = 실제 live submit 경로 · 그 외(◐/○) = 자율 non-chat work routing 선언[/dim]
+  ● default_chat   gemini   [dim]live[/dim]
+  ◐ synthesis      claude → gemini   [dim]declared routing-only → fallback live[/dim]
+  ◐ research       gemini   [dim]live[/dim]
+  ◐ execution      codex → gemini   [dim]declared routing-only → fallback live[/dim]
+  ◐ compression    ollama   [dim]live[/dim]
+  ◐ classification ollama   [dim]live[/dim]
+  ◐ safety         claude → gemini   [dim]declared routing-only → fallback live[/dim]
+  fallback: implicit_local=off (기본)
+  [dim]범례: ● live submit · ◐ routing 선언(live 도달) · ○ live 경로 없음.[/dim]
+  [dim]claude/codex 는 routing-only(brain participant) — 실제 전송은 fallback 의 live transport(gemini/ollama)가 담당.[/dim]
+
+→ execution/safety/synthesis 는 declared(codex/claude, routing-only)이지만 fallback 이
+  gemini 로 닿아 `declared → actual` 로 표기된다. unsupported_in_console 로 끝나지 않는다.
+
+==============================================================================
+[B] fallback 이 전부 routing-only → 정직한 'live 경로 없음' + 다음 액션
+==============================================================================
+  ○ safety         claude → (live 경로 없음)   [dim]routing-only, fallback 도 live 불가 — `/provider route set safety <gemini|ollama>`[/dim]
+  [dim]범례: ● live submit · ◐ routing 선언(live 도달) · ○ live 경로 없음.[/dim]
+
+→ claude/codex 만으로는 live 불가 → ○ (live 경로 없음) + `/provider route set safety <gemini|ollama>`.
+
+==============================================================================
+[C] primary 미설정 → setup-required (dead-end 아님)
+==============================================================================
+slot routing: [setup-required] primary provider 미설정
+  `/provider set <id>` 또는 `/provider preset four-brain` 후 다시 보세요.
