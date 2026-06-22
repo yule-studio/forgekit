@@ -103,6 +103,7 @@ class ForgekitConsoleApp(App):
         from .process_events import ProcessFeed
         self._feed = ProcessFeed()       # real process timeline (route/submit/generate/…)
         self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
+        self._turns_finalized = 0       # reading-flow turns closed through the sink (measurable)
         self._suppress_refilter = False
         # Repeated-failure escalation: same blocked signature past the threshold
         # (default 3) auto-surfaces a mini-RCA instead of failing silently. Injected
@@ -452,7 +453,7 @@ class ForgekitConsoleApp(App):
             self._open_help(about=(result.title == "about"))
             return
         log = self._transcript
-        log.begin_turn()   # vertical breathing room between turns (Claude cadence)
+        self._begin_turn()   # vertical breathing room between turns (Claude cadence)
         log.write_echo(raw)
         log.write_result(result.title, result.lines)
         # record copyable plain-text blocks (the command + its output) for /copy.
@@ -473,6 +474,7 @@ class ForgekitConsoleApp(App):
             self._refresh_issue()
         # transcript now has content → fold the hero to the compact working header.
         self._sync_intro()
+        self._finalize_turn()   # slash turn complete → a finished unit for the seam
         # keep the inline composer in view as the session grows (Claude-style tail)
         self._follow_tail()
 
@@ -495,18 +497,19 @@ class ForgekitConsoleApp(App):
         self._feed.begin_turn()             # one event group per turn (real timeline)
         res = ingest.resolve_submit_text(raw, clipboard.read_text())
         if res.blocked:
-            self._transcript.begin_turn()
+            self._begin_turn()
             self._transcript.write_echo(raw)
             self._transcript.write(
                 f"[{theme.WARNING}]⚠ paste 차단[/{theme.WARNING}] [dim]{res.note}[/dim]")
             self._feed_emit("mark", _pe.KIND_SUBMIT_BLOCKED, "Paste blocked",
                             status=_pe.ST_BLOCKED, detail="raw payload unavailable", severity=_pe.SEV_WARN)
+            self._finalize_turn()
             self._follow_tail()
             return
         text = (res.text if res.rehydrated else raw).strip()
         if not text:
             return
-        self._transcript.begin_turn()       # vertical breathing room between turns
+        self._begin_turn()                  # vertical breathing room between turns
         # large paste → store the RAW payload + show a compact block referencing its id
         # (expand/resend/copy by id). The FULL text is still what gets submitted.
         from . import ingest as _ingest
@@ -545,6 +548,7 @@ class ForgekitConsoleApp(App):
             self._feed.finish(self._submit_ev, _pe.ST_BLOCKED)
             self._feed_emit("mark", _pe.KIND_SUBMIT_BLOCKED, "Blocked", status=_pe.ST_BLOCKED,
                             detail=result.category, severity=_pe.SEV_WARN)
+            self._finalize_turn()   # held turn is a finished unit (no provider call)
             self._follow_tail()
             return
         # the submit event stays RUNNING ("Submitting to <provider>…") while the provider
@@ -968,7 +972,7 @@ class ForgekitConsoleApp(App):
 
         from . import clipboard
 
-        self._transcript.begin_turn()
+        self._begin_turn()
         self._transcript.write_echo("/copy " + " ".join(args) if args else "/copy")
         from . import process_events as _pe
         self._feed.begin_turn()
@@ -997,6 +1001,7 @@ class ForgekitConsoleApp(App):
                 self._feed_emit("mark", _pe.KIND_COPY_FAILED, "Copy failed",
                                 status=_pe.ST_FAILED, detail=msg, severity=_pe.SEV_WARN)
         self._sync_intro()
+        self._finalize_turn()
         self._follow_tail()
 
     def _attach_dispatch(self, args) -> None:
@@ -1012,7 +1017,7 @@ class ForgekitConsoleApp(App):
         from . import process_events as _pe
 
         sub = (args[0].lower() if args else "")
-        self._transcript.begin_turn()
+        self._begin_turn()
         self._feed.begin_turn()
         self._transcript.write_echo("/attach " + " ".join(args) if args else "/attach")
         if sub == "status":
@@ -1040,6 +1045,7 @@ class ForgekitConsoleApp(App):
                 for line in self._attachments.status_lines():
                     self._transcript.write(f"[dim]{line}[/dim]")
         self._sync_intro()
+        self._finalize_turn()
         self._follow_tail()
 
     def _paste_dispatch(self, args) -> None:
@@ -1050,17 +1056,17 @@ class ForgekitConsoleApp(App):
         raw text, `/copy paste <id>` copies it. honest 'no such paste' when id missing."""
 
         sub = (args[0].lower() if args else "list")
-        self._transcript.begin_turn()
+        self._begin_turn()
         self._transcript.write_echo("/paste " + " ".join(args) if args else "/paste")
         if sub == "list":
             for line in self._pastes.list_lines():
                 self._transcript.write(f"[dim]{line}[/dim]")
-            self._sync_intro(); self._follow_tail(); return
+            self._sync_intro(); self._finalize_turn(); self._follow_tail(); return
         if sub in ("expand", "resend") and len(args) >= 2 and args[1].isdigit():
             payload = self._pastes.get(int(args[1]))
             if payload is None:
                 self._transcript.write(f"[{theme.WARNING}]⚠ paste #{args[1]} 없음[/{theme.WARNING}]")
-                self._sync_intro(); self._follow_tail(); return
+                self._sync_intro(); self._finalize_turn(); self._follow_tail(); return
             if sub == "expand":
                 from . import process_events as _pe
                 self._feed.begin_turn()
@@ -1070,12 +1076,13 @@ class ForgekitConsoleApp(App):
                 self._transcript.write(f"[dim]── end paste #{payload.id} ──[/dim]")
                 self._feed_emit("mark", _pe.KIND_PASTE_EXPANDED, "Paste expanded",
                                 detail=f"#{payload.id} · {payload.line_count} lines")
-                self._sync_intro(); self._follow_tail(); return
+                self._sync_intro(); self._finalize_turn(); self._follow_tail(); return
             # resend → re-run the raw payload through the free-text submit path.
-            self._submit_free_text(payload.raw_text)
+            self._submit_free_text(payload.raw_text)   # delegated turn finalizes itself
             return
         self._transcript.write("[dim]사용법: /paste list · /paste expand <id> · /paste resend <id>[/dim]")
         self._sync_intro()
+        self._finalize_turn()
         self._follow_tail()
 
     def _stage_clipboard_image(self, *, origin: str) -> bool:
@@ -1139,6 +1146,7 @@ class ForgekitConsoleApp(App):
             # honest, category-specific (unsupported_in_console / auth_missing / transport…).
             self._feed_emit("mark", _pe.KIND_ERROR, "Submit failed", status=_pe.ST_FAILED,
                             detail=result.category, severity=_pe.SEV_ERROR)
+            self._finalize_turn()   # failed turn is still a finished unit
             self._refocus_prompt()
             return
         if result.ok:
@@ -1189,17 +1197,19 @@ class ForgekitConsoleApp(App):
         from . import process_events as _pe
 
         if receipt:
-            self._transcript.write(receipt)   # stage 3 — RECEIPT (who/usage/mode) → transcript
+            self._sink.write(receipt)   # stage 3 — RECEIPT (who/usage/mode) → transcript
         gen = getattr(self, "_gen_ev", None)
         if gen is not None:
             self._feed.finish(gen, _pe.ST_DONE)
             self._feed_emit("mark", _pe.KIND_DONE, "Done")   # carries the turn's total feel
+        self._finalize_turn()   # response fully revealed → the turn is a finished unit
         self._follow_tail()
         self._refocus_prompt()
 
     def _write_chunk(self, chunk) -> None:
-        for line in chunk:
-            self._transcript.write(line)
+        # the live-response hot path writes through the sink (the print-flow seam), so a
+        # finished turn is a real unit the migration can later emit to scrollback.
+        self._sink.write_lines(chunk)
 
     @staticmethod
     def _plain_from_lines(lines) -> str:
@@ -1430,6 +1440,41 @@ class ForgekitConsoleApp(App):
     @property
     def _transcript(self) -> Transcript:
         return self._main.transcript
+
+    # --- reading-flow turn lifecycle (terminal-native seam) -----------------
+    @property
+    def _sink(self):
+        """The reading-flow write surface (:class:`tui.transcript_sink.TranscriptSink`).
+
+        Today this is a :class:`WidgetSink` over the live ``Transcript`` RichLog. It is
+        the seam toward Claude-Code-style terminal-native scrollback: turn boundaries
+        flow through ``begin_turn`` / ``finalize_turn`` here, so a future
+        :class:`PrintFlowSink` has real, finished turn UNITS to emit above the inline
+        region. The above-region emit primitive is still blocked in Textual inline, so
+        that sink stays honestly ``NotImplementedError`` — only the boundary wiring
+        (transcript_sink.py migration steps 1-2) is real today.
+        """
+
+        cache = getattr(self, "_sink_cache", None)
+        t = self._transcript
+        if cache is None or getattr(cache, "_t", None) is not t:
+            from .transcript_sink import WidgetSink
+            cache = WidgetSink(t)
+            self._sink_cache = cache
+        return cache
+
+    def _begin_turn(self) -> None:
+        """Open a new reading-flow turn through the sink (breathing room + boundary)."""
+
+        self._sink.begin_turn()
+
+    def _finalize_turn(self) -> None:
+        """Close the current reading-flow turn. The widget sink retains lines (no-op);
+        a print-flow sink would emit the finished turn to terminal scrollback here. We
+        count finalized turns so the boundary wiring is runtime-measurable."""
+
+        self._sink.finalize_turn()
+        self._turns_finalized += 1
 
     # --- chrome / status ----------------------------------------------------
 
