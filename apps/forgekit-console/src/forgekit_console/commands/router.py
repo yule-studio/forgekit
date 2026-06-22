@@ -414,8 +414,26 @@ def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
                                             "(예: `/resolve Spring Boot JWT refresh token`).",))
     plan, read = proj.resolve_with_sources(request, env=env, config=config, role=role)
     if handler == H_RESOLVE:
-        return CommandResult.info("resolve", proj.resolve_summary_lines(plan, read))
+        lines = list(proj.resolve_summary_lines(plan, read)) + list(_forge_governance_lines(request, env=env))
+        return CommandResult.info("resolve", tuple(lines))
     return CommandResult.info("skills", proj.skills_lines(plan, read))
+
+
+def _forge_governance_lines(request: str, *, env=None) -> tuple:
+    """Append the forge GOVERNANCE verdict to /resolve — the operator sees whether the
+    forged plan would be authorized (safe→인가), needs the operator (risky), or is blocked
+    (destructive), bound to the same approval gate the runtime enforces. Lazy + best-effort:
+    if forgekit_runtime is unavailable the resolve summary is returned unchanged."""
+
+    try:
+        from forgekit_runtime.forge import forge_execute
+    except Exception:  # noqa: BLE001
+        return ()
+    try:
+        receipt = forge_execute(request, env=env)
+    except Exception:  # noqa: BLE001 — a render must never break /resolve
+        return ()
+    return ("", "── governance ──") + receipt.lines()
 
 
 def _whoami_result(parsed) -> CommandResult:

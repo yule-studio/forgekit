@@ -1,0 +1,119 @@
+{
+  "note": "append-only forge governance decision log (영속); fake receipts refused at persistence",
+  "entries": [
+    {
+      "receipt": {
+        "request": "java spring boot REST API",
+        "selected_agent": "backend-engineer",
+        "selected_loadout": "backend-java-local",
+        "selected_skills": [
+          "java-spring",
+          "auth-jwt",
+          "docker",
+          "mysql",
+          "oauth2",
+          "postgres",
+          "redis",
+          "openai-api"
+        ],
+        "required_weapons": [
+          "openjdk",
+          "gradle",
+          "docker",
+          "mysql",
+          "postgres",
+          "redis"
+        ],
+        "action_class": "safe",
+        "approval_level": "L2_internal_approve",
+        "authorized": true,
+        "outcome": "executed",
+        "approval_metadata": "decision=java spring boot REST API;level=L2_internal_approve;signoff=tech-lead",
+        "chain_trace": [
+          "pm:structure",
+          "gateway:route→be",
+          "tech-lead:safe/L2_internal_approve"
+        ],
+        "commit_trailers": [
+          "Forgekit-Agent: backend-engineer",
+          "Forgekit-Role: Backend",
+          "Forgekit-Dept: engineering",
+          "Forgekit-GitHub-App: missing",
+          "Forgekit-Vault-Class: fk-be",
+          "Forgekit-Flow: hephaistos-forge",
+          "Forgekit-Mode: safe",
+          "Forgekit-Handoff-From: tech-lead",
+          "Forgekit-Handoff-To: backend-engineer",
+          "Forgekit-Approval: decision=java spring boot REST API;level=L2_internal_approve;signoff=tech-lead"
+        ],
+        "verification": [
+          "java -version",
+          "gradle -v",
+          "docker --version",
+          "./gradlew test",
+          "./gradlew check",
+          "./gradlew test --tests '*Jwt*'",
+          "docker compose config",
+          "mysql --version",
+          "mysql -u root -e 'SELECT 1'",
+          "(흐름 수동 검증)",
+          "psql --version",
+          "redis-cli ping",
+          "(연결 smoke)"
+        ],
+        "risky_weapons": [],
+        "blocking_reasons": [],
+        "evidence_path": "runs/forgekit/hephaistos/"
+      },
+      "recorded_at": "2026-06-22"
+    },
+    {
+      "receipt": {
+        "request": "프로덕션 배포 deploy secret",
+        "selected_agent": "security-engineer",
+        "selected_loadout": "devops-cloud-local",
+        "selected_skills": [
+          "secrets-management",
+          "terraform",
+          "aws-ecs",
+          "kubernetes"
+        ],
+        "required_weapons": [
+          "docker",
+          "terraform",
+          "awscli",
+          "kubectl"
+        ],
+        "action_class": "destructive",
+        "approval_level": "L4_restricted",
+        "authorized": false,
+        "outcome": "blocked",
+        "approval_metadata": "",
+        "chain_trace": [
+          "pm:structure",
+          "gateway:route→be",
+          "tech-lead:blocked/L4_restricted"
+        ],
+        "commit_trailers": [],
+        "verification": [
+          "terraform version",
+          "docker --version",
+          "git grep -nE '(secret|password|api[_-]?key)\\s*=' || true",
+          "terraform validate",
+          "terraform plan",
+          "aws --version",
+          "kubectl version --client"
+        ],
+        "risky_weapons": [],
+        "blocking_reasons": [
+          "destructive(L4) — 자동 실행 금지, operator + runbook 전용",
+          "tech-lead 내부 승인(can_execute) 없음",
+          "safe class 아님(blocked) — 자동 실행 금지",
+          "내부 chain 승인(can_execute) 없음 — safe-class 자동 실행만"
+        ],
+        "evidence_path": "runs/forgekit/hephaistos/"
+      },
+      "recorded_at": "2026-06-22"
+    }
+  ]
+}
