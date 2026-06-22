@@ -94,12 +94,34 @@ class LaunchWiringTests(unittest.TestCase):
 # --------------------------------------------------------------------------- #
 @unittest.skipUnless(_TEXTUAL, "textual 필요")
 class InlineLayoutTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        # Isolate FORGEKIT_HOME to a tempdir so this layout test never reads or writes the
+        # developer's real ~/.forgekit (issue-line cockpit badges read the goal store +
+        # usage ledger from there). The provider is pinned via `config=` in `_app` so an
+        # empty home does NOT make setup-blocked (which would write the setup-required
+        # block into the transcript and grow the "empty" flow past the compact cap — the
+        # full-suite ordering flake where a leaked unconfigured home flipped setup-blocked).
+        import os
+        import tempfile
+        from unittest import mock
+
+        home = tempfile.TemporaryDirectory()
+        self.addCleanup(home.cleanup)
+        ctx = mock.patch.dict(os.environ, {"FORGEKIT_HOME": home.name})
+        ctx.start()
+        self.addCleanup(ctx.stop)
+
     def _app(self, inline):
         from forgekit_console.commands.registry import load_agents, load_commands
         from forgekit_console.commands.router import ConsoleContext
         from forgekit_console.tui.app import ForgekitConsoleApp
         ctx = ConsoleContext(repo_root=Path("/tmp/repo"), agents=load_agents(), commands=load_commands())
-        return ForgekitConsoleApp(repo_root=Path("/tmp/repo"), context=ctx, inline=inline)
+        # Pin a configured provider so setup is NOT blocked — otherwise an unconfigured
+        # home makes the app write the multi-line setup-required block into the transcript,
+        # so the "empty" session is no longer empty (flow grows past the compact cap).
+        return ForgekitConsoleApp(
+            repo_root=Path("/tmp/repo"), context=ctx, inline=inline,
+            config={"primary_provider": "ollama", "linked_providers": ["ollama"]})
 
     async def test_inline_flow_is_content_driven_not_a_fixed_box(self):
         from forgekit_console.tui.session_flow import SessionFlow
