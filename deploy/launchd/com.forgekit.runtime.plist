@@ -18,6 +18,7 @@
     __REPO_ROOT__      absolute path to the checkout the daemon operates on
     __FORGEKIT_HOME__  data home (default /Users/<you>/.forgekit)
     __USER_HOME__      /Users/<you>
+    __INTERVAL__       serve poll interval in seconds (default 300)
 
   HONEST LIMIT (macOS): a closed lid suspends the host — a LaunchAgent does NOT
   keep running through clamshell sleep. For true 24h, run lid-open with
@@ -35,7 +36,7 @@
         <string>runtime</string>
         <string>serve</string>
         <string>--interval</string>
-        <string>300</string>
+        <string>__INTERVAL__</string>
         <string>--repo-root</string>
         <string>__REPO_ROOT__</string>
     </array>
