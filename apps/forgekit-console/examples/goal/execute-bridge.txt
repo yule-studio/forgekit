@@ -1,0 +1,37 @@
+# GW4-B execute-bridge evidence — approve → REAL gated path → evidence (loop closed)
+# execute_approved_packet(goal, packet_id=None, repo_root=None, *, approver, env, persist)
+# 기존 게이트 재사용: run_internal_chain + can_specialist_execute + authorize_runtime_execution + validate_execution
+
+## 1. approved + SAFE → execute 인가, execution+verification evidence 기록 (loop closed)
+goal goal-79613c3773d2  packet packet-e0191b811b01
+outcome=executed executed=True action_class=safe executor=backend-engineer
+goal.status after = active  (NOT done)
+goal.evidence kinds: ['proposal', 'execution', 'verification']
+  - [execution] safe-class 실행 인가 — packet packet-e0191b811b01: 콘솔 도움말 문구 개선 [executor=backend-engineer author=Forgekit Backend <be@forgekit.local> approver=operator approval=decision=콘솔 도움말 문구 개선;level=L2_internal_approve;signoff=tech-lead] (실제 파일 mutation 은 BoundedMutator 게이트 — 본 단계는 인가+검증 기록)
+  - [verification] 실행 게이트 재검증 통과 — chain(can_execute)+decision-lane(authorize)+validate_execution 모두 통과, action_class=safe, approval=decision=콘솔 도움말 문구 개선;level=L2_internal_approve;signoff=tech-lead
+
+## 2. RISKY packet → NOT executed (honest blocked) — fake "executed" 없음
+outcome=blocked executed=False
+reasons: risky(L3) — operator 승인 없음; tech-lead 내부 승인(can_execute) 없음; safe class 아님(risky) — 자동 실행 금지; 내부 chain 승인(can_execute) 없음
+goal.evidence kinds: ['proposal', 'decision']  (no execution)
+commit_message (blocked → 빈 문자열, 날조된 승인 trailer 없음): ''
+
+## 3. unknown packet_id → error, no execution
+outcome=error executed=False
+detail: packet 'packet-does-not-exist' 는 이 goal 에 연결돼 있지 않음
+
+## 4. Forgekit-Agent trailer — bridge commit message 가 #346 validator 통과 (is_known)
+  Forgekit-Agent: backend-engineer
+  Forgekit-Role: Backend
+  Forgekit-Dept: engineering
+  Forgekit-GitHub-App: missing
+  Forgekit-Vault-Class: fk-be
+  Forgekit-Flow: selfimprove-execute
+  Forgekit-Mode: safe
+  Forgekit-Handoff-From: tech-lead
+  Forgekit-Handoff-To: backend-engineer
+  Forgekit-Approval: decision=콘솔 도움말 문구 개선;level=L2_internal_approve;signoff=tech-lead
+#346 check_identity_binding errors: []  (빈 = 통과)
+
+# honest boundary: 실제 repo 파일 mutation 은 BoundedMutator 게이트(WT3) — bridge 는 인가+검증+evidence 기록.
+# 루프는 approve→실제 게이트 실행→실제 evidence 수준에서 닫힘. 일어나지 않은 diff/commit 날조 없음.
