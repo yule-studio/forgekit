@@ -1161,7 +1161,9 @@ class ForgekitConsoleApp(App):
 
         lines = list(result.to_lines())
         receipt = lines.pop() if lines else ""   # the trailing dim receipt line
-        chunks = list(render.chunk_result_lines(lines))
+        # mark the response's first line with the assistant marker (●) so a free-text
+        # response is a distinct turn (mirrors `›` you / `»` command), then chunk-reveal.
+        chunks = list(render.mark_response_chunks(render.chunk_result_lines(lines)))
         self._gen_ev = self._feed_emit("start", _pe.KIND_GENERATE_START, "Generating")
         self._gen_chunks = 0
         # the FIRST chunk lands immediately (snappy); the rest reveal on a timer.

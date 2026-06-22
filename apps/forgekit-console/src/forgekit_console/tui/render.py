@@ -783,6 +783,33 @@ def process_feed_lines(events: Sequence) -> Tuple[str, ...]:
     return tuple(out)
 
 
+# The assistant response marker — magenta ● (the "kit" half of the brand), completing the
+# transcript turn vocabulary alongside the cyan `›` you-marker and the `»` command-result
+# header. A free-text LLM response otherwise had NO role marker (body straight after the
+# echo), so a turn's response start was hard to scan. Magenta keeps it distinct from the
+# cyan status dots / you-marker.
+RESPONSE_MARKER = f"[b {_ACCENT2}]●[/b {_ACCENT2}]"
+
+
+def mark_response_chunks(chunks: Sequence[Sequence[str]]) -> Tuple[Tuple[str, ...], ...]:
+    """Prefix the FIRST non-empty response line (across all chunks) with the assistant
+    marker, so a free-text response reads as a distinct turn. Pure: exactly one line is
+    marked; leading blank lines are left untouched; chunk shape is preserved."""
+
+    out = []
+    marked = False
+    for chunk in chunks:
+        new = []
+        for ln in chunk:
+            if not marked and (ln or "").strip():
+                new.append(f"{RESPONSE_MARKER} {ln}")
+                marked = True
+            else:
+                new.append(ln)
+        out.append(tuple(new))
+    return tuple(out)
+
+
 def chunk_result_lines(lines: Sequence[str], max_lines: int = 3) -> Tuple[Tuple[str, ...], ...]:
     """Group response lines into small reveal chunks for progressive rendering.
 
@@ -814,4 +841,5 @@ __all__ = (
     "status_pill", "hint_line", "help_sections", "selection_copy_lines",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
     "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
+    "RESPONSE_MARKER", "mark_response_chunks",
 )
