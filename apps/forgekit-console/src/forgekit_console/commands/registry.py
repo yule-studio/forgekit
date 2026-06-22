@@ -34,6 +34,7 @@ H_PROVIDER = "provider"
 H_SETUP = "setup"
 H_TOOLCHAIN = "toolchain"
 H_NEXUS = "nexus"
+H_DISCOVERY = "discovery"
 H_DAEMON = "daemon"
 H_GOAL = "goal"
 H_COUNCIL = "council"
@@ -107,6 +108,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("setup", "컨트롤플레인 부트스트랩 — provider · knowledge(nexus/vault) · toolchain 한 화면 정직 집계 + 추천 preset 저장/검증 (`/setup [apply [preset]]`)", H_SETUP, "status"),
     SlashCommand("toolchain", "language/runtime 버전 전환 — `/toolchain [detect|recommend <loadout>|switch [global] [--approve]|verify|drift]` (repo-local 감지·mise 기반, global/install 은 승인 게이트)", H_TOOLCHAIN, "status"),
     SlashCommand("nexus", "Nexus 지식 source — `/nexus [set <path>|clear]` 연결/해제 + live 상태(connected/not_connected/missing/blocked/restricted)", H_NEXUS, "status"),
+    SlashCommand("discovery", "discovery sweep — free-first 수집→idea brief→operator digest(왜 올라왔는지/다음 질문). `/discovery [promote <n> | save <n>]` (promote=PM handoff 제안, save=연결된 vault 에 authored note)", H_DISCOVERY, "status"),
     SlashCommand("daemon", "always-on 데몬 heartbeat — state/tick/last_tick/pid/kill-switch (`/daemon [stop]`); CLI `forgekit runtime serve|status|stop`", H_DAEMON, "status"),
     SlashCommand("goal", "장기 목표 control plane — `/goal [list|new <제목>|show <id>|activate <id>|evidence <id>|awaiting|approve <id> [메모]|deny <id> [메모]]` (forgekit_goal 영속, 승인은 awaiting_approval→active/blocked + decision evidence, tick/실행은 runtime/GW4)", H_GOAL, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),

@@ -19,6 +19,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | daemon heartbeat in console (state/tick/pid/kill-switch) | working | `/daemon` · `/daemon stop` | `examples/runtime-daemon/`, `test_runtime_daemon_surface` |
 | agent identity (git author / app status) | working | `/whoami` | `test_identity_attribution` |
 | discovery collectors (free-first) | working; YouTube/IG/Google planned | `/sources` | `examples/sources/` |
+| discovery sweep → digest (왜/다음 질문) | working | `/discovery` | `examples/discovery/sweep-digest.json`, `test_discovery_sweep` |
+| discovery brief → PM handoff (제안) | working | `/discovery promote <n>` | `test_discovery_sweep` |
+| discovery brief → authored vault note | working (연결 시; 미연결 정직 실패) | `/discovery save <n>` | `examples/discovery/idea-brief-note.md` |
 | design restricted source | blocked (real TCC) — honest | `/design` | `examples/design/` |
 | red/blue planning (owned assets) | working (plan-only) | `/red-blue` | `examples/security/` |
 | `/provider` console config (set primary / list / doctor) | working | `/provider [set <id>\|list\|doctor]` | `test_provider_surface` |
