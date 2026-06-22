@@ -30,6 +30,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | toolchain 버전 감지/추천 (repo-local manifest·loadout→profile) | working | `/toolchain detect` · `/toolchain recommend <loadout>` | `examples/toolchain/`, `test_toolchain` |
 | toolchain verify/drift (required vs ACTIVE, mise; no manager→honest) | working (needs mise to verify; manager-missing surfaced) | `/toolchain verify\|drift [<loadout>]` | `test_toolchain` |
 | toolchain switch (mise; global/install **approval-gated**, no fake switch) | working (local 적용; gated 액션은 `--approve`) | `/toolchain switch [global] [--approve]` | `test_toolchain` |
+| goal control plane (장기 목표 model/transition/append-only evidence/packet·child linkage, 영속) | working (surface CRUD; tick=runtime/GW4) | `/goal [list\|new <제목>\|show <id>\|activate <id>\|evidence <id>]` | `examples/goal/`, `test_goal_core`·`test_goal_surface`·`test_goal_tick` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |
