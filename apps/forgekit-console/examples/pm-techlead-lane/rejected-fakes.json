@@ -1,0 +1,10 @@
+{
+  "fake_meeting_violations": [
+    "meeting: 반대/조건부/우려가 하나도 없음 — rubber-stamp(fake) 합의"
+  ],
+  "fake_signoff_status": "escalated",
+  "fake_signoff_violations": [
+    "signoff: 'be' 은 tech-lead 가 아님 — 권한 없는 승인"
+  ],
+  "can_engineer_start(fake_signoff, None)": false
+}

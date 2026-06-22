@@ -1,0 +1,29 @@
+{
+  "verdict": {
+    "allowed": true,
+    "action_class": "safe",
+    "approval_level": "L2_internal_approve",
+    "executor_id": "backend-engineer",
+    "approval_metadata": "decision=decision:m-enf;level=L2_internal_approve;signoff=tech-lead",
+    "satisfied": [
+      "gateway",
+      "tech-lead",
+      "handoff",
+      "internal-safe"
+    ],
+    "blocking_reasons": []
+  },
+  "commit_trailers": [
+    "Forgekit-Agent: backend-engineer",
+    "Forgekit-Role: Backend",
+    "Forgekit-Dept: engineering",
+    "Forgekit-GitHub-App: missing",
+    "Forgekit-Vault-Class: fk-be",
+    "Forgekit-Flow: decision-lane",
+    "Forgekit-Mode: safe",
+    "Forgekit-Handoff-From: tech-lead",
+    "Forgekit-Handoff-To: backend-engineer",
+    "Forgekit-Approval: decision=decision:m-enf;level=L2_internal_approve;signoff=tech-lead"
+  ],
+  "trailer_validation": []
+}
