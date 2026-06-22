@@ -406,64 +406,131 @@ def _nexus_result(parsed, ctx) -> CommandResult:
         "nexus", _proj.nexus_surface_lines(env=ctx.env, config=ctx.config))
 
 
+def _discovery_now() -> str:
+    # real clock at the surface boundary (caller-supplied elsewhere — no fake clock in core)
+    from datetime import datetime
+
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _discovery_pending_idea(ledger, idx_token: str):
+    """Resolve a 1-based index into the ledger's pending queue (score-ordered)."""
+
+    pend = ledger.pending()
+    if not pend:
+        return None, "결정 대기 중인 아이디어가 없습니다 — 먼저 `/discovery` 로 수집하세요."
+    try:
+        n = int(idx_token)
+    except (TypeError, ValueError):
+        n = 1
+    if n < 1 or n > len(pend):
+        return None, f"번호 범위 밖 (1~{len(pend)}). `/discovery pending` 로 목록 확인."
+    return pend[n - 1], ""
+
+
 def _discovery_result(parsed, ctx) -> CommandResult:
-    # /discovery [promote <n> | save <n>] — run a free-first discovery sweep and show
-    # the operator digest (왜 올라왔는지/다음 질문). promote → PM handoff 제안(실행 아님),
-    # save → 연결된 Nexus vault 에 retrieval-friendly authored note (미연결이면 정직 실패).
+    # /discovery [pending | promote <n> | save <n> | park <n>] — ledger-backed loop:
+    # a sweep records ideas into a PERSISTED, deduplicated ledger so the loop accumulates
+    # (new vs already-tracked, lifecycle status). promote → PM handoff 제안(실행 아님),
+    # save → 연결된 Nexus vault 에 authored note (미연결이면 정직 실패), park → 보류.
     from .. import discovery as D
 
     repo_root = getattr(ctx, "repo_root", None) or Path(".")
+    env = getattr(ctx, "env", None)
     args = list(getattr(parsed, "args", ()) or ())
     sub = args[0].lower() if args else ""
+    ledger = D.DiscoveryLedger.load(env)
 
-    def _pick(idx_token: str):
-        sweep = D.run_discovery_sweep(repo_root)
-        briefs = sweep.briefs
-        if not briefs:
-            return sweep, None, "승격할 brief 가 없습니다 — 먼저 `/discovery` 로 신호를 수집하세요."
-        try:
-            n = int(idx_token)
-        except (TypeError, ValueError):
-            n = 1
-        if n < 1 or n > len(briefs):
-            return sweep, None, f"brief 번호 범위 밖 (1~{len(briefs)})."
-        return sweep, briefs[n - 1], ""
+    if sub == "pending":
+        pend = ledger.pending()
+        if not pend:
+            return CommandResult.info("discovery pending", ("결정 대기 아이디어 없음.",))
+        lines = [f"결정 대기 {len(pend)}건 (score 순):"]
+        for i, idea in enumerate(pend, 1):
+            lines.append(f"[{i}] {idea.title}  ({idea.status}·{idea.seen_count}회 관측)")
+            lines.append(f"    왜: {idea.why}")
+            if idea.next_questions:
+                lines.append(f"    물어볼 것: {idea.next_questions[0]}")
+        lines.append("`/discovery promote <n>` · `save <n>` · `park <n>`")
+        return CommandResult.info("discovery pending", tuple(lines))
 
     if sub == "promote":
-        sweep, brief, err = _pick(args[1] if len(args) > 1 else "1")
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
         if err:
             return CommandResult.error("discovery promote", (err,))
-        ho = D.promote_brief(brief)
+        ho = D.promote_brief(idea.rebuild_brief())
+        ledger.mark(idea.fingerprint, D.ST_PROMOTED)
+        ledger.save(env)
         lines = (
-            f"승격(제안): {brief.title}",
+            f"승격(제안): {idea.title}",
             f"- handoff: {ho.trace[0].handoff_from} → … → {ho.trace[-1].handoff_to} "
             f"(최종 phase {ho.trace[-1].phase})",
             f"- role tasks {len(ho.split.tasks)}개 · blocked {len(ho.split.blocked)}개",
+            "- ledger: 상태 promoted (결정 대기에서 제외, 누적 보존)",
             "주의: PM→gateway→tech-lead 제안 packet 일 뿐, 실행은 승인 게이트 통과 후.",
         )
         return CommandResult.info("discovery promote", lines)
 
     if sub == "save":
-        sweep, brief, err = _pick(args[1] if len(args) > 1 else "1")
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
         if err:
             return CommandResult.error("discovery save", (err,))
         from hephaistos.nexus_read import nexus_root
 
-        root = nexus_root(getattr(ctx, "env", None), getattr(ctx, "config", None))
+        root = nexus_root(env, getattr(ctx, "config", None))
         if not root:
             return CommandResult.error(
                 "discovery save",
                 ("Nexus vault 미연결 — `/nexus set <path>` 로 먼저 연결하세요 (fake-write 안 함).",))
-        path = D.persist_brief(brief, root)
+        path = D.persist_brief(idea.rebuild_brief(), root)
         if not path:
             return CommandResult.error(
                 "discovery save", (f"vault 쓰기 실패 (root={root}) — 권한/경로 확인.",))
+        ledger.mark(idea.fingerprint, D.ST_SAVED, note_path=str(path))
+        ledger.save(env)
         return CommandResult.info(
             "discovery save",
-            (f"authored note 기록: {path}", "- author user-researcher · 00-inbox/discovery (raw intake)"))
+            (f"authored note 기록: {path}",
+             "- author user-researcher · 00-inbox/discovery (raw intake)",
+             "- ledger: 상태 saved (note_path 영속)"))
 
-    sweep = D.run_discovery_sweep(repo_root)
-    return CommandResult.info("discovery", sweep.digest.lines())
+    if sub == "park":
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery park", (err,))
+        ledger.mark(idea.fingerprint, D.ST_PARKED)
+        ledger.save(env)
+        return CommandResult.info(
+            "discovery park",
+            (f"보류: {idea.title}", "- ledger: 상태 parked (결정 대기에서 제외, 다시 안 올라옴)"))
+
+    # default: sweep → record into ledger → accumulating digest
+    sweep = D.run_discovery_sweep(repo_root, config=getattr(ctx, "config", None))
+    new, updated = ledger.record_sweep(sweep, now=_discovery_now())
+    ledger.save(env)
+    s = ledger.summary()
+    lines = [
+        "discovery — 누적 digest (ledger-backed)",
+        f"- live 수집원(무료 우선): {', '.join(sweep.digest.live_sources) or '(없음)'}",
+        f"- planned(미연결 — fake-live 아님): {', '.join(sweep.digest.planned_sources) or '(없음)'}",
+        f"- 누적 추적: 총 {s['total']}건 · 결정대기 {s['pending']} · promoted {s['promoted']} · "
+        f"saved {s['saved']} · parked {s['parked']}",
+        f"- 이번 sweep: 새 아이디어 {len(new)}건 · 다시 관측 {len(updated)}건",
+    ]
+    for i, idea in enumerate(new[:5], 1):
+        lines.append(f"새[{i}] {idea.title}")
+        lines.append(f"    왜: {idea.why}")
+        if idea.next_questions:
+            lines.append(f"    물어볼 것: {idea.next_questions[0]}")
+    if not new:
+        lines.append("  (새 아이디어 없음 — `/discovery pending` 으로 결정 대기 목록 확인)")
+    # nexus connection hint — saving needs a connected vault (honest)
+    from hephaistos.nexus_read import nexus_root
+
+    root = nexus_root(env, getattr(ctx, "config", None))
+    lines.append(f"- vault: {'연결됨 ' + str(root) if root else '미연결 — /nexus set <path> 후 /discovery save 가능'}")
+    lines.append("`/discovery pending` 으로 결정 대기 아이디어를 보고 promote/save/park 하세요.")
+    return CommandResult.info("discovery", tuple(lines))
 
 
 def _daemon_result(parsed, ctx) -> CommandResult:

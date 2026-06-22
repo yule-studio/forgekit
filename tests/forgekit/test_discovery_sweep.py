@@ -18,8 +18,6 @@ from pathlib import Path
 from tests.forgekit import _SRC  # noqa: F401
 
 from forgekit_console import discovery as D
-from forgekit_console.commands.parser import parse_input
-from forgekit_console.commands.router import ConsoleContext, route
 
 
 def _empty_fetcher(_url: str) -> str:
@@ -110,25 +108,8 @@ class DiscoverySweepTests(unittest.TestCase):
         ho = D.promote_brief(sw.top_brief)
         self.assertEqual(ho.trace[-1].phase, "tech-lead")       # PM→gateway→tech-lead
 
-    # --- /discovery surface (pure router, isolated ctx) -----------------------
-    def _ctx(self) -> ConsoleContext:
-        # isolated: empty env/config so /discovery save is honestly "not connected"
-        return ConsoleContext(repo_root=self.tmp, env={}, config={})
-
-    def test_router_discovery_digest(self) -> None:
-        res = route(parse_input("/discovery"), self._ctx())
-        self.assertEqual(res.title, "discovery")
-        self.assertIn("operator digest", "\n".join(res.lines))
-
-    def test_router_promote(self) -> None:
-        res = route(parse_input("/discovery promote 1"), self._ctx())
-        self.assertEqual(res.title, "discovery promote")
-        self.assertIn("tech-lead", "\n".join(res.lines))
-
-    def test_router_save_not_connected_is_honest(self) -> None:
-        res = route(parse_input("/discovery save 1"), self._ctx())
-        self.assertEqual(res.kind, "error")                     # no vault → honest error
-        self.assertIn("미연결", "\n".join(res.lines))
+    # The ledger-backed `/discovery` router surface (digest/pending/promote/save/park)
+    # is covered with proper state isolation in test_discovery_ledger.
 
 
 if __name__ == "__main__":

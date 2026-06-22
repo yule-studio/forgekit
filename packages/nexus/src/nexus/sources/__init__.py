@@ -23,12 +23,12 @@ from .collectors import (
     hackernews_collector,
     reddit_collector,
 )
-from .registry import SourceRegistry, default_registry
+from .registry import SourceRegistry, default_registry, registry_from_config
 
 __all__ = (
     "COST_FREE", "COST_LOW", "COST_PAID", "STATUS_LIVE", "STATUS_PLANNED",
     "SourceItem", "SourceSpec",
     "PlannedCollector", "RepoLocalCollector", "RssCollector",
     "github_collector", "hackernews_collector", "reddit_collector",
-    "SourceRegistry", "default_registry",
+    "SourceRegistry", "default_registry", "registry_from_config",
 )
