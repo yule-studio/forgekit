@@ -110,6 +110,14 @@ flowchart LR
 | **github app / git attribution** | GitHub App env / git author identity | configured / missing | P1 |
 | **notification** | inbox / opt-in desktop / channel | on / off | P1 |
 
+> **통합 표면 상태 (구현됨):** provider · knowledge(nexus/vault) · toolchain 세 lane 은 이제
+> `/setup` 한 화면으로 **합성**된다(`forgekit_console.bootstrap` — core 로직 없이 각 lane 의
+> 정직한 assessor 에 위임, no fake). provider live lane 만 readiness 를 결정하고 나머지는
+> non-blocking 정직 표면. 모두 단일 canonical config 에 persist → 재실행 후 유지. 구현 SSoT 는
+> [`forgekit-setup-bootstrap.md`](forgekit-setup-bootstrap.md), 회귀 `tests/forgekit/test_bootstrap.py`,
+> evidence `apps/forgekit-console/examples/bootstrap/`. github app / notification lane 의 부트스트랩
+> 합류는 후속(P1 잔여).
+
 ## 5. 실행 우선순위 로드맵 (고정)
 
 ### P0 — control plane 의 뼈대

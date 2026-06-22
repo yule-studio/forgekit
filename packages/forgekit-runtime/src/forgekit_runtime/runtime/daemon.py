@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from . import heartbeat as HB
 
@@ -45,11 +45,13 @@ class DaemonResult:
     notified: int = 0
     heartbeats: int = 0
     executed: int = 0              # total safe-class mutations across the run (WT2 #241)
+    resumed_from: int = 0          # prior heartbeat tick this run resumed from (0 = cold start)
 
     def to_dict(self) -> dict:
         return {"ticks": self.ticks, "stopped_reason": self.stopped_reason,
                 "waits": self.waits, "notified": self.notified,
-                "heartbeats": self.heartbeats, "executed": self.executed}
+                "heartbeats": self.heartbeats, "executed": self.executed,
+                "resumed_from": self.resumed_from}
 
 
 @dataclass
@@ -64,10 +66,23 @@ class BoundedDaemon:
     notifier: Optional[object] = None
     sleep_fn: Optional[Callable[[float], None]] = None
     pid: int = 0
+    resume: bool = True            # on serve start, continue tick numbering from the last heartbeat
     _stop: bool = False
 
     def request_stop(self) -> None:
         self._stop = True
+
+    def _resume_tick(self) -> Tuple[int, str]:
+        """Read the prior heartbeat and return (start_tick, note). Honest continuity only — we
+        resume the tick counter (so cooldown/next_eligible_tick stay monotonic across a restart,
+        e.g. launchd ``KeepAlive``), we do NOT fake that the prior process is still alive."""
+
+        if not self.resume:
+            return 0, ""
+        prior = HB.read_heartbeat(path=self.heartbeat_path, env=self.env)
+        if prior.tick <= 0:
+            return 0, ""
+        return prior.tick, f"resumed from tick {prior.tick} (prev status={prior.status})"
 
     def _heartbeat(self, status: str, tick: int, note: str = "") -> bool:
         from .heartbeat import Heartbeat
@@ -110,15 +125,21 @@ class BoundedDaemon:
         res = DaemonResult()
         sleep = self.sleep_fn or _real_sleep
         self._install_signals()
-        tick = 0
+        tick, resume_note = self._resume_tick()
+        res.resumed_from = tick
+        if tick:
+            # honest startup heartbeat so `forgekit runtime status` shows the resume immediately.
+            self._heartbeat(HB.STATUS_IDLE, tick, resume_note)
+        run_ticks = 0          # ticks executed THIS serve (max_ticks bounds this, not the resumed offset)
         while not self._stop:
             if self._killed():
                 res.stopped_reason = "kill switch"
                 break
-            if self.max_ticks and tick >= self.max_ticks:
+            if self.max_ticks and run_ticks >= self.max_ticks:
                 res.stopped_reason = f"max_ticks({self.max_ticks})"
                 break
             tick += 1
+            run_ticks += 1
             outcome = tick_fn(tick)
             res.ticks = tick
             res.executed += outcome.executed

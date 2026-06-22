@@ -102,7 +102,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
     SlashCommand("provider", "provider 설정/연결 — `/provider [set|link|unlink|connect <id>|disconnect <id>|test <id>|recommended|preset four-brain|route show|route set <slot> <id>|list|doctor]`", H_PROVIDER, "status"),
-    SlashCommand("setup", "provider onboarding wizard — 연결 점검 + 추천 4-provider 브레인 저장/검증 (`/setup [apply]`)", H_SETUP, "status"),
+    SlashCommand("setup", "컨트롤플레인 부트스트랩 — provider · knowledge(nexus/vault) · toolchain 한 화면 정직 집계 + 추천 preset 저장/검증 (`/setup [apply [preset]]`)", H_SETUP, "status"),
     SlashCommand("toolchain", "language/runtime 버전 전환 — `/toolchain [detect|recommend <loadout>|switch [global] [--approve]|verify|drift]` (repo-local 감지·mise 기반, global/install 은 승인 게이트)", H_TOOLCHAIN, "status"),
     SlashCommand("nexus", "Nexus 지식 source — `/nexus [set <path>|clear]` 연결/해제 + live 상태(connected/not_connected/missing/blocked/restricted)", H_NEXUS, "status"),
     SlashCommand("daemon", "always-on 데몬 heartbeat — state/tick/last_tick/pid/kill-switch (`/daemon [stop]`); CLI `forgekit runtime serve|status|stop`", H_DAEMON, "status"),

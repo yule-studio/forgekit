@@ -42,6 +42,9 @@ def daemon_status_lines(*, env: Optional[Mapping[str, str]] = None) -> Tuple[str
     ]
     if beat.status == hb.STATUS_STOPPED and not beat.ts:
         lines.append("  (데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 bounded 시작)")
+    elif beat.tick > 0:
+        # honest resume hint: the next serve continues tick numbering from here (launchd KeepAlive 등).
+        lines.append(f"  resume    : 다음 serve 는 tick {beat.tick + 1} 부터 이어집니다 (resume on; cooldown 연속성 유지)")
     lines.append("  [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]")
     return tuple(lines)
 

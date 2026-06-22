@@ -122,5 +122,43 @@ class RoutingTests(unittest.TestCase):
         self.assertIn("slot routing", "\n".join(route(parse_input("/provider route show"), ctx).lines))
 
 
+class ProviderStateTaxonomyTests(unittest.TestCase):
+    """The honest 5-state taxonomy (setup-required / configured / linked / live / unsupported).
+
+    ``live`` is asserted ONLY from a verified probe (no fake-live); CLI brains (claude/codex)
+    are ``unsupported`` for console live-submit even as configured participants."""
+
+    def test_not_in_brain_is_setup_required(self) -> None:
+        states = dict(ps.provider_state_map({}))               # empty config → every provider needs setup
+        self.assertEqual(set(states.values()), {ps.STATE_SETUP_REQUIRED})
+
+    def test_cli_primary_is_unsupported_not_faked_live(self) -> None:
+        cfg = {"primary_provider": "claude", "linked_providers": ["claude"]}
+        states = dict(ps.provider_state_map(cfg))
+        self.assertEqual(states["claude"], ps.STATE_UNSUPPORTED)   # CLI brain, no console live — honest
+
+    def test_openai_primary_without_probe_is_configured(self) -> None:
+        cfg = {"primary_provider": "gemini", "linked_providers": ["gemini"]}
+        states = dict(ps.provider_state_map(cfg))                  # unprobed → never "live"
+        self.assertEqual(states["gemini"], ps.STATE_CONFIGURED)
+
+    def test_linked_participant_is_linked(self) -> None:
+        cfg = {"primary_provider": "gemini", "linked_providers": ["gemini", "ollama"]}
+        states = dict(ps.provider_state_map(cfg))
+        self.assertEqual(states["ollama"], ps.STATE_LINKED)
+
+    def test_live_only_from_verified_probe(self) -> None:
+        cfg = {"primary_provider": "gemini", "linked_providers": ["gemini", "ollama"]}
+        states = dict(ps.provider_state_map(cfg, live_map={"ollama": True, "gemini": False}))
+        self.assertEqual(states["ollama"], ps.STATE_LIVE)         # verified → live
+        self.assertEqual(states["gemini"], ps.STATE_CONFIGURED)   # not verified → no fake-live
+
+    def test_every_state_is_one_of_five(self) -> None:
+        cfg = {"primary_provider": "claude", "linked_providers": ["claude", "gemini", "ollama"]}
+        states = dict(ps.provider_state_map(cfg, live_map={"ollama": True}))
+        for pid, state in states.items():
+            self.assertIn(state, ps.PROVIDER_STATES, f"{pid} → {state} not a known state")
+
+
 if __name__ == "__main__":
     unittest.main()
