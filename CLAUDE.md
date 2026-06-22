@@ -60,6 +60,7 @@
 | plugin/hook/skill/MCP/backend 분리 / provider 배치 | + `docs/plugin-taxonomy.md` + `docs/provider-capability-matrix.md` |
 | engineering role council / tech-lead signoff / execution review | + `docs/engineering-role-council-runtime.md` (SSoT — same-role peer review 통과 후에만 cross-role synthesis, tech-lead = technical approval, gateway = operator approval surface. 코드 contract: `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
 | 설계 결정 레인 / PM brief·meeting·stack 비교 / PM→gateway→tech-lead→engineer handoff / fake meeting·signoff 금지 | + `docs/pm-techlead-lane.md` (SSoT — design system+coding convention+stack+tradeoff+approval 5필수, single executor gate `can_engineer_start`. 코드: `packages/forgekit-runtime/src/forgekit_runtime/decision_lane/`) |
+| Hephaistos forge plan governance / forge→승인게이트→execution receipt / weapon safety 분류 / fake receipt 금지 | + `docs/hephaistos-governance.md` (SSoT — forge plan 을 동일 승인 게이트(run_internal_chain→authorize_runtime_execution→validate_execution)에 연결, 코드: `packages/forgekit-runtime/src/forgekit_runtime/forge/`) |
 | 모노레포 구조 / packages·apps 추가 / compat shim | + `docs/monorepo-structure.md` (현황·의존 규칙·shim 카탈로그·로드맵 SSoT) |
 | ForgeKit 플랫폼 경계 / console=operator app / 코어 packages 분리(WT1~4) | + `docs/forgekit-architecture-ownership.md` (owner 매트릭스·import 경계·이전 우선순위 SSoT) |
 | packages/* 분류 / 네이밍 충돌 / 어디에 새 기능 추가 / transitional debt | + `docs/package-topology.md` (18 package 분류표·migration matrix·결정 트리 SSoT) |
