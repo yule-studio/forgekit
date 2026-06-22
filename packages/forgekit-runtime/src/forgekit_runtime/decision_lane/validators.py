@@ -33,6 +33,7 @@ from .schemas import (
     EngineerHandoff,
     MeetingRecord,
     PMBrief,
+    SpecialistBriefing,
     StackComparison,
     TechLeadDecision,
 )
@@ -229,8 +230,52 @@ def validate_handoff(handoff: EngineerHandoff, decision: TechLeadDecision) -> Tu
     return tuple(v)
 
 
+# --- specialist briefing (the materialized work order) -----------------------
+
+
+def validate_specialist_briefing(briefing: SpecialistBriefing) -> Tuple[str, ...]:
+    """Reject a thin work order. A real briefing carries the design context the specialist
+    needs to execute WITHOUT re-deriving it: goal, proposed stack + why, ≥1 rejected option,
+    coding conventions, design system, scope, test strategy, acceptance. ``()`` = the
+    specialist may start off it.
+
+    ``integration_notes`` (API/infra 고려) is carried through but not hard-required — its
+    presence depends on whether the decision recorded it; the design-context that a valid
+    :class:`TechLeadDecision` already guarantees IS required here."""
+
+    v = []
+    if _blank(briefing.handoff_id):
+        v.append("briefing: handoff_id 비어 있음")
+    if _blank(briefing.executor_role):
+        v.append("briefing: executor_role 비어 있음")
+    if _blank(briefing.goal):
+        v.append("briefing: goal(목표) 비어 있음 — 무엇을 왜 만드는지 없음")
+    if _blank(briefing.proposed_stack):
+        v.append("briefing: proposed_stack(제안 스택) 비어 있음")
+    if _blank(briefing.stack_rationale):
+        v.append("briefing: stack_rationale(선택 이유) 비어 있음")
+    if not briefing.rejected_options:
+        v.append("briefing: rejected_options 없음 — 비교 없이 단정한 스택")
+    else:
+        for r in briefing.rejected_options:
+            if _blank(r.name) or _blank(r.why_not):
+                v.append("briefing: 탈락안에 name/why_not 누락 — 근거 없는 탈락")
+                break
+    if _blank(briefing.coding_conventions):
+        v.append("briefing: coding_conventions 비어 있음")
+    if _blank(briefing.design_system):
+        v.append("briefing: design_system 비어 있음")
+    if not briefing.scope:
+        v.append("briefing: scope 비어 있음")
+    if _blank(briefing.test_strategy):
+        v.append("briefing: test_strategy 비어 있음")
+    if not briefing.acceptance_criteria:
+        v.append("briefing: acceptance_criteria 비어 있음 — 완료 기준 없는 인계 금지")
+    return tuple(v)
+
+
 __all__ = (
     "validate_pm_brief", "validate_stack_comparison", "validate_consult",
     "validate_meeting", "validate_tech_lead_decision", "validate_handoff",
-    "NON_EXECUTOR_ROLES",
+    "validate_specialist_briefing", "NON_EXECUTOR_ROLES",
 )

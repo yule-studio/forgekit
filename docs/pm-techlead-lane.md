@@ -61,8 +61,10 @@ approval 분리)을 약화하지 않고 **설계 결정 표면에 구체화**한
 | `ConsultNote` | consult_id / topic / **by_role** / **to_roles**(≥1) / question | consult 를 typed artifact 로 (non-gating, anti-fake) |
 | `ParticipantPosition` | role / **stance** / position / concerns | 회의의 *실재* 단위 |
 | `MeetingRecord` | meeting_id / agenda / participants / decisions / escalated | 기록된 설계 회의 |
-| `TechLeadDecision` | meeting_ref / **design_system** / **coding_convention** / stack_decision / tradeoffs / approval_level / signoff_by / status | 기술 서명(5개 필수 필드 고정) |
-| `EngineerHandoff` | decision_ref / **executor_role**(단일) / scope / forbidden_scope / test_strategy / rollback_plan | 단일 executor 작업 지시 |
+| `TechLeadDecision` | meeting_ref / **design_system** / **coding_convention** / stack_decision / tradeoffs / **integration_notes**(API·infra) / approval_level / signoff_by / status | 기술 서명(5개 필수 필드 고정) |
+| `EngineerHandoff` | decision_ref / **executor_role**(단일) / scope / forbidden_scope / test_strategy / rollback_plan | 단일 executor 작업 지시(라우팅) |
+| `SpecialistBriefing` | goal / **proposed_stack** + 이유 / **rejected_options** / coding_conventions / design_system / integration_notes / scope / test / acceptance | specialist 가 받는 실제 work order(설계 맥락 포함) |
+| `RejectedOption` | name / **why_not** | 탈락한 스택 + 왜 (silent drop 금지) |
 
 모든 artifact 는 frozen dataclass + `to_dict` (직렬화/evidence 가능).
 
@@ -131,6 +133,29 @@ engineer 착수 (단일 executor)
 이는 autopilot 의 `can_specialist_execute`("no internal signoff, no
 execution")를 설계 결정 표면으로 옮긴 것이다. `decision=None` 또는
 `handoff=None` 이면 항상 False.
+
+### 4.2 Specialist work order (`SpecialistBriefing`) — "design 없이 바로 구현" 차단
+
+`EngineerHandoff` 는 **라우팅**(누구에게/scope/test)만 담는다. specialist 가
+실제로 받는 것은 `build_specialist_briefing(brief, decision, handoff)` 로 합성된
+**work order** 다 — PM 목표, 제안 스택 + **선택 이유**, **rejected_options**(stack
+비교에서 채택 안 된 옵션 + 왜 탈락했는지 = cons), coding conventions, design
+system, API/infra 고려(`integration_notes`), scope/forbidden_scope, test 전략,
+acceptance. 즉 specialist 는 설계 맥락을 **다시 추론하지 않고** 받는다.
+
+**Stronger gate (`can_specialist_start`)** — `can_engineer_start` 가 참이고 **그
+위에** 합성된 briefing 이 `validate_specialist_briefing == ()` 일 때만 착수.
+즉 서명된 결정 + 유효 handoff 라도 work order 에 목표/제안 스택/이유/탈락안/
+컨벤션/디자인시스템/scope/test/acceptance 중 하나라도 비면 **thin order 로
+거부**된다. 이것이 "설계 없이 바로 구현하는 흐름"을 줄이는 hard rail.
+`run_lane` 의 `engineer_may_start` 는 이 stronger gate 를 쓴다. valid 한
+decision 은 design_system/coding_convention/stack(±2 옵션, 각 pros+cons)을 이미
+보장하므로 — 정상 체인은 자동으로 briefing 도 유효(구성상 호환).
+
+`record_lane_artifacts(handoff=..., briefing=...)` 는 handoff 이벤트 payload 를
+work order 로 **풍부화**해 영속하고, console `/handoff <session>` 가 그것을
+replay 해 작업 지시를 렌더한다. evidence:
+`apps/forgekit-console/examples/pm-techlead-lane/specialist-briefing.json`.
 
 ### 4.1 approval ladder 와 operator 분리
 

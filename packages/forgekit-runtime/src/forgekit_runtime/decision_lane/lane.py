@@ -28,6 +28,8 @@ from .schemas import (
     EngineerHandoff,
     MeetingRecord,
     PMBrief,
+    RejectedOption,
+    SpecialistBriefing,
     StackComparison,
     TechLeadDecision,
 )
@@ -35,6 +37,7 @@ from .validators import (
     validate_handoff,
     validate_meeting,
     validate_pm_brief,
+    validate_specialist_briefing,
     validate_tech_lead_decision,
 )
 
@@ -69,6 +72,7 @@ class LaneResult:
     routing: GatewayRouting
     decision: Optional[TechLeadDecision] = None
     handoff: Optional[EngineerHandoff] = None
+    briefing: Optional[SpecialistBriefing] = None
     engineer_may_start: bool = False
     operator_required: bool = False
     violations: Tuple[str, ...] = ()
@@ -79,6 +83,7 @@ class LaneResult:
             "routing": self.routing.to_dict(),
             "decision": self.decision.to_dict() if self.decision else None,
             "handoff": self.handoff.to_dict() if self.handoff else None,
+            "briefing": self.briefing.to_dict() if self.briefing else None,
             "engineer_may_start": self.engineer_may_start,
             "operator_required": self.operator_required,
             "violations": list(self.violations), "trace": list(self.trace),
@@ -113,6 +118,7 @@ def tech_lead_decide(
     *,
     design_system: str,
     coding_convention: str,
+    integration_notes: Tuple[str, ...] = (),
     risk_class: str = "",
     conditions: Tuple[str, ...] = (),
     rationale: str = "",
@@ -142,7 +148,8 @@ def tech_lead_decide(
     candidate = TechLeadDecision(
         decision_id=did, pm_brief_ref=brief.topic, meeting_ref=meeting.meeting_id,
         design_system=design_system, coding_convention=coding_convention,
-        stack_decision=stack, tradeoffs=stack.tradeoffs, risk_class=klass,
+        stack_decision=stack, tradeoffs=stack.tradeoffs,
+        integration_notes=tuple(integration_notes), risk_class=klass,
         approval_level=level, conditions=tuple(conditions),
         rationale=rationale or stack.rationale, signoff_by=signoff_by, status=status,
     )
@@ -197,6 +204,64 @@ def can_engineer_start(decision: Optional[TechLeadDecision],
     return True
 
 
+# --- specialist briefing (the materialized work order) -----------------------
+
+
+def build_specialist_briefing(
+    brief: Optional[PMBrief],
+    decision: TechLeadDecision,
+    handoff: EngineerHandoff,
+) -> SpecialistBriefing:
+    """Compose the full work order a specialist receives from the signed decision + handoff
+    (+ PM brief for the goal). The REJECTED options are derived from the stack comparison —
+    every non-recommended option, with its cons as 'why not' — so the specialist sees what
+    was weighed, not just the winner. Pure; the validator decides if it's startable."""
+
+    stack = decision.stack_decision
+    recommended = stack.recommended if stack else ""
+    rec_opt = stack.recommended_option() if stack else None
+    rejected = tuple(
+        RejectedOption(
+            name=o.name,
+            why_not="; ".join(o.cons) or o.risk or "근거 미기재",
+        )
+        for o in (stack.options if stack else ())
+        if o.name != recommended
+    )
+    goal = (f"{brief.problem} → {brief.user_value}"
+            if brief and (brief.problem or brief.user_value) else decision.rationale)
+    return SpecialistBriefing(
+        handoff_id=handoff.handoff_id, executor_role=handoff.executor_role,
+        decision_ref=decision.decision_id, goal=goal,
+        proposed_stack=recommended,
+        proposed_stack_summary=(rec_opt.summary if rec_opt else ""),
+        stack_rationale=(stack.rationale if stack else "") or decision.rationale,
+        rejected_options=rejected,
+        coding_conventions=decision.coding_convention, design_system=decision.design_system,
+        integration_notes=decision.integration_notes,
+        scope=handoff.scope, forbidden_scope=handoff.forbidden_scope,
+        test_strategy=handoff.test_strategy, rollback_plan=handoff.rollback_plan,
+        acceptance_criteria=handoff.acceptance_criteria,
+        operator_required=handoff.operator_required,
+    )
+
+
+def can_specialist_start(
+    brief: Optional[PMBrief],
+    decision: Optional[TechLeadDecision],
+    handoff: Optional[EngineerHandoff],
+) -> bool:
+    """The stronger gate: a specialist starts ONLY when :func:`can_engineer_start` holds AND
+    the materialized briefing carries the full design context (goal / stack + why / rejected
+    options / conventions / design system / scope / test / acceptance). This is what reduces
+    'design 없이 바로 구현' — a thin order without the design rationale is not startable."""
+
+    if not can_engineer_start(decision, handoff):
+        return False
+    briefing = build_specialist_briefing(brief, decision, handoff)
+    return not validate_specialist_briefing(briefing)
+
+
 def tech_lead_request_more_info(
     brief: PMBrief,
     meeting: MeetingRecord,
@@ -231,6 +296,7 @@ def run_lane(
     executor_role: str,
     scope: Tuple[str, ...],
     test_strategy: str,
+    integration_notes: Tuple[str, ...] = (),
     risk_class: str = "",
     conditions: Tuple[str, ...] = (),
     rationale: str = "",
@@ -240,8 +306,11 @@ def run_lane(
 ) -> LaneResult:
     """Run PM brief + meeting → gateway → tech-lead → engineer, end to end, with a trace.
 
-    Returns a :class:`LaneResult`; ``engineer_may_start`` is only True when every stage
-    is real and the decision cleared signoff. No fake stage can produce a startable handoff."""
+    Returns a :class:`LaneResult`; ``engineer_may_start`` is only True when every stage is
+    real, the decision cleared signoff, AND the materialized :class:`SpecialistBriefing`
+    carries the full design context (goal / stack + why / rejected options / conventions /
+    design system / scope / test / acceptance). No fake stage or thin order can produce a
+    startable handoff."""
 
     trace = []
     routing = route_to_tech_lead(brief, meeting)
@@ -252,8 +321,9 @@ def run_lane(
 
     decision = tech_lead_decide(
         brief, meeting, stack, design_system=design_system,
-        coding_convention=coding_convention, risk_class=risk_class,
-        conditions=conditions, rationale=rationale, signoff_by=signoff_by)
+        coding_convention=coding_convention, integration_notes=integration_notes,
+        risk_class=risk_class, conditions=conditions, rationale=rationale,
+        signoff_by=signoff_by)
     trace.append(f"tech-lead:{decision.status}/{decision.approval_level}")
 
     if decision.status not in (SIGNED_OFF, CONDITIONAL):
@@ -267,16 +337,21 @@ def run_lane(
         acceptance_criteria=brief.acceptance_criteria)
     trace.append(f"engineer:handoff→{executor_role}")
 
+    briefing = build_specialist_briefing(brief, decision, handoff)
+    b_viol = validate_specialist_briefing(briefing)
+    trace.append(f"briefing:{'ok' if not b_viol else 'thin'}")
+
     h_viol = validate_handoff(handoff, decision)
-    may_start = can_engineer_start(decision, handoff)
+    may_start = can_specialist_start(brief, decision, handoff)
     trace.append("engineer:start" if may_start else "engineer:blocked")
     return LaneResult(routing=routing, decision=decision, handoff=handoff,
-                      engineer_may_start=may_start,
+                      briefing=briefing, engineer_may_start=may_start,
                       operator_required=handoff.operator_required,
-                      violations=h_viol, trace=tuple(trace))
+                      violations=tuple(h_viol) + tuple(b_viol), trace=tuple(trace))
 
 
 __all__ = (
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
-    "handoff_to_engineer", "can_engineer_start", "run_lane", "tech_lead_request_more_info",
+    "handoff_to_engineer", "can_engineer_start", "build_specialist_briefing",
+    "can_specialist_start", "run_lane", "tech_lead_request_more_info",
 )
