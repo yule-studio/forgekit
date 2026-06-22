@@ -1,0 +1,24 @@
+# GW-EXEC goal planning evidence — decomposition + continuation (executes nothing)
+goal goal-parent01 status=active
+decompose -> 3 child step(s):
+  goal-step01  [draft]  스키마 설계
+  goal-step02  [draft]  마이그레이션 작성
+  goal-step03  [draft]  회귀 테스트
+parent plan evidence: decomposed into 3 step(s): 스키마 설계, 마이그레이션 작성, 회귀 테스트
+
+progress: 0/3 step done  (0/3)
+continuation: advance -> goal-step01  (activate next step goal-step01)
+
+# step 1 executed+verified (gated exec tick wrote execution+verification)
+progress: 1/3 step done  (1/3)
+continuation: advance -> goal-step02  (activate next step goal-step02)
+
+# every step done with real evidence
+progress: 3/3 step done  (3/3)  complete=True
+continuation: complete -> goal-parent01  (all 3 step done — parent eligible for done)
+parent goal-parent01 -> done  (long-term goal CLOSED)
+
+# honest boundary: planning creates plan records + derives progress from
+# append-only evidence. It executes nothing. A child closes only with real
+# execution+verification evidence (no fake-green); a blocked step surfaces as
+# REPLAN (operator), never an auto-advance — the approval chain is not bypassed.
