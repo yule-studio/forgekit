@@ -58,6 +58,7 @@ approval 분리)을 약화하지 않고 **설계 결정 표면에 구체화**한
 | `PMBrief` | topic / problem / user_value / **acceptance_criteria** / **success_metrics** / out_of_scope | 문제와 완료 기준을 PM 이 고정 |
 | `StackOption` | name / pros / **cons** / risk / fit | 한 후보의 정직한 장단점 |
 | `StackComparison` | options(≥2) / **recommended** / rationale / **tradeoffs** | 비교 + 권고 + 포기한 것 |
+| `ConsultNote` | consult_id / topic / **by_role** / **to_roles**(≥1) / question | consult 를 typed artifact 로 (non-gating, anti-fake) |
 | `ParticipantPosition` | role / **stance** / position / concerns | 회의의 *실재* 단위 |
 | `MeetingRecord` | meeting_id / agenda / participants / decisions / escalated | 기록된 설계 회의 |
 | `TechLeadDecision` | meeting_ref / **design_system** / **coding_convention** / stack_decision / tradeoffs / approval_level / signoff_by / status | 기술 서명(5개 필수 필드 고정) |
@@ -294,11 +295,29 @@ meeting/미서명 decision 은 `valid=False` 로 기록돼 `readiness_from_log` 
 executable 로 복원하지 않는다 (anti-fake replay). `replay_governance_log(session)` →
 `readiness_from_log(events)` 로 사후 audit 가능.
 
+각 이벤트는 artifact 의 **payload (`to_dict()`)** 까지 함께 영속한다 — "결정이
+있었다" 만이 아니라 **무엇을 결정했는지**(design system / coding convention / stack
+recommended / tradeoff / acceptance)가 디스크에 남아 사후 추적된다. payload 는
+**evidence 일 뿐 gate 가 아니다**: readiness 는 오직 `valid` 플래그로 판단하므로,
+invalid decision 에 풍부한 payload 가 붙어도 ready 로 위조되지 않는다.
+
+### 7.5.1.a consult artifact (`ConsultNote`, non-gating)
+
+"회사처럼 consult" 를 freeform 발언이 아니라 typed artifact 로 남긴다 —
+`ConsultNote(consult_id, topic, by_role, to_roles≥1, question)`. `validate_consult`
+가 anti-fake: consult 대상(`to_roles`)이 없거나 `question` 이 비면 `valid=False`.
+consult 는 **lane 을 advance 시키지 않는다**(non-gating) — 단지 "X 에게 물었다" 가
+주장이 아니라 attributable 기록으로 남게 한다. `record_lane_artifacts(consult=...)`
+는 단일/복수 ConsultNote 를 받아 `KIND_CONSULT` 로 기록한다.
+
 ### 7.5.2 operator surface — `/council <session>`
 
 `/council <session>` 가 decision log 를 replay 해 readiness ladder 를 보여준다 —
 "실행 전에 무엇이 확정돼야 하는지". 기록 없음 → PM brief 부재로 실행 불가(정직).
-코드: `forgekit_console.commands.router._council_result`. evidence:
+기록이 있으면 **결정 트레일(누가 무엇을)** 블록을 덧붙인다 — `decision_trail_from_log`
+가 actor → kind → 결정 내용(payload 기반: design/convention/stack/approval/executor)
+을 시간순으로, validator 가 거부한 artifact 는 `✗` 로 표시한다. 코드:
+`forgekit_console.commands.router._council_result`. evidence:
 `apps/forgekit-console/examples/pm-techlead-lane/lane-readiness.json`.
 
 ## 8. 한계 / 비목표
