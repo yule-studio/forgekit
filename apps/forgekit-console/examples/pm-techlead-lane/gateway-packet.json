@@ -1,0 +1,84 @@
+{
+  "note": "gateway intake packet(approve/reject/request-more-info) + tech-lead request-more-info",
+  "gateway_approve": {
+    "topic": "알림",
+    "verdict": "approve",
+    "to_role": "tech-lead",
+    "info_requested": [],
+    "reject_reason": "",
+    "rationale": "brief+meeting 실재 확인 — tech-lead 기술 승인으로 전달",
+    "forwarded": true
+  },
+  "gateway_request_info": {
+    "topic": "t",
+    "verdict": "request_more_info",
+    "to_role": "tech-lead",
+    "info_requested": [
+      "PM brief: acceptance_criteria 최소 1개 필요 (완료 판단 기준 없음)",
+      "PM brief: success_metrics 최소 1개 필요 (성공 지표 없음)",
+      "design meeting — ≥2 역할 · 반대/우려"
+    ],
+    "reject_reason": "",
+    "rationale": "intake 불완전 — 보완 후 재제출 필요 (반려 아님)",
+    "forwarded": false
+  },
+  "gateway_reject": {
+    "topic": "알림",
+    "verdict": "reject",
+    "to_role": "tech-lead",
+    "info_requested": [],
+    "reject_reason": "범위 밖 — 별도 분기 필요",
+    "rationale": "정책/범위 사유로 intake 반려 — tech-lead 전달 안 함",
+    "forwarded": false
+  },
+  "techlead_needs_info": {
+    "decision_id": "decision:m1",
+    "pm_brief_ref": "알림",
+    "meeting_ref": "m1",
+    "design_system": "",
+    "coding_convention": "",
+    "stack_decision": null,
+    "tradeoffs": [],
+    "risk_class": "safe",
+    "approval_level": "",
+    "conditions": [
+      "stack 비교 필요",
+      "디자인시스템 미정"
+    ],
+    "rationale": "설계 입력(스택/디자인시스템/코딩컨벤션/tradeoff) 부족 — 추가정보 요청(승인/반려 아님)",
+    "signoff_by": "tech-lead",
+    "status": "needs_info"
+  },
+  "log_with_gateway": [
+    {
+      "session_id": "demo",
+      "kind": "brief",
+      "actor": "product-manager",
+      "summary": "PM brief: 알림",
+      "valid": true,
+      "ref": "알림",
+      "seq": 0,
+      "at": "2026-06-22"
+    },
+    {
+      "session_id": "demo",
+      "kind": "gateway",
+      "actor": "gateway",
+      "summary": "gateway approve: 알림",
+      "valid": true,
+      "ref": "알림",
+      "seq": 1,
+      "at": "2026-06-22"
+    },
+    {
+      "session_id": "demo",
+      "kind": "meeting",
+      "actor": "tech-lead",
+      "summary": "meeting m1 (2 참석)",
+      "valid": true,
+      "ref": "m1",
+      "seq": 2,
+      "at": "2026-06-22"
+    }
+  ]
+}

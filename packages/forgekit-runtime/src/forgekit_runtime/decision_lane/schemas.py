@@ -147,11 +147,13 @@ class MeetingRecord:
 
 # decision status lifecycle
 DRAFT = "draft"
-SIGNED_OFF = "signed_off"
-CONDITIONAL = "conditional"
-BLOCKED = "blocked"
-ESCALATED = "escalated"
-DECISION_STATUSES: Tuple[str, ...] = (DRAFT, SIGNED_OFF, CONDITIONAL, BLOCKED, ESCALATED)
+SIGNED_OFF = "signed_off"        # approve
+CONDITIONAL = "conditional"      # approve with conditions
+BLOCKED = "blocked"              # reject (restricted / not allowed)
+ESCALATED = "escalated"          # disagreement → re-deliberate
+NEEDS_INFO = "needs_info"        # request-more-info — bounce back for missing design inputs
+DECISION_STATUSES: Tuple[str, ...] = (
+    DRAFT, SIGNED_OFF, CONDITIONAL, BLOCKED, ESCALATED, NEEDS_INFO)
 
 
 @dataclass(frozen=True)
@@ -217,5 +219,5 @@ __all__ = (
     "PMBrief", "StackOption", "StackComparison", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
     "DISSENT_STANCES", "ALL_STANCES",
-    "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "DECISION_STATUSES",
+    "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DECISION_STATUSES",
 )

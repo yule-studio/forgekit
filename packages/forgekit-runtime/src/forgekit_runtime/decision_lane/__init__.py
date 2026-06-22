@@ -16,6 +16,7 @@ from .schemas import (
     CONDITIONAL,
     DRAFT,
     ESCALATED,
+    NEEDS_INFO,
     SIGNED_OFF,
     DISSENT_STANCES,
     EngineerHandoff,
@@ -41,6 +42,16 @@ from .lane import (
     route_to_tech_lead,
     run_lane,
     tech_lead_decide,
+    tech_lead_request_more_info,
+)
+from .gateway import (
+    GATEWAY_APPROVE,
+    GATEWAY_REJECT,
+    GATEWAY_REQUEST_INFO,
+    GATEWAY_VERDICTS,
+    GatewayPacket,
+    gateway_review,
+    validate_gateway_packet,
 )
 from .enforcement import (
     DESTRUCTIVE,
@@ -76,6 +87,7 @@ from .decision_log import (
     KIND_CONSULT,
     KIND_DECISION,
     KIND_EXECUTION,
+    KIND_GATEWAY,
     KIND_HANDOFF,
     KIND_MEETING,
     GovernanceEvent,
@@ -90,13 +102,16 @@ __all__ = (
     # schemas
     "PMBrief", "StackOption", "StackComparison", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
-    "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "DISSENT_STANCES",
+    "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DISSENT_STANCES",
     # validators
     "validate_pm_brief", "validate_stack_comparison", "validate_meeting",
     "validate_tech_lead_decision", "validate_handoff",
     # lane
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
-    "handoff_to_engineer", "can_engineer_start", "run_lane",
+    "handoff_to_engineer", "can_engineer_start", "run_lane", "tech_lead_request_more_info",
+    # gateway packet (approve / reject / request-more-info)
+    "GATEWAY_APPROVE", "GATEWAY_REJECT", "GATEWAY_REQUEST_INFO", "GATEWAY_VERDICTS",
+    "GatewayPacket", "gateway_review", "validate_gateway_packet",
     # runtime enforcement
     "SAFE", "RISKY", "DESTRUCTIVE", "ExecutionBlocked",
     "ActionRequest", "OperatorApproval", "ExecutionVerdict",
@@ -108,8 +123,8 @@ __all__ = (
     "STAGE_HANDOFF_PENDING", "STAGE_EXECUTABLE", "STAGE_ORDER",
     "LaneReadiness", "assess_lane_readiness",
     # replay-able decision log
-    "KIND_BRIEF", "KIND_CONSULT", "KIND_MEETING", "KIND_DECISION", "KIND_APPROVAL",
-    "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS", "GovernanceEvent",
+    "KIND_BRIEF", "KIND_CONSULT", "KIND_GATEWAY", "KIND_MEETING", "KIND_DECISION",
+    "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS", "GovernanceEvent",
     "governance_log_path", "record_governance_event", "replay_governance_log",
     "record_lane_artifacts", "readiness_from_log",
 )
