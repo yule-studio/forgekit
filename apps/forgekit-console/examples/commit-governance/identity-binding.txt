@@ -1,0 +1,35 @@
+GW2-B agent-identity <-> commit trailer binding — evidence
+guard: scripts/ci_check_commit_messages.py (check_identity_binding)
+registry SSoT: packages/forgekit-config/src/forgekit_config/identity
+================================================================
+
+Trailer convention:
+  Forgekit-Agent: <agent-id>   # claims the authoring agent identity
+  Approved-By: <agent-id>      # approval-metadata (who approved)
+Rule: trailer present -> id MUST resolve via identity.is_known (canonical
+      id OR alias). Unknown -> hard FAIL. No trailer -> operator/human ->
+      PASS. Author-email mismatch on a known agent -> warning (non-blocking).
+
+--- synthetic claims (real forgekit_config registry) ---
+[PASS] known canonical (Forgekit-Agent: frontend-engineer)
+[PASS] known alias (Forgekit-Agent: fe)
+[PASS] known approver (Approved-By: tech-lead)
+[FAIL] UNKNOWN claim (Forgekit-Agent: fk-bogus)
+        - error:unknown_forgekit_agent: Forgekit-Agent 'fk-bogus' is not a known forgekit identity
+[FAIL] UNKNOWN approver (Approved-By: nobody)
+        - error:unknown_approved_by_agent: Approved-By 'nobody' is not a known forgekit identity
+[PASS] no trailer (operator/human commit)
+[PASS] known agent, author email match
+[PASS (with warning)] known agent, author email mismatch (warn-only)
+        - warning:agent_author_email_mismatch: author 'human@example.com' != expected 'fe@forgekit.local' for 'frontend-engineer' (warning, not blocking)
+
+--- real main history (anti-breakage proof) ---
+commits checked (last ~30 main range, no-merges): 92
+commits carrying a Forgekit-Agent/Approved-By trailer: 0
+GW2-B identity-binding hard-fail false-positives: 0
+=> PASS: zero false-positives — operator/human commits w/o a trailer untouched.
+
+--- additive proof (GW2-B adds nothing over GW2-A message policy) ---
+message-only errors: 42   with-GW2B errors: 42   delta: 0
+(the 42 message-policy errors are pre-existing GW2-A behavior on historical
+ commits — markdown '## 변경 이유' headers / 💄 gitmoji — NOT GW2-B binding.)
