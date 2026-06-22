@@ -33,6 +33,7 @@ from .ledger import (
     read_forge_receipts,
     record_forge_receipt,
 )
+from .ledger_view import forge_ledger_lines
 
 __all__ = (
     "SAFE", "RISKY", "DESTRUCTIVE", "ForgeClassification", "classify_forge_plan",
@@ -41,4 +42,5 @@ __all__ = (
     "authorize_forge_plan", "forge_execute",
     "FakeReceiptRefused", "forge_receipt_ledger_path",
     "record_forge_receipt", "read_forge_receipts",
+    "forge_ledger_lines",
 )

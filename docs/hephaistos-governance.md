@@ -110,7 +110,27 @@ receipt 를 누적해 결정 로그를 **영속** 시킨다.
 - `record_forge_receipt` 는 persistence 경계에서 `validate_forge_receipt` 를 다시
   돌려 **fake receipt 를 거부**(`FakeReceiptRefused`) — 위조 승인/실행은 durable
   로그에 절대 못 들어간다. I/O 실패는 best-effort(결정 유실 없음), fake 는 hard 거부.
-- `read_forge_receipts(env=, limit=)` 로 audit 재생.
+- `read_forge_receipts(env=, limit=)` 로 audit 재생, `forge_ledger_lines(env=, limit=)`
+  로 operator 표면용 라인 렌더(빈 ledger 는 정직하게 "기록 없음").
+
+### 4.3.1 operator 가 실제로 영속/조회하는 경로 (`/resolve apply` · `/resolve ledger`)
+
+라이브러리 `persist=True` 만으로는 operator 가 ledger 에 닿을 길이 없다(기본
+`/resolve` 는 `persist=False` 미리보기). 그래서 콘솔에 **명시적 operator 트리거**
+두 개를 둔다(코드: `forgekit_console.commands.router._forge_apply_result` /
+`_forge_ledger_result`, 렌더 로직은 `forge/ledger_view.py` — router 는 얇게 유지):
+
+- `/resolve apply <요청>` → `forge_execute(persist=True)` → receipt 를 append-only
+  ledger 에 영속하고 경로 + receipt 를 확인 출력. **operator 가 명시적으로 `apply`
+  를 칠 때만** 영속 — 절대 자동/암묵 아님. 미인가(risky/destructive/error)면 **가짜
+  성공을 영속하지 않고** 차단 사유를 그대로 보여준다(honest).
+- `/resolve ledger` → append-only forge governance ledger 의 최근 receipt 목록
+  (request / decision / class·level / signoff)을 렌더. 빈 ledger 는 정직하게
+  "기록된 receipt 없음".
+- 기본 `/resolve <요청>` 는 그대로 **미리보기(`persist=False`)** — 동작 불변(회귀).
+
+증거: `apps/forgekit-console/examples/forge-ledger/persist.txt`
+(apply→영속 / preview 미영속 / blocked 거부 / ledger 보기).
 
 ## 5. 무엇을 닫았나 (axis2/axis3)
 

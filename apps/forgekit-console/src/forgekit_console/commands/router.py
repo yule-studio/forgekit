@@ -408,6 +408,14 @@ def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
         return CommandResult.info("hephaistos", proj.hephaistos_status_lines(env=env, config=config))
     if handler == H_LOADOUT:
         return CommandResult.info("loadout", proj.loadout_lines(args[0] if args else "backend-java-local"))
+    if handler == H_RESOLVE and args:
+        sub = args[0].lower()
+        # `/resolve ledger` — VIEW the append-only forge governance ledger (read-only).
+        if sub == "ledger":
+            return _forge_ledger_result(env=env)
+        # `/resolve apply <요청>` — PERSIST the forge governance receipt (operator-triggered).
+        if sub == "apply":
+            return _forge_apply_result(" ".join(args[1:]).strip(), env=env)
     if not request:
         which = "/resolve" if handler == H_RESOLVE else "/skills"
         return CommandResult.info(handler, (f"요청을 입력하세요 — `{which} <요청>` "
@@ -434,6 +442,58 @@ def _forge_governance_lines(request: str, *, env=None) -> tuple:
     except Exception:  # noqa: BLE001 — a render must never break /resolve
         return ()
     return ("", "── governance ──") + receipt.lines()
+
+
+def _forge_apply_result(request: str, *, env=None) -> CommandResult:
+    """`/resolve apply <요청>` — PERSIST the forge governance receipt to the append-only
+    ledger (operator-triggered, never silent). Honest: a risky/blocked plan refuses to
+    persist a fake success — only a validation-passing receipt enters the durable log."""
+
+    if not request:
+        return CommandResult.info(
+            "resolve apply",
+            ("요청을 입력하세요 — `/resolve apply <요청>` (forge receipt 를 ledger 에 영속).",),
+        )
+    try:
+        from forgekit_runtime.forge import (
+            FakeReceiptRefused, forge_execute, record_forge_receipt,
+        )
+    except Exception as e:  # noqa: BLE001
+        return CommandResult.error("resolve apply", (f"forgekit_runtime 미가용: {e}",))
+
+    receipt = forge_execute(request, env=env)
+    # honest: a non-authorized (risky/blocked/error) receipt is never persisted as success.
+    if receipt.outcome != "executed" or not receipt.authorized:
+        return CommandResult.error(
+            "resolve apply",
+            ("forge plan 미인가 — ledger 에 영속하지 않음 (가짜 성공 금지).",) + receipt.lines(),
+        )
+    try:
+        path = record_forge_receipt(receipt, env=env)
+    except FakeReceiptRefused as e:  # anti-fake at the persistence boundary
+        return CommandResult.error(
+            "resolve apply",
+            (f"ledger 거부 — fake receipt: {e}",) + receipt.lines(),
+        )
+    if path is None:
+        return CommandResult.error(
+            "resolve apply",
+            ("ledger I/O 실패 — receipt 영속 못함 (verdict 는 유효).",) + receipt.lines(),
+        )
+    return CommandResult.info(
+        "resolve apply",
+        (f"forge receipt 를 governance ledger 에 영속함 → {path}",) + receipt.lines(),
+    )
+
+
+def _forge_ledger_result(*, env=None) -> CommandResult:
+    """`/resolve ledger` — VIEW the append-only forge governance ledger (read-only)."""
+
+    try:
+        from forgekit_runtime.forge import forge_ledger_lines
+    except Exception as e:  # noqa: BLE001
+        return CommandResult.error("resolve ledger", (f"forgekit_runtime 미가용: {e}",))
+    return CommandResult.info("resolve ledger", forge_ledger_lines(env=env))
 
 
 def _whoami_result(parsed) -> CommandResult:
