@@ -42,6 +42,21 @@ from .lane import (
     run_lane,
     tech_lead_decide,
 )
+from .enforcement import (
+    DESTRUCTIVE,
+    RISKY,
+    SAFE,
+    ActionRequest,
+    ExecutionBlocked,
+    ExecutionVerdict,
+    OperatorApproval,
+    assert_executable,
+    authorize_execution,
+    bridge_to_autopilot,
+    classify_action,
+    execution_commit_trailers,
+    validate_execution_trailers,
+)
 
 __all__ = (
     # schemas
@@ -54,4 +69,9 @@ __all__ = (
     # lane
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
     "handoff_to_engineer", "can_engineer_start", "run_lane",
+    # runtime enforcement
+    "SAFE", "RISKY", "DESTRUCTIVE", "ExecutionBlocked",
+    "ActionRequest", "OperatorApproval", "ExecutionVerdict",
+    "classify_action", "authorize_execution", "assert_executable",
+    "bridge_to_autopilot", "execution_commit_trailers", "validate_execution_trailers",
 )
