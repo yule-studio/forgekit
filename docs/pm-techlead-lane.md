@@ -244,6 +244,41 @@ tech-lead 서명)을 그대로 소비하면서 §7.1~7.2 와 동일한 규칙을
 - 실제 action 등급 > 서명 등급(scope creep) → 차단(재서명).
 - 승인 메타데이터 없는 commit → `validate_execution_trailers` 거부.
 
+## 7.5 Lane readiness gate — "실행 전에 무엇이 확정돼야 하는가" (`readiness.py` + `decision_log.py`)
+
+스키마/검증/enforcement 가 있어도, **체인의 precondition 이 강제·가시화·replay**
+되지 않으면 거버넌스가 장식이다. `assess_lane_readiness(brief, meeting, decision,
+handoff)` 가 현재까지 존재하는 artifact 로 lane stage 와 `executable` 을 계산한다.
+
+체인 순서를 hard-encode 한다 (operator must-verify):
+
+| stage | 조건 | executable |
+|---|---|---|
+| `no_pm_brief` | PM brief 없음/무효 | **False** — PM artifact 없이는 tech-lead lane 진입 불가 |
+| `meeting_pending` | brief OK, meeting 없음/rubber-stamp | False |
+| `decision_pending` | meeting OK, **tech-lead decision 없음/미서명** | **False** — decision 없이는 specialist 실행 불가 |
+| `handoff_pending` | decision 서명됨, handoff 없음/무효 | False |
+| `executable` | brief→meeting→decision→handoff 전부 유효 | **True** (= `can_engineer_start`) |
+
+`LaneReadiness.lines()` 가 operator-visible 라인(✓ 확정 / ☐ 필요 / ✗ 보완 / → 다음)
+을 렌더한다. `executable` 은 `can_engineer_start(decision, handoff)` 와 **구성상 일치**.
+
+### 7.5.1 replay 가능 decision log (`decision_log.py`)
+
+consult/meeting/decision/approval/handoff 이벤트를 session 별 append-only JSONL
+(`state_dir/governance/<session>.jsonl`)로 남긴다. `record_lane_artifacts` 는 각
+artifact 의 **validator 를 record 시점에 재실행**해 `valid` 플래그를 박는다 — fake
+meeting/미서명 decision 은 `valid=False` 로 기록돼 `readiness_from_log` 가 절대
+executable 로 복원하지 않는다 (anti-fake replay). `replay_governance_log(session)` →
+`readiness_from_log(events)` 로 사후 audit 가능.
+
+### 7.5.2 operator surface — `/council <session>`
+
+`/council <session>` 가 decision log 를 replay 해 readiness ladder 를 보여준다 —
+"실행 전에 무엇이 확정돼야 하는지". 기록 없음 → PM brief 부재로 실행 불가(정직).
+코드: `forgekit_console.commands.router._council_result`. evidence:
+`apps/forgekit-console/examples/pm-techlead-lane/lane-readiness.json`.
+
 ## 8. 한계 / 비목표
 
 - 본 레인은 **결정 흐름과 그 실재성** 만 강제한다. 회의 *내용* 의 옳고
