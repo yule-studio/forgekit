@@ -161,6 +161,19 @@ class CouncilSurfaceTests(unittest.TestCase):
         r = self._route("/council")
         self.assertIn("readiness", "\n".join(r.lines))
 
+    def test_council_surfaces_decision_trail(self) -> None:
+        # operator can trace "누가 무엇을 결정했는지" — a full lane's design decision
+        # facts (design system / stack) appear in the /council trail block.
+        env = {"FORGEKIT_HOME": self.home}
+        decision, handoff = _full_lane()
+        D.record_lane_artifacts("st", brief=_brief(), meeting=_meeting(),
+                                decision=decision, handoff=handoff, env=env)
+        import os
+        os.environ["FORGEKIT_HOME"] = self.home
+        joined = "\n".join(self._route("/council st").lines)
+        self.assertIn("결정 트레일", joined)
+        self.assertIn("design=", joined)
+
 
 if __name__ == "__main__":
     unittest.main()

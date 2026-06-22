@@ -517,7 +517,11 @@ def _council_result(parsed, ctx=None) -> CommandResult:
              "확정돼야 하는지'를 보여줍니다. 기록은 `decision_lane.record_lane_artifacts` 가 남깁니다.",
              "규칙: PM artifact 없으면 tech-lead lane 실행 불가, tech-lead decision 없으면 specialist 실행 불가."))
     try:
-        from forgekit_runtime.decision_lane import readiness_from_log, replay_governance_log
+        from forgekit_runtime.decision_lane import (
+            decision_trail_from_log,
+            readiness_from_log,
+            replay_governance_log,
+        )
     except Exception:  # noqa: BLE001
         return CommandResult.error("council", ("governance 런타임 미가용.",))
     events = replay_governance_log(session, env=env)
@@ -526,7 +530,11 @@ def _council_result(parsed, ctx=None) -> CommandResult:
     if not events:
         head = (f"council lane — session={session}: 기록 없음 "
                 "(decision log 가 비어 있음 → readiness 는 PM brief 부재로 실행 불가).",)
-    return CommandResult.info("council", head + readiness.lines())
+        return CommandResult.info("council", head + readiness.lines())
+    # decision trail — "누가 무엇을 결정했는지" (actor → kind → 결정 내용 from payload).
+    trail = decision_trail_from_log(events)
+    body = readiness.lines() + ("", "── 결정 트레일 (누가 무엇을) ──") + trail
+    return CommandResult.info("council", head + body)
 
 
 def _whoami_result(parsed) -> CommandResult:
