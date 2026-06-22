@@ -17,6 +17,7 @@ Honest status of each console surface (working / partial / planned). Code:
 | runtime modes (real routing/budget/approval) | working | `/mode`, Shift+Tab | `examples/runtime-teeth/` |
 | always-on daemon + safe-class autopilot | working (bounded) | `forgekit runtime serve`, `/autopilot` | `examples/runtime/`, `examples/autopilot/` |
 | daemon heartbeat in console (state/tick/pid/kill-switch) | working | `/daemon` · `/daemon stop` | `examples/runtime-daemon/`, `test_runtime_daemon_surface` |
+| launchd unit 자동설치 (수동 sed flow 대체, macOS) | working (템플릿 4-placeholder 자동 치환 + ~/Library/LaunchAgents 배치 + load 명령 emit; `--load` 는 operator opt-in, 비-macOS/누락 placeholder/load 실패는 정직 실패) | `forgekit runtime install-unit [--repo-root P] [--bin P] [--load]` | `examples/runtime-daemon/install-unit.txt`, `test_deploy_unit` |
 | agent identity (git author / app status) | working | `/whoami` | `test_identity_attribution` |
 | discovery collectors (free-first) | working; YouTube/IG/Google planned | `/sources` | `examples/sources/` |
 | design restricted source | blocked (real TCC) — honest | `/design` | `examples/design/` |

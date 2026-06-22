@@ -23,7 +23,21 @@ sleep, so "24h always-on" on a laptop/lid-closed Mac mini is not real without:
 
 This template does not pretend the daemon runs through sleep.
 
-## Install
+## Install — automated (recommended)
+
+```bash
+# Resolves the 4 placeholders from your environment, writes the rendered plist to
+# ~/Library/LaunchAgents, and prints the exact load command. Daemon START stays
+# operator-gated — it does NOT launchctl-load by default.
+forgekit runtime install-unit --repo-root /path/to/checkout
+forgekit runtime install-unit --repo-root /path/to/checkout --load   # also bootstrap now (opt-in)
+```
+
+`--load` runs `launchctl bootstrap` and verifies it; a non-macOS host, an unresolved
+placeholder, or a launchctl failure all report an honest error (never a fake "installed").
+Code: `forgekit_console.deploy_unit` (rendering/placement) + `cli/runtime_cmd.py`.
+
+## Install — manual (equivalent)
 
 ```bash
 # 1) Substitute placeholders into a real plist:
