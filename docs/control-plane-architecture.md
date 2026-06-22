@@ -83,7 +83,8 @@ sleep 정책(`pmset`/clamshell)·secret(Keychain vs EnvironmentFile)만 host-spe
 
 > 현재 상태: engineering-agent 는 systemd 경로 보유([`operations.md`](operations.md)). forgekit
 > -console daemon(`forgekit runtime serve`)은 bounded loop **working**, 단 macOS lid-close suspend
-> 는 정직한 한계. launchd 템플릿(`deploy/launchd/`)은 **planned**.
+> 는 정직한 한계. launchd 템플릿(`deploy/launchd/com.forgekit.runtime.plist` + README)은 **추가됨
+> (GW7, plistlib-validated)** — 실 등록은 operator 수동(sed 치환 + `launchctl bootstrap`).
 
 ## 4. "처음 연결 패키지" → control-plane bootstrap package
 

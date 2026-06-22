@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ForgeKit control-plane daemon LaunchAgent (GW7).
+
+  Runs `forgekit runtime serve` as a per-USER LaunchAgent on a Mac mini host
+  (docs/control-plane-architecture.md §3: Mac mini = 1차 ForgeKit host). This is
+  the bounded always-on path — the daemon's own loop is bounded (heartbeat /
+  kill-switch / cooldown); KeepAlive restarts it if it exits.
+
+  Reproducible config: the daemon reads the SAME ~/.forgekit/config.json as the
+  Linux/systemd path — only the supervisor (launchd vs systemd) differs. Do NOT
+  bake machine-specific hacks here.
+
+  Placeholders to substitute before loading (see README.md):
+    __FORGEKIT_BIN__   absolute path to the installed `forgekit` entrypoint
+                       (e.g. /Users/<you>/.venvs/forgekit/bin/forgekit)
+    __REPO_ROOT__      absolute path to the checkout the daemon operates on
+    __FORGEKIT_HOME__  data home (default /Users/<you>/.forgekit)
+    __USER_HOME__      /Users/<you>
+
+  HONEST LIMIT (macOS): a closed lid suspends the host — a LaunchAgent does NOT
+  keep running through clamshell sleep. For true 24h, run lid-open with
+  `caffeinate -s` (or `sudo pmset -c sleep 0`), or use the Linux/systemd path
+  (the 1급 always-on host). This file does not pretend otherwise.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.forgekit.runtime</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__FORGEKIT_BIN__</string>
+        <string>runtime</string>
+        <string>serve</string>
+        <string>--interval</string>
+        <string>300</string>
+        <string>--repo-root</string>
+        <string>__REPO_ROOT__</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>FORGEKIT_HOME</key>
+        <string>__FORGEKIT_HOME__</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO_ROOT__</string>
+
+    <!-- Start at login and keep alive (the serve loop is itself bounded). -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <!-- Don't hammer-restart a misconfigured daemon. -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- Logs under the user's Library/Logs (NOT the repo — no runtime state in git). -->
+    <key>StandardOutPath</key>
+    <string>__USER_HOME__/Library/Logs/forgekit/runtime.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__USER_HOME__/Library/Logs/forgekit/runtime.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
