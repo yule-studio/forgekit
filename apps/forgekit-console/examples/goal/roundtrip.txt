@@ -1,0 +1,35 @@
+# forgekit-goal (GW1) round-trip evidence
+# goal store dir: <FORGEKIT_HOME>/goals  (FORGEKIT_HOME -> tempdir for this capture)
+
+create  -> id=goal-6dc80e24eaaf status=draft mode=auto
+activate-> status=active
+done(no evidence) REFUSED -> goal goal-6dc80e24eaaf cannot be marked done with no evidence (no fake-green)
+done(with evidence) -> status=done
+reload after restart -> equal=True status=done packets=['packet-gw1'] children=['goal-child-providers'] evidence=1
+
+# persisted file (~/.forgekit/goals/<id>.json):
+{
+  "schema_version": 1,
+  "id": "goal-6dc80e24eaaf",
+  "title": "ForgeKit = self-managing control plane",
+  "intent": "finish the 9 pillars",
+  "status": "done",
+  "mode": "auto",
+  "parent_id": null,
+  "children": [
+    "goal-child-providers"
+  ],
+  "packets": [
+    "packet-gw1"
+  ],
+  "evidence": [
+    {
+      "ts": "2026-06-22T00:55:37.424886+00:00",
+      "kind": "verification",
+      "summary": "14/14 test_goal_core green",
+      "ref": "tests/forgekit/test_goal_core.py"
+    }
+  ],
+  "created_at": "2026-06-22T00:55:37.424738+00:00",
+  "updated_at": "2026-06-22T00:55:37.424894+00:00"
+}
