@@ -49,6 +49,30 @@ def main() -> None:
     for ln in ps.route_show_lines({}):
         print(ln)
 
+    banner("[D] verified-live vs transport-capable — fake-live 금지 (live_map probe 신호)")
+    fb = ops.preset_four_brain({})
+    print("[D-1] probe 안 함(live_map=None) — capable 까지만, bare 'live' 위장 안 함")
+    for ln in ps.route_show_lines(fb):
+        if "default_chat" in ln or "execution" in ln:
+            print(ln)
+    print()
+    print("[D-2] probe 검증 {gemini:True, ollama:True} — live(검증됨)")
+    for ln in ps.route_show_lines(fb, live_map={"gemini": True, "ollama": True, "claude": False, "codex": False}):
+        if "default_chat" in ln or "execution" in ln or "compression" in ln:
+            print(ln)
+    print()
+    print("[D-3] probe NOT reachable {gemini:False, ollama:False} — ○ 미검증/연결 필요")
+    for ln in ps.route_show_lines(fb, live_map={"gemini": False, "ollama": False}):
+        if "default_chat" in ln or "execution" in ln:
+            print(ln)
+    print()
+    print("[D-4] /provider status — live(검증됨) vs live-capable(미검증) 분리 {gemini:True}")
+    for ln in ps.provider_status_lines(fb, live_map={"gemini": True, "ollama": False}):
+        if "live" in ln or "default_chat" in ln or "execution" in ln:
+            print(ln)
+    print()
+    print("→ transport capability 만으로 live 단언 안 함. gemini 키/ollama daemon 이 실제로 확인돼야 live(검증됨).")
+
 
 if __name__ == "__main__":
     main()

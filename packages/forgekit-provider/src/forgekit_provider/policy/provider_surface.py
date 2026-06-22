@@ -78,14 +78,47 @@ def provider_state_map(cfg: Optional[Mapping], *,
     )
 
 
-def _route_word(res) -> str:
-    """Honest one-word verdict for a slot resolution (declared → actual)."""
+# ── verified-live vs transport-capable (no fake-live in routing surfaces) ─────────────
+# A provider whose console transport is openai-compatible is *live-capable*, but that is
+# NOT the same as being live RIGHT NOW — gemini needs its key, ollama needs a running
+# daemon. The routing surfaces must not assert bare "live" from transport capability alone
+# (that is exactly the fake-live the lane forbids). When a probe-backed ``live_map``
+# (pid → verified live_capable, the same signal the 5-state taxonomy/bootstrap use) is
+# supplied, we upgrade to "live(검증됨)" or honestly downgrade to "미검증/연결 필요"; with no
+# probe we say "live-capable(미검증)" — capable, but unproven, never "live".
+
+def _verified_word(pid: str, live_map: Optional[Mapping[str, Optional[bool]]]) -> Tuple[str, str]:
+    """``(word, note)`` for *pid*'s live transport. ``live_map[pid]``: True = probe-verified
+    reachable/authed, False = capable but probe says NOT reachable/authed, missing/None =
+    unprobed (capable, unverified). Never returns a bare "live" without a True probe."""
+
+    verified = None if live_map is None else live_map.get(pid)
+    if verified is True:
+        return "live", "검증됨"
+    if verified is False:
+        return "미검증", "연결/인증 필요 — API 키 없음 또는 daemon 미가동"
+    return "live-capable", "미검증 (probe 안 함)"
+
+
+def _live_glyph(is_chat: bool, pid: str, live_map: Optional[Mapping[str, Optional[bool]]]) -> str:
+    """● = verified/assumed-live default_chat · ◐ = other live-capable slot · ○ = probed
+    and NOT live now. A False probe is honestly ○ (don't expect it to work right now)."""
+
+    if live_map is not None and live_map.get(pid) is False:
+        return "○"
+    return "●" if is_chat else "◐"
+
+
+def _route_word(res, live_map: Optional[Mapping[str, Optional[bool]]] = None) -> str:
+    """Honest one-word verdict for a slot resolution (declared → actual), verified-aware."""
 
     from . import routing as rt
     if res.status == rt.RESOLVE_FALLBACK:
-        return f"live, fallback {res.declared_provider}→{res.actual_provider}"
+        word, note = _verified_word(res.actual_provider, live_map)
+        return f"{word}, fallback {res.declared_provider}→{res.actual_provider} · {note}"
     if res.is_live_capable:
-        return "live"
+        word, note = _verified_word(res.actual_provider, live_map)
+        return f"{word} · {note}"
     if res.status == rt.RESOLVE_UNSUPPORTED:
         return "routing only / no console submit"
     if res.status == rt.RESOLVE_NO_CONFIG:
@@ -93,8 +126,12 @@ def _route_word(res) -> str:
     return res.status
 
 
-def provider_status_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
-    """`/provider` — current brain: primary / linked / live-capable / setup verdict."""
+def provider_status_lines(cfg: Optional[Mapping], *,
+                          live_map: Optional[Mapping[str, Optional[bool]]] = None) -> Tuple[str, ...]:
+    """`/provider` — current brain: primary / linked / live-capable / setup verdict.
+
+    ``live_map`` (pid → probe-verified live_capable) makes the live lines honest: with a
+    probe we show verified-live vs 미검증; without one we never assert bare "live"."""
 
     review = ops.setup_review(cfg)
     if not pc.has_brain_config(cfg):
@@ -109,16 +146,21 @@ def provider_status_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
     from . import routing as rt
     dc = rt.resolve_routing(parsed, pc.SLOT_DEFAULT_CHAT)
     ex = rt.resolve_routing(parsed, pc.SLOT_EXECUTION)
+    # split the transport-capable list into probe-verified-live vs capable-but-unverified
+    # (no fake-live: a provider is only listed under "live(검증됨)" when the probe says so).
+    verified = [p for p in bmap.live_capable if live_map is not None and live_map.get(p) is True]
+    unverified = [p for p in bmap.live_capable if p not in verified]
     lines = [
         f"provider: [{review.verdict}]",
         f"  primary brain : {parsed.primary_provider} ({_live_word(parsed.primary_provider)})",
         f"  linked        : {', '.join(parsed.linked_providers) or '-'}",
         # the honest brain-vs-transport split: what each slot DECLARES vs the ACTUAL live
         # provider a free-text submit reaches (declared may be a CLI brain; actual is the
-        # live console transport, with explicit fallback surfaced).
-        f"  default_chat  : declared {dc.declared_provider} → actual {dc.actual_provider} ({_route_word(dc)})",
-        f"  execution     : declared {ex.declared_provider} → actual {ex.actual_provider} ({_route_word(ex)})",
-        f"  live          : {', '.join(bmap.live_capable) or '(없음)'}",
+        # live console transport, with explicit fallback surfaced + verified-vs-capable).
+        f"  default_chat  : declared {dc.declared_provider} → actual {dc.actual_provider} ({_route_word(dc, live_map)})",
+        f"  execution     : declared {ex.declared_provider} → actual {ex.actual_provider} ({_route_word(ex, live_map)})",
+        f"  live(검증됨)   : {', '.join(verified) or ('(probe 안 함)' if live_map is None else '(없음 — 키/daemon 확인)')}",
+        f"  live-capable   : {', '.join(unverified) or '-'}  [dim](transport 가능, 미검증)[/dim]",
         f"  unsupported_in_console: {', '.join(bmap.unsupported) or '-'}",
         f"  implicit local fallback: {'on' if parsed.implicit_local_fallback else 'off (기본)'}",
     ]
@@ -301,25 +343,31 @@ def budget_lines(cfg: Optional[Mapping], rows: Sequence[Mapping] = ()) -> Tuple[
     return tuple(lines)
 
 
-def _slot_route_line(parsed, slot: str) -> str:
+def _slot_route_line(parsed, slot: str,
+                     live_map: Optional[Mapping[str, Optional[bool]]] = None) -> str:
     """One honest `declared → actual` line for *slot*, resolving the EXPLICIT fallback.
 
     The point of this surface: a non-chat work slot often DECLARES a CLI brain
     (codex/claude = routing-only) yet has an explicit fallback to a live transport
     (gemini/ollama). Showing only the declared target made those slots look broken
     (`execution → codex (unsupported_in_console)`); resolving them shows the ACTUAL
-    live provider the fallback reaches — or an honest "no live path" when it can't."""
+    live provider the fallback reaches — or an honest "no live path" when it can't.
+
+    ``live_map`` annotates the actual provider as verified-live vs merely transport-capable
+    (no fake-live: bare "live" is never claimed without a True probe)."""
 
     res = rt.resolve_routing(parsed, slot)
     # default_chat is the ONE slot the live submit path actually drives today; mark it ●.
     is_chat = slot == pc.SLOT_DEFAULT_CHAT
     if res.status == rt.RESOLVE_FALLBACK:
-        glyph = "●" if is_chat else "◐"
+        word, note = _verified_word(res.actual_provider, live_map)
+        glyph = _live_glyph(is_chat, res.actual_provider, live_map)
         return (f"  {glyph} {slot:<14} {res.declared_provider} → {res.actual_provider}"
-                f"   [dim]declared routing-only → fallback live[/dim]")
+                f"   [dim]declared routing-only → fallback {word} · {note}[/dim]")
     if res.is_live_capable:                      # declared provider is itself a live transport
-        glyph = "●" if is_chat else "◐"
-        return f"  {glyph} {slot:<14} {res.actual_provider}   [dim]live[/dim]"
+        word, note = _verified_word(res.actual_provider, live_map)
+        glyph = _live_glyph(is_chat, res.actual_provider, live_map)
+        return f"  {glyph} {slot:<14} {res.actual_provider}   [dim]{word} · {note}[/dim]"
     if res.status == rt.RESOLVE_UNSUPPORTED:      # declared + every fallback are routing-only
         return (f"  ○ {slot:<14} {res.declared_provider} → (live 경로 없음)"
                 f"   [dim]routing-only, fallback 도 live 불가 — `/provider route set {slot} <gemini|ollama>`[/dim]")
@@ -327,14 +375,19 @@ def _slot_route_line(parsed, slot: str) -> str:
     return f"  ○ {slot:<14} (미설정)   [dim]{res.reason}[/dim]"
 
 
-def route_show_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
+def route_show_lines(cfg: Optional[Mapping], *,
+                     live_map: Optional[Mapping[str, Optional[bool]]] = None) -> Tuple[str, ...]:
     """`/provider route show` — slot routing resolved to the ACTUAL live provider per slot.
 
     Each slot is resolved through :func:`routing.resolve_routing` (declared + explicit
     fallback), so the operator sees, per slot, the real live transport — not a bare
     `unsupported_in_console` on every CLI-declared work slot. Chat (``default_chat``) is the
     one slot the live submit path drives today; the rest are routing DECLARATIONS for
-    autonomous non-chat work, resolved with the same honest fallback."""
+    autonomous non-chat work, resolved with the same honest fallback.
+
+    ``live_map`` (pid → probe-verified live_capable) upgrades each actual provider to
+    "live(검증됨)" or honestly downgrades to "미검증/연결 필요"; with no probe the surface says
+    "live-capable(미검증)" — capable, never faked as live."""
 
     parsed = pc.load_provider_config(cfg)
     if not parsed.primary_provider:
@@ -342,12 +395,14 @@ def route_show_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
             "slot routing: [setup-required] primary provider 미설정",
             "  `/provider set <id>` 또는 `/provider preset four-brain` 후 다시 보세요.",
         )
-    lines = ["slot routing — declared brain → actual live provider (explicit fallback 반영):",
-             "  [dim]default_chat(●) = 실제 live submit 경로 · 그 외(◐/○) = 자율 non-chat work routing 선언[/dim]"]
+    probed = "probe 검증" if live_map is not None else "probe 안 함 — live-capable 까지만 표기"
+    lines = ["slot routing — declared brain → actual live provider (explicit fallback + 검증 반영):",
+             f"  [dim]default_chat(●) = 실제 live submit 경로 · 그 외(◐/○) = 자율 non-chat work routing 선언 · {probed}[/dim]"]
     for slot in pc.ROUTING_SLOTS:
-        lines.append(_slot_route_line(parsed, slot))
+        lines.append(_slot_route_line(parsed, slot, live_map))
     lines.append(f"  fallback: implicit_local={'on' if parsed.implicit_local_fallback else 'off (기본)'}")
-    lines.append("  [dim]범례: ● live submit · ◐ routing 선언(live 도달) · ○ live 경로 없음.[/dim]")
+    lines.append("  [dim]범례: ● live(검증/가정) · ◐ routing 선언(live 도달) · ○ live 아님(경로 없음/미연결).[/dim]")
+    lines.append("  [dim]검증: live(검증됨)=probe 확인 · 미검증=key/daemon 필요 · live-capable=probe 안 함.[/dim]")
     lines.append("  [dim]claude/codex 는 routing-only(brain participant) — 실제 전송은 fallback 의 "
                  "live transport(gemini/ollama)가 담당.[/dim]")
     return tuple(lines)
