@@ -10,15 +10,18 @@ package. Goals are read from / written to the same store the runtime uses
 The autonomous tick (collect → propose → evidence) is the runtime's job
 (``forgekit_runtime.selfimprove.goal_tick``, GW4) — this surface intentionally
 does NOT run it inline (keeps the command router pure / IO-light). It shows the
-goal and its accumulated packets/evidence; ``/goal new`` / ``/goal activate`` are
-the only mutations, both pure store writes.
+goal and its accumulated packets/evidence; the mutations (``/goal new`` /
+``/goal plan`` / ``/goal activate`` / ``/goal approve`` / ``/goal deny``) are pure
+store writes (``plan`` decomposes into child goals via ``forgekit_goal.planning``,
+which executes nothing). ``/goal progress`` renders the planning layer's derived
+progress + next continuation action read-only.
 """
 
 from __future__ import annotations
 
-from typing import Mapping, Optional, Tuple
+from typing import Mapping, Optional, Sequence, Tuple
 
-from forgekit_goal import Goal, GoalStatus, GoalStore, transitions
+from forgekit_goal import Goal, GoalStatus, GoalStore, planning, transitions
 
 
 def _store(env: Optional[Mapping[str, str]]) -> GoalStore:
@@ -36,7 +39,8 @@ def goal_list_lines(env: Optional[Mapping[str, str]]) -> Tuple[str, ...]:
 
 
 def goal_show_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ...]:
-    g = _store(env).get((gid or "").strip())
+    st = _store(env)
+    g = st.get((gid or "").strip())
     if g is None:
         return (f"goal {gid!r} 없음 — `/goal list` 로 확인",)
     out = [
@@ -45,6 +49,18 @@ def goal_show_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ..
         f"  mode: {g.mode or 'inherit'}   packets: {len(g.packets)}   "
         f"children: {len(g.children)}   evidence: {len(g.evidence)}",
     ]
+    if g.parent_id:
+        out.append(f"  parent: {g.parent_id}")
+    if g.children:
+        kids = [st.get(c) for c in g.children]
+        prog = planning.progress(g, [k for k in kids if k is not None])
+        out.append(f"  plan: {prog.summary}")
+        out.append("  steps:")
+        for cid, kid in zip(g.children, kids):
+            if kid is None:
+                out.append(f"    - {cid}  (없음)")
+            else:
+                out.append(f"    - {kid.id}  [{kid.status.value}]  {kid.title}")
     if g.packets:
         out.append("  linked packets: " + ", ".join(g.packets))
     if g.evidence:
@@ -52,6 +68,30 @@ def goal_show_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ..
         for e in g.evidence[-5:]:
             ref = f"  ({e.ref})" if e.ref else ""
             out.append(f"    - [{e.kind}] {e.summary}{ref}")
+    return tuple(out)
+
+
+def progress_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ...]:
+    """Render a goal's progress + the single next action (continuation)."""
+
+    st = _store(env)
+    g = st.get((gid or "").strip())
+    if g is None:
+        return (f"goal {gid!r} 없음 — `/goal list` 로 확인",)
+    kids = [k for k in (st.get(c) for c in g.children) if k is not None]
+    prog = planning.progress(g, kids)
+    pct = int(round(prog.ratio * 100))
+    out = [
+        f"{g.id}  [{g.status.value}]  {g.title}",
+        f"  진척: {prog.done_steps}/{prog.total_steps} ({pct}%)  · {prog.summary}",
+    ]
+    if g.children:
+        action = planning.continuation_action(g, kids)
+        out.append(f"  다음: {action.kind} — {action.reason}")
+    elif prog.next_step_id:
+        out.append(f"  다음 packet: {prog.next_step_id}")
+    if prog.complete:
+        out.append("  ✅ 모든 step 완료 — goal 종료 가능(evidence-gated)")
     return tuple(out)
 
 
@@ -75,6 +115,47 @@ def apply_new(env: Optional[Mapping[str, str]], title: str) -> Tuple[bool, str]:
     g = Goal.create(title)
     _store(env).save(g)
     return True, f"goal 생성: {g.id}  [{g.status.value}]  {g.title}"
+
+
+def apply_plan(
+    env: Optional[Mapping[str, str]],
+    gid: str,
+    step_tokens: Sequence[str],
+) -> Tuple[bool, Tuple[str, ...]]:
+    """Decompose a goal into ordered child-goal steps. Operator-driven; safe.
+
+    Steps are given after the id, separated by ``|`` (so a step title may contain
+    spaces): ``/goal plan <id> 스키마 설계 | 마이그레이션 | 회귀 테스트``. This only
+    creates plan records (child goals + a ``plan`` evidence entry on the parent) and
+    persists them — it executes nothing. The runtime continuation tick later sequences
+    the children (the parent must be ``active`` for that to proceed)."""
+
+    st = _store(env)
+    g = st.get((gid or "").strip())
+    if g is None:
+        return False, (f"goal {gid!r} 없음 — `/goal list` 로 확인",)
+    raw = " ".join(step_tokens or ())
+    titles = [t.strip() for t in raw.split("|") if t.strip()]
+    if not titles:
+        return False, (
+            "step 이 필요합니다 — `/goal plan <id> step1 | step2 | step3`",
+            "각 step 은 `|` 로 구분 (제목에 공백 가능).",
+        )
+    if g.children:
+        return False, (
+            f"{g.id} 는 이미 {len(g.children)} step 으로 분해됨 — `/goal show {g.id}` 로 확인",
+            "재분해는 중복 plan 을 만들 수 있어 막습니다.",
+        )
+    steps = [planning.PlanStep(title=t) for t in titles]
+    parent2, children = planning.decompose(g, steps)
+    for child in children:
+        st.save(child)
+    st.save(parent2)
+    out = [f"{parent2.id} 분해: {len(children)} step (child goal 생성, draft)"]
+    for child in children:
+        out.append(f"  - {child.id}  [{child.status.value}]  {child.title}")
+    out.append(f"  parent 활성화: `/goal activate {parent2.id}` → continuation tick 이 순차 진행")
+    return True, tuple(out)
 
 
 def apply_activate(env: Optional[Mapping[str, str]], gid: str) -> Tuple[bool, str]:
@@ -230,7 +311,9 @@ def usage_lines() -> Tuple[str, ...]:
         "`/goal` — 장기 목표 control plane (forgekit_goal)",
         "  /goal [list]          등록된 goal 목록",
         "  /goal new <제목>       새 goal(draft) 생성",
-        "  /goal show <id>       goal 상세(status/packets/evidence)",
+        "  /goal show <id>       goal 상세(status/packets/children/evidence)",
+        "  /goal plan <id> s1 | s2 | s3   큰 goal 을 하위 step(child goal)으로 분해",
+        "  /goal progress <id>   진척(step/packet) + 다음 action(continuation)",
         "  /goal activate <id>   draft/blocked -> active",
         "  /goal evidence <id>   evidence(append-only) 목록",
         "  /goal awaiting        승인 대기(awaiting_approval) goal + linked packets",
@@ -242,6 +325,6 @@ def usage_lines() -> Tuple[str, ...]:
 
 __all__ = (
     "goal_list_lines", "goal_show_lines", "goal_evidence_lines",
-    "awaiting_lines", "apply_new", "apply_activate",
-    "apply_approve", "apply_deny", "usage_lines",
+    "progress_lines", "awaiting_lines", "apply_new", "apply_plan",
+    "apply_activate", "apply_approve", "apply_deny", "usage_lines",
 )

@@ -52,40 +52,49 @@ def _repo_root(args) -> str:
 
 
 def _build_tick_fn(repo_root: str):
-    """A bounded tick that DRIVES autopilot execution + approved-goal execution.
+    """A bounded tick that DRIVES autopilot execution + approved-goal execution + plan continuation.
 
-    Two bounded passes per tick, composed so ``forgekit runtime serve`` reaches both:
+    Three bounded passes per tick, composed so ``forgekit runtime serve`` reaches all three:
 
     1. **autopilot pass (WT2 #241)** — observe repo-local → internal chain → safe-class
        real mutation (BoundedMutator) → verify → record, with dedupe + cooldown.
     2. **goal-exec pass (G1)** — load ACTIVE (operator-approved) goals from the GoalStore
        and physically run their linked safe-class packets via ``apply_approved_packet``
        (3-gate + BoundedMutator; risky/destructive recorded-not-executed; idempotent).
+    3. **goal-continuation pass (GW-EXEC)** — sequence decomposed goal plans: roll up a
+       child whose packets are all verified to ``done``, activate the next draft child,
+       and close a parent whose every step finished. Executes nothing — it advances goal
+       *status* + writes roll-up evidence, evidence-gated (no fake-green). This is what
+       actually *closes* a long-term goal once its steps have run.
 
-    The combined ``TickOutcome`` merges both so heartbeat/status surface what each did.
+    The combined ``TickOutcome`` merges all three so heartbeat/status surface what each did.
+    Order matters: continuation runs LAST so it sees the execution evidence the goal-exec
+    pass just wrote this tick (a step that finishes can roll up without a tick of lag).
     """
 
     from pathlib import Path
 
     from ..runtime.autopilot_tick import AutopilotTicker
+    from ..runtime.goal_continuation_tick import GoalContinuationTicker
     from ..runtime.goal_exec_tick import GoalExecTicker
 
     autopilot = AutopilotTicker(repo_root=Path(repo_root)).tick_fn()
     goal_exec = GoalExecTicker(repo_root=Path(repo_root)).tick_fn()
+    goal_cont = GoalContinuationTicker(repo_root=Path(repo_root)).tick_fn()
 
     def _combined(n: int):
         from ..runtime.daemon import TickOutcome
 
         a = autopilot(n)
         g = goal_exec(n)
-        summary = a.summary
-        if g.summary:
-            summary = f"{summary} | {g.summary}" if summary else g.summary
+        c = goal_cont(n)
+        parts = [o.summary for o in (a, g, c) if o.summary]
+        summary = " | ".join(parts)
         return TickOutcome(
             summary=summary,
-            waiting=a.waiting or g.waiting,
-            blocked_count=a.blocked_count + g.blocked_count,
-            executed=a.executed + g.executed,
+            waiting=a.waiting or g.waiting or c.waiting,
+            blocked_count=a.blocked_count + g.blocked_count + c.blocked_count,
+            executed=a.executed + g.executed + c.executed,
             executed_paths=tuple(a.executed_paths) + tuple(g.executed_paths),
             skipped_reason=a.skipped_reason,
             next_eligible_tick=a.next_eligible_tick,
