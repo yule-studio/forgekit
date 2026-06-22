@@ -7,7 +7,7 @@ name = "forgekit-runtime"
 version = "0.1.0"
 description = "ForgeKit runtime core — bounded always-on loop / daemon / approval-notify / lifecycle escalation / autopilot / self-improvement. Operator-gated, never an app import."
 requires-python = ">=3.9"
-dependencies = ["forgekit-config", "forgekit-provider", "forgekit-contracts", "nexus"]
+dependencies = ["forgekit-config", "forgekit-provider", "forgekit-contracts", "nexus", "forgekit-goal"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

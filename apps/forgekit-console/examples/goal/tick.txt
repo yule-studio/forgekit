@@ -1,0 +1,16 @@
+# GW4-A goal-tick evidence — bounded self-improvement (executes nothing)
+goal goal-50fe1943b6bb status=active
+tick -> proposed=3 approval_waiting=2 goal_status=awaiting_approval
+routes:
+  packet-e0191b811b01  [safe]  safe → tech-lead ready (승인 체계 내 자동 가능)
+  packet-dcf976f35d9b  [risky]  risky → approval-wait (operator 결정)
+  packet-16eb6e018add  [blocked]  blocked → runbook + operator 승인 (자동 실행 금지)
+goal.packets (linked): ['packet-e0191b811b01', 'packet-dcf976f35d9b', 'packet-16eb6e018add']
+goal.evidence (append-only proposals): 3
+  - proposal: [safe] 콘솔 도움말 문구 개선 -> safe → tech-lead ready (승인 체계 내 자동 가능)
+  - proposal: [risky] auth 권한 대규모 리팩터 -> risky → approval-wait (operator 결정)
+  - proposal: [blocked] deploy 시크릿 회전 자동화 -> blocked → runbook + operator 승인 (자동 실행 금지)
+
+# honest boundary: tick observed+proposed+linked+recorded. NO execution.
+# execution stays behind forgekit_runtime.autopilot.chain (GW3, approval-gated).
+# risky/blocked -> goal moved to awaiting_approval (operator decision).
