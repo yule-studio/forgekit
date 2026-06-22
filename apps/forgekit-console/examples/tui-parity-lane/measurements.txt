@@ -1,0 +1,27 @@
+ForgeKit console parity lane — REAL measured evidence (Textual pilot, 100x30)
+==============================================================================
+Method: region geometry + runtime counters from a live pilot run; durations are
+monotonic-clock measured; chunk counts are content-derived (render.chunk_result_lines).
+No CSS reading, no faked numbers, no fake typing.
+
+[1] slash palette — flush directly below the chat bar
+  input.bottom=26  palette.top=26  gap_rows=0 (flush: 0-1)  in_viewport=True
+
+[2] scroll — single owner (SessionFlow), no nested scrollbars
+  flow_is_sole_owner=True  nested_scrollers={'transcript': False, 'composer': False}
+  engages_on_overflow=True  max_scroll_y=45
+
+[4] terminal-native transcript direction — turns finalized through the sink
+  turns_finalized_total=3  (slash + submit + copy)
+  print-flow seam (above-region emit): NOT wired — PrintFlowSink raises (honest)
+
+[5] process event feed — REAL ordered events (Routing/Submit/Generate/Done)
+  feed_order=['submit_start', 'submit_sent', 'generate_start', 'done']
+  generate_start.duration_ms=26 (measured, not faked)
+
+[6] progressive reveal — real content-derived chunk append (no fake typing)
+  expected_chunks=3  revealed_chunks=3  event_detail='3 chunks'
+
+[3] copy/paste/attach state — honest
+  copy_events=['copy_success']  (empty payload elsewhere → copy_failed)
+  attach: image is staged_only (real bytes staged, NOT sent — console is text-only)

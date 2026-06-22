@@ -46,8 +46,15 @@ flow 를 **14줄 고정 박스**로 잘라, 출력이 길어지면 이전 내용
 
 > **정직한 한계:** 이건 "viewport 까지 누적 + 그 뒤 단일 스크롤"이지 **진짜 terminal-native
 > scrollback 누적(print-flow)은 아직 아니다.** Textual inline 은 매 프레임 region 을 다시 그려서,
-> region 위로 넘어간 내용은 앱의 scroll buffer 가 갖지(터미널 native history 가 아님). 다음 단계
-> seam 은 `tui/transcript_sink.py` (TranscriptSink/WidgetSink=현재, PrintFlowSink=미연결 seam).
+> region 위로 넘어간 내용은 앱의 scroll buffer 가 갖지(터미널 native history 가 아님). seam 은
+> `tui/transcript_sink.py` (TranscriptSink). **이번 라운드: turn boundary 가 sink 로 배선됐다** —
+> `app.py` 가 모든 reading-flow turn(slash·free-text·copy·attach·paste)을 `_begin_turn()` 으로 열고
+> 완료 시 `_finalize_turn()` 으로 닫아, **끝난 turn 이 sink 가 emit 할 수 있는 실제 unit** 이 됐다
+> (`_turns_finalized` 로 런타임 측정 가능 — 증거 `examples/tui-parity-lane/measurements.txt`). 즉
+> migration step 1-2(write surface + turn 경계)는 **done**, **PrintFlowSink(step 3: region 위 emit)만
+> 여전히 미연결** — Textual inline 이 above-region write primitive 를 노출하지 않아 honest
+> `NotImplementedError` 로 둔다(가짜 emit 금지). 측정: `test_tui_console_parity_lane` ·
+> `test_inline_accumulating_flow`.
 
 ## 2. Scroll model — 읽기 흐름 단일 owner + visible gutter 0
 **선택한 모델: content-driven reading flow(고정 박스 아님) + 단일 reading-flow scroll owner +
@@ -104,6 +111,14 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
 
 증거: `apps/forgekit-console/examples/tui-ux-v2/` (SVG 스크린샷 + measurements.txt),
 테스트 `test_tui_parity_hotfix2` · `test_tui_smoke` · `test_tui_scroll_copy` · `test_tui_ux_redesign`.
+
+> **콘솔 parity lane — 통합 측정 검증:** 6 목표(palette-below / 단일 scroll owner /
+> copy·paste·attach 정직 상태 / terminal-native turn finalize / process feed 실측 / progressive
+> chunk reveal)를 **한 harness** 로 런타임 측정한다 — geometry(region) + counter(`_turns_finalized`,
+> `_gen_chunks`) + 측정 duration + content-derived chunk 수. CSS 추측·가짜 숫자·fake typing 없음.
+> 코드 `test_tui_console_parity_lane.py`, 증거 `examples/tui-parity-lane/measurements.txt`
+> (`FORGEKIT_PARITY_EVIDENCE=<path>` 로 재생성). copy 는 pbcopy/pbpaste 존재 시 **실 round-trip**
+> 검증(없으면 honest skip).
 
 ## 5. Paste / attach ingestion (large paste · image)
 **근본 원인(실측):** ForgeKit 은 `[Pasted text #N]`/`[Image #N]` 를 **생성하지 않는다**(grep clean).
