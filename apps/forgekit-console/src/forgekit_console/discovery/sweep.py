@@ -129,6 +129,7 @@ def run_discovery_sweep(
     *,
     fetcher=None,
     rss_feeds: Tuple[Tuple[str, str], ...] = (),
+    config: Optional[dict] = None,
     extra_signals: Sequence[str] = (),
     limit_per: int = 8,
     max_briefs: int = 3,
@@ -138,12 +139,22 @@ def run_discovery_sweep(
 
     Network collectors use *fetcher* (None → real urllib; offline → honest empty).
     Planned seams contribute nothing (never faked). *extra_signals* are operator
-    text folded in alongside the collected items.
+    text folded in alongside the collected items. When *config* is given, the live
+    collectors track the operator's configured topics (``discovery`` block); explicit
+    *rss_feeds* are merged on top of any configured feeds.
     """
 
-    from ..sources import default_registry
+    from ..sources import registry_from_config
 
-    registry = default_registry(repo_root, fetcher=fetcher, rss_feeds=rss_feeds)
+    registry = registry_from_config(repo_root, config, fetcher=fetcher)
+    for sid, url in rss_feeds:
+        from ..sources import RssCollector
+        from nexus.sources.contract import SourceSpec, TYPE_RSS
+
+        spec = SourceSpec(sid, sid, TYPE_RSS, cost_class="free", freshness="daily",
+                          trust_level="medium", ingest_method="rss",
+                          legal_note="operator-curated feed")
+        registry.register(RssCollector(spec, url, fetcher))
     collected = registry.collect_all(limit_per=limit_per)
     # free-first order is preserved by cost_ordered_live() inside collect_all().
     items: List[object] = [it for bucket in collected.values() for it in bucket]

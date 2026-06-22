@@ -86,24 +86,41 @@ def _planned_spec(sid: str, label: str, stype: str, why: str) -> SourceSpec:
                       legal_note=why, status=STATUS_PLANNED)
 
 
+# operator-tunable defaults — what the free-first sources collect by default. The
+# operator overrides these (per their interests) via config; see registry_from_config.
+DEFAULT_HN_QUERY = "forgekit OR devtools"
+DEFAULT_SUBREDDITS: Tuple[str, ...] = ("SaaS",)
+DEFAULT_GITHUB_QUERY = "operator+console+tui"
+
+
 def default_registry(
     repo_root,
     *,
     fetcher: Optional[C.Fetcher] = None,
     rss_feeds: Tuple[Tuple[str, str], ...] = (),
+    hackernews_query: str = DEFAULT_HN_QUERY,
+    subreddits: Tuple[str, ...] = DEFAULT_SUBREDDITS,
+    github_query: str = DEFAULT_GITHUB_QUERY,
 ) -> SourceRegistry:
     """Build the default registry: live free/low sources + planned paid seams.
 
-    LIVE: repo-local (offline) · Hacker News · Reddit · GitHub · any operator RSS.
+    LIVE: repo-local (offline) · Hacker News · Reddit(s) · GitHub · any operator RSS.
     PLANNED (no live ingest, no fake): YouTube · Instagram · paid Google search.
+
+    The HN query, subreddit list, GitHub query and RSS feeds are operator-tunable so
+    collection actually tracks the operator's interests (see :func:`registry_from_config`).
     """
 
     reg = SourceRegistry()
     # --- live, free-first ---
     reg.register(C.RepoLocalCollector(repo_root))
-    reg.register(C.hackernews_collector("forgekit OR devtools", fetcher))
-    reg.register(C.reddit_collector("SaaS", fetcher))
-    reg.register(C.github_collector("operator+console+tui", fetcher))
+    if hackernews_query:
+        reg.register(C.hackernews_collector(hackernews_query, fetcher))
+    for sub in subreddits:
+        if sub:
+            reg.register(C.reddit_collector(sub, fetcher))
+    if github_query:
+        reg.register(C.github_collector(github_query, fetcher))
     for sid, url in rss_feeds:
         spec = SourceSpec(sid, sid, TYPE_RSS, cost_class="free", freshness="daily",
                           trust_level="medium", ingest_method="rss",
@@ -122,4 +139,33 @@ def default_registry(
     return reg
 
 
-__all__ = ("SourceRegistry", "default_registry")
+def registry_from_config(
+    repo_root,
+    config: Optional[Mapping] = None,
+    *,
+    fetcher: Optional[C.Fetcher] = None,
+) -> SourceRegistry:
+    """Build the registry from operator config — so collection tracks THEIR interests.
+
+    Reads the optional ``discovery`` block (all keys optional; sensible defaults):
+      * ``hackernews_query`` (str) · ``subreddits`` (list[str]) · ``github_query`` (str)
+      * ``rss_feeds`` (list of ``[id, url]`` pairs)
+    An empty query/list simply drops that collector (no fake source). Unknown keys are
+    ignored. Falls back to :func:`default_registry` defaults when ``discovery`` is absent.
+    """
+
+    disc = dict((config or {}).get("discovery", {}) or {})
+    subs = disc.get("subreddits", DEFAULT_SUBREDDITS)
+    feeds = tuple(tuple(pair) for pair in disc.get("rss_feeds", ()) if len(tuple(pair)) == 2)
+    return default_registry(
+        repo_root, fetcher=fetcher, rss_feeds=feeds,
+        hackernews_query=str(disc.get("hackernews_query", DEFAULT_HN_QUERY) or ""),
+        subreddits=tuple(s for s in subs if s),
+        github_query=str(disc.get("github_query", DEFAULT_GITHUB_QUERY) or ""),
+    )
+
+
+__all__ = (
+    "SourceRegistry", "default_registry", "registry_from_config",
+    "DEFAULT_HN_QUERY", "DEFAULT_SUBREDDITS", "DEFAULT_GITHUB_QUERY",
+)
