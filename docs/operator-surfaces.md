@@ -27,6 +27,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | `/provider` declared→actual per slot (brain vs live transport) | working | `/provider` (default_chat/execution: declared X → actual Y) | `test_four_brain_preset_and_routing` |
 | provider onboarding wizard (connect 점검 → 추천 preset → save+verify) | working | `/setup` · `/setup apply` | `test_provider_connect` |
 | provider connect 진단 (CLI attach·API key·daemon, no fake-live) | working | `/provider connect\|disconnect\|test\|recommended <id>` | `test_provider_connect` |
+| toolchain 버전 감지/추천 (repo-local manifest·loadout→profile) | working | `/toolchain detect` · `/toolchain recommend <loadout>` | `examples/toolchain/`, `test_toolchain` |
+| toolchain verify/drift (required vs ACTIVE, mise; no manager→honest) | working (needs mise to verify; manager-missing surfaced) | `/toolchain verify\|drift [<loadout>]` | `test_toolchain` |
+| toolchain switch (mise; global/install **approval-gated**, no fake switch) | working (local 적용; gated 액션은 `--approve`) | `/toolchain switch [global] [--approve]` | `test_toolchain` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |

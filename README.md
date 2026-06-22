@@ -186,7 +186,8 @@ flowchart TD
 
 ## Operator 콘솔 한눈에
 
-`/setup` (provider onboarding wizard) · `/resolve <req>` (equip plan) · `/hephaistos` (forge 상태) ·
+`/setup` (provider onboarding wizard) · `/toolchain [detect|recommend <loadout>|verify|switch]` (런타임 버전 전환) ·
+`/resolve <req>` (equip plan) · `/hephaistos` (forge 상태) ·
 `/skills <req>` · `/loadout <id>` (실 env 검증) · `/provider [connect|test|recommended|preset four-brain]` ·
 `/usage` · `/mode` · `/doctor` · `/render` · `/whoami` · `/autopilot <repo>` · `/digest` · `/sources` ·
 `/blocked`. 전체 정직 매트릭스:
