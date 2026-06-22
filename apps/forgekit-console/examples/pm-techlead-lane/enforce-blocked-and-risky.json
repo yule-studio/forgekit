@@ -1,0 +1,62 @@
+{
+  "destructive_blocked": {
+    "allowed": false,
+    "action_class": "destructive",
+    "approval_level": "L4_restricted",
+    "executor_id": "backend-engineer",
+    "approval_metadata": "decision=decision:m-enf;level=L4_restricted;signoff=tech-lead",
+    "satisfied": [
+      "gateway",
+      "tech-lead",
+      "handoff"
+    ],
+    "blocking_reasons": [
+      "execution class(destructive/L4_restricted) > 서명 범위(L2_internal_approve) — 재서명 필요",
+      "destructive(L4) — 자동 실행 금지, operator + runbook 전용"
+    ]
+  },
+  "no_gateway_blocked": {
+    "allowed": false,
+    "action_class": "safe",
+    "approval_level": "L2_internal_approve",
+    "executor_id": "backend-engineer",
+    "approval_metadata": "decision=decision:m-enf;level=L2_internal_approve;signoff=tech-lead",
+    "satisfied": [
+      "tech-lead",
+      "handoff",
+      "internal-safe"
+    ],
+    "blocking_reasons": [
+      "gateway 승인(라우팅) 없음 — 미경유 실행"
+    ]
+  },
+  "risky_without_operator_blocked": {
+    "allowed": false,
+    "action_class": "risky",
+    "approval_level": "L3_user_approve",
+    "executor_id": "backend-engineer",
+    "approval_metadata": "decision=decision:m-enf;level=L3_user_approve;signoff=tech-lead",
+    "satisfied": [
+      "gateway",
+      "tech-lead",
+      "handoff"
+    ],
+    "blocking_reasons": [
+      "risky(L3) — operator 승인 없음/대상 불일치"
+    ]
+  },
+  "risky_with_operator_allowed": {
+    "allowed": true,
+    "action_class": "risky",
+    "approval_level": "L3_user_approve",
+    "executor_id": "backend-engineer",
+    "approval_metadata": "decision=decision:m-enf;level=L3_user_approve;signoff=tech-lead;operator=operator",
+    "satisfied": [
+      "gateway",
+      "tech-lead",
+      "handoff",
+      "operator"
+    ],
+    "blocking_reasons": []
+  }
+}
