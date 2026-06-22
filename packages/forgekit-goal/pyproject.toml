@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forgekit-goal"
+version = "0.1.0"
+description = "ForgeKit goal plane (GW1) — the long-term goal model + persistent store that turns ForgeKit from a bag of capabilities into a control plane that manages its own goals. Pure, stdlib-first. Models/transitions/store only; tick/execute (GW4) and console surface (GW5) live elsewhere."
+requires-python = ">=3.9"
+dependencies = ["forgekit-config"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
