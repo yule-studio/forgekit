@@ -10,10 +10,11 @@ available provider, and with no config the honest state is setup-required.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Mapping, Optional, Tuple
+from typing import Mapping, Optional, Sequence, Tuple
 
 from ..providers import builtins
 from ..providers.contract import SUBMIT_OPENAI
+from ..usage import provider_budget as _pb
 from . import provider_config as pc
 from . import provider_ops as ops
 from . import routing as rt
@@ -122,7 +123,6 @@ def provider_status_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
         f"  implicit local fallback: {'on' if parsed.implicit_local_fallback else 'off (기본)'}",
     ]
     # per-provider daily budget (configured policy, cfg-pure — live spend is in `/usage`).
-    from ..usage import provider_budget as _pb
     lines.extend(_pb.limit_lines(cfg))
     if not review.ready:
         lines += [f"  ⚠ {i}" for i in review.issues]
@@ -248,6 +248,59 @@ def apply_unlink(pid: str, *, env=None, path=None) -> Tuple[bool, str]:
     return (True, f"{pid} unlinked (해당 slot route 도 정리).") if ok else (False, msg)
 
 
+def apply_set_budget(pid: str, raw_limit: str, *, env: Optional[Mapping[str, str]] = None,
+                     path: Optional[Path] = None) -> Tuple[bool, str]:
+    """`/provider budget <id> <limit>` — set (or clear) a provider's daily token limit + persist.
+
+    Honest: a non-positive limit clears the cap (→ unbounded, never invents one). The id must
+    be a built-in provider; a non-integer limit is a hard error (no silent 0)."""
+
+    pid = (pid or "").strip()
+    if not pid:
+        return False, "provider id 가 필요합니다 — `/provider budget <id> <limit>`."
+    if not builtins.is_builtin(pid):
+        return False, (f"알 수 없는 provider: {pid} (built-in: "
+                       f"{', '.join(builtins.BUILTIN_PROVIDERS)}). custom 은 config 로 추가하세요.")
+    raw_limit = (raw_limit or "").strip()
+    if not raw_limit:
+        return False, "limit(일일 토큰 한도, 정수)이 필요합니다 — `/provider budget <id> <limit>` (0 이하 = 해제)."
+    try:
+        limit = int(raw_limit)
+    except (TypeError, ValueError):
+        return False, f"limit 는 정수여야 합니다 (받은 값: {raw_limit!r}). 예: `/provider budget {pid} 50000`."
+    cur = ops.load_raw_config(env=env, path=path)
+    new_cfg = ops.set_provider_budget(cur, pid, limit)
+    ok, where = _persist(new_cfg, env, path)
+    if not ok:
+        return False, where
+    if limit > 0:
+        return True, f"per-provider budget {pid} = {limit}tok/day 저장됨 (초과 시 routing 이 정직하게 fallback/거부). `/provider budget show` 로 확인."
+    return True, f"per-provider budget {pid} 해제됨 (unbounded — global budget 만 적용). `/provider budget show` 로 확인."
+
+
+def budget_lines(cfg: Optional[Mapping], rows: Sequence[Mapping] = ()) -> Tuple[str, ...]:
+    """`/provider budget show` — per-provider 한도 + 오늘 spent/over (정직).
+
+    *rows* 는 오늘로 day-scope 된 usage ledger 행. 설정된 한도가 없으면 전 provider unbounded
+    (global budget 만 적용)임을 솔직히 표시 — 가짜 숫자를 만들지 않는다."""
+
+    states = _pb.provider_budget_states(cfg, rows)
+    if not states:
+        return (
+            "per-provider budget: 미설정",
+            "  설정된 provider 한도 없음 — 전 provider unbounded (global budget 만 적용).",
+            "  설정: `/provider budget <id> <limit>` (예: gemini 50000). 해제: `/provider budget <id> 0`.",
+        )
+    lines = ["per-provider budget (오늘 기준):"]
+    for st in states:
+        flag = " ⚠ OVER" if st.over else ""
+        pct = f" ({st.ratio * 100:.0f}%)" if st.limit > 0 else ""
+        lines.append(f"  {st.provider:<10} {st.spent}/{st.limit}tok{pct}{flag}")
+    lines.append("  초과 provider 는 routing 이 정직하게 fallback/거부합니다 (가짜 전송 없음).")
+    lines.append("  한도 없는 provider 는 표시되지 않음 = unbounded (global budget 만 적용).")
+    return tuple(lines)
+
+
 def route_show_lines(cfg: Optional[Mapping]) -> Tuple[str, ...]:
     """`/provider route show` — slot routing + fallback policy 가시화."""
 
@@ -289,7 +342,7 @@ def apply_route_clear(slot: str, *, env=None, path=None) -> Tuple[bool, str]:
 __all__ = (
     "provider_status_lines", "provider_list_lines", "provider_doctor_lines", "apply_set_primary",
     "apply_preset", "apply_link", "apply_unlink", "route_show_lines", "apply_route_set",
-    "apply_route_clear",
+    "apply_route_clear", "apply_set_budget", "budget_lines",
     "STATE_SETUP_REQUIRED", "STATE_CONFIGURED", "STATE_LINKED", "STATE_LIVE", "STATE_UNSUPPORTED",
     "PROVIDER_STATES", "classify_provider_state", "provider_state_map",
 )
