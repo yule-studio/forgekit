@@ -1,0 +1,54 @@
+ForgeKit evidence → Nexus/vault 누적 — deterministic evidence (no fake)
+goal store(append-only EvidenceRecord) → 인증 vault note. 재현: tests/forgekit/test_evidence_vault.py
+
+goal `goal-9d5ff93da4d6` — append-only evidence 3건 (goal store 영속)
+
+==============================================================================
+STEP 1 — vault 미연결 → not_connected (노트 위조 없음)
+==============================================================================
+  accumulate(vault_root='') → status=not_connected, written=0
+
+==============================================================================
+STEP 2 — vault 연결 → evidence 가 인증 vault note 로 누적
+==============================================================================
+  status=connected, written=3, skipped=0
+    + 10-projects/forgekit/evidence/goal-9d5ff93da4d6/001-observation.md
+    + 10-projects/forgekit/evidence/goal-9d5ff93da4d6/002-execution.md
+    + 10-projects/forgekit/evidence/goal-9d5ff93da4d6/003-verification.md
+
+==============================================================================
+STEP 3 — 재실행(restart) → append-only idempotent (덮어쓰지 않음)
+==============================================================================
+  status=connected, written=0, skipped=3 (기존 노트 보존)
+
+==============================================================================
+STEP 4 — 누적된 vault note 내용 (인증 frontmatter + 5섹션, 실 evidence)
+==============================================================================
+$ cat 10-projects/forgekit/evidence/goal-9d5ff93da4d6/001-observation.md
+---
+title: "evidence — Nexus provider runtime completion #1 (observation)"
+kind: evidence
+status: recorded
+created_at: "2026-06-22T04:30:51.793451+00:00"
+tags: [forgekit, evidence, observation]
+related: [goal-9d5ff93da4d6]
+agent_author: knowledge-engineer
+agent_role: Knowledge Engineer
+cssclasses: [fk-knowledge]
+agent_color: "#f59e0b"
+---
+
+> [!fk-knowledge] Knowledge Engineer
+
+## 핵심 요약
+- per-provider budget + mode/slot 분리 merged
+
+## 적용 맥락
+- goal: Nexus provider runtime completion (`goal-9d5ff93da4d6`)
+- evidence #1 · kind: observation · ts: 2026-06-22T04:30:51.793451+00:00
+
+## 참고 (ref)
+- PR#343
+
+## 관련 노트
+- [[goal-9d5ff93da4d6]] (goal evidence 누적)

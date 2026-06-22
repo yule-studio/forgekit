@@ -47,3 +47,23 @@ so the surfaces now reflect the REAL root:
 
 Evidence: [`examples/nexus-live-read/`](../apps/forgekit-console/examples/nexus-live-read/),
 tests `test_nexus_live_read` + `test_nexus_read`.
+
+## Write path — evidence → vault 누적 (`nexus/vault/evidence.py`)
+
+Nexus 는 read-only 가 아니다 — ForgeKit 의 **evidence 가 knowledge plane 에 누적**돼야 한다
+(최종 완성 축4). `forgekit_goal` 의 append-only `EvidenceRecord`(ts/kind/summary/ref)를 **인증
+vault note**(frontmatter + 5섹션, `nexus.vault.note` writer 재사용)로 써서 연결된 Nexus root 아래
+`10-projects/forgekit/evidence/<goal>/NNN-<kind>.md` 에 누적한다.
+
+honesty rails:
+- **no fake nexus connection** — `vault_root` 없으면 `not_connected`(노트 0개, 위조 없음).
+  goal/스토어 미해결이면 `no_goal`.
+- **append-only / idempotent** — note 경로는 (goal, index) 결정적. 기존 note 는 재실행에도
+  덮어쓰지 않고 skip(goal evidence 의 append-only 계약과 일치). 파일은 disk 에 영속(restart 유지).
+- `forgekit_goal` 은 **lazy best-effort import** — nexus 의 단일 `forgekit-config` 의존 유지.
+
+API: `accumulate_goal_evidence(goal_id, vault_root=, env=)`(goal store → vault) ·
+`accumulate_records(goal_id, title, records, vault_root=)`(pure) · `write_evidence_note(...)`.
+live 루프에서 evidence append 시 자동 누적하는 wiring 은 runtime seam(후속). 코드 SSoT
+`packages/nexus/src/nexus/vault/evidence.py`, 회귀 `tests/forgekit/test_evidence_vault.py`,
+evidence [`examples/evidence-vault/`](../apps/forgekit-console/examples/evidence-vault/).
