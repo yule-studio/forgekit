@@ -408,6 +408,10 @@ def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
         return CommandResult.info("hephaistos", proj.hephaistos_status_lines(env=env, config=config))
     if handler == H_LOADOUT:
         return CommandResult.info("loadout", proj.loadout_lines(args[0] if args else "backend-java-local"))
+    # /resolve subverbs: `apply <요청>` = run the forge governance gate + PERSIST the receipt
+    # to the append-only decision ledger; `log` = read recent ledger entries (audit).
+    if handler == H_RESOLVE and args and args[0] in ("apply", "log"):
+        return _forge_subverb_result(args, env=env)
     if not request:
         which = "/resolve" if handler == H_RESOLVE else "/skills"
         return CommandResult.info(handler, (f"요청을 입력하세요 — `{which} <요청>` "
@@ -433,7 +437,62 @@ def _forge_governance_lines(request: str, *, env=None) -> tuple:
         receipt = forge_execute(request, env=env)
     except Exception:  # noqa: BLE001 — a render must never break /resolve
         return ()
-    return ("", "── governance ──") + receipt.lines()
+    return ("", "── governance ──") + receipt.lines() + (
+        "(미리보기 — 기록하려면 `/resolve apply <요청>`, 기록 조회는 `/resolve log`)",)
+
+
+def _forge_subverb_result(args, *, env=None) -> CommandResult:
+    """`/resolve apply <요청>` / `/resolve log` — the operator-visible persist + audit surface.
+
+    ``apply`` runs the forge governance gate and PERSISTS the receipt to the append-only
+    decision ledger (only a validation-passing receipt is recorded — the ledger refuses
+    fakes); ``log`` reads recent ledger entries back. Best-effort: if forgekit_runtime is
+    absent the surface degrades to an honest message instead of breaking the console."""
+
+    sub = args[0]
+    try:
+        from forgekit_runtime.forge import (
+            forge_execute,
+            forge_receipt_ledger_path,
+            read_forge_receipts,
+        )
+    except Exception:  # noqa: BLE001
+        return CommandResult.error("resolve " + sub, ("forge governance 런타임 미가용.",))
+
+    if sub == "log":
+        try:
+            entries = read_forge_receipts(env=env, limit=8)
+        except Exception:  # noqa: BLE001
+            entries = []
+        if not entries:
+            return CommandResult.info(
+                "resolve log",
+                ("forge governance ledger — 기록 없음 (`/resolve apply <요청>` 로 실행·기록).",))
+        lines = [f"forge governance ledger — 최근 {len(entries)}건 (append-only):"]
+        for e in entries:
+            r = e.get("receipt", {}) if isinstance(e, dict) else {}
+            mark = "✓" if r.get("authorized") else "✗"
+            lines.append(
+                f"  {mark} {r.get('outcome', '?')} [{r.get('action_class', '?')}] "
+                f"{(r.get('request', '') or '')[:46]} · agent={r.get('selected_agent', '')}")
+        return CommandResult.info("resolve log", tuple(lines))
+
+    # sub == "apply"
+    request = " ".join(args[1:]).strip()
+    if not request:
+        return CommandResult.info("resolve apply",
+                                  ("요청을 입력하세요 — `/resolve apply <요청>`.",))
+    try:
+        receipt = forge_execute(request, env=env, persist=True)
+    except Exception as exc:  # noqa: BLE001
+        return CommandResult.error("resolve apply", (f"실행 실패: {exc}",))
+    tail = (
+        "",
+        f"ledger 기록됨(append-only): {forge_receipt_ledger_path(env)}"
+        if receipt.outcome != "awaiting" else "기록 없음 (빈 요청).",
+        "조회: `/resolve log`",
+    )
+    return CommandResult.info("resolve apply", tuple(receipt.lines()) + tail)
 
 
 def _whoami_result(parsed) -> CommandResult:
