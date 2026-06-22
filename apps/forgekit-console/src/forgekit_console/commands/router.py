@@ -42,6 +42,7 @@ from .registry import (
     H_NEXUS,
     H_DAEMON,
     H_GOAL,
+    H_COUNCIL,
     H_LAYOUT,
     H_QUIT,
     H_RENDER,
@@ -185,6 +186,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _daemon_result(parsed, ctx)
     if handler == H_GOAL:
         return _goal_result(parsed, ctx)
+    if handler == H_COUNCIL:
+        return _council_result(parsed, ctx)
     if handler == H_RENDER:
         return _render_readiness_result()
     if handler == H_BLOCKED:
@@ -494,6 +497,36 @@ def _forge_ledger_result(*, env=None) -> CommandResult:
     except Exception as e:  # noqa: BLE001
         return CommandResult.error("resolve ledger", (f"forgekit_runtime 미가용: {e}",))
     return CommandResult.info("resolve ledger", forge_ledger_lines(env=env))
+
+
+def _council_result(parsed, ctx=None) -> CommandResult:
+    """`/council <session>` — PM→tech-lead→specialist lane readiness from the replay-able
+    governance decision log: what's confirmed, what's still missing, and whether a
+    specialist may execute ("실행 전에 무엇이 확정돼야 하는지"). Reads the persisted log
+    (replay) and reconstructs the readiness — no live artifacts needed. Best-effort: if the
+    runtime is unavailable the surface degrades to an honest message."""
+
+    env = getattr(ctx, "env", None)
+    args = getattr(parsed, "args", ()) or ()
+    session = (args[0] if args else "").strip()
+    if not session:
+        return CommandResult.info(
+            "council",
+            ("PM→tech-lead→specialist lane readiness 를 봅니다 — `/council <session>`.",
+             "decision log(consult/meeting/decision/approval)을 replay 해 '실행 전에 무엇이 "
+             "확정돼야 하는지'를 보여줍니다. 기록은 `decision_lane.record_lane_artifacts` 가 남깁니다.",
+             "규칙: PM artifact 없으면 tech-lead lane 실행 불가, tech-lead decision 없으면 specialist 실행 불가."))
+    try:
+        from forgekit_runtime.decision_lane import readiness_from_log, replay_governance_log
+    except Exception:  # noqa: BLE001
+        return CommandResult.error("council", ("governance 런타임 미가용.",))
+    events = replay_governance_log(session, env=env)
+    readiness = readiness_from_log(events)
+    head = (f"council lane — session={session} · 기록 {len(events)}건 (replay):",)
+    if not events:
+        head = (f"council lane — session={session}: 기록 없음 "
+                "(decision log 가 비어 있음 → readiness 는 PM brief 부재로 실행 불가).",)
+    return CommandResult.info("council", head + readiness.lines())
 
 
 def _whoami_result(parsed) -> CommandResult:
