@@ -19,10 +19,12 @@ WT's scope and remain behind the chain + a single executor.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from . import chain as CH
 from .artifacts import ExecutionTaskSplit, RepoFinding, VerificationReport
+
+PHASE_AUTHORIZE = "lane_authorize"
 
 # the 8 team phases
 PHASE_OBSERVE = "observe"
@@ -105,6 +107,11 @@ class AutopilotOrchestrator:
     limits: AutopilotLimits = field(default_factory=AutopilotLimits)
     kill_switch: bool = False
     mutator: Optional[object] = None   # BoundedMutator → REAL safe-class execution (WT3)
+    # decision-lane enforcement on the ACTUAL execution path. Injected (not imported) to
+    # keep the orchestrator decoupled — `decision_lane.make_runtime_authorizer(...)` builds
+    # it. Called (finding, decision, executor, risk_class) right before the mutator; a
+    # non-allowed verdict refuses execution in-loop. None → legacy behaviour (chain only).
+    execution_authorizer: Optional[Callable] = None
 
     def is_allowed(self, repo: str) -> bool:
         return (repo or "").strip() in self.allowlist
@@ -144,6 +151,24 @@ class AutopilotOrchestrator:
                 res.proposed.append({"finding": finding.finding, "queued_for": executor})
                 continue
 
+            # decision-lane enforcement on the ACTUAL execution path: classify the action
+            # (safe/risky/destructive) at execution time + re-check the approval chain. A
+            # non-allowed verdict refuses execution here — even with chain signoff, a
+            # destructive/scope-creep/unauthorized item never mutates.
+            approval_meta = ""
+            if self.execution_authorizer is not None:
+                res.steps.append(PHASE_AUTHORIZE)
+                verdict = self.execution_authorizer(finding, decision, executor, risk_of(finding))
+                if verdict is not None and not getattr(verdict, "allowed", False):
+                    res.proposed.append({
+                        "finding": finding.finding, "executor": executor,
+                        "blocked_by": "lane-enforcement",
+                        "action_class": getattr(verdict, "action_class", ""),
+                        "reasons": list(getattr(verdict, "blocking_reasons", ()))})
+                    arb.release(executor)
+                    continue
+                approval_meta = getattr(verdict, "approval_metadata", "") if verdict else ""
+
             # WT3: a mutator performs a REAL bounded write (verified). WITHOUT a mutator
             # there is NO fake execution — the item is recorded as proposed-only.
             if self.mutator is None:
@@ -165,9 +190,12 @@ class AutopilotOrchestrator:
                     res.halt_reason = "verify 실패 반복 — cooldown/정지 (커밋하지 않음)"
                     break
                 continue
-            res.executed.append({"finding": finding.finding, "executor": executor,
-                                 "verified": True, "path": outcome.path,
-                                 "lines_changed": outcome.lines_changed})
+            executed_rec = {"finding": finding.finding, "executor": executor,
+                            "verified": True, "path": outcome.path,
+                            "lines_changed": outcome.lines_changed}
+            if approval_meta:
+                executed_rec["approval"] = approval_meta   # approval metadata bound to work
+            res.executed.append(executed_rec)
             res.steps.append(PHASE_RECORD)
             arb.release(executor)   # release so the NEXT executor can take the slot
         res.executor_log = list(arb.log)
@@ -194,6 +222,6 @@ class AutopilotOrchestrator:
 
 __all__ = (
     "PHASE_OBSERVE", "PHASE_CLASSIFY", "PHASE_PM", "PHASE_GATEWAY", "PHASE_SIGNOFF",
-    "PHASE_EXECUTE", "PHASE_VERIFY", "PHASE_RECORD", "DEFAULT_ALLOWLIST",
+    "PHASE_AUTHORIZE", "PHASE_EXECUTE", "PHASE_VERIFY", "PHASE_RECORD", "DEFAULT_ALLOWLIST",
     "ExecutorArbiter", "AutopilotLimits", "AutopilotRunResult", "AutopilotOrchestrator",
 )

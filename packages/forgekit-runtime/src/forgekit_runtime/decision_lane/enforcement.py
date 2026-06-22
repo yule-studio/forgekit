@@ -25,14 +25,14 @@ from dataclasses import dataclass, field
 from typing import Optional, Tuple
 
 from forgekit_config.identity.attribution import commit_trailers
-from forgekit_config.identity.registry import canonical_id
+from forgekit_config.identity.registry import canonical_id, resolve_identity
 
 from ..autopilot import approval as A
 from ..autopilot.artifacts import TechLeadDecision as AutopilotDecision
 from ..autopilot.execution import AUTO_FORBIDDEN, SAFE_CLASS_ALLOWLIST
 from .lane import GatewayRouting
 from .schemas import CONDITIONAL, SIGNED_OFF, EngineerHandoff, TechLeadDecision
-from .validators import validate_handoff, validate_tech_lead_decision
+from .validators import NON_EXECUTOR_ROLES, validate_handoff, validate_tech_lead_decision
 
 # action classes on the execution path
 SAFE = "safe"
@@ -206,6 +206,122 @@ def assert_executable(
     return verdict
 
 
+# pure routers/product roles the autopilot NEVER routes execution to (gateway forwards,
+# PM frames). tech-lead IS allowed on the finding path (chain routes docs→tech-lead) —
+# the stricter design-lane rule (decider≠implementer) lives in validators.NON_EXECUTOR_ROLES.
+_RUNTIME_NON_EXECUTOR = frozenset({"gateway", "product-manager"})
+
+
+def _runtime_executor_violation(executor_role: str) -> str:
+    """Return a violation if *executor_role* can't hold the single autopilot executor slot.
+
+    Finding-path rule: a known engineering-department role that is not a pure router. So
+    qa/be/devops/fe/tech-lead are fine; gateway/PM/unknown/non-engineering are refused."""
+
+    cid = canonical_id(executor_role)
+    if not cid:
+        return f"executor '{executor_role}' 식별자 레지스트리에 없음"
+    if cid in _RUNTIME_NON_EXECUTOR or resolve_identity(cid).department != "engineering":
+        return f"'{cid}' 은 실행 슬롯을 가질 수 없음 (router/non-engineering 역할)"
+    return ""
+
+
+def authorize_runtime_execution(
+    decision: Optional[AutopilotDecision],
+    request: ActionRequest,
+    *,
+    executor_role: str,
+    gateway_ok: bool = True,
+    operator_approval: Optional[OperatorApproval] = None,
+) -> ExecutionVerdict:
+    """Execution-path gate for the autopilot finding chain (NOT the design-meeting lane).
+
+    The autopilot PM→gateway→tech-lead chain (`chain.run_internal_chain`) IS a real
+    signoff for small findings — there is no design meeting, so this consumes that
+    chain's :class:`autopilot.artifacts.TechLeadDecision` directly while applying the
+    SAME classification + approval-chain + trailer rules as :func:`authorize_execution`:
+
+    * destructive (deploy/secret/…) never auto-runs,
+    * risky needs a real operator approval,
+    * safe runs only on internal signoff (``can_execute``),
+    * the action is classified at EXECUTION time → scope-creep beyond the signed level is
+      blocked, and the single-executor must be a registry engineer.
+    """
+
+    reasons = []
+    satisfied = []
+
+    if not gateway_ok:
+        reasons.append("gateway 승인(라우팅) 없음 — 미경유 실행")
+    else:
+        satisfied.append("gateway")
+
+    if decision is None:
+        reasons.append("tech-lead 결정 없음(서명 없음)")
+    else:
+        satisfied.append("tech-lead")
+
+    ex_viol = _runtime_executor_violation(executor_role)
+    if ex_viol:
+        reasons.append(ex_viol)
+
+    action_class, level = classify_action(request)
+    signoff_level = getattr(decision, "approval_level", "") if decision else ""
+    if decision is not None and signoff_level:
+        if _LEVEL_ORDER.get(level, 1) > _LEVEL_ORDER.get(signoff_level, 1):
+            reasons.append(
+                f"execution class({action_class}/{level}) > 서명 범위"
+                f"({signoff_level}) — 재서명 필요")
+
+    if action_class == DESTRUCTIVE:
+        reasons.append("destructive(L4) — 자동 실행 금지, operator + runbook 전용")
+    elif action_class == RISKY:
+        if operator_approval is None or not operator_approval.approved:
+            reasons.append("risky(L3) — operator 승인 없음")
+        else:
+            satisfied.append("operator")
+    else:  # safe — internal signoff must have cleared (can_execute)
+        if decision is not None and not getattr(decision, "can_execute", False):
+            reasons.append("safe 인데 내부 서명(can_execute) 미통과")
+        else:
+            satisfied.append("internal-safe")
+
+    executor_id = canonical_id(executor_role)
+    signoff_id = canonical_id(getattr(decision, "signoff_by", "")) if decision else ""
+    meta = ""
+    if decision is not None and not reasons:
+        summary = (getattr(decision, "packet_summary", "") or "")[:40]
+        meta = f"decision={summary};level={level};signoff={signoff_id or 'tech-lead'}"
+        if "operator" in satisfied and operator_approval is not None:
+            meta += f";operator={operator_approval.approver}"
+
+    return ExecutionVerdict(
+        allowed=not reasons, action_class=action_class, approval_level=level,
+        executor_id=executor_id, approval_metadata=meta,
+        satisfied=tuple(satisfied), blocking_reasons=tuple(reasons))
+
+
+def make_runtime_authorizer(*, gateway_ok: bool = True, operator_approval_for=None):
+    """Build the callable :class:`AutopilotOrchestrator` injects as ``execution_authorizer``.
+
+    The orchestrator calls it ``(finding, decision, executor_role, risk_class)`` right
+    before the mutator runs; a non-allowed verdict refuses the execution in-loop.
+    ``operator_approval_for(finding) -> OperatorApproval | None`` supplies operator grants
+    for risky findings (default: none → risky stays blocked)."""
+
+    def _authorize(finding, decision, executor_role, risk_class=""):
+        request = ActionRequest(
+            kind=getattr(finding, "kind", ""),
+            summary=getattr(finding, "finding", ""),
+            risk_flag=risk_class)
+        op = operator_approval_for(finding) if operator_approval_for else None
+        return authorize_runtime_execution(
+            decision, request, executor_role=executor_role,
+            gateway_ok=gateway_ok, operator_approval=op)
+
+    return _authorize
+
+
 def bridge_to_autopilot(decision: TechLeadDecision) -> AutopilotDecision:
     """Adapt a lane signoff to the autopilot execution gate's :class:`TechLeadDecision`,
     so the REAL BoundedMutator path (`autopilot.validate_execution`) consumes it. A lane
@@ -254,5 +370,6 @@ __all__ = (
     "SAFE", "RISKY", "DESTRUCTIVE", "ExecutionBlocked",
     "ActionRequest", "OperatorApproval", "ExecutionVerdict",
     "classify_action", "authorize_execution", "assert_executable",
+    "authorize_runtime_execution", "make_runtime_authorizer",
     "bridge_to_autopilot", "execution_commit_trailers", "validate_execution_trailers",
 )

@@ -1,0 +1,81 @@
+{
+  "note": "decision_lane enforcement on the real autopilot run loop (execution_authorizer)",
+  "executed": [
+    {
+      "finding": "lint 정리",
+      "executor": "be",
+      "verified": true,
+      "path": "runs/forgekit/autopilot/forgekit-lint-정리.md",
+      "lines_changed": 7,
+      "approval": "decision=lint 정리;level=L2_internal_approve;signoff=tech-lead"
+    },
+    {
+      "finding": "docs 보강",
+      "executor": "tech-lead",
+      "verified": true,
+      "path": "runs/forgekit/autopilot/forgekit-docs-보강.md",
+      "lines_changed": 7,
+      "approval": "decision=docs 보강;level=L2_internal_approve;signoff=tech-lead"
+    }
+  ],
+  "lane_blocked_in_loop": [
+    {
+      "finding": "update config values",
+      "executor": "tech-lead",
+      "blocked_by": "lane-enforcement",
+      "action_class": "destructive",
+      "reasons": [
+        "execution class(destructive/L4_restricted) > 서명 범위(L2_internal_approve) — 재서명 필요",
+        "destructive(L4) — 자동 실행 금지, operator + runbook 전용"
+      ]
+    }
+  ],
+  "chain_blocked_before_lane": [
+    {
+      "finding": "프로덕션 배포 apply",
+      "decision_class": "blocked",
+      "approval_level": "L4_restricted"
+    },
+    {
+      "finding": "auth 대규모 rewrite",
+      "decision_class": "risky",
+      "approval_level": "L3_user_approve"
+    }
+  ],
+  "steps": [
+    "observe:lint 정리",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:safe",
+    "lane_authorize",
+    "execute:be",
+    "verify",
+    "record",
+    "observe:docs 보강",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:safe",
+    "lane_authorize",
+    "execute:tech-lead",
+    "verify",
+    "record",
+    "observe:update config values",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:safe",
+    "lane_authorize",
+    "observe:프로덕션 배포 apply",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:blocked",
+    "observe:auth 대규모 rewrite",
+    "classify",
+    "pm_structure",
+    "gateway_route",
+    "tech_lead_signoff:risky"
+  ]
+}
