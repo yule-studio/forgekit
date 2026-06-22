@@ -40,13 +40,14 @@ from .validators import (
 # governance event kinds
 KIND_BRIEF = "brief"           # PM product artifact
 KIND_CONSULT = "consult"       # a consult / discussion note (non-gating)
+KIND_GATEWAY = "gateway"       # gateway intake verdict (approve/reject/request-more-info)
 KIND_MEETING = "meeting"       # design meeting held
 KIND_DECISION = "decision"     # tech-lead signoff
 KIND_APPROVAL = "approval"     # operator approval
 KIND_HANDOFF = "handoff"       # engineer handoff
 KIND_EXECUTION = "execution"   # execution receipt
 EVENT_KINDS: Tuple[str, ...] = (
-    KIND_BRIEF, KIND_CONSULT, KIND_MEETING, KIND_DECISION, KIND_APPROVAL,
+    KIND_BRIEF, KIND_CONSULT, KIND_GATEWAY, KIND_MEETING, KIND_DECISION, KIND_APPROVAL,
     KIND_HANDOFF, KIND_EXECUTION,
 )
 
@@ -126,6 +127,7 @@ def record_lane_artifacts(
     session_id: str,
     *,
     brief=None,
+    gateway=None,
     meeting=None,
     decision=None,
     approval=None,
@@ -149,6 +151,13 @@ def record_lane_artifacts(
     if brief is not None:
         ok = not validate_pm_brief(brief)
         _emit(KIND_BRIEF, "product-manager", f"PM brief: {brief.topic}", ok, brief.topic)
+    if gateway is not None:
+        # gateway 'valid' = the packet itself is well-formed AND it approved (forwarded);
+        # a reject/request-more-info is a real, recorded verdict but not an advancing one.
+        from .gateway import validate_gateway_packet
+        ok = (not validate_gateway_packet(gateway)) and getattr(gateway, "forwarded", False)
+        _emit(KIND_GATEWAY, "gateway",
+              f"gateway {gateway.verdict}: {gateway.topic}", ok, gateway.topic)
     if meeting is not None:
         ok = not validate_meeting(meeting)
         _emit(KIND_MEETING, "tech-lead",
@@ -208,8 +217,8 @@ def readiness_from_log(events: Tuple[GovernanceEvent, ...]) -> LaneReadiness:
 
 
 __all__ = (
-    "KIND_BRIEF", "KIND_CONSULT", "KIND_MEETING", "KIND_DECISION", "KIND_APPROVAL",
-    "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS",
+    "KIND_BRIEF", "KIND_CONSULT", "KIND_GATEWAY", "KIND_MEETING", "KIND_DECISION",
+    "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS",
     "GovernanceEvent", "governance_log_path", "record_governance_event",
     "replay_governance_log", "record_lane_artifacts", "readiness_from_log",
 )
