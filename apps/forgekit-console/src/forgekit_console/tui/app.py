@@ -1475,6 +1475,13 @@ class ForgekitConsoleApp(App):
 
         self._sink.finalize_turn()
         self._turns_finalized += 1
+        # a turn boundary is the natural refresh point for the cockpit issue line: the
+        # runtime may have parked a goal in awaiting_approval, or spend may have crossed a
+        # budget mark, out-of-band — refresh so the operator SEES it without polling.
+        try:
+            self._refresh_issue()
+        except Exception:  # noqa: BLE001 - status refresh must never break a turn close
+            pass
 
     # --- chrome / status ----------------------------------------------------
 
@@ -1503,15 +1510,31 @@ class ForgekitConsoleApp(App):
             return
         pol = self._effective_policy
         if pol is not None:
+            awaiting, budget_ratio = self._cockpit_badges()
             self.query_one("#issue", Static).update(
                 render.runtime_mode_line(
                     pol.mode_label, pol.provider_policy_mode, pol.usage.usage_mode,
                     pol.approval, loop=pol.background_loop,
+                    awaiting=awaiting, budget_ratio=budget_ratio,
                 )
             )
             return
         summary = self.context.load_operator()
         self.query_one("#issue", Static).update(render.issue_line(summary))
+
+    def _cockpit_badges(self):
+        """Real operator-cockpit facts for the issue line: (awaiting_count, budget_ratio).
+
+        Delegates to the pure :mod:`tui.cockpit` helper (textual-free, unit-testable in CI)
+        which reads the LIVE goal store + usage ledger and degrades to no-badge on failure —
+        never a fabricated number."""
+
+        from .cockpit import cockpit_badges
+
+        return cockpit_badges(
+            env=getattr(self.context, "env", None) or None,
+            config=self._config, ledger_path=self._usage_ledger_path,
+        )
 
     # --- runtime mode (Shift+Tab → real policy change) ----------------------
 
