@@ -1,0 +1,22 @@
+# GW5 /goal operator surface evidence (through the real command router)
+$ /goal
+    등록된 goal 없음 — `/goal new <제목>` 으로 생성
+$ /goal new ForgeKit self-managing control plane
+    goal 생성: goal-dc3f08b25200  [draft]  ForgeKit self-managing control plane
+$ /goal activate goal-dc3f08b25200
+    goal-dc3f08b25200 -> active
+$ /goal show goal-dc3f08b25200
+    goal-dc3f08b25200  [active]  ForgeKit self-managing control plane
+      intent: -
+      mode: inherit   packets: 0   children: 0   evidence: 0
+$ /goal list
+    1 goal (updated 최신순):
+      goal-dc3f08b25200  [active]  ForgeKit self-managing control plane
+$ /goal bogus
+    `/goal` — 장기 목표 control plane (forgekit_goal)
+      /goal [list]          등록된 goal 목록
+      /goal new <제목>       새 goal(draft) 생성
+      /goal show <id>       goal 상세(status/packets/evidence)
+      /goal activate <id>   draft/blocked -> active
+      /goal evidence <id>   evidence(append-only) 목록
+      tick(수집→제안→evidence)은 runtime daemon 에서 실행 (GW4)
