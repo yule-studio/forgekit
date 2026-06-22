@@ -22,6 +22,26 @@ bounded normalize → attach`.
 Evidence: [`examples/hephaistos/nexus-read-foundation/`](../apps/forgekit-console/examples/hephaistos/nexus-read-foundation/)
 (connected / not_connected / restricted projection). Surfaced via the `nexus` line in `/resolve`.
 
+## Vault bootstrap — honest Obsidian validation + opt-in scaffold (`nexus_vault.py`)
+
+`connection_status` 는 "root 가 set·readable 인가"만 답한다. **vault bootstrap**(`hephaistos/nexus_vault.py`)
+는 운영자가 알아야 할 더 풍부한 질문에 정직하게 답한다 — 연결된 root 가 실제 **Obsidian vault**(진짜
+`.obsidian/`)인가, 비었는가, note 가 몇 개인가, ForgeKit KB layout(`00-inbox/10-projects/20-areas/
+30-resources`)이 있는가 — 그리고 **opt-in 으로 누락 KB dir 를 scaffold** 한다.
+
+honesty rails:
+- `is_obsidian` 은 실제 `.obsidian/` 검사 — 없으면 `markdown root`(Obsidian 으로 위조 안 함).
+- `inspect_vault` 상태: `not_connected/missing/blocked/empty/connected`(빈 readable root 는 `empty`이되
+  connected). note count 는 bounded(대형 vault 는 `N+`).
+- `scaffold_vault(create=False)` 는 gap **보고만**, `create=True` 만 KB dir 생성하고 created/existing 을
+  정직 보고. **`.obsidian` 은 절대 만들지 않음**(가짜 vault 금지). missing root 면 정직 실패.
+- `connection_status` 는 connected 일 때만 `is_vault`/`note_count`/`empty` 키를 **추가**(기존 키 불변, back-compat).
+
+`/nexus set <path>`(persist) 위에 `nexus_ops.apply_bootstrap(path, create=)` 가 연결+검사+scaffold 를
+한 번에 — 영속(canonical config) 후 재실행에도 유지. 코드 SSoT `packages/hephaistos/src/hephaistos/
+nexus_vault.py`, 회귀 `tests/forgekit/test_nexus_vault.py`, evidence
+[`examples/nexus-vault-bootstrap/`](../apps/forgekit-console/examples/nexus-vault-bootstrap/).
+
 ## Live surface wiring (WT2)
 The read path was real but the surfaces called it with no env/config, so `/nexus`·`/resolve`·
 `/hephaistos` showed a static `not_connected`. WT2 threads the live env + config through
