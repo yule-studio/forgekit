@@ -135,7 +135,7 @@ flowchart LR
     GW7 --> GW8
 ```
 
-실행 순서(의존 기준): **GW1 ✅ → GW2-A ✅ → GW3 ✅ → GW4-A ✅ → GW6 ✅ → GW5 ✅ → GW7 ✅ → GW8(다음)** (+ GW4-B 실행 bridge seam, in-console approve/deny UI seam, GW2-B trailer seam).
+실행 순서(의존 기준): **GW1 ✅ → GW2-A ✅ → GW3 ✅ → GW4-A ✅ → GW6 ✅ → GW5 ✅ → GW7 ✅ → GW8 ✅** (merge-prep: [`forgekit-goal-mergeprep.md`](forgekit-goal-mergeprep.md)). 남은 seam: GW4-B 실행 bridge, in-console approve/deny UI, GW2-B trailer→identity.
 GW2/GW6/GW7 은 GW1 과 독립이라 필요 시 병행 가능하나, 컨텍스트 단순화를 위해 직렬 진행.
 **GW3 는 이미 구현돼 있어(autopilot chain) 신규 코드 없이 GW4 로 흡수** — GW4 가 goal-tick 실행을 그 체인에 연결한다.
 
