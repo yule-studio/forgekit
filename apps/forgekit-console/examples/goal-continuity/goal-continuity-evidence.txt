@@ -1,0 +1,25 @@
+ForgeKit goal-driven execution continuity (G1) — deterministic evidence (no fake)
+always-on serve tick → ACTIVE goal 의 다음 safe packet 물리 실행. 재현: tests/forgekit/test_goal_exec_tick.py
+
+==============================================================================
+STEP 1 — goal 상태: safe goal=ACTIVE(packet 제안됨), risky goal=awaiting_approval
+==============================================================================
+  goal-7f3f373be496 status=awaiting_approval packets=1 title='harden auth'
+  goal-cb5e6cd57563 status=active packets=1 title='self-manage ForgeKit'
+
+==============================================================================
+STEP 2 — serve tick (execute_active_goals): safe 물리 실행, risky 는 operator 대기
+==============================================================================
+  executed=1 blocked=0 awaiting=1 touched=['goal-cb5e6cd57563']
+  REAL commit: 5b0878c879c3 · ✅ forgekit 자가개선 실행: 콘솔 도움말 문구 개선
+  safe goal evidence kinds: ['proposal', 'execution', 'verification']  (execution+verification 기록 → 루프 닫힘)
+
+==============================================================================
+STEP 3 — 다음 tick (continuity): 이미 실행된 packet 은 dedupe, 더 진행할 safe step 없음
+==============================================================================
+  executed=0 (재실행 안 함) awaiting=1 (risky goal 은 여전히 operator 대기)
+
+==============================================================================
+STEP 4 — 정직 경계: risky goal 은 /goal approve(operator) 전엔 절대 자동 실행 안 됨
+==============================================================================
+  risky goal goal-7f3f373be496 status=awaiting_approval (awaiting_approval, executed 안 됨)
