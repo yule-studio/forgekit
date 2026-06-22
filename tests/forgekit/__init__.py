@@ -11,10 +11,13 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[2]
 _SRC = _ROOT / "apps" / "forgekit-console" / "src"
-# The console src plus EVERY sibling package src (packages/*/src). Inserting them lets the
-# WHOLE suite run before a `pip install -e` reinstall — without this, modules that lazily
-# import a package (e.g. /self-improve → forgekit_runtime.selfimprove.goal_tick →
-# forgekit_goal, or /toolchain → forgekit_toolchain) fail collection with ModuleNotFoundError.
+# INTEG-1: the console src plus EVERY sibling package src (packages/*/src). Inserting them
+# lets the WHOLE suite run before a `pip install -e` reinstall — without this, modules that
+# lazily import a package fail collection with ModuleNotFoundError. The glob deliberately
+# supersedes any hand-maintained list, so it always covers the cross-package set the wave
+# needs — forgekit-provider, forgekit-provider-connect, forgekit-toolchain, nexus,
+# hephaistos, armory (gw2 bootstrap / gw3 cockpit deps) — and any package added later, with
+# no edit here. (CI uses editable install so these paths are already present; this is hygiene.)
 _PKG_SRCS = sorted(str(p) for p in (_ROOT / "packages").glob("*/src") if p.is_dir())
 for _p in (str(_SRC), *_PKG_SRCS):
     if _p not in sys.path:
