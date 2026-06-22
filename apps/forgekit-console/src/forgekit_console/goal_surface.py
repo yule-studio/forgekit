@@ -96,10 +96,13 @@ def apply_activate(env: Optional[Mapping[str, str]], gid: str) -> Tuple[bool, st
 # cockpit parity gap. The decision is a LEGAL status transition + an append-only
 # ``decision`` evidence record; the surface owns no goal logic (ownership §3.1).
 #
-# Honest execution boundary: approving records the operator decision and (if the GW4-B
-# execution bridge from gw1 is merged) triggers it. Until that bridge exists, approve is
-# "승인됨(실행 대기)" — never a fake "executed". The bridge is looked up lazily so it lights
-# up automatically once gw1 lands it, with no change here.
+# Honest execution boundary: approving records the operator decision, then runs the GW4-B
+# execution bridge (``forgekit_runtime.selfimprove.execute_approved_packet``, now merged).
+# The bridge runs the REAL gate (chain + decision-lane + validate_execution) and persists
+# execution+verification evidence ITSELF — so this surface RELOADS the authoritative goal
+# afterward rather than overwriting it, and renders the bridge's real outcome (executed /
+# blocked / awaiting / error). Never a fabricated "executed". The bridge is still looked up
+# lazily so the surface also works if it is ever absent (honest "실행 대기").
 
 def awaiting_lines(env: Optional[Mapping[str, str]]) -> Tuple[str, ...]:
     """List goals in ``awaiting_approval`` + their linked packets + the action hint."""
@@ -122,14 +125,23 @@ def _decision_summary(decision: str, note: str) -> str:
     return f"operator {decision}" + (f": {note}" if note else "")
 
 
-def _try_execute_bridge(goal, env) -> Tuple[bool, str]:
-    """Call the GW4-B execution bridge (gw1) if it is merged; else honest no-op.
+_BRIDGE_ABSENT = "absent"     # GW4-B not deployed
+_BRIDGE_FAILED = "failed"     # bridge raised (must not corrupt the decision)
 
-    Lazy, defensive import so this surface works before the bridge exists AND lights up
-    automatically once it lands — without owning any execution logic itself."""
+
+def _run_execute_bridge(goal, env):
+    """Run the GW4-B execution bridge if merged. Returns ``(state, payload)``:
+
+    * ``(_BRIDGE_ABSENT, None)`` — bridge not deployed (pre-GW4-B);
+    * ``(_BRIDGE_FAILED, "<msg>")`` — bridge raised;
+    * ``("ok", ExecuteOutcome)`` — bridge ran (it persisted its own decision/execution/
+      verification evidence on executed/blocked — the caller must RELOAD, not overwrite).
+
+    Lazy, defensive import: the surface owns no execution logic and works whether or not
+    the bridge exists, lighting up automatically once it lands."""
 
     fn = None
-    try:  # canonical home once gw1 GW4-B merges
+    try:  # canonical home (gw1 GW4-B)
         from forgekit_runtime.selfimprove import execute_approved_packet as fn  # type: ignore
     except Exception:  # noqa: BLE001
         try:
@@ -137,18 +149,44 @@ def _try_execute_bridge(goal, env) -> Tuple[bool, str]:
         except Exception:  # noqa: BLE001
             fn = None
     if fn is None:
-        return False, ""
+        return _BRIDGE_ABSENT, None
     try:
-        result = fn(goal, env=env)
-        return True, f"실행 bridge 호출됨: {result}"
+        return "ok", fn(goal, env=env)
     except Exception as exc:  # noqa: BLE001 - bridge failure must not corrupt the decision
-        return False, f"실행 bridge 오류: {exc}"
+        return _BRIDGE_FAILED, str(exc)
+
+
+def _outcome_tail(state: str, payload) -> str:
+    """Render the REAL execution state for the operator — never a fake "executed"."""
+
+    if state == _BRIDGE_ABSENT:
+        return "승인됨(실행 대기 — GW4-B 실행 bridge 미배포)"
+    if state == _BRIDGE_FAILED:
+        return f"승인됨(실행 bridge 오류: {payload} — 실행 미수행)"
+    o = payload  # ExecuteOutcome
+    kind = getattr(o, "outcome", "")
+    if kind == "executed":
+        who = getattr(o, "executor_id", "") or "executor"
+        return f"실행됨(safe·게이트 통과 · execution+verification 기록 · executor={who})"
+    if kind == "blocked":
+        reasons = ", ".join(getattr(o, "reasons", ()) or ()) or getattr(o, "action_class", "gate")
+        return f"실행 거부(게이트: {reasons}) — decision 기록, 가짜 실행 없음"
+    if kind == "awaiting":
+        return "승인됨(실행 가능한 packet 없음 — 실행 대기)"
+    # error / unknown
+    detail = getattr(o, "detail", "") or "실행 불가"
+    return f"승인됨(실행 불가: {detail})"
 
 
 def apply_approve(env: Optional[Mapping[str, str]], gid: str, note: str = "") -> Tuple[bool, str]:
-    """Approve an awaiting goal: ``awaiting_approval -> active`` + decision evidence.
+    """Approve an awaiting goal: ``awaiting_approval -> active`` + decision evidence,
+    then run the GW4-B execution bridge and surface its REAL outcome.
 
-    Attempts the GW4-B execution bridge; if absent, returns "승인됨(실행 대기)" honestly."""
+    Persist order matters: the decision is saved FIRST (so it survives even when the
+    bridge is absent / errors / writes nothing), then the bridge runs and persists its
+    own execution+verification evidence. We RELOAD the authoritative goal afterward
+    instead of re-saving a stale copy — otherwise the bridge's real execution evidence
+    would be overwritten (a "fake status"). No fabricated execution, ever."""
 
     st = _store(env)
     g = st.get((gid or "").strip())
@@ -162,12 +200,10 @@ def apply_approve(env: Optional[Mapping[str, str]], gid: str, note: str = "") ->
     except transitions.InvalidTransition as exc:
         return False, str(exc)
     g2 = g2.add_evidence("decision", _decision_summary("승인", note))
-    executed, bridge_note = _try_execute_bridge(g2, env)
-    if executed:
-        g2 = g2.add_evidence("execution", bridge_note)
-    st.save(g2)
-    tail = bridge_note if executed else "승인됨(실행 대기 — GW4-B 실행 bridge 미연결)"
-    return True, f"{g2.id} 승인 -> {g2.status.value}  · {tail}"
+    st.save(g2)                                  # decision persisted unconditionally
+    state, payload = _run_execute_bridge(g2, env)
+    final = st.get(g2.id) or g2                  # bridge may have written richer evidence
+    return True, f"{final.id} 승인 -> {final.status.value}  · {_outcome_tail(state, payload)}"
 
 
 def apply_deny(env: Optional[Mapping[str, str]], gid: str, note: str = "") -> Tuple[bool, str]:
