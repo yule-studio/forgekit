@@ -1,0 +1,23 @@
+ForgeKit operator cockpit — /provider budget (per-provider 일일 token budget, gw2 #343)
+==============================================================================
+Method: 실 route + 실 provider_ops(config writer) + provider_budget(policy). mock 없음.
+set=budget_policy.provider_daily_limits 영속(정책이 routing fallback 으로 강제), 0=해제.
+show=설정 한도 + 오늘 ledger 사용량(live). 미설정=unbounded 정직 표기.
+
+$ /provider budget  [info]
+  per-provider budget: 미설정 — 전 provider unbounded (global `/usage` budget 만 적용).
+    설정: `/provider budget set <provider> <일일토큰>`  (0 = 해제/unbounded)
+
+$ /provider budget set gemini 50000  [info]
+  gemini per-provider budget = 50000tok/day 설정
+
+$ /provider budget set ollama 0  [info]
+  ollama per-provider budget 해제 (unbounded)
+
+$ /provider budget show  [info]
+  per-provider 일일 token budget (live spend / limit):
+    gemini     0/50000tok (0%)
+    set: `/provider budget set <provider> <일일토큰>`  (0 = 해제)
+
+$ /provider budget set gemini lots  [error]
+  토큰 한도는 정수여야 합니다 — 'lots'
