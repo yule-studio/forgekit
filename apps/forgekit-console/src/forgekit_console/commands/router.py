@@ -500,6 +500,16 @@ def _discovery_result(parsed, ctx) -> CommandResult:
         lines.append("- author user-researcher · status draft (curated 아님 — eval gate 후 승격)")
         return CommandResult.info("discovery evidence", tuple(lines))
 
+    if sub == "intake":
+        # /discovery intake — free-first EXTERNAL skill/plugin/tool intake sweep →
+        # curation gate (promote/raw/blocked). Distinct from idea-discovery above:
+        # this scouts the external ecosystem for Armory candidates (no auto-install).
+        from nexus import intake as INTAKE
+        from ..tui import render as _r
+
+        packet = INTAKE.run_intake(repo_root)
+        return CommandResult.info("discovery intake", _r.intake_lines(packet))
+
     if sub == "promote":
         idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
         if err:
