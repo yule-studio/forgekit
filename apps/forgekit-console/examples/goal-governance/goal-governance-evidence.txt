@@ -1,0 +1,37 @@
+ForgeKit goal governance enforcement — 설계 없는 구현 금지 — deterministic evidence
+재현: tests/forgekit/test_goal_governance_enforcement.py · 하드레일: anti-fake(자동 decision 날조 금지)
+
+==============================================================================
+STEP 1 — big goal 분해: PM brief 가 FIRST artifact + governance-required (설계강제)
+==============================================================================
+scheduler: tick 1: goal-scheduler 1 goal 자동분해 / 1 PM brief 선기록(설계강제)
+governance_required: True · children: 2
+첫 governance event kind: brief (= PM brief)
+
+==============================================================================
+STEP 2 — /goal govern: 설계 진행 중 (PM brief incomplete → pending, fake 아님)
+==============================================================================
+goal governance — goal-5389d3dc4397 · 설계 진행 중
+lane readiness — no_pm_brief (1/5) · 실행 불가
+  ☐ 필요: PM brief (유효)
+  → 다음: PM brief 확정 — 없으면 tech-lead lane 실행 불가
+  [dim]전체 트레일: `/council goal-5389d3dc4397` · 기록: PM brief→gateway→tech-lead decision(스택 ≥2)→handoff[/dim]
+
+==============================================================================
+STEP 3 — child 활성 후 exec: design chain 미완 → specialist 실행 차단
+==============================================================================
+exec: tick 2: goal-exec 0 실행 / 2 설계미완차단
+child execution evidence: False (차단됨)
+
+==============================================================================
+STEP 4 — operator/tech-lead 가 design chain 완료(스택 2안 비교+서명) → gate 열림
+==============================================================================
+goal governance — goal-5389d3dc4397 · 설계 완료(실행 가능)
+lane readiness — executable (5/5) · 실행 가능
+  ✓ PM brief: self-manage ForgeKit
+  ✓ meeting m1 (2 참석)
+  ✓ decision decision:m1 (signed_off/L2_internal_approve)
+  ✓ handoff handoff:decision:m1 → backend-engineer
+  → 다음: specialist 실행 인가 — replay 확인 완료
+  [dim]전체 트레일: `/council goal-5389d3dc4397` · 기록: PM brief→gateway→tech-lead decision(스택 ≥2)→handoff[/dim]
+design_ready: True
