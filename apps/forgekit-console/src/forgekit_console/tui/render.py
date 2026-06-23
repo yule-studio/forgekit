@@ -638,6 +638,70 @@ def discovery_lines(result) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def armory_intake_lines(pairs, results, *, detail_id="") -> Tuple[str, ...]:
+    """Render the Armory intake — evaluated external candidates by disposition / detail.
+
+    ``pairs`` = (ArmoryCandidate, AdoptionReview) tuples; ``results`` = parallel
+    AdoptionResult tuple (adopt_candidate output). ``detail_id`` shows one candidate's
+    8축 + 3축 review; else a verdict-bucket summary.
+    """
+
+    _V = {"adopt-now": _OK, "collect-first": _WARN, "hold": _ERR}
+    by_id = {c.id: (c, rv) for c, rv in pairs}
+    res_by_id = {r.candidate_id: r for r in results}
+
+    if detail_id:
+        item = by_id.get(detail_id)
+        if not item:
+            return (f"[{_ERR}]후보 '{detail_id}' 없음[/{_ERR}]",)
+        c, rv = item
+        res = res_by_id.get(detail_id)
+        disp = res.disposition if res else rv.disposition()
+        tag = _V.get(disp, _MUTED)
+        lines = [
+            f"[b {_ACCENT}]» armory intake · {c.name}[/b {_ACCENT}]  [dim]({c.kind})[/dim]",
+            f"  verdict: [{tag}]{disp}[/{tag}]"
+            + (f"  ·  [{_OK}]adopted spec[/{_OK}]" if res and res.adopted else "")
+            + f"   [dim]{c.source_ref}[/dim]",
+            f"  현재 pain: {rv.current_pain}",
+            f"  기대 효과: {rv.expected_benefit}",
+            f"  기존 중복: {rv.overlap_with_existing}",
+            f"  운영 비용: {rv.operational_cost}",
+            f"  유지 리스크: {rv.maintenance_risk}",
+            f"  provider/runtime: {rv.provider_runtime_fit}",
+            f"  governance/security: {rv.governance_security_impact}",
+            f"  도입 시점 사유: {rv.adopt_timing_reason}",
+            "  3축 검토:",
+        ]
+        for a in rv.axis_reviews:
+            atag = _V.get(a.position, _MUTED)
+            lines.append(f"    - {a.axis}({a.reviewer}): [{atag}]{a.position}[/{atag}] — {a.rationale}")
+        if res and not res.adopted and res.reasons:
+            lines.append(f"  [dim]비활성 사유: {res.reasons[0]}[/dim]")
+        return tuple(lines)
+
+    buckets = {"adopt-now": [], "collect-first": [], "hold": []}
+    for r in results:
+        buckets.setdefault(r.disposition, []).append(r)
+    adopted = [r.candidate_id for r in results if r.adopted]
+    lines = [
+        f"[b {_ACCENT}]» armory intake — 외부 후보 도입 검토[/b {_ACCENT}]",
+        f"  adopt-now {len(buckets['adopt-now'])} · collect-first {len(buckets['collect-first'])} · hold {len(buckets['hold'])}"
+        f"  [dim](총 {len(results)}건 · 8축 artifact + PM/tech-lead/specialist 3축)[/dim]",
+        f"  adopted spec(=카탈로그 등록, 미설치): {', '.join(adopted) or '(없음)'}",
+    ]
+    for v, tag in (("adopt-now", _OK), ("collect-first", _WARN), ("hold", _ERR)):
+        if not buckets[v]:
+            continue
+        lines.append(f"  [b][{tag}]{v}[/{tag}][/b]")
+        for r in buckets[v]:
+            nm = by_id.get(r.candidate_id, (None, None))[0]
+            label = nm.name if nm else r.candidate_id
+            lines.append(f"    [{tag}]•[/{tag}] {label} [dim]({r.candidate_id})[/dim]")
+    lines.append("  [dim]adopted=카탈로그 등록(available) ≠ equipped/installed · collect-first=근거만 누적 · `/armory <id>`[/dim]")
+    return tuple(lines)
+
+
 def video_watch_lines(result) -> Tuple[str, ...]:
     """Render a video-watch ingest result — live summary or honest reference_only."""
 
@@ -840,6 +904,6 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections", "selection_copy_lines",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "armory_intake_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
     "RESPONSE_MARKER", "mark_response_chunks",
 )

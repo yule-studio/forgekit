@@ -1,0 +1,1168 @@
+{
+  "round": "armory-intake-real-candidates",
+  "summary": {
+    "total": 13,
+    "adopt-now": 1,
+    "collect-first": 8,
+    "hold": 4,
+    "adopted_specs": [
+      "vale"
+    ]
+  },
+  "doc_quality_loadout": {
+    "loadout_id": "doc-quality-lint-local",
+    "anchor": "vale (adopt-now)",
+    "members": [
+      "vale",
+      "proselint",
+      "write-good",
+      "alex",
+      "textlint"
+    ],
+    "note": "Vale=required(adopt-now), 나머지=optional(collect-first). tool-less docs-writing-local 과 별개. adopted≠installed."
+  },
+  "candidates": [
+    {
+      "candidate": {
+        "id": "vale",
+        "name": "Vale",
+        "kind": "tool",
+        "category": "docs",
+        "summary": "style-guide(YAML) 기반 prose 린트 — 문서 문체/용어 일관성을 기계로 강제",
+        "signals": [
+          "vale",
+          "prose lint",
+          "문체 검사",
+          "style guide",
+          "용어 일관성",
+          "doc lint"
+        ],
+        "when_to_use": [
+          "vault/README/가이드 문체·용어 일관성을 CI/로컬에서 점검"
+        ],
+        "unsafe_boundary": [
+          "외부 서버로 문서 본문 송신 금지(로컬 린트만)",
+          "자동 수정 강제 금지(제안만)"
+        ],
+        "capability_note": "prose/style linting (style-guide enforced)",
+        "install_requirements": [
+          "brew install vale",
+          "vale sync (.vale.ini styles)"
+        ],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/errata-ai/vale"
+      },
+      "review": {
+        "candidate_id": "vale",
+        "current_pain": "vault/문서 품질이 사람 리뷰에만 의존 — 문체/용어 일관성을 기계로 강제할 표준 도구 부재.",
+        "expected_benefit": "style-guide 기반 prose 린트를 CI/로컬에서 결정적으로 강제 — 문서 회귀를 사람 전에 잡음.",
+        "overlap_with_existing": "built-in docs-quality 스킬은 구조/명료성 위주 — Vale 는 style-guide 강제(보완재). 중복 아님.",
+        "operational_cost": "단일 Go 바이너리 + style 패키지 sync. 런타임 의존 없음 — 가장 낮음.",
+        "maintenance_risk": "활발히 유지(errata-ai), config 안정. 낮음.",
+        "provider_runtime_fit": "provider-neutral CLI — 어느 backend 든 호출. toolchain 버전 관리 가능.",
+        "governance_security_impact": "로컬 파일만, 네트워크 없음(style sync 제외). 위험 낮음.",
+        "adopt_timing_reason": "비용/위험 최저 + 문서 품질은 핵심 가치 → 지금 카탈로그화(단 미설치=adopted≠equipped).",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "adopt-now",
+            "rationale": "문서 품질은 vault 핵심 — 즉시 카탈로그화 가치 충분."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "adopt-now",
+            "rationale": "단일 바이너리·config 기반, attach contract 명확 — 도입 리스크 최소."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "knowledge-engineer",
+            "position": "adopt-now",
+            "rationale": "knowledge-engineer: style-guide 로 '왜' 깊이/용어 강제가 vault 규칙과 정합."
+          }
+        ],
+        "disposition": "adopt-now",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "vale",
+        "disposition": "adopt-now",
+        "adopted": true,
+        "reasons": [],
+        "evidence": [
+          "adoption disposition=adopt-now",
+          "kind=tool",
+          "summary 실체 있음",
+          "signals 6개",
+          "when_to_use 명시",
+          "unsafe_boundary 선언",
+          "capability_note vendor-neutral",
+          "검증 경로 있음",
+          "install/attach requirements 명시",
+          "승격됨 (source=operator:https://github.com/errata-ai/vale)"
+        ],
+        "promotion": {
+          "candidate_id": "vale",
+          "accepted": true,
+          "spec": {
+            "id": "vale",
+            "name": "Vale",
+            "domains": [],
+            "languages": [],
+            "frameworks": [],
+            "topics": [],
+            "rules": [],
+            "commands": [
+              "vale ."
+            ],
+            "verification": [
+              "vale --version",
+              "vale ."
+            ],
+            "forbidden": [
+              "외부 서버로 문서 본문 송신 금지(로컬 린트만)",
+              "자동 수정 강제 금지(제안만)"
+            ],
+            "related_weapons": [
+              "vale"
+            ],
+            "related_loadouts": [
+              "doc-quality-lint-local"
+            ],
+            "related_roles": [
+              "technical-writer",
+              "knowledge-engineer"
+            ],
+            "nexus_refs": [],
+            "category": "docs",
+            "summary": "style-guide(YAML) 기반 prose 린트 — 문서 문체/용어 일관성을 기계로 강제",
+            "when_to_use": [
+              "vault/README/가이드 문체·용어 일관성을 CI/로컬에서 점검"
+            ],
+            "when_not_to_use": [
+              "코드 린트(언어별 린터)",
+              "문서 구조 검증(vault-curate frontmatter)"
+            ],
+            "required_inputs": [],
+            "expected_outputs": [],
+            "signals": [
+              "vale",
+              "prose lint",
+              "문체 검사",
+              "style guide",
+              "용어 일관성",
+              "doc lint"
+            ],
+            "capability_note": "prose/style linting (style-guide enforced)",
+            "status": "ready",
+            "kind": "tool",
+            "provider_affinity": [],
+            "install_requirements": [
+              "brew install vale",
+              "vale sync (.vale.ini styles)"
+            ],
+            "attach_requirements": []
+          },
+          "reasons": [],
+          "evidence": [
+            "kind=tool",
+            "summary 실체 있음",
+            "signals 6개",
+            "when_to_use 명시",
+            "unsafe_boundary 선언",
+            "capability_note vendor-neutral",
+            "검증 경로 있음",
+            "install/attach requirements 명시",
+            "승격됨 (source=operator:https://github.com/errata-ai/vale)"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "proselint",
+        "name": "proselint",
+        "kind": "tool",
+        "category": "docs",
+        "summary": "Vale 보완 — 검증된 영어 prose 규칙(중복/jargon) 추가 커버.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/amperser/proselint"
+      },
+      "review": {
+        "candidate_id": "proselint",
+        "current_pain": "문서의 상투구/중복/약한 표현을 잡을 보조 린터 부재.",
+        "expected_benefit": "Vale 보완 — 검증된 영어 prose 규칙(중복/jargon) 추가 커버.",
+        "overlap_with_existing": "Vale 규칙과 상당 부분 겹침 — Vale 채택 후 한계 드러나면 보강.",
+        "operational_cost": "Python 패키지 — Python 런타임 의존(Vale 대비 추가 부담).",
+        "maintenance_risk": "유지보수 빈도 낮은 편 — 중간.",
+        "provider_runtime_fit": "CLI, provider-neutral. loadout optional 멤버로 적합.",
+        "governance_security_impact": "로컬 파일만 — 위험 낮음.",
+        "adopt_timing_reason": "Vale 로 시작 후 효과 측정 → 동시 도입은 과함.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "Vale 먼저, 효과 측정 후 보강."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "규칙 중복 — 한계 evidence 누적 후."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "knowledge-engineer",
+            "position": "collect-first",
+            "rationale": "loadout optional 로만 노출, 강제 X."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "proselint",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: Vale 로 시작 후 효과 측정 → 동시 도입은 과함."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=tool",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "proselint",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "tool 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)"
+          ],
+          "evidence": [
+            "kind=tool",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "write-good",
+        "name": "write-good",
+        "kind": "tool",
+        "category": "docs",
+        "summary": "가벼운 영어 문체 힌트 — 빠른 1차 패스.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/btford/write-good"
+      },
+      "review": {
+        "candidate_id": "write-good",
+        "current_pain": "수동태/약한 표현 등 흔한 글쓰기 안티패턴을 기계로 못 잡음.",
+        "expected_benefit": "가벼운 영어 문체 힌트 — 빠른 1차 패스.",
+        "overlap_with_existing": "Vale/proselint 와 규칙 겹침 + naive 라 정확도 낮음.",
+        "operational_cost": "npm 패키지 — Node 런타임 의존(멀티 Node 도구 부담 누적).",
+        "maintenance_risk": "유지보수 정체(최근 커밋 드묾) — 중상.",
+        "provider_runtime_fit": "CLI지만 Node 의존이 Vale 단일바이너리보다 불리.",
+        "governance_security_impact": "로컬 파일만 — 위험 낮음.",
+        "adopt_timing_reason": "정확도/유지보수 약함 → 즉시 도입 가치 낮음, 근거만 누적.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "즉시 도입 가치 낮음 — 근거만."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "Node 의존+유지보수 정체 — Vale 한계 드러나면 재평가."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "knowledge-engineer",
+            "position": "collect-first",
+            "rationale": "Vale 로 대체 가능, evidence 만."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "write-good",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 정확도/유지보수 약함 → 즉시 도입 가치 낮음, 근거만 누적."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=tool",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "write-good",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "tool 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)"
+          ],
+          "evidence": [
+            "kind=tool",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "alex",
+        "name": "alex",
+        "kind": "tool",
+        "category": "docs",
+        "summary": "포용적 글쓰기 자동 점검 — 공개 문서/README 톤 관리.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/get-alex/alex"
+      },
+      "review": {
+        "candidate_id": "alex",
+        "current_pain": "둔감/배제적 표현(insensitive writing)을 사람이 일일이 못 잡음.",
+        "expected_benefit": "포용적 글쓰기 자동 점검 — 공개 문서/README 톤 관리.",
+        "overlap_with_existing": "Vale 의 inclusive-language 스타일 팩과 부분 중복.",
+        "operational_cost": "npm 패키지 — Node 런타임 의존.",
+        "maintenance_risk": "유지보수 양호하나 영어 전용 — 한국어 vault 엔 제한적. 중간.",
+        "provider_runtime_fit": "CLI, provider-neutral. 한국어 비중 높은 vault 엔 적용 범위 좁음.",
+        "governance_security_impact": "로컬 파일만 — 위험 낮음.",
+        "adopt_timing_reason": "공개 문서 톤엔 가치 — 한국어 비중 고려해 선검증.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "공개 문서 톤엔 가치 — 적용 범위 검증 먼저."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "Vale inclusive 팩과 비교 evidence 필요."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "knowledge-engineer",
+            "position": "collect-first",
+            "rationale": "영어 산출물 한정 optional."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "alex",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 공개 문서 톤엔 가치 — 한국어 비중 고려해 선검증."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=tool",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "alex",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "tool 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)"
+          ],
+          "evidence": [
+            "kind=tool",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "textlint",
+        "name": "textlint",
+        "kind": "tool",
+        "category": "docs",
+        "summary": "플러그인으로 한국어/마크다운 규칙까지 확장 — Vale 약점 보완.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/textlint/textlint"
+      },
+      "review": {
+        "candidate_id": "textlint",
+        "current_pain": "한국어 포함 문서에 플러그형 린터(직접 규칙 작성) 부재.",
+        "expected_benefit": "플러그인으로 한국어/마크다운 규칙까지 확장 — Vale 약점 보완.",
+        "overlap_with_existing": "Vale 와 목적 겹치나 plugin 모델/한국어 커버는 차별점.",
+        "operational_cost": "npm + 플러그인 다수 — 설정/유지 부담 가장 큼.",
+        "maintenance_risk": "코어 유지되나 플러그인 품질 편차 — 중상.",
+        "provider_runtime_fit": "CLI. 한국어 vault 엔 Vale 보다 적합할 수 있음(검증 필요).",
+        "governance_security_impact": "로컬 파일만 — 위험 낮음.",
+        "adopt_timing_reason": "한국어 커버 매력 — 설정 부담 커 PoC 먼저.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "한국어 커버 가능성 매력 — PoC 먼저."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "플러그인 의존 트리 평가 후 — 지금 adopt 과투자."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "knowledge-engineer",
+            "position": "collect-first",
+            "rationale": "한국어 규칙 PoC 로 Vale 와 비교."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "textlint",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 한국어 커버 매력 — 설정 부담 커 PoC 먼저."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=tool",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "textlint",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "tool 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)"
+          ],
+          "evidence": [
+            "kind=tool",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "ponytail",
+        "name": "ponytail",
+        "kind": "skill",
+        "category": "",
+        "summary": "ponytail 식 단순성 검토(keep/simplify/use-existing/reduce-surface/reject)를 표준화.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/example/ponytail"
+      },
+      "review": {
+        "candidate_id": "ponytail",
+        "current_pain": "새 모듈/계층 추가 시 과설계를 막을 일관된 단순성 검토 렌즈가 코드화 안 됨.",
+        "expected_benefit": "ponytail 식 단순성 검토(keep/simplify/use-existing/reduce-surface/reject)를 표준화.",
+        "overlap_with_existing": "ForgeKit 은 이미 council/consult + ponytail consult 모듈 보유 — 상당 부분 겹침.",
+        "operational_cost": "검토 절차라 도입 부담 낮으나 repo 실체/성숙도 불명확.",
+        "maintenance_risk": "repo 유지보수 불확실 — 외부 의존보다 내부 스킬화가 안전.",
+        "provider_runtime_fit": "skill(절차) — provider-neutral, 단 외부 repo 채택보다 내부화가 fit.",
+        "governance_security_impact": "검토 절차라 외부 코드 실행 없음 — 위험 낮음.",
+        "adopt_timing_reason": "이미 consult 렌즈로 사용 중 — 외부 repo 채택은 근거 누적 후.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "단순성 렌즈는 이미 우리 lane 적용 중 — 외부 채택보다 evidence."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "council/consult 와 겹침 — 외부 repo 의존 만들 이유 약함."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "backend-engineer",
+            "position": "collect-first",
+            "rationale": "내부 스킬화로 충분 — 외부 도입은 보류."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "ponytail",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 이미 consult 렌즈로 사용 중 — 외부 repo 채택은 근거 누적 후."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=skill",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "ponytail",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음"
+          ],
+          "evidence": [
+            "kind=skill",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "context7",
+        "name": "Context7",
+        "kind": "mcp",
+        "category": "",
+        "summary": "최신 라이브러리 docs/snippet 을 MCP 로 주입 — 코드 생성 정확도 향상.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/upstash/context7"
+      },
+      "review": {
+        "candidate_id": "context7",
+        "current_pain": "LLM 이 라이브러리 최신 API 를 몰라 환각 — 버전 맞는 docs 주입 경로 부재.",
+        "expected_benefit": "최신 라이브러리 docs/snippet 을 MCP 로 주입 — 코드 생성 정확도 향상.",
+        "overlap_with_existing": "Nexus 는 내부 지식 — 외부 라이브러리 docs 는 미커버라 보완재(역할 경계 정리 필요).",
+        "operational_cost": "MCP 서버 + (호스티드) 의존/키 — 외부 서비스 의존 도입.",
+        "maintenance_risk": "3rd-party 호스티드 의존 — 가용성/정책 변화 리스크 중상.",
+        "provider_runtime_fit": "MCP → claude/codex/gemini(mcp-host) attach. ollama 제외.",
+        "governance_security_impact": "외부 서버로 쿼리 송신 — outbound/데이터 노출 검토 필요(integrations/mcp 가드 경유).",
+        "adopt_timing_reason": "유망하나 호스티드/키/outbound 가드 정리 전엔 adopt 불가 — PoC 먼저.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "환각 감소 효과 크다 — 가능하면 빨리."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "호스티드 의존+outbound 정책 정리 전 adopt 불가."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "platform-runtime-engineer",
+            "position": "collect-first",
+            "rationale": "integrations/mcp 가드+키 처리 검증 후."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "context7",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 유망하나 호스티드/키/outbound 가드 정리 전엔 adopt 불가 — PoC 먼저."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=mcp",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "context7",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "mcp 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)",
+            "mcp 인데 provider_affinity 없음 — 어느 harness 에 붙는지 불명"
+          ],
+          "evidence": [
+            "kind=mcp",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "mcp-fetch",
+        "name": "MCP Fetch (official)",
+        "kind": "mcp",
+        "category": "",
+        "summary": "공식 reference 서버라 신뢰도 높은 fetch capability — 리서치 보강.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/modelcontextprotocol/servers/tree/main/src/fetch"
+      },
+      "review": {
+        "candidate_id": "mcp-fetch",
+        "current_pain": "에이전트가 임의 URL 본문을 표준 경로로 가져올 reference MCP 미배선.",
+        "expected_benefit": "공식 reference 서버라 신뢰도 높은 fetch capability — 리서치 보강.",
+        "overlap_with_existing": "discovery sources(RSS/HN/GitHub)와 일부 겹침 — 임의 URL fetch 는 미커버.",
+        "operational_cost": "공식 서버 설치/attach — 경량이나 MCP host 연결 필요.",
+        "maintenance_risk": "공식 레포 유지보수 양호 — 낮음.",
+        "provider_runtime_fit": "MCP, mcp-host attach. provider-neutral.",
+        "governance_security_impact": "임의 URL fetch = SSRF/내부망 위험 — allowlist/sandbox 정책 필수.",
+        "adopt_timing_reason": "유용하나 SSRF allowlist 설계가 adopt 전제 — 그 전까지 근거만 누적.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "리서치엔 유용하나 보안 가드 선행."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "SSRF allowlist 정책 설계 후 재평가 — 지금 adopt 위험."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "security-engineer",
+            "position": "collect-first",
+            "rationale": "outbound allowlist 설계 전까지 collect-first(미활성)."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "mcp-fetch",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 유용하나 SSRF allowlist 설계가 adopt 전제 — 그 전까지 근거만 누적."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=mcp",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "mcp-fetch",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "mcp 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)",
+            "mcp 인데 provider_affinity 없음 — 어느 harness 에 붙는지 불명"
+          ],
+          "evidence": [
+            "kind=mcp",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "mcp-memory",
+        "name": "MCP Memory (official)",
+        "kind": "mcp",
+        "category": "",
+        "summary": "공식 memory 서버로 표준화된 기억 capability.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory"
+      },
+      "review": {
+        "candidate_id": "mcp-memory",
+        "current_pain": "세션 간 기억의 표준 MCP 경로 부재.",
+        "expected_benefit": "공식 memory 서버로 표준화된 기억 capability.",
+        "overlap_with_existing": "Nexus(vault)+troubleshooting ledger+claude-mem 으로 이미 기억 레인 보유 — 중복 큼.",
+        "operational_cost": "서버 설치/attach + 저장소 관리 — 기존 기억 레인과 이중화.",
+        "maintenance_risk": "공식 유지보수 양호하나 기억 SSoT 와 충돌 위험 — 중간.",
+        "provider_runtime_fit": "MCP attach 가능하나 우리 기억 SSoT 는 vault/ledger 라 fit 약함.",
+        "governance_security_impact": "기억 저장 위치/내용 거버넌스 — 기존 메모리 정책과 정합 필요.",
+        "adopt_timing_reason": "기억은 vault/ledger 로 충당 — 지금 아님, 한계 드러나면 재평가.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "collect-first",
+            "rationale": "기억은 이미 충당 — 굳이 지금 아님, 근거만."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "collect-first",
+            "rationale": "Nexus/ledger 와 SSoT 중복 — 한계 드러나면 재평가."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "platform-runtime-engineer",
+            "position": "collect-first",
+            "rationale": "우리 기억 모델과 비교 evidence 만."
+          }
+        ],
+        "disposition": "collect-first",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "mcp-memory",
+        "disposition": "collect-first",
+        "adopted": false,
+        "reasons": [
+          "disposition=collect-first",
+          "timing: 기억은 vault/ledger 로 충당 — 지금 아님, 한계 드러나면 재평가."
+        ],
+        "evidence": [
+          "adoption disposition=collect-first",
+          "kind=mcp",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "mcp-memory",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "mcp 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)",
+            "mcp 인데 provider_affinity 없음 — 어느 harness 에 붙는지 불명"
+          ],
+          "evidence": [
+            "kind=mcp",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "mcp-filesystem",
+        "name": "MCP Filesystem (official)",
+        "kind": "mcp",
+        "category": "",
+        "summary": "표준 파일 접근 capability.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem"
+      },
+      "review": {
+        "candidate_id": "mcp-filesystem",
+        "current_pain": "에이전트 파일 접근을 표준 MCP 로 노출하려는 유혹.",
+        "expected_benefit": "표준 파일 접근 capability.",
+        "overlap_with_existing": "executor 가 이미 파일 도구 보유 — 기능 거의 전부 중복.",
+        "operational_cost": "추가 서버 + 권한 범위 관리.",
+        "maintenance_risk": "우리 가드와 충돌 관리 비용.",
+        "provider_runtime_fit": "ForgeKit 경로 안전(git_path_safety)과 경합.",
+        "governance_security_impact": "광범위 FS 접근 MCP 는 git-write hard rail/경로 안전 SSoT 우회 — 거버넌스 충돌(금지).",
+        "adopt_timing_reason": "기존 파일 도구로 충분 + 가드 우회 위험 → 제외.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "hold",
+            "rationale": "추가 가치 없음."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "hold",
+            "rationale": "경로 안전 hard rail 우회 — 불가."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "security-engineer",
+            "position": "hold",
+            "rationale": "broad FS MCP 가드 우회 — hold."
+          }
+        ],
+        "disposition": "hold",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "mcp-filesystem",
+        "disposition": "hold",
+        "adopted": false,
+        "reasons": [
+          "disposition=hold",
+          "timing: 기존 파일 도구로 충분 + 가드 우회 위험 → 제외."
+        ],
+        "evidence": [
+          "adoption disposition=hold",
+          "kind=mcp",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "mcp-filesystem",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "mcp 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)",
+            "mcp 인데 provider_affinity 없음 — 어느 harness 에 붙는지 불명"
+          ],
+          "evidence": [
+            "kind=mcp",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "mcp-git",
+        "name": "MCP Git (official)",
+        "kind": "mcp",
+        "category": "",
+        "summary": "표준 git capability.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/modelcontextprotocol/servers/tree/main/src/git"
+      },
+      "review": {
+        "candidate_id": "mcp-git",
+        "current_pain": "git 작업을 MCP 로 노출하려는 유혹.",
+        "expected_benefit": "표준 git capability.",
+        "overlap_with_existing": "git-write 를 git_path_safety/repo_write_policy 로 강하게 통제 — 전면 중복.",
+        "operational_cost": "추가 서버 + 권한.",
+        "maintenance_risk": "git hard rail 과 이중 경로 유지 비용.",
+        "provider_runtime_fit": "우리 git 거버넌스와 정면 충돌.",
+        "governance_security_impact": "MCP git write 는 `git -C + 명시 pathspec` hard rail/commit-governance 우회 — 금지.",
+        "adopt_timing_reason": "git 안전은 핵심 가드 — 외부 MCP 로 우회 불가.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "hold",
+            "rationale": "git 안전은 핵심 가드."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "hold",
+            "rationale": "repo_write_policy SSoT 우회 — 금지."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "security-engineer",
+            "position": "hold",
+            "rationale": "hard rail 충돌 — hold."
+          }
+        ],
+        "disposition": "hold",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "mcp-git",
+        "disposition": "hold",
+        "adopted": false,
+        "reasons": [
+          "disposition=hold",
+          "timing: git 안전은 핵심 가드 — 외부 MCP 로 우회 불가."
+        ],
+        "evidence": [
+          "adoption disposition=hold",
+          "kind=mcp",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "mcp-git",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "mcp 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)",
+            "mcp 인데 provider_affinity 없음 — 어느 harness 에 붙는지 불명"
+          ],
+          "evidence": [
+            "kind=mcp",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "mcp-sequential-thinking",
+        "name": "MCP Sequential Thinking (official)",
+        "kind": "mcp",
+        "category": "",
+        "summary": "단계적 사고 스캐폴딩.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking"
+      },
+      "review": {
+        "candidate_id": "mcp-sequential-thinking",
+        "current_pain": "구조화된 단계적 추론을 도구로 강제하려는 유혹.",
+        "expected_benefit": "단계적 사고 스캐폴딩.",
+        "overlap_with_existing": "decision_lane(readiness/council)+모델 자체 추론과 겹침 — 한계 효용.",
+        "operational_cost": "추가 서버 + 프롬프트 표면 증가.",
+        "maintenance_risk": "효용 대비 유지 비용 — 중간.",
+        "provider_runtime_fit": "MCP attach 가능하나 모델 내장 추론과 중복.",
+        "governance_security_impact": "위험 낮으나 도입 정당성(효용) 부족이 더 큰 문제.",
+        "adopt_timing_reason": "추론은 모델/lane 이 이미 함 — 추가 가치 미미.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "hold",
+            "rationale": "추가 가치 미미."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "hold",
+            "rationale": "프롬프트 표면만 늘림 — hold."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "backend-engineer",
+            "position": "hold",
+            "rationale": "decision_lane 과 중복 — hold."
+          }
+        ],
+        "disposition": "hold",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "mcp-sequential-thinking",
+        "disposition": "hold",
+        "adopted": false,
+        "reasons": [
+          "disposition=hold",
+          "timing: 추론은 모델/lane 이 이미 함 — 추가 가치 미미."
+        ],
+        "evidence": [
+          "adoption disposition=hold",
+          "kind=mcp",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "mcp-sequential-thinking",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "category 없음",
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "mcp 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)",
+            "mcp 인데 provider_affinity 없음 — 어느 harness 에 붙는지 불명"
+          ],
+          "evidence": [
+            "kind=mcp",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    },
+    {
+      "candidate": {
+        "id": "browser-use",
+        "name": "browser-use",
+        "kind": "tool",
+        "category": "docs",
+        "summary": "LLM 주도 브라우저 자동화 — 일부 리서치/검증 시나리오 확장.",
+        "signals": [],
+        "when_to_use": [],
+        "unsafe_boundary": [],
+        "capability_note": "",
+        "install_requirements": [],
+        "attach_requirements": [],
+        "source": "operator",
+        "source_ref": "https://github.com/browser-use/browser-use"
+      },
+      "review": {
+        "candidate_id": "browser-use",
+        "current_pain": "실제 브라우저 자동화(로그인-게이트 사이트 등) capability 부재.",
+        "expected_benefit": "LLM 주도 브라우저 자동화 — 일부 리서치/검증 시나리오 확장.",
+        "overlap_with_existing": "discovery 의 YouTube/Figma/Google planned seam 과 목적 일부 겹침(미연결).",
+        "operational_cost": "Python + 헤드리스 브라우저(Playwright) — 무거운 런타임.",
+        "maintenance_risk": "빠르게 바뀌는 신생 — API 불안정, 중상.",
+        "provider_runtime_fit": "무거운 의존이 ForgeKit 경량 toolchain 과 어긋남.",
+        "governance_security_impact": "실 브라우저 = 자격증명/exfiltration/자동 액션 위험 매우 큼 — 강 sandbox/승인 없이 금지.",
+        "adopt_timing_reason": "위험·비용 대비 당장 필요 시나리오 없음 — sandbox 설계 후 재평가.",
+        "axis_reviews": [
+          {
+            "axis": "pm",
+            "reviewer": "product-manager",
+            "position": "hold",
+            "rationale": "당장 필요 시나리오 없음."
+          },
+          {
+            "axis": "tech-lead",
+            "reviewer": "tech-lead",
+            "position": "hold",
+            "rationale": "무거운 의존+불안정 API — hold."
+          },
+          {
+            "axis": "specialist",
+            "reviewer": "security-engineer",
+            "position": "hold",
+            "rationale": "브라우저 자동화 위험 — hold."
+          }
+        ],
+        "disposition": "hold",
+        "review_gaps": []
+      },
+      "result": {
+        "candidate_id": "browser-use",
+        "disposition": "hold",
+        "adopted": false,
+        "reasons": [
+          "disposition=hold",
+          "timing: 위험·비용 대비 당장 필요 시나리오 없음 — sandbox 설계 후 재평가."
+        ],
+        "evidence": [
+          "adoption disposition=hold",
+          "kind=tool",
+          "summary 실체 있음"
+        ],
+        "promotion": {
+          "candidate_id": "browser-use",
+          "accepted": false,
+          "spec": null,
+          "reasons": [
+            "signals 없음 — resolver 가 고를 신호가 없다",
+            "when_to_use 없음 — 언제 쓰는지 불명",
+            "unsafe_boundary 없음 — 위험 경계 미선언(금지)",
+            "capability_note 없음",
+            "commands/verification 둘 다 없음 — 검증 경로 없음",
+            "tool 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)"
+          ],
+          "evidence": [
+            "kind=tool",
+            "summary 실체 있음"
+          ]
+        }
+      }
+    }
+  ]
+}

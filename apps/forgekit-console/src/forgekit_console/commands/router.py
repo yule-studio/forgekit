@@ -35,6 +35,7 @@ from .registry import (
     H_RESOLVE,
     H_FORGE,
     H_HEPHAISTOS,
+    H_ARMORY,
     H_SKILLS,
     H_LOADOUT,
     H_PROVIDER,
@@ -177,6 +178,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _whoami_result(parsed)
     if handler in (H_RESOLVE, H_FORGE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed, ctx)
+    if handler == H_ARMORY:
+        return _armory_result(parsed, ctx)
     if handler == H_PROVIDER:
         return _provider_result(parsed, ctx)
     if handler == H_SETUP:
@@ -400,6 +403,24 @@ def _toolchain_result(parsed, ctx) -> CommandResult:
         ok, lines = ts.apply_switch(root, loadout, approve=approve, scope=scope)
         return (CommandResult.info if ok else CommandResult.error)("toolchain switch", lines)
     return CommandResult.info("toolchain detect", ts.detect_lines(root))
+
+
+def _armory_result(parsed, ctx) -> CommandResult:
+    # /armory [<id>] — 외부 후보 도입 검토(adopt-now/collect-first/hold) 요약 또는 상세.
+    # adoption framework(armory.candidate)를 실제 후보 set 에 적용한 큐레이션 결정 — 카탈로그
+    # 자체는 /skills · /loadout · /resolve 가 본다. adopted ≠ equipped/installed.
+    from .. import armory_intake as AI
+    from ..tui import render as _r
+
+    pairs = AI.intake_candidates()
+    results = AI.intake_results()
+    args = list(getattr(parsed, "args", ()) or ())
+    detail = args[0].lower() if args else ""
+    if detail:
+        ids = {c.id for c, _ in pairs}
+        if detail not in ids:
+            return CommandResult.error("armory", (f"후보 '{detail}' 없음. 가능: {', '.join(sorted(ids))}",))
+    return CommandResult.info("armory", _r.armory_intake_lines(pairs, results, detail_id=detail))
 
 
 def _nexus_result(parsed, ctx) -> CommandResult:

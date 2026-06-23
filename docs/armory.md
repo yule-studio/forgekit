@@ -81,6 +81,18 @@ spec (no fake adoption — evidence kept for Nexus). **adopted** (in catalog/ove
 from **equipped** (the tools are actually installed/attached for a task — checked by the execution
 core, see [hephaistos-runtime.md](hephaistos-runtime.md)).
 
+**Evaluated external-candidate set.** The framework above is *applied* to a curated external
+candidate set in [`forgekit_console.armory_intake`](../apps/forgekit-console/src/forgekit_console/armory_intake.py)
+(operator data, console layer — reuses `armory.candidate`, no new model). This round evaluated
+13 named candidates (ponytail · Context7 · MCP official Fetch/Filesystem/Git/Memory/Sequential
+Thinking · Vale · textlint · alex · write-good · proselint · browser-use): **adopt-now 1** (Vale →
+the `doc-quality-lint-local` loadout), **collect-first 8** (Nexus 근거만, 미활성), **hold 4**
+(MCP Git/Filesystem = git-write/path-safety hard-rail 우회, Sequential Thinking = 중복, browser-use
+= 자격증명/exfiltration 위험). Surface `/armory [<id>]`; evidence
+`examples/armory-intake/adoption-catalog.json`; regression `tests/forgekit/test_armory_intake_candidates.py`.
+Vale-based linting is a **distinct** tool loadout (`doc-quality-lint-local`) from the built-in
+tool-less `docs-writing-local` — different equip profiles, not a duplicate.
+
 ## Context-aware selection (Hephaistos)
 `hephaistos.resolve(request, *, preferred_role="", project_facts=(), runtime_constraints=(), harness="")`
 folds project/runtime context into the existing selection surface (no new routing layer):
