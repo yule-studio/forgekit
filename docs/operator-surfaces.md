@@ -97,3 +97,24 @@ proving the axes compose. Test: `test_integration_provider_nexus_daemon`.
 **Honesty rails kept:** no implicit ollama (no-config → setup-required, zero provider
 calls); Nexus never fakes a read (not_connected/missing/blocked surfaced as-is); the
 daemon `/daemon` surface shows honest `stopped` when no heartbeat exists.
+
+### Cross-lane wave integration + consult merge gate
+
+The integration/QA lane threads the **whole wave** in one flow (not each lane alone):
+intake(discovery ledger) → Armory/Hephaistos(resolve→curated loadout) → Nexus(attachment,
+honest not_connected) → provider projection(persist+reload) → runtime governance(execution
+receipt + ledger). Representative scenarios: Spring Boot JWT (safe eng → **authorized**
+receipt), Next.js design-system (non-engineering → **blocked**, no exec slot), Terraform+ECS
+deploy (**destructive/L4 blocked**), discovery signal → curated packet, ponytail-like OSS CLI
+candidate (intake only — Armory catalog stays curated). Test: `test_integration_wave_e2e`;
+evidence: `examples/integration-wave/e2e.txt`.
+
+| capability | status | surface | evidence |
+| --- | --- | --- | --- |
+| cross-lane wave E2E (intake→Armory→Hephaistos→Nexus→provider→receipt) | working | — (QA lane) | `examples/integration-wave/e2e.txt`, `test_integration_wave_e2e` |
+| consult-required merge gate (design/review 변경은 consult artifact 없이 머지 금지) | working | merge-prep checklist | `test_consult_gate`, `decision_lane.consult_gate` |
+
+Merge rule (SSoT — `docs/forgekit-integration-wave-qa.md`): consult required + artifact
+missing = **merge 금지**; required + artifact(verdict/design-log/waive) = pass; not
+required = pass. A *fake* consult (no consultee / no question) does not satisfy — content
+validity is delegated to `validate_consult`.

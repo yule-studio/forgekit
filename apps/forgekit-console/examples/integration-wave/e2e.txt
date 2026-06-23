@@ -1,0 +1,34 @@
+forgekit 웨이브 통합 E2E — intake → Armory → Hephaistos → Nexus → provider → receipt
+==============================================================================
+
+[gw1 intake ] sweep new=1 · re-sweep dedup · promoted=1 (영속 ledger)
+
+### 시나리오 [safe engineering]: Spring Boot JWT 인증 API 추가
+  [gw2 armory  ] agent=backend-engineer loadout=backend-java-local (catalog 실존=True) skills=8
+  [gw3 nexus   ] not_connected=True (미연결 정직, 날조 없음)
+  [gw5 receipt ] authorized=True outcome=executed class=safe valid=True
+               approval: decision=Spring Boot JWT 인증 API 추가;level=L2_internal_approve;signoff=tech-lead
+
+### 시나리오 [design / non-engineering]: Next.js 디자인 시스템 컴포넌트 라이브러리 구축
+  [gw2 armory  ] agent=ux-ui-designer loadout=design-review-local (catalog 실존=True) skills=7
+  [gw3 nexus   ] not_connected=True (미연결 정직, 날조 없음)
+  [gw5 receipt ] authorized=False outcome=blocked class=safe valid=True
+               blocked: 'ux-ui-designer' 은 실행 슬롯을 가질 수 없음 (router/non-engineering 역할)
+
+### 시나리오 [deploy / destructive]: Terraform + ECS + GitHub Actions 배포 파이프라인 구성
+  [gw2 armory  ] agent=devops-engineer loadout=devops-cloud-local (catalog 실존=True) skills=5
+  [gw3 nexus   ] not_connected=True (미연결 정직, 날조 없음)
+  [gw5 receipt ] authorized=False outcome=blocked class=destructive valid=True
+               blocked: destructive(L4) — 자동 실행 금지, operator + runbook 전용
+
+[gw4 provider] primary=ollama linked=['ollama', 'gemini'] execution→ollama (영속+reload)
+[gw5 ledger  ] receipts=3 outcomes=['executed', 'blocked', 'blocked'] · fake_refused=True
+
+[consult merge gate]
+  consult merge gate — 3 change, MERGE BLOCKED
+    satisfied=0 waived=0 missing=1 not-required=2
+    · integration-qa-lane — consult not-required → not_required
+    · consult-gate — consult not-required → not_required
+    ✗ hypothetical-unconsulted-api — consult required → missing
+
+honesty rails: Armory 카탈로그 curated(런타임 무변경) · Nexus 미연결 날조 없음 · deploy=destructive/L4 차단 · non-engineering=exec slot 없음 · safe-eng만 receipt · fake receipt 거부 · consult required+missing=merge 금지
