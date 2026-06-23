@@ -92,25 +92,6 @@ from .consult_gate import (
     consult_gate_report,
     consult_required,
 )
-from .adoption_review import (
-    AXIS_PM,
-    AXIS_TECH_LEAD,
-    CANDIDATE_KINDS,
-    MANDATORY_AXES,
-    REVIEW_FIELDS,
-    VERDICT_ADOPT_NOW,
-    VERDICT_COLLECT_FIRST,
-    VERDICT_HOLD,
-    VERDICTS,
-    AdoptionReviewReport,
-    ToolAdoptionReview,
-    adoption_artifact_ref,
-    adoption_review_report,
-    can_equip,
-    has_three_axis_review,
-    reviewer_axes,
-    validate_adoption_review,
-)
 from .readiness import (
     STAGE_DECISION_PENDING,
     STAGE_EXECUTABLE,
@@ -167,12 +148,6 @@ __all__ = (
     "GATE_STATES", "CONSULT_REQUIRING_KINDS", "NON_DESIGN_KINDS",
     "ChangeUnderReview", "ConsultGateVerdict", "ConsultGateReport",
     "consult_required", "adjudicate_consult", "consult_gate_report",
-    # adoption-efficiency review (도입 효율 검토 forcing rule)
-    "VERDICT_ADOPT_NOW", "VERDICT_COLLECT_FIRST", "VERDICT_HOLD", "VERDICTS",
-    "CANDIDATE_KINDS", "MANDATORY_AXES", "AXIS_PM", "AXIS_TECH_LEAD", "REVIEW_FIELDS",
-    "ToolAdoptionReview", "AdoptionReviewReport",
-    "validate_adoption_review", "has_three_axis_review", "reviewer_axes",
-    "can_equip", "adoption_artifact_ref", "adoption_review_report",
     # readiness gate
     "STAGE_NO_PM_BRIEF", "STAGE_MEETING_PENDING", "STAGE_DECISION_PENDING",
     "STAGE_HANDOFF_PENDING", "STAGE_EXECUTABLE", "STAGE_ORDER",
