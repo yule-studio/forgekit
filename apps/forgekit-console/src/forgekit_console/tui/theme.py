@@ -35,9 +35,16 @@ ACCENT_DIM = "#2f6f7a"  # desaturated cyan — quiet accents
 BORDER = "#262a36"  # subtle borders / separators / rules
 INPUT_RULE = "#aeb4c0"  # light/near-white grey — the composer input bar rules (Claude)
 
-WARNING = "#e0b020"  # amber
+WARNING = "#e0b020"  # amber — also the live "진행중(in-progress)" motion colour
 SUCCESS = "#3ddc97"  # green
 ERROR = "#ff5c7a"  # red/pink
+
+# Operator selection highlight — a SATURATED blue, deliberately distinct from the quiet
+# desaturated-cyan ACCENT_DIM (#2f6f7a) used elsewhere. The prior selection reused
+# ACCENT_DIM, which on near-black read too close to the background ("선택됐는지 안 보임").
+# #2d72b8 lifts the contrast-vs-background from ~3.4:1 to ~3.9:1 while keeping the forced
+# light FG readable (~4.2:1) — so a drag/text selection is unmistakably "선택됨".
+SELECTION_BG = "#2d72b8"
 
 # --- CSS variable map (merged via App.get_css_variables) --------------------
 # Re-pins textual's own variables to brand values and exposes brand-specific
@@ -58,12 +65,16 @@ def css_variables() -> dict:
         "warning": WARNING,
         "success": SUCCESS,
         "error": ERROR,
-        # cross-widget drag-selection highlight (Textual `screen--selection`, full mode):
-        # brand desaturated-cyan (opaque) instead of Textual's default ~50%-alpha blue
-        # (`#0178D47F`) which blends to a muddy low-contrast block on near-black. Matches
-        # the composer's `text-area--selection` treatment so selection reads the same
-        # everywhere; the readable light foreground is forced in SCREEN_CSS.
-        "screen-selection-background": ACCENT_DIM,
+        # operator selection highlight — one token for BOTH the composer text-selection
+        # (`text-area--selection`) and the cross-widget drag-selection (`screen--selection`,
+        # full mode). A saturated blue (SELECTION_BG) that is clearly distinct from the
+        # near-black background, instead of Textual's ~50%-alpha blue (`#0178D47F`, muddy on
+        # black) or the quiet ACCENT_DIM. The readable light FG is forced alongside it.
+        "selection-background": SELECTION_BG,
+        "selection-foreground": FG,
+        # Textual's own built-in var for `screen--selection` drag highlight — re-pinned to
+        # the same SELECTION_BG so drag selection matches the composer selection exactly.
+        "screen-selection-background": SELECTION_BG,
     }
 
 
@@ -89,6 +100,6 @@ def wordmark(text: str = "forgekit") -> str:
 __all__ = (
     "BG", "FG", "MUTED",
     "ACCENT_PRIMARY", "ACCENT_SECONDARY", "ACCENT_DIM", "BORDER",
-    "WARNING", "SUCCESS", "ERROR",
+    "WARNING", "SUCCESS", "ERROR", "SELECTION_BG",
     "css_variables", "wordmark",
 )
