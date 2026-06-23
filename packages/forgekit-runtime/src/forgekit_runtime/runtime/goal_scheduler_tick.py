@@ -11,7 +11,11 @@ leaf goals that need work:
 1. **collect / packetize** — runs the bounded self-improvement discovery
    (``run_self_improvement``) and links the discovered packets to the goal with a
    ``proposal`` evidence each (``goal_tick.link_packets``). This is the loop's
-   "collect state → choose packets" stage.
+   "collect state → choose packets" stage. If discovery finds nothing (a
+   feature/intent goal, not a repo gap), it **seeds the first decision-lane step from
+   the goal's own intent** (``goal_intent.intent_packets``) so the goal never sticks at
+   ``packets: 0`` — that seed is risky (PM brief / design decision needed) so it parks
+   the goal at ``awaiting_approval`` rather than auto-running (honest, not fake-exec).
 2. **autonomously decompose if big** — if the discovered work spans ≥2 distinct
    affected areas (``planning.is_big_goal``), the goal is decomposed into one
    **child goal per area** (``planning.decompose``), and each area's packets are
@@ -127,7 +131,17 @@ class GoalSchedulerTicker:
         for goal in candidates[: self.max_goals]:
             si = self._discover()
             if not si.packets:
-                continue  # nothing discovered this tick — leave the goal as-is
+                # No repo-discoverable gap for this goal (e.g. a feature/intent goal). Seed
+                # the FIRST decision-lane step from the goal's own intent so it never sticks
+                # at packets:0 (autopilot exec core). The seed is risky → awaiting_approval
+                # (operator/PM design input needed) — honest, not a fake executable packet.
+                from .goal_intent import intent_packets
+                from ..selfimprove.loop import SelfImprovementResult
+
+                seeded = intent_packets(goal.title)
+                if not seeded:
+                    continue
+                si = SelfImprovementResult(packets=seeded)
             items = [(p.affected_area, p.finding) for p in si.packets]
 
             if planning.is_big_goal(items) and len(
