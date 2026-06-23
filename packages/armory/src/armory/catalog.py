@@ -46,6 +46,12 @@ _WEAPONS = (
     WeaponSpec("actionlint", "actionlint", "cli", "actionlint --version", "brew install actionlint"),
     WeaponSpec("intellij", "IntelliJ IDEA", "ide", "", "jetbrains toolbox"),
     WeaponSpec("vscode", "VS Code", "ide", "code --version", "https://code.visualstudio.com"),
+    # doc-quality 묶음 (adopted=카탈로그 등록 / 미설치 — install_hint 가 설치 경로만 선언).
+    WeaponSpec("vale", "Vale", "cli", "vale --version", "brew install vale"),
+    WeaponSpec("proselint", "proselint", "cli", "proselint --version", "uv tool install proselint"),
+    WeaponSpec("write-good", "write-good", "cli", "write-good --version", "npm i -g write-good"),
+    WeaponSpec("alex", "alex", "cli", "alex --version", "npm i -g alex"),
+    WeaponSpec("textlint", "textlint", "cli", "textlint --version", "npm i -g textlint"),
 )
 
 _SKILLS = (
@@ -334,6 +340,24 @@ _SKILLS = (
               verification=("(reference pack 생성)",), forbidden=("",),
               capability_note="design reference reader", related_loadouts=("design-review-local",),
               related_roles=("ux-ui-designer",)),
+    # --- docs (intake adopt-now: Vale anchor + optional prose linters) ----
+    SkillSpec("doc-quality-review", "Doc-quality review", category="docs",
+              domains=("docs",), topics=("prose-lint", "style-guide", "terminology"),
+              signals=("문서 품질", "문체", "prose", "vale", "lint 문서", "writing quality",
+                       "style guide", "용어 일관성"),
+              summary="vault/문서를 style-guide 기반 prose 린트로 점검(문체/용어/포용성)",
+              when_to_use=("문서/README/vault 노트 품질·문체·용어 일관성 점검",),
+              when_not_to_use=("코드 린트(언어별 린터 사용)", "구조 검증(vault-curate frontmatter/5섹션)"),
+              rules=("style-guide(.vale.ini)를 SSoT 로 — 규칙은 config 로 버전 관리",
+                     "결과는 제안 — 자동 수정 강제 금지"),
+              commands=("vale .", "proselint <file>"),
+              verification=("vale --version", "vale ."),
+              forbidden=("외부 서버로 문서 본문 송신(로컬 린트만)",),
+              capability_note="prose/style linting (style-guide enforced)",
+              related_weapons=("vale", "proselint", "write-good", "alex", "textlint"),
+              related_loadouts=("doc-quality-review-local",),
+              related_roles=("knowledge-engineer",),
+              nexus_refs=(_area("20-areas/docs/doc-quality"),)),
 )
 
 # loadout: why this combo (goal + recommended/optional/blocked + selection signals).
@@ -435,6 +459,18 @@ _LOADOUTS = (
                 default_verify_flow=("(토큰/레퍼런스 대비)",),
                 selection_signals=("디자인", "design", "figma", "ui 참고", "디자인 시스템"),
                 notes="raw design source 는 design role만, 그외 projection. Figma 미연결이면 blocked"),
+    LoadoutSpec("doc-quality-review-local", "Doc-quality review (local)",
+                intended_roles=("knowledge-engineer",),
+                required_weapons=("vale",), optional_weapons=("proselint", "write-good", "alex", "textlint"),
+                environment_assumptions=("repo/vault 읽기 접근", "vale 설치 시 .vale.ini + style 패키지"),
+                verify_commands=("vale --version",),
+                goal="문서/vault prose 품질을 style-guide 로 점검(intake adopt-now 묶음)",
+                recommended_skills=("doc-quality-review",),
+                optional_skills=(), blocked_skills=("terraform", "java-spring"),
+                default_verify_flow=("vale .",),
+                selection_signals=("문서 품질", "문체", "prose", "vale", "writing quality", "용어 일관성"),
+                notes="Vale=required(adopt-now), 나머지=optional(collect-first). adopted≠installed — "
+                      "weapon install_hint 가 설치 경로만 선언."),
 )
 
 _WEAPON_BY_ID: Dict[str, WeaponSpec] = {w.id: w for w in _WEAPONS}
