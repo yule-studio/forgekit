@@ -237,6 +237,20 @@ def bootstrap_lines(config: Optional[Mapping] = None, *,
     else:
         out.append(f"verdict: {bs.verdict} — provider live lane 없음(필수). "
                    "`/setup apply` 로 추천 preset 저장 후 재점검.")
+    out.append("")
+
+    # runtime readiness — beyond *connection*, can the always-on loop actually PROGRESS?
+    # Joins daemon + goals + the (probe-verified) live transport into one honest verdict, so
+    # /setup is operator-first one screen: connect AND continuity. Best-effort (lazy import).
+    try:
+        from forgekit_runtime.runtime.readiness import readiness_lines as _rl
+        live_map = {s.provider_id: bool(s.live_capable) for s in bs.provider.statuses}
+        out.append("[runtime readiness — always-on 진행 가능성 (daemon × goal × live transport)]")
+        out.extend(_rl(env=env, config=cfg, live_map=live_map))
+        out.append("")
+    except Exception:  # noqa: BLE001 - runtime join is optional; /setup must still render
+        pass
+
     out.append("  지식/toolchain 은 non-blocking 정직 표면 — 미연결도 console 은 동작.")
     return tuple(out)
 
