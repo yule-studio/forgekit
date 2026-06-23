@@ -114,11 +114,111 @@ def goal_evidence_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str
         return (f"goal {gid!r} 없음",)
     if not g.evidence:
         return (f"{g.id}: evidence 없음",)
-    out = [f"{g.id} evidence ({len(g.evidence)}):"]
+    nexus_notes = sum(1 for e in g.evidence if e.kind == _MIRROR_KIND)
+    head = f"{g.id} evidence ({len(g.evidence)}"
+    head += f", Nexus 기록 {nexus_notes}건)" if nexus_notes else ")"
+    out = [head + ":"]
     for e in g.evidence:
         ref = f"  ({e.ref})" if e.ref else ""
-        out.append(f"  - {e.ts}  [{e.kind}] {e.summary}{ref}")
+        marker = " ⮕nexus" if e.kind == _MIRROR_KIND else ""
+        out.append(f"  - {e.ts}  [{e.kind}]{marker} {e.summary}{ref}")
+    if not nexus_notes:
+        out.append("  (`/goal publish <id>` 로 Nexus evidence 축에 실제 artifact 로 기록)")
     return tuple(out)
+
+
+# --- goal evidence → Nexus artifact bridge ----------------------------------
+# Goal progression records append-only EvidenceRecords (proposal/execution/decision…),
+# but those live only in the goal store — `children/evidence: 0`-looking from the Nexus
+# side. `publish` MIRRORS each not-yet-mirrored record into the Nexus evidence axis as an
+# authored note carrying the fixed schema (goal_id/lane/packet_id/role/status/created_at/
+# evidence_path), then appends a `nexus-note` EvidenceRecord whose ref IS the note path — so
+# `/goal evidence` grows with REAL artifacts. Idempotent (re-publish only mirrors new
+# records) and honest (no vault → no write, never a fake path).
+_MIRROR_KIND = "nexus-note"
+_PUBLISHABLE = ("proposal", "execution", "verification", "decision", "observation", "plan")
+
+# evidence kind → canonical role id (drives the authored note's colour/visibility).
+_KIND_ROLE = {
+    "proposal": "product-manager", "plan": "tech-lead",
+    "execution": "platform-runtime-engineer", "verification": "qa-engineer",
+    "decision": "gateway", "observation": "user-researcher",
+}
+_SRC_TS_MARK = "src_ts="
+
+
+def _mirrored_src_ts(goal) -> set:
+    """ts values of source records already mirrored (parsed from nexus-note summaries)."""
+
+    out = set()
+    for e in goal.evidence:
+        if e.kind == _MIRROR_KIND and _SRC_TS_MARK in (e.summary or ""):
+            out.add(e.summary.split(_SRC_TS_MARK, 1)[1].split()[0])
+    return out
+
+
+def apply_publish_evidence(
+    env: Optional[Mapping[str, str]],
+    gid: str,
+    config: Optional[Mapping] = None,
+) -> Tuple[bool, Tuple[str, ...]]:
+    """Mirror a goal's evidence records into the Nexus evidence axis (real artifacts).
+
+    Returns ``(ok, lines)``. No connected vault → honest failure (no fake write). Already
+    fully mirrored → ok with a "nothing new" line. Each newly written note carries the
+    fixed evidence schema and links back; the goal gains a ``nexus-note`` record per note."""
+
+    from nexus.vault import EvidenceMeta, LANE_GOAL, write_evidence_note
+
+    st = _store(env)
+    g = st.get((gid or "").strip())
+    if g is None:
+        return False, (f"goal {gid!r} 없음 — `/goal list` 로 확인",)
+
+    try:
+        from hephaistos.nexus_read import nexus_root
+    except Exception:  # noqa: BLE001
+        nexus_root = lambda *a, **k: None  # noqa: E731
+    root = nexus_root(env, config)
+    if not root:
+        return False, ("Nexus vault 미연결 — `/nexus set <path>` 후 publish 가능 (fake-write 안 함).",)
+
+    already = _mirrored_src_ts(g)
+    pending = [(i, e) for i, e in enumerate(g.evidence)
+               if e.kind in _PUBLISHABLE and e.ts not in already]
+    if not pending:
+        return True, (f"{g.id}: 새로 mirror 할 evidence 없음 (이미 {len(_mirrored_src_ts(g))}건 Nexus 기록).",)
+
+    written: list = []
+    g2 = g
+    for i, e in pending:
+        role = _KIND_ROLE.get(e.kind, "knowledge-engineer")
+        packet_id = e.ref if (e.ref and e.kind in ("proposal", "execution", "verification")) else ""
+        meta = EvidenceMeta(goal_id=g.id, lane=LANE_GOAL, packet_id=packet_id, role=role,
+                            source="goal-progression", status=g.status.value, created_at=e.ts)
+        res = write_evidence_note(
+            meta, root, title=f"{g.title} · {e.kind}", summary=e.summary,
+            slug=f"{e.kind}-{i:03d}",
+            sections=[("source record", f"[{e.kind}] {e.summary}"
+                       + (f" (ref={e.ref})" if e.ref else ""))])
+        if not res:
+            continue
+        path, _m = res
+        g2 = g2.add_evidence(
+            _MIRROR_KIND,
+            f"Nexus evidence note [{e.kind}] · {_SRC_TS_MARK}{e.ts}",
+            ref=str(path))
+        written.append((e.kind, path))
+
+    if not written:
+        return False, (f"{g.id}: Nexus 쓰기 실패 (권한/경로 확인) — fake-write 안 함.",)
+    st.save(g2)
+    out = [f"{g.id}: Nexus evidence {len(written)}건 기록 (lane=goal, schema 고정):"]
+    for kind, path in written:
+        out.append(f"  - [{kind}] {path}")
+    out.append(f"  evidence 총 {len(g2.evidence)}건 (mirror 포함) — `/goal evidence {g.id}` 로 확인")
+    out.append("  schema: goal_id/lane/packet_id/role/status/created_at/evidence_path (frontmatter)")
+    return True, tuple(out)
 
 
 def apply_new(env: Optional[Mapping[str, str]], title: str) -> Tuple[bool, str]:
@@ -328,7 +428,8 @@ def usage_lines() -> Tuple[str, ...]:
         "  /goal plan <id> s1 | s2 | s3   큰 goal 을 하위 step(child goal)으로 분해",
         "  /goal progress <id>   진척(step/packet) + 다음 action(continuation)",
         "  /goal activate <id>   draft/blocked -> active",
-        "  /goal evidence <id>   evidence(append-only) 목록",
+        "  /goal evidence <id>   evidence(append-only) 목록 (Nexus 기록 표시)",
+        "  /goal publish <id>    goal evidence 를 Nexus evidence 축에 authored note 로 기록(연결 vault)",
         "  /goal awaiting        승인 대기(awaiting_approval) goal + linked packets",
         "  /goal approve <id> [메모]  승인 -> active + decision evidence (실행은 GW4-B)",
         "  /goal deny <id> [메모]     거부 -> blocked + decision evidence",
@@ -339,5 +440,6 @@ def usage_lines() -> Tuple[str, ...]:
 __all__ = (
     "goal_list_lines", "goal_show_lines", "goal_evidence_lines",
     "progress_lines", "awaiting_lines", "apply_new", "apply_plan",
-    "apply_activate", "apply_approve", "apply_deny", "usage_lines",
+    "apply_activate", "apply_approve", "apply_deny", "apply_publish_evidence",
+    "usage_lines",
 )
