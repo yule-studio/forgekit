@@ -16,7 +16,7 @@ stamped. There is no path from a fake meeting/signoff to an engineer handoff.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Optional, Tuple
 
 # --- PM artifact -------------------------------------------------------------
 
@@ -76,6 +76,7 @@ class StackComparison:
     rationale: str = ""                          # 왜 이 스택을 권고하나
     tradeoffs: Tuple[str, ...] = ()              # 권고안이 포기하는 것 (≥1)
     assumptions: Tuple[str, ...] = ()
+    ponytail: Optional["PonytailConsult"] = None  # 더 단순한 경로 consult (선택, 설계 단계 기록)
 
     def option_names(self) -> Tuple[str, ...]:
         return tuple(o.name for o in self.options)
@@ -90,7 +91,8 @@ class StackComparison:
         return {"decision_topic": self.decision_topic,
                 "options": [o.to_dict() for o in self.options],
                 "recommended": self.recommended, "rationale": self.rationale,
-                "tradeoffs": list(self.tradeoffs), "assumptions": list(self.assumptions)}
+                "tradeoffs": list(self.tradeoffs), "assumptions": list(self.assumptions),
+                "ponytail": self.ponytail.to_dict() if self.ponytail else None}
 
 
 # --- consult note ------------------------------------------------------------
@@ -117,6 +119,76 @@ class ConsultNote:
         return {"consult_id": self.consult_id, "topic": self.topic, "by_role": self.by_role,
                 "to_roles": list(self.to_roles), "question": self.question,
                 "note": self.note, "refs": list(self.refs)}
+
+
+# --- ponytail consult (the "simpler path" review) ----------------------------
+
+# The ponytail verdict vocabulary — what the simplicity reviewer concluded.
+PONYTAIL_KEEP = "keep"                      # 현 설계 유지 (단순화 불필요)
+PONYTAIL_SIMPLIFY = "simplify"              # 더 단순한 구현으로 줄여라
+PONYTAIL_USE_NATIVE = "use-native"          # 의존성 대신 native/표준 기능 사용
+PONYTAIL_REJECT_DEPENDENCY = "reject-dependency"   # 새 dependency 도입 반대
+PONYTAIL_REDUCE_SURFACE = "reduce-surface"  # 추상화/API surface 축소
+PONYTAIL_VERDICTS: Tuple[str, ...] = (
+    PONYTAIL_KEEP, PONYTAIL_SIMPLIFY, PONYTAIL_USE_NATIVE,
+    PONYTAIL_REJECT_DEPENDENCY, PONYTAIL_REDUCE_SURFACE,
+)
+
+
+@dataclass(frozen=True)
+class PonytailConsult:
+    """A recorded *simpler-path* consult — ponytail reviews whether a design can be built
+    more simply BEFORE a new dependency / abstraction is approved.
+
+    ponytail is **not the final approver** (tech-lead signs off); it is a mandatory consult
+    whose result must be recorded. Two honest shapes:
+      * ``consulted=True`` → a verdict (PONYTAIL_VERDICTS) + notes(근거) are required;
+      * ``consulted=False`` while ``required=True`` (consult was refused/ignored) → the
+        decision MUST log the ``rejected_alternative`` (the simpler path that was passed up)
+        and ``why_more_complex`` (why the heavier path is needed) — otherwise it is an
+        incomplete schema, not a silent skip.
+
+    Validated by :func:`.validators.validate_ponytail`; a ``required`` consult with an empty
+    artifact is rejected (schema 불완전), so 'we'll just add the dependency' cannot pass
+    unexamined. Serialized keys use the spec names ``ponytail_required/_verdict/_notes``."""
+
+    required: bool = False                       # ponytail_required (yes/no)
+    consulted: bool = False                       # consult 가 실제로 수행됐나
+    verdict: str = ""                             # ponytail_verdict (PONYTAIL_VERDICTS)
+    notes: str = ""                               # ponytail_notes — 짧은 근거
+    consultee: str = "ponytail"                   # consult 대상 role (식별자)
+    # consult 거부/무시 경로 (required=True, consulted=False) — decision log 에 남는 trace:
+    rejected_alternative: str = ""               # 포기된 더 단순한 대안
+    why_more_complex: str = ""                   # 왜 더 복잡한 경로가 필요한가
+
+    @property
+    def took_simpler_advice(self) -> bool:
+        """True when the consult happened and the verdict pushed for less (not 'keep')."""
+        return self.consulted and self.verdict in (
+            PONYTAIL_SIMPLIFY, PONYTAIL_USE_NATIVE, PONYTAIL_REJECT_DEPENDENCY,
+            PONYTAIL_REDUCE_SURFACE)
+
+    def to_dict(self) -> dict:
+        return {
+            "ponytail_required": self.required, "consulted": self.consulted,
+            "ponytail_verdict": self.verdict, "ponytail_notes": self.notes,
+            "consultee": self.consultee,
+            "rejected_alternative": self.rejected_alternative,
+            "why_more_complex": self.why_more_complex,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PonytailConsult":
+        d = d or {}
+        return cls(
+            required=bool(d.get("ponytail_required", d.get("required", False))),
+            consulted=bool(d.get("consulted", False)),
+            verdict=str(d.get("ponytail_verdict", d.get("verdict", "")) or ""),
+            notes=str(d.get("ponytail_notes", d.get("notes", "")) or ""),
+            consultee=str(d.get("consultee", "ponytail") or "ponytail"),
+            rejected_alternative=str(d.get("rejected_alternative", "") or ""),
+            why_more_complex=str(d.get("why_more_complex", "") or ""),
+        )
 
 
 # --- meeting artifact --------------------------------------------------------
@@ -154,6 +226,7 @@ class MeetingRecord:
     open_questions: Tuple[str, ...] = ()
     round_index: int = 1
     escalated: bool = False                      # 합의 실패 → tech-lead escalation
+    ponytail: Optional["PonytailConsult"] = None  # 회의에서 더 단순한 경로 consult 기록(선택)
 
     def roles(self) -> Tuple[str, ...]:
         return tuple(p.role for p in self.participants)
@@ -166,7 +239,8 @@ class MeetingRecord:
                 "agenda": list(self.agenda),
                 "participants": [p.to_dict() for p in self.participants],
                 "decisions": list(self.decisions), "open_questions": list(self.open_questions),
-                "round_index": self.round_index, "escalated": self.escalated}
+                "round_index": self.round_index, "escalated": self.escalated,
+                "ponytail": self.ponytail.to_dict() if self.ponytail else None}
 
 
 # --- tech-lead decision ------------------------------------------------------
@@ -202,6 +276,17 @@ class TechLeadDecision:
     rationale: str = ""
     signoff_by: str = "tech-lead"
     status: str = DRAFT
+    # ponytail consult — 새 dependency/abstraction 승인 시 더 단순한 경로 검토를 강제한다.
+    introduces_dependency: bool = False          # 새 외부 dependency 도입 승인인가
+    introduces_abstraction: bool = False         # 새 추상화/레이어 도입 승인인가
+    ponytail: Optional["PonytailConsult"] = None  # consult 결과 (required 면 비어 있으면 안 됨)
+
+    @property
+    def needs_ponytail(self) -> bool:
+        """A new dependency/abstraction approval, or an explicitly-required consult, must
+        carry a complete ponytail artifact."""
+        return bool(self.introduces_dependency or self.introduces_abstraction
+                    or (self.ponytail is not None and self.ponytail.required))
 
     def to_dict(self) -> dict:
         return {
@@ -213,6 +298,9 @@ class TechLeadDecision:
             "risk_class": self.risk_class,
             "approval_level": self.approval_level, "conditions": list(self.conditions),
             "rationale": self.rationale, "signoff_by": self.signoff_by, "status": self.status,
+            "introduces_dependency": self.introduces_dependency,
+            "introduces_abstraction": self.introduces_abstraction,
+            "ponytail": self.ponytail.to_dict() if self.ponytail else None,
         }
 
 
@@ -233,6 +321,7 @@ class EngineerHandoff:
     rollback_plan: str = ""
     acceptance_criteria: Tuple[str, ...] = ()    # PM brief 에서 carry
     operator_required: bool = False              # risky/blocked → 운영자 승인 필요
+    ponytail: Optional["PonytailConsult"] = None  # decision 에서 carry — handoff 에 consult 동반
 
     def to_dict(self) -> dict:
         return {"handoff_id": self.handoff_id, "decision_ref": self.decision_ref,
@@ -240,7 +329,8 @@ class EngineerHandoff:
                 "forbidden_scope": list(self.forbidden_scope),
                 "test_strategy": self.test_strategy, "rollback_plan": self.rollback_plan,
                 "acceptance_criteria": list(self.acceptance_criteria),
-                "operator_required": self.operator_required}
+                "operator_required": self.operator_required,
+                "ponytail": self.ponytail.to_dict() if self.ponytail else None}
 
 
 # --- specialist briefing (the materialized work order) -----------------------
@@ -285,6 +375,7 @@ class SpecialistBriefing:
     rollback_plan: str = ""
     acceptance_criteria: Tuple[str, ...] = ()
     operator_required: bool = False
+    ponytail: Optional["PonytailConsult"] = None  # decision 의 simpler-path consult (carry)
 
     def to_dict(self) -> dict:
         return {
@@ -300,6 +391,7 @@ class SpecialistBriefing:
             "rollback_plan": self.rollback_plan,
             "acceptance_criteria": list(self.acceptance_criteria),
             "operator_required": self.operator_required,
+            "ponytail": self.ponytail.to_dict() if self.ponytail else None,
         }
 
     def lines(self) -> Tuple[str, ...]:
@@ -312,6 +404,13 @@ class SpecialistBriefing:
                f"  선택 이유: {self.stack_rationale}"]
         for r in self.rejected_options:
             out.append(f"  ✗ 탈락: {r.name} — {r.why_not}")
+        if self.ponytail is not None and self.ponytail.required:
+            p = self.ponytail
+            if p.consulted:
+                out.append(f"  ✂ ponytail: {p.verdict or '(verdict 미기재)'} — {p.notes}")
+            else:
+                out.append(f"  ✂ ponytail: consult 거부/미수행 — 단순 대안 '{p.rejected_alternative}'"
+                           f" 포기, 사유: {p.why_more_complex}")
         out.append(f"  코딩 컨벤션: {self.coding_conventions}")
         out.append(f"  디자인 시스템: {self.design_system}")
         for n in self.integration_notes:
@@ -331,7 +430,9 @@ class SpecialistBriefing:
 __all__ = (
     "PMBrief", "StackOption", "StackComparison", "ConsultNote", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
-    "RejectedOption", "SpecialistBriefing",
+    "RejectedOption", "SpecialistBriefing", "PonytailConsult",
+    "PONYTAIL_KEEP", "PONYTAIL_SIMPLIFY", "PONYTAIL_USE_NATIVE",
+    "PONYTAIL_REJECT_DEPENDENCY", "PONYTAIL_REDUCE_SURFACE", "PONYTAIL_VERDICTS",
     "DISSENT_STANCES", "ALL_STANCES",
     "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DECISION_STATUSES",
 )

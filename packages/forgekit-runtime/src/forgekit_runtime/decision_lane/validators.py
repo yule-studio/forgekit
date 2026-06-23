@@ -28,11 +28,13 @@ from .schemas import (
     BLOCKED,
     CONDITIONAL,
     ESCALATED,
+    PONYTAIL_VERDICTS,
     SIGNED_OFF,
     ConsultNote,
     EngineerHandoff,
     MeetingRecord,
     PMBrief,
+    PonytailConsult,
     SpecialistBriefing,
     StackComparison,
     TechLeadDecision,
@@ -126,6 +128,39 @@ def validate_consult(note: ConsultNote) -> Tuple[str, ...]:
     return tuple(v)
 
 
+# --- ponytail consult (the "simpler path" review) ----------------------------
+
+
+def validate_ponytail(p: PonytailConsult) -> Tuple[str, ...]:
+    """Completeness of a ponytail (simpler-path) consult. ``()`` = complete.
+
+    * not required → always complete (no consult owed);
+    * required + consulted → a verdict (in PONYTAIL_VERDICTS) and notes(근거) are required;
+    * required + NOT consulted (refused/ignored) → the simpler alternative that was passed
+      up AND why the more complex path is needed must both be recorded.
+
+    The hard rail (requirement 5): a ``required`` consult with an empty artifact is rejected
+    — ponytail is not the final approver, but a required-but-empty consult is *incomplete
+    schema*, not a silent skip."""
+
+    v = []
+    if not p.required:
+        return ()
+    if p.consulted:
+        if p.verdict not in PONYTAIL_VERDICTS:
+            v.append("ponytail: consult 수행했는데 verdict 가 비었거나 미지정 "
+                     f"(keep/simplify/use-native/reject-dependency/reduce-surface 중 하나 필요)")
+        if _blank(p.notes):
+            v.append("ponytail: consult 결과 notes(근거) 비어 있음 — 빈 consult 는 fake")
+    else:
+        # consult required 였으나 거부/무시 → decision log 에 남길 trace 가 필수
+        if _blank(p.rejected_alternative):
+            v.append("ponytail: consult 거부/미수행인데 rejected_alternative(포기한 더 단순한 대안) 없음")
+        if _blank(p.why_more_complex):
+            v.append("ponytail: consult 거부/미수행인데 why_more_complex(더 복잡한 경로 사유) 없음")
+    return tuple(v)
+
+
 # --- meeting (anti-fake consensus) -------------------------------------------
 
 
@@ -197,6 +232,16 @@ def validate_tech_lead_decision(decision: TechLeadDecision) -> Tuple[str, ...]:
         v.append(f"signoff: risk_class '{decision.risk_class}' 알 수 없음")
     if decision.status == CONDITIONAL and not decision.conditions:
         v.append("signoff: conditional 인데 conditions 가 비어 있음")
+
+    # ponytail consult gate (requirement 2 + 5): approving a NEW dependency / abstraction
+    # (or an explicitly-required consult) demands a COMPLETE ponytail artifact. ponytail is
+    # not the final approver, but a required-but-empty consult is incomplete schema.
+    if decision.needs_ponytail:
+        if decision.ponytail is None or not decision.ponytail.required:
+            v.append("signoff: 새 dependency/abstraction 승인인데 ponytail consult 가 required 로 "
+                     "표기/첨부되지 않음 — schema 불완전 (더 단순한 경로 검토 누락)")
+        else:
+            v.extend(validate_ponytail(decision.ponytail))
     return tuple(v)
 
 
@@ -276,6 +321,6 @@ def validate_specialist_briefing(briefing: SpecialistBriefing) -> Tuple[str, ...
 
 __all__ = (
     "validate_pm_brief", "validate_stack_comparison", "validate_consult",
-    "validate_meeting", "validate_tech_lead_decision", "validate_handoff",
-    "validate_specialist_briefing", "NON_EXECUTOR_ROLES",
+    "validate_ponytail", "validate_meeting", "validate_tech_lead_decision",
+    "validate_handoff", "validate_specialist_briefing", "NON_EXECUTOR_ROLES",
 )
