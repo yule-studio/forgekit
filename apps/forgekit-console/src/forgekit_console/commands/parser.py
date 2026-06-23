@@ -33,6 +33,32 @@ def parse_input(raw: str) -> ParsedInput:
     return ParsedInput(raw=raw, is_slash=True, name=name, args=tuple(tokens[1:]))
 
 
+def split_command_lines(raw: str) -> Tuple[str, ...]:
+    """Split a submit buffer into individual command lines — IFF it is unambiguously a
+    *stack of slash commands*.
+
+    Closes the "하나만 인식" gap: an operator who submits several ``/...`` lines in one go
+    (e.g. ``/goal show 3`` then ``/goal awaiting`` on the next line) previously had the
+    whole buffer parsed as ONE command — the first token became the name and every other
+    line collapsed into garbage args, so only one command ran.
+
+    The split is **conservative** so nothing else changes:
+
+    * returns one line per non-empty line **only when** there are ≥2 non-empty lines and
+      **every** non-empty line starts with ``/`` (a real multi-command submit);
+    * otherwise returns ``(raw,)`` unchanged — so free text, multiline free text (any line
+      not starting with ``/``), and a single command are byte-for-byte untouched.
+
+    Pure; the caller routes each returned line through the normal single-command path so
+    each command keeps its own transcript + process-feed entry.
+    """
+
+    lines = [ln for ln in (raw or "").splitlines() if ln.strip()]
+    if len(lines) >= 2 and all(ln.strip().startswith("/") for ln in lines):
+        return tuple(ln.strip() for ln in lines)
+    return (raw,)
+
+
 def palette_matches(
     raw: str, commands: Optional[Sequence[SlashCommand]] = None
 ) -> Tuple[SlashCommand, ...]:
@@ -64,4 +90,4 @@ def palette_matches(
     return tuple(c for c in cmds if prefix in c.name)
 
 
-__all__ = ("parse_input", "palette_matches")
+__all__ = ("parse_input", "split_command_lines", "palette_matches")

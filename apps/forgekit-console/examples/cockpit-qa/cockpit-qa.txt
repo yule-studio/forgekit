@@ -1,0 +1,15 @@
+forgekit operator cockpit QA — multi-command submit + 도입 효율 검토
+==========================================================================
+
+[multi-command submit] '하나만 인식' 차단 — 한 submit 의 여러 /명령을 순차 실행
+  [stack of commands] → 2 실행: /goal show 3 | /goal awaiting
+  [single command] → 1 실행: /whoami
+  [free text (multiline)] → 1 실행: first line⏎please explain
+  [1 slash + prose] → 1 실행: /goal list⏎also explain this
+
+[도입 효율 검토] 외부 후보는 8점 검토 + proposer/PM/tech-lead/specialist 3축 → adopt-now/collect-first/hold
+  · rss-collector [collector] → adopt-now (valid=True can_equip=True | (장착 가능))
+  · ponytail-cli [tool] → collect-first (valid=True can_equip=False | collect-first — 근거만 Nexus 누적, 아직 장착 금지)
+  · big-framework [plugin] → hold (valid=True can_equip=False | hold — 도입 보류)
+
+honesty rails: 멀티커맨드는 모든 줄이 /로 시작할 때만 분리(free text 무변경) · adopted(결정)≠equipped(실장착, decision_lane.adoption.can_equip) · collect-first=Nexus 근거만/hold=보류 → 장착 금지 · adopt-now 만 검증 후 equip · fake adoption 차단.
