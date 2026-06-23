@@ -27,6 +27,7 @@ H_RENDER = "render"
 H_BLOCKED = "blocked"
 H_WHOAMI = "whoami"
 H_RESOLVE = "resolve"
+H_FORGE = "forge"
 H_HEPHAISTOS = "hephaistos"
 H_SKILLS = "skills"
 H_LOADOUT = "loadout"
@@ -103,6 +104,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("resolve", "Hephaistos — 요청을 skill/loadout/weapon/source/packet 으로 resolve + governance verdict (`/resolve <요청>` 미리보기, `/resolve apply <요청>` = receipt 를 ledger 에 영속, `/resolve ledger` = forge governance ledger 보기)", H_RESOLVE, "status"),
     SlashCommand("council", "PM→tech-lead→specialist lane readiness — 실행 전에 무엇이 확정돼야 하는지(replay 가능 decision log). `/council <session>` (없으면 사용법)", H_COUNCIL, "status"),
     SlashCommand("handoff", "specialist work order — 목표/제안 스택/선택 이유/탈락안/컨벤션/디자인·API·infra/scope/test/acceptance (`/handoff <session>`, replay 된 handoff packet)", H_HANDOFF, "status"),
+    SlashCommand("forge", "Hephaistos execution core — 요청을 equip(adopted vs equipped)·Nexus 지식·loadout/work packet·ponytail(anti-overbuild) verdict 까지 forge (`/forge <요청>`)", H_FORGE, "status"),
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),

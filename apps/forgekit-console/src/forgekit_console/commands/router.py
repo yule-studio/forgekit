@@ -33,6 +33,7 @@ from .registry import (
     H_BLOCKED,
     H_WHOAMI,
     H_RESOLVE,
+    H_FORGE,
     H_HEPHAISTOS,
     H_SKILLS,
     H_LOADOUT,
@@ -174,7 +175,7 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         )
     if handler == H_WHOAMI:
         return _whoami_result(parsed)
-    if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
+    if handler in (H_RESOLVE, H_FORGE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed, ctx)
     if handler == H_PROVIDER:
         return _provider_result(parsed, ctx)
@@ -619,9 +620,15 @@ def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
         if sub == "apply":
             return _forge_apply_result(" ".join(args[1:]).strip(), env=env)
     if not request:
-        which = "/resolve" if handler == H_RESOLVE else "/skills"
+        which = {H_RESOLVE: "/resolve", H_FORGE: "/forge"}.get(handler, "/skills")
         return CommandResult.info(handler, (f"요청을 입력하세요 — `{which} <요청>` "
                                             "(예: `/resolve Spring Boot JWT refresh token`).",))
+    if handler == H_FORGE:
+        # full execution core — equip(adopted vs equipped) / Nexus / ponytail / packet.
+        # env/config/role LIVE; `which` defaults to shutil.which (real local equip probe).
+        from hephaistos import forge_execution_plan
+        ep = forge_execution_plan(request, env=env, config=config, role=role)
+        return CommandResult.info("forge", proj.execution_lines(ep))
     plan, read = proj.resolve_with_sources(request, env=env, config=config, role=role)
     if handler == H_RESOLVE:
         lines = list(proj.resolve_summary_lines(plan, read)) + list(_forge_governance_lines(request, env=env))

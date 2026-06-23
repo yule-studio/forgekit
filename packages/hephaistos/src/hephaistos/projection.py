@@ -106,6 +106,40 @@ def skills_lines(plan: ResolvedForgePlan, read: nx.NexusReadResult) -> Tuple[str
     return tuple(lines)
 
 
+def execution_lines(ep) -> Tuple[str, ...]:
+    """Project a Hephaistos ExecutionPlan — equip(adopted vs equipped) / nexus / ponytail /
+    verification / expected outputs / runtime-approval. Read-only: reflects the core result
+    as-is (honest equip gaps, honest not_connected, ponytail verdict shown, never invented)."""
+
+    p = ep.plan
+    eq = ep.equip
+    lines = [f"hephaistos execute — {ep.request[:60]}",
+             f"  skills   : {', '.join(p.selected_skills) or '(shallow — armory 미커버)'}",
+             f"  loadout  : {p.selected_loadout or '(없음 — skill-only)'}",
+             f"  equip    : {eq.readiness} · adopted {len(eq.adopted_skills)} / "
+             f"equipped [{', '.join(eq.equipped_tools) or '-'}] / "
+             f"not_equipped [{', '.join(eq.not_equipped) or '-'}]"]
+    if eq.not_equipped:
+        lines.append("    ⚠ adopted≠equipped — 실행 전 설치 필요: " + "; ".join(eq.install_steps or eq.not_equipped))
+    if p.rejected_candidates:
+        lines.append("  rejected : " + ", ".join(f"{r.target}({r.category})" for r in p.rejected_candidates))
+    lines.append(f"  nexus    : {'connected' if ep.nexus_connected else 'not_connected'} · "
+                 f"project facts {len(ep.nexus_facts)}")
+    for f in ep.nexus_facts[:4]:
+        lines.append(f"    • {f}")
+    if ep.expected_outputs:
+        lines.append("  outputs  : " + " | ".join(ep.expected_outputs[:3]))
+    if ep.verification_plan:
+        lines.append("  verify   : " + " → ".join(ep.verification_plan[:4]))
+    if ep.ponytail:
+        lines.append(f"  ponytail : {ep.ponytail.verdict} — {ep.ponytail.reason[:80]}")
+        if ep.ponytail.needs_escalation:
+            lines.append("    → ponytail 은 lens(승인자 아님): tech-lead review / cross-role consult 필요")
+    for impl in ep.runtime_approval:
+        lines.append(f"  runtime  : {impl}")
+    return tuple(lines)
+
+
 def loadout_lines(loadout_id: str, *, which=None) -> Tuple[str, ...]:
     if not loadout_id:
         return ("hephaistos loadout — 선택된 loadout 없음 (`/resolve <요청>` 먼저, 또는 `/loadout <id>`)",)
@@ -150,6 +184,6 @@ def nexus_surface_lines(*, env: Optional[Mapping[str, str]] = None,
 
 __all__ = (
     "resolve_with_sources", "nexus_status_lines", "resolve_summary_lines",
-    "selection_evidence_lines",
+    "selection_evidence_lines", "execution_lines",
     "skills_lines", "loadout_lines", "hephaistos_status_lines", "nexus_surface_lines",
 )
