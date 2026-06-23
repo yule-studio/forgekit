@@ -55,6 +55,24 @@ from .loop import (
     run_discovery_loop,
     stale_pending,
 )
+from .adoption import (
+    ADOPT_NOW,
+    COLLECT_FIRST,
+    HOLD,
+    CLASS_COMPETITOR,
+    CLASS_IDEA,
+    CLASS_IMPL_REF,
+    CLASS_RISK,
+    CLASS_SIGNAL_ONLY,
+    CLASS_TOOL,
+    AdoptionReview,
+    adoption_review_to_note,
+    adoption_to_armory_candidate,
+    build_adoption_review,
+    classify_candidate,
+    persist_adoption_review,
+    resolve_review,
+)
 from .video_watch import VideoIngest, VideoWatchResult, summarize_ingest
 
 __all__ = (
@@ -70,5 +88,10 @@ __all__ = (
     "DiscoveryLoopReport", "LoopBudget", "LoopTick", "PromotionPolicy",
     "age_hours", "ask_candidates", "candidate_reason", "discovery_loop_tick",
     "freshness_label", "is_candidate", "is_fresh", "run_discovery_loop", "stale_pending",
+    "ADOPT_NOW", "COLLECT_FIRST", "HOLD",
+    "CLASS_SIGNAL_ONLY", "CLASS_TOOL", "CLASS_IDEA", "CLASS_COMPETITOR",
+    "CLASS_IMPL_REF", "CLASS_RISK",
+    "AdoptionReview", "classify_candidate", "build_adoption_review", "resolve_review",
+    "adoption_to_armory_candidate", "adoption_review_to_note", "persist_adoption_review",
     "VideoIngest", "VideoWatchResult", "summarize_ingest",
 )
