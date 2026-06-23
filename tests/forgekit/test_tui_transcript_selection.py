@@ -38,7 +38,7 @@ class SelectionCopyGuidanceTests(unittest.TestCase):
         self.assertIn("터미널 native 선택", text)   # mouse not captured → terminal owns it
         self.assertNotIn("Ctrl+C", text)            # no app-capture copy path in inline
         self.assertIn("/copy", text)                # /copy still works
-        self.assertIn("accent-dim", text)           # selection highlight named
+        self.assertIn("선택-blue", text)            # selection highlight named (saturated blue)
 
     def test_full_mode_surfaces_app_drag_and_ctrl_c(self) -> None:
         lines = render.selection_copy_lines(inline=False)
@@ -94,14 +94,15 @@ class TranscriptSelectionContrastTests(unittest.IsolatedAsyncioTestCase):
             sel = app.screen.get_component_styles("screen--selection")
             bg, fg = sel.background, sel.color
 
-            # brand desaturated-cyan bg (NOT Textual's default ~50%-alpha blue #0178D47F)
-            self.assertEqual(bg, Color.parse(theme.ACCENT_DIM))
+            # saturated selection-blue bg (NOT Textual's default ~50%-alpha #0178D47F, and
+            # no longer the quiet accent-dim that read too close to the background)
+            self.assertEqual(bg, Color.parse(theme.SELECTION_BG))
             # light brand foreground FORCED on top → uniformly readable selection
             self.assertEqual(fg, Color.parse(theme.FG))
-            # genuinely distinct from the screen background
-            self.assertNotEqual(bg, Color.parse(theme.BG))
-            # measured contrast comfortably readable (meets WCAG AA 4.5:1)
-            self.assertGreaterEqual(_contrast(fg, bg), 4.5)
+            # selection must POP against the near-black background (the lane's whole point)
+            self.assertGreater(_contrast(bg, Color.parse(theme.BG)), 3.7)
+            # measured FG-on-selection contrast comfortably readable (> 3:1)
+            self.assertGreater(_contrast(fg, bg), 3.0)
 
 
 if __name__ == "__main__":

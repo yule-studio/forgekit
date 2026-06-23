@@ -156,8 +156,10 @@ class ProcessFeedPilotTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ProcessFeedRenderTests(unittest.TestCase):
-    """The feed render must make the ACTIVE (running) step stand out from finished steps,
-    purely from real status — never a fake spinner/typing."""
+    """The feed render makes the ACTIVE (running) step ALIVE — an amber braille spinner +
+    a LIVE ticking elapsed — and keeps finished steps quiet. The motion is real-status
+    only: the spinner is `frame`-driven and the elapsed comes from the real clock, never a
+    fake typing/char-reveal animation."""
 
     def _feed(self):
         from forgekit_console.tui import process_events as pe
@@ -165,17 +167,39 @@ class ProcessFeedRenderTests(unittest.TestCase):
         feed = pe.ProcessFeed(clock=lambda: t["v"])
         return feed, t, pe
 
-    def test_running_event_is_visually_active(self):
+    def test_running_event_is_alive_amber_spinner(self):
         from forgekit_console.tui import render, theme
         feed, t, pe = self._feed()
         feed.start(pe.KIND_SUBMIT_START, "Submitting to ollama")
-        line = render.process_feed_lines(feed.recent())[0]
-        # active marker (▸) + accent-coloured label + the honest running ellipsis
-        self.assertIn("▸", line)
-        self.assertIn(theme.ACCENT_PRIMARY, line)
+        # active line at a live clock=2.3s, motion frame 3
+        line = render.process_feed_lines(feed.recent(), now=2.3, frame=3)[0]
+        # amber (WARNING) motion + the spinner frame + live ticking elapsed + ellipsis
+        self.assertIn(theme.WARNING, line)
+        self.assertIn(render.SPINNER_FRAMES[3], line)
+        self.assertIn("(2.3s)", line)               # REAL elapsed from the clock, not faked
         self.assertIn("…", line)
+        self.assertNotIn("▸", line)                 # the old static marker is gone
         # the active label is NOT wrapped in dim (it is the bright "now" line)
-        self.assertNotIn(f"[dim]Submitting to ollama", line)
+        self.assertNotIn("[dim]Submitting to ollama", line)
+
+    def test_running_spinner_advances_with_frame(self):
+        from forgekit_console.tui import render
+        feed, t, pe = self._feed()
+        feed.start(pe.KIND_GENERATE_START, "Generating")
+        a = render.process_feed_lines(feed.recent(), now=1.0, frame=0)[0]
+        b = render.process_feed_lines(feed.recent(), now=1.0, frame=1)[0]
+        self.assertNotEqual(a, b)                    # the glyph moves across frames (motion)
+        self.assertIn(render.SPINNER_FRAMES[0], a)
+        self.assertIn(render.SPINNER_FRAMES[1], b)
+
+    def test_static_render_has_no_fabricated_elapsed(self):
+        # no `now` → no elapsed at all (never a fake ~Xs); first spinner frame, deterministic.
+        from forgekit_console.tui import render
+        feed, t, pe = self._feed()
+        feed.start(pe.KIND_GENERATE_START, "Generating")
+        line = render.process_feed_lines(feed.recent())[0]
+        self.assertIn(render.SPINNER_FRAMES[0], line)
+        self.assertNotIn("s)", line)                # no measured/elapsed parenthetical
 
     def test_finished_event_is_quiet_dim(self):
         from forgekit_console.tui import render
@@ -184,8 +208,10 @@ class ProcessFeedRenderTests(unittest.TestCase):
         t["v"] = 1.0
         feed.finish(ev, pe.ST_DONE)
         line = render.process_feed_lines(feed.recent())[0]
-        self.assertIn("•", line)            # quiet dot, not the active marker
+        self.assertIn("•", line)            # quiet dot, not the active spinner
         self.assertNotIn("▸", line)
+        for frame in render.SPINNER_FRAMES:
+            self.assertNotIn(frame, line)   # a finished step does not animate
         self.assertIn("[dim]Submitting[/dim]", line)
         self.assertIn("(1.0s)", line)       # measured duration shown
 
@@ -196,9 +222,9 @@ class ProcessFeedRenderTests(unittest.TestCase):
         t["v"] = 0.4
         feed.finish(done, pe.ST_DONE)
         feed.start(pe.KIND_GENERATE_START, "Generating")   # still running
-        lines = render.process_feed_lines(feed.recent())
-        self.assertIn("•", lines[0])   # finished route = quiet dot
-        self.assertIn("▸", lines[1])   # active generate = active marker
+        lines = render.process_feed_lines(feed.recent(), now=0.4, frame=0)
+        self.assertIn("•", lines[0])                      # finished route = quiet dot
+        self.assertIn(render.SPINNER_FRAMES[0], lines[1])  # active generate = live spinner
 
 
 if __name__ == "__main__":
