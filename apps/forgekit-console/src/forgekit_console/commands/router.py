@@ -34,6 +34,7 @@ from .registry import (
     H_WHOAMI,
     H_RESOLVE,
     H_HEPHAISTOS,
+    H_ARMORY,
     H_SKILLS,
     H_LOADOUT,
     H_PROVIDER,
@@ -176,6 +177,8 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         return _whoami_result(parsed)
     if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed, ctx)
+    if handler == H_ARMORY:
+        return _armory_result(parsed, ctx)
     if handler == H_PROVIDER:
         return _provider_result(parsed, ctx)
     if handler == H_SETUP:
@@ -389,6 +392,25 @@ def _toolchain_result(parsed, ctx) -> CommandResult:
         ok, lines = ts.apply_switch(root, loadout, approve=approve, scope=scope)
         return (CommandResult.info if ok else CommandResult.error)("toolchain switch", lines)
     return CommandResult.info("toolchain detect", ts.detect_lines(root))
+
+
+def _armory_result(parsed, ctx) -> CommandResult:
+    # /armory [review <id>] — 외부 후보 도입 검토(adopt-now/collect-first/hold) 요약 또는 상세.
+    # 카탈로그 자체(skills/loadouts)는 /skills · /loadout · /resolve 가 본다 — 여기는 intake 결정.
+    from armory import adoption_registry_reviews
+    from ..tui import render as _r
+
+    reviews = adoption_registry_reviews()
+    args = list(getattr(parsed, "args", ()) or ())
+    sub = args[0].lower() if args else ""
+    if sub == "review":
+        cid = (args[1] if len(args) > 1 else "").lower()
+        match = next((r for r in reviews if r.candidate_id == cid), None)
+        if not match:
+            ids = ", ".join(r.candidate_id for r in reviews)
+            return CommandResult.error("armory review", (f"후보 '{cid}' 없음. 가능: {ids}",))
+        return CommandResult.info(f"armory review {cid}", _r.armory_intake_lines(reviews, detail=match))
+    return CommandResult.info("armory", _r.armory_intake_lines(reviews))
 
 
 def _nexus_result(parsed, ctx) -> CommandResult:

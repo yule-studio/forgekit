@@ -67,6 +67,7 @@ docs/
 | packages/* 분류 / 네이밍 충돌 / 새 기능 위치 / transitional debt | `docs/package-topology.md` (18 package 분류표 · migration matrix · 결정 트리 SSoT) |
 | control-plane 방향 / 외부 프로젝트 흡수 / onboarding bootstrap / P0~P2 / Mac mini host | `docs/control-plane-architecture.md` (역할 · 소유 경계 · 우선순위 로드맵 SSoT) |
 | Nexus discovery 루프 / free-first 수집→idea brief→operator digest→PM packet·vault note / planned seam | `docs/discovery-loop.md` (+ 코드 SSoT `apps/forgekit-console/src/forgekit_console/discovery/sweep.py`) |
+| 외부 plugin/skill/tool Armory 도입 검토 / adopt-now·collect-first·hold / 8축+3축 / adopted≠equipped | `docs/armory-intake-adoption.md` (+ 코드 SSoT `packages/armory/src/armory/adoption.py` + `adoption_registry.py`) |
 
 규칙:
 - 위 표에 없는 토픽이면 그 작업과 가장 가까운 디렉터리의 `CLAUDE.md`,

@@ -65,6 +65,7 @@
 | ForgeKit 플랫폼 경계 / console=operator app / 코어 packages 분리(WT1~4) | + `docs/forgekit-architecture-ownership.md` (owner 매트릭스·import 경계·이전 우선순위 SSoT) |
 | packages/* 분류 / 네이밍 충돌 / 어디에 새 기능 추가 / transitional debt | + `docs/package-topology.md` (18 package 분류표·migration matrix·결정 트리 SSoT) |
 | control-plane 방향 / OpenClaw·Harness·Hermes 흡수 / onboarding bootstrap / P0~P2 우선순위 / Mac mini host | + `docs/control-plane-architecture.md` (역할·소유 경계·우선순위 로드맵 SSoT) |
+| 외부 plugin/skill/tool 후보 Armory 도입 검토 / adopt-now·collect-first·hold / 8축 artifact + 3축 검토 / adopted≠equipped | + `docs/armory-intake-adoption.md` (SSoT — `armory.adoption`(검토/게이트) + `adoption_registry`(평가 데이터). fake adoption 금지, collect-first=Nexus 근거만. 코드: `packages/armory/src/armory/adoption.py`) |
 
 전체 매핑은 `AGENTS.md` §2.
 

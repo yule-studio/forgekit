@@ -67,6 +67,16 @@ A promoted spec is registered into a **runtime overlay** (`catalog.register_prom
 resolver picks it up immediately, re-promotion (same id) updates in place, and tests `clear_overlay()`
 for isolation. Evidence: `apps/forgekit-console/examples/armory-intake/intake.txt`.
 
+## Intake adoption review (`armory.adoption`) — adopt-now / collect-first / hold
+`promote_candidate` 는 *이미 들이기로 한* 후보의 **contract** 를 검증한다. 그 **앞단** — "외부
+plugin/skill/tool 을 ForgeKit 이 들일지/언제" 의 **전략 판단** — 은 `armory.adoption` 이 담당한다:
+후보마다 8축 도입 효율 artifact(pain/benefit/overlap/cost/risk/fit/governance/verdict) + PM/tech-lead/
+specialist **3축 검토**를 채우고 **adopt-now / collect-first / hold** 로 귀결한다. **adopt-now 는 3축
+합의 + (attach 류) install_plan 필수** (`validate_review`) — `adopted ≠ equipped/installed`, fake
+adoption 금지. collect-first 는 Nexus 에 근거만 누적(즉시 활성화 X). 평가된 후보는
+`armory.adoption_registry`, 표면은 `/armory [review <id>]`, evidence 는
+`examples/armory-intake/adoption-catalog.json`. SSoT: [`armory-intake-adoption.md`](armory-intake-adoption.md).
+
 ## Context-aware selection (Hephaistos)
 `hephaistos.resolve(request, *, preferred_role="", project_facts=(), runtime_constraints=(), harness="")`
 folds project/runtime context into the existing selection surface (no new routing layer):

@@ -28,6 +28,7 @@ H_BLOCKED = "blocked"
 H_WHOAMI = "whoami"
 H_RESOLVE = "resolve"
 H_HEPHAISTOS = "hephaistos"
+H_ARMORY = "armory"
 H_SKILLS = "skills"
 H_LOADOUT = "loadout"
 H_PROVIDER = "provider"
@@ -104,6 +105,7 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("council", "PM→tech-lead→specialist lane readiness — 실행 전에 무엇이 확정돼야 하는지(replay 가능 decision log). `/council <session>` (없으면 사용법)", H_COUNCIL, "status"),
     SlashCommand("handoff", "specialist work order — 목표/제안 스택/선택 이유/탈락안/컨벤션/디자인·API·infra/scope/test/acceptance (`/handoff <session>`, replay 된 handoff packet)", H_HANDOFF, "status"),
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
+    SlashCommand("armory", "Armory intake 도입 검토 — 외부 plugin/skill/tool 후보의 adopt-now/collect-first/hold 결정 + 8축 artifact + 3축 검토. `/armory [review <id>]` (id 없으면 verdict 별 요약 + doc-quality loadout)", H_ARMORY, "status"),
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
     SlashCommand("provider", "provider 설정/연결 — `/provider [set|link|unlink|connect <id>|disconnect <id>|test <id>|recommended|preset four-brain|route show|route set <slot> <id>|budget <id> <limit>|budget show|list|doctor]`", H_PROVIDER, "status"),

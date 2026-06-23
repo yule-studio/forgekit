@@ -638,6 +638,57 @@ def discovery_lines(result) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def armory_intake_lines(reviews, *, detail=None) -> Tuple[str, ...]:
+    """Render the Armory intake 도입 검토 — verdict별 요약, 또는 한 후보의 8축 artifact.
+
+    ``reviews`` = AdoptionReview 시퀀스. ``detail`` = 한 AdoptionReview(상세) 또는 None(요약).
+    """
+
+    _V = {"adopt-now": _OK, "collect-first": _WARN, "hold": _ERR}
+    if detail is not None:
+        r = detail
+        tag = _V.get(r.verdict, _MUTED)
+        lines = [
+            f"[b {_ACCENT}]» armory intake · {r.name}[/b {_ACCENT}]  [dim]({r.kind})[/dim]",
+            f"  verdict: [{tag}]{r.verdict}[/{tag}]   [dim]{r.source}[/dim]",
+            f"  현재 pain: {r.current_pain}",
+            f"  기대 효과: {r.expected_benefit}",
+            f"  기존 중복: {r.overlap}",
+            f"  운영 비용: {r.operational_cost}",
+            f"  유지 리스크: {r.maintenance_risk}",
+            f"  provider/runtime: {r.provider_runtime_fit}",
+            f"  governance/security: {r.governance_security}",
+            "  3축 검토:",
+        ]
+        for rv in r.reviewers:
+            lines.append(f"    - {rv.axis}: [{_V.get(rv.verdict, _MUTED)}]{rv.verdict}[/{_V.get(rv.verdict, _MUTED)}] — {rv.rationale}")
+        if r.install_plan:
+            lines.append(f"  install plan(선언, 미설치): {' · '.join(r.install_plan)}")
+        if r.loadout_id:
+            lines.append(f"  catalog loadout: {r.loadout_id} (adopted=available, not installed)")
+        return tuple(lines)
+
+    buckets = {"adopt-now": [], "collect-first": [], "hold": []}
+    for r in reviews:
+        buckets.get(r.verdict, buckets.setdefault(r.verdict, [])).append(r)
+    lines = [
+        f"[b {_ACCENT}]» armory intake — 외부 후보 도입 검토[/b {_ACCENT}]",
+        f"  adopt-now {len(buckets['adopt-now'])} · collect-first {len(buckets['collect-first'])} · hold {len(buckets['hold'])}"
+        f"  [dim](총 {len(reviews)}건, 8축 artifact + PM/tech-lead/specialist 3축)[/dim]",
+    ]
+    for v, label, tag in (("adopt-now", "adopt-now", _OK),
+                          ("collect-first", "collect-first", _WARN),
+                          ("hold", "hold", _ERR)):
+        if not buckets[v]:
+            continue
+        lines.append(f"  [b][{tag}]{label}[/{tag}][/b]")
+        for r in buckets[v]:
+            extra = f" → {r.loadout_id}" if r.loadout_id else ""
+            lines.append(f"    [{tag}]•[/{tag}] {r.name} [dim]({r.kind}){extra}[/dim]")
+    lines.append("  [dim]adopted=카탈로그 등록(available) ≠ equipped/installed · collect-first=근거만 누적 · `/armory review <id>`[/dim]")
+    return tuple(lines)
+
+
 def video_watch_lines(result) -> Tuple[str, ...]:
     """Render a video-watch ingest result — live summary or honest reference_only."""
 
@@ -840,6 +891,6 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections", "selection_copy_lines",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "armory_intake_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
     "RESPONSE_MARKER", "mark_response_chunks",
 )
