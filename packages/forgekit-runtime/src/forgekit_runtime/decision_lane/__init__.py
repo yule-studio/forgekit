@@ -77,6 +77,21 @@ from .enforcement import (
     make_runtime_authorizer,
     validate_execution_trailers,
 )
+from .consult_gate import (
+    CONSULT_MISSING,
+    CONSULT_NOT_REQUIRED,
+    CONSULT_REQUIRING_KINDS,
+    CONSULT_SATISFIED,
+    CONSULT_WAIVED,
+    GATE_STATES,
+    NON_DESIGN_KINDS,
+    ChangeUnderReview,
+    ConsultGateReport,
+    ConsultGateVerdict,
+    adjudicate_consult,
+    consult_gate_report,
+    consult_required,
+)
 from .readiness import (
     STAGE_DECISION_PENDING,
     STAGE_EXECUTABLE,
@@ -128,6 +143,11 @@ __all__ = (
     "classify_action", "authorize_execution", "assert_executable",
     "authorize_runtime_execution", "make_runtime_authorizer",
     "bridge_to_autopilot", "execution_commit_trailers", "validate_execution_trailers",
+    # consult-required merge gate
+    "CONSULT_NOT_REQUIRED", "CONSULT_SATISFIED", "CONSULT_WAIVED", "CONSULT_MISSING",
+    "GATE_STATES", "CONSULT_REQUIRING_KINDS", "NON_DESIGN_KINDS",
+    "ChangeUnderReview", "ConsultGateVerdict", "ConsultGateReport",
+    "consult_required", "adjudicate_consult", "consult_gate_report",
     # readiness gate
     "STAGE_NO_PM_BRIEF", "STAGE_MEETING_PENDING", "STAGE_DECISION_PENDING",
     "STAGE_HANDOFF_PENDING", "STAGE_EXECUTABLE", "STAGE_ORDER",
