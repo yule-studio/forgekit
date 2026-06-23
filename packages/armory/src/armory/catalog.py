@@ -46,6 +46,13 @@ _WEAPONS = (
     WeaponSpec("actionlint", "actionlint", "cli", "actionlint --version", "brew install actionlint"),
     WeaponSpec("intellij", "IntelliJ IDEA", "ide", "", "jetbrains toolbox"),
     WeaponSpec("vscode", "VS Code", "ide", "code --version", "https://code.visualstudio.com"),
+    # doc-quality lint 묶음 (intake adopt-now=vale, 나머지 optional). adopted=카탈로그 등록 /
+    # install_hint 가 설치 경로만 선언 — 미설치(equipped 은 /loadout 검증에서 실 env 확인).
+    WeaponSpec("vale", "Vale", "cli", "vale --version", "brew install vale"),
+    WeaponSpec("proselint", "proselint", "cli", "proselint --version", "uv tool install proselint"),
+    WeaponSpec("write-good", "write-good", "cli", "write-good --version", "npm i -g write-good"),
+    WeaponSpec("alex", "alex", "cli", "alex --version", "npm i -g alex"),
+    WeaponSpec("textlint", "textlint", "cli", "textlint --version", "npm i -g textlint"),
 )
 
 _SKILLS = (
@@ -449,6 +456,17 @@ _LOADOUTS = (
                 default_verify_flow=("(prose 체크리스트: 구조/명료성/일관성/오타)",),
                 selection_signals=("문서", "docs", "readme", "prose", "다듬", "문서 품질"),
                 notes="tool-less skill-only loadout — adopted=docs-quality, equipped 항목 없음(built-in)"),
+    LoadoutSpec("doc-quality-lint-local", "Doc-quality lint (tools)", intended_roles=("technical-writer",),
+                required_weapons=("vale",), optional_weapons=("proselint", "write-good", "alex", "textlint"),
+                environment_assumptions=("repo/vault 읽기 접근", "vale 설치 시 .vale.ini + style 패키지"),
+                verify_commands=("vale --version",),
+                goal="style-guide 기반 prose 린트(도구) — docs-writing-local(built-in) 보다 깊은 검사",
+                recommended_skills=("docs-quality",), optional_skills=(),
+                blocked_skills=("terraform", "java-spring"),
+                default_verify_flow=("vale .",),
+                selection_signals=("vale", "prose lint", "문체 검사", "style guide", "용어 일관성", "doc lint"),
+                notes="intake adopt-now=vale(required), 나머지=collect-first(optional). tool-less docs-writing-local "
+                      "과 별개(equip profile 다름). adopted≠equipped — weapon install_hint 가 설치 경로만 선언."),
     LoadoutSpec("design-review-local", "Design Review (local)", intended_roles=("ux-ui-designer", "design-lead"),
                 required_weapons=("vscode",), optional_weapons=(),
                 environment_assumptions=("design reference(연결 시)",),
