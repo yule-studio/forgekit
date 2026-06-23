@@ -7,10 +7,9 @@ forgekit operator cockpit QA — multi-command submit + 도입 효율 검토
   [free text (multiline)] → 1 실행: first line⏎please explain
   [1 slash + prose] → 1 실행: /goal list⏎also explain this
 
-[도입 효율 검토] 외부 후보는 8점 검토 + PM/tech-lead/specialist 3축 → adopt-now/collect-first/hold
-  · rss-collector [collector] → adopt-now (adopted=True equipped=True can_equip=True)
-  · ponytail-cli [tool] → collect-first (adopted=False equipped=False can_equip=False)
-  · big-framework [plugin] → hold (adopted=False equipped=False can_equip=False)
-  roll-up: adopt-now=1 collect-first=1 hold=1 · equipped=1 · fake_adoption_blocked=False
+[도입 효율 검토] 외부 후보는 8점 검토 + proposer/PM/tech-lead/specialist 3축 → adopt-now/collect-first/hold
+  · rss-collector [collector] → adopt-now (valid=True can_equip=True | (장착 가능))
+  · ponytail-cli [tool] → collect-first (valid=True can_equip=False | collect-first — 근거만 Nexus 누적, 아직 장착 금지)
+  · big-framework [plugin] → hold (valid=True can_equip=False | hold — 도입 보류)
 
-honesty rails: 멀티커맨드는 모든 줄이 /로 시작할 때만 분리(free text 무변경) · adopted(결정)≠equipped(실장착) · collect-first/hold 장착 금지 · adopt-now 만 3축 통과 시 equip · fake adoption 차단.
+honesty rails: 멀티커맨드는 모든 줄이 /로 시작할 때만 분리(free text 무변경) · adopted(결정)≠equipped(실장착, decision_lane.adoption.can_equip) · collect-first=Nexus 근거만/hold=보류 → 장착 금지 · adopt-now 만 검증 후 equip · fake adoption 차단.

@@ -4,9 +4,9 @@
 > **fake parity 없이** 구조적으로 점검하고, 이번 wave 의 **도입 효율 검토(adoption-efficiency)
 > forcing rule** 을 기록한다. fake typing / CSS-only parity / 문구만 보고 금지.
 >
-> 코드: `commands/parser.py`(split_command_lines) + `tui/app.py`(submit loop) +
-> `decision_lane/adoption_review.py`. 회귀: `test_multi_command`(11) +
-> `test_adoption_review`(14). 증거: `apps/forgekit-console/examples/cockpit-qa/cockpit-qa.txt`.
+> 코드: `commands/parser.py`(split_command_lines) + `tui/app.py`(submit loop). 도입 효율
+> 검토는 기존 `decision_lane/adoption.py`(`AdoptionReview`) 채택(§3). 회귀: `test_multi_command`(11)
+> + `test_company_governance_upgrade`(adoption). 증거: `examples/cockpit-qa/cockpit-qa.txt`.
 
 ## 1. cockpit parity 현황 — what is real / partial / structural (정직)
 
@@ -46,20 +46,23 @@ operator 가 지목한 3 건을 **코드 실측**으로 재판정:
 ## 3. 도입 효율 검토 forcing rule (wave 공통 강제)
 
 > 외부 plugin/skill/collector/rule/workflow/tool 후보는 "좋아 보인다"만으로 도입 금지.
-> 코드: `decision_lane.adoption_review` (`ToolAdoptionReview`/`validate_adoption_review`/
-> `can_equip`/`adoption_review_report`). 회귀 `test_adoption_review`.
+> 코드 SSoT: `decision_lane.adoption` (`AdoptionReview`/`validate_adoption_review`/
+> `can_equip`/`equip_block_reason`). 회귀 `test_company_governance_upgrade`.
+> **정직:** 본 lane 작업 중 병렬 pane 이 동등한 검토 게이트를 `adoption.py` 로 main 에 먼저
+> 머지해, 내가 만들던 중복 `adoption_review.py` 는 **제거하고 기존 SSoT 를 채택**했다
+> (작업 전 origin/main 재확인 교훈, 중복 모델 금지). 본 lane 고유 기여는 multi-command submit.
 
-각 후보 artifact (8점):
+각 후보 artifact (8점, `AdoptionReview`):
 1. current pain · 2. expected benefit · 3. overlap with existing · 4. operational cost ·
 5. maintenance risk · 6. provider/runtime fit · 7. governance/security impact ·
 8. why adopt-now vs collect-first vs hold.
 
-강제:
-- **3축 검토** — PM + tech-lead + relevant specialist(추가 1+) 가 reviewer 로 resolve(registry SSoT)돼야 `adopt-now` 가능.
-- **adopted ≠ equipped** (Hephaistos 구분) — `adopted`=결정(verdict==adopt-now), `equipped`=실제 장착. `can_equip` 게이트(adopt-now + 3축 통과)만 장착.
-- **collect-first** = Nexus 에 근거만 누적, **장착 금지**. **hold** = adopt/equip 모두 아님.
-- **no fake adoption** — `collect-first`/`hold` 가 equipped=True 면 validator reject, `adoption_review_report.fake_adoption_blocked`.
-- 유효 review 는 `adoption_artifact_ref` 를 내며, 이는 consult merge gate 의 `design_refs` 로 dependency/abstraction 변경의 채택 근거를 충족한다([[project_forgekit_integration_qa_wave]] consult gate 와 연결).
+강제 (`adoption.py`):
+- **3축 검토** — proposer + PM(canonical product-manager) + tech-lead + ≥1 specialist(engineering) 가 resolve(registry SSoT)돼야 `adopt-now` 가능. `ponytail_verdict`(최소-구조) 도 필수.
+- **adopted ≠ equipped** (Hephaistos 구분) — `can_equip` 게이트(valid + adopt-now)만 장착. adopt-now 는 추가로 `follow_up_owner` + `verification` 필수.
+- **collect-first** = Nexus 에 근거만 누적(`nexus_evidence_ref`), **장착 금지**. **hold** = 도입 보류. `equip_block_reason` 이 정직한 차단 사유 표면.
+- **no fake adoption** — collect-first/hold 는 `can_equip=False`, 검증 미통과 review 도 장착 불가.
+- dependency/abstraction 변경의 채택 근거는 이 review 가 제공 → consult merge gate(`decision_lane.consult_gate`)의 `design_refs` 와 연결([[project_forgekit_integration_qa_wave]]).
 
 ## 4. "실제로 ForgeKit 효율이 올라갔는가" (merge 전 별도 검증)
 
@@ -74,14 +77,14 @@ operator 가 지목한 3 건을 **코드 실측**으로 재판정:
 
 ## 5. regression / merge readiness
 
-- 전체 회귀: `python3 -m unittest discover -s tests -t .` → **7132 OK (skipped=5)** (신규 +25: multi-command 11 + adoption 14).
-- 이번 wave 다른 lane 과 충돌: **없음** — parser/app submit loop 는 additive, `adoption_review.py` 는 신규 파일(#424 ponytail consult 의 `schemas.py` 와 미충돌).
+- 전체 회귀: `python3 -m unittest discover -s tests -t .` → **green** (신규: multi-command 11; 도입 효율 검토는 기존 `adoption.py` 회귀 재사용, 중복 추가 안 함).
+- 이번 wave 다른 lane 과 충돌: parser/app submit loop 는 additive. **중복 발견·해소** — 도입 효율 검토는 main `adoption.py` 로 먼저 머지돼 내 중복 모듈 제거(§3).
 - 정직 경계: terminal-native above-region emit 은 structural(미연결, §1), image staging 은 partial.
 
 ## 6. merge-prep 체크리스트
 
 - [x] 멀티커맨드 gap 코드+회귀(`test_multi_command`)
-- [x] 도입 효율 검토 artifact 코드+회귀(`test_adoption_review`)
+- [x] 도입 효율 검토 forcing rule — 기존 `decision_lane.adoption`(`test_company_governance_upgrade`) 채택(중복 제거)
 - [x] cockpit real/partial/structural 매트릭스(§1) + named-bug disposition(§2)
 - [x] 효율 향상 별도 검증(§4) + misleading 표기 점검
 - [x] 전체 회귀 green(7132), cross-lane 충돌 없음

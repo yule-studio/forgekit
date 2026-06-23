@@ -1,9 +1,9 @@
 """Regenerate ``cockpit-qa.txt`` — operator cockpit lane evidence.
 
-Deterministic + hermetic: exercises the two NEW behaviors this lane adds —
-(1) multi-command submit split (closes "하나만 인식") and (2) the ForgeKit 도입 효율
-검토(adoption-efficiency) forcing rule — and renders them as a transcript. Mirrors
-``test_multi_command.py`` + ``test_adoption_review.py``.
+Deterministic + hermetic: exercises this lane's new behavior (1) multi-command submit
+split (closes "하나만 인식") and renders (2) the ForgeKit 도입 효율 검토(adoption-efficiency)
+forcing rule on the existing `decision_lane.adoption` SSoT. Mirrors
+``test_multi_command.py`` + ``test_company_governance_upgrade.py``.
 
 Run: ``python apps/forgekit-console/examples/cockpit-qa/_regen_cockpit_qa.py``
 """
@@ -22,8 +22,8 @@ for _rel in ("packages/forgekit-runtime/src", "packages/forgekit-config/src",
 
 from forgekit_console.commands.parser import split_command_lines
 from forgekit_runtime.decision_lane import (
-    VERDICT_ADOPT_NOW, VERDICT_COLLECT_FIRST, VERDICT_HOLD,
-    ToolAdoptionReview, adoption_review_report, can_equip,
+    ADOPT_NOW, COLLECT_FIRST, HOLD,
+    AdoptionReview, can_equip, equip_block_reason, validate_adoption_review,
 )
 
 OUT = Path(__file__).resolve().parent / "cockpit-qa.txt"
@@ -36,13 +36,17 @@ _FIELDS = dict(
     maintenance_risk="외부 RSS 스키마 변경 시 파서가 깨질 수 있다",
     provider_runtime_fit="provider 무관, runtime tick 에 bounded 로 배선 가능",
     governance_security_impact="outbound fetch only, secret 없음, redaction 불필요",
-    why_now="pain 명확 + 기존 normalizer 재사용 → adopt-now",
+    why_adopt_now="pain 명확 + 기존 normalizer 재사용 → adopt-now",
 )
 
 
-def _r(cid, kind, verdict, reviewers, adopted, equipped=False):
-    return ToolAdoptionReview(cid, kind, verdict=verdict, reviewers=reviewers,
-                              adopted=adopted, equipped=equipped, **_FIELDS)
+def _r(cid, kind, verdict, **over):
+    base = dict(candidate_id=cid, candidate_kind=kind, adoption_verdict=verdict,
+                proposed_by="user-researcher", reviewed_by_pm="product-manager",
+                reviewed_by_tech_lead="tech-lead", specialist_consulted=("backend-engineer",),
+                ponytail_verdict="기존 normalizer 재사용 — 새 wrapper 불필요", **_FIELDS)
+    base.update(over)
+    return AdoptionReview(**base)
 
 
 def main() -> None:
@@ -63,27 +67,24 @@ def main() -> None:
         out.append(f"  [{label}] → {len(parts)} 실행: {shown}")
     out.append("")
 
-    # 2. adoption-efficiency review forcing rule
-    out.append("[도입 효율 검토] 외부 후보는 8점 검토 + PM/tech-lead/specialist 3축 → adopt-now/collect-first/hold")
+    # 2. adoption-efficiency review forcing rule (decision_lane.adoption — main SSoT)
+    out.append("[도입 효율 검토] 외부 후보는 8점 검토 + proposer/PM/tech-lead/specialist 3축 → adopt-now/collect-first/hold")
     reviews = [
-        _r("rss-collector", "collector", VERDICT_ADOPT_NOW,
-           ("product-manager", "tech-lead", "backend-engineer"), adopted=True, equipped=True),
-        _r("ponytail-cli", "tool", VERDICT_COLLECT_FIRST,
-           ("product-manager", "tech-lead", "devops-engineer"), adopted=False),
-        _r("big-framework", "plugin", VERDICT_HOLD,
-           ("product-manager", "tech-lead", "frontend-engineer"), adopted=False),
+        _r("rss-collector", "collector", ADOPT_NOW,
+           follow_up_owner="backend-engineer", verification=("RSS 파싱 회귀 + bounded tick 측정",)),
+        _r("ponytail-cli", "tool", COLLECT_FIRST,
+           nexus_evidence_ref="00-inbox/discovery/ponytail-cli.md"),
+        _r("big-framework", "plugin", HOLD),
     ]
-    rep = adoption_review_report(reviews)
     for r in reviews:
-        out.append(f"  · {r.candidate_id} [{r.candidate_kind}] → {r.verdict} "
-                   f"(adopted={r.adopted} equipped={r.equipped} can_equip={can_equip(r)})")
-    out.append(f"  roll-up: adopt-now={len(rep.adopt_now)} collect-first={len(rep.collect_first)} "
-               f"hold={len(rep.hold)} · equipped={len(rep.equipped)} · "
-               f"fake_adoption_blocked={rep.fake_adoption_blocked}")
+        valid = not validate_adoption_review(r)
+        block = equip_block_reason(r) or "(장착 가능)"
+        out.append(f"  · {r.candidate_id} [{r.candidate_kind}] → {r.adoption_verdict} "
+                   f"(valid={valid} can_equip={can_equip(r)} | {block})")
     out.append("")
     out.append("honesty rails: 멀티커맨드는 모든 줄이 /로 시작할 때만 분리(free text 무변경) · "
-               "adopted(결정)≠equipped(실장착) · collect-first/hold 장착 금지 · "
-               "adopt-now 만 3축 통과 시 equip · fake adoption 차단.")
+               "adopted(결정)≠equipped(실장착, decision_lane.adoption.can_equip) · "
+               "collect-first=Nexus 근거만/hold=보류 → 장착 금지 · adopt-now 만 검증 후 equip · fake adoption 차단.")
 
     OUT.write_text("\n".join(out) + "\n", encoding="utf-8")
     print(f"wrote {OUT}")
