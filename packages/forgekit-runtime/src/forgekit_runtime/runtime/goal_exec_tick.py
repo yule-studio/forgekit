@@ -102,6 +102,7 @@ class GoalExecTicker:
     def tick(self, n: int) -> TickOutcome:
         from forgekit_goal import GoalStatus
         from ..selfimprove import execute_bridge as EB
+        from . import goal_governance as gov
 
         store = self._get_store()
         try:
@@ -109,12 +110,14 @@ class GoalExecTicker:
         except Exception:  # noqa: BLE001 — a store read must never crash the loop
             return TickOutcome(summary=f"tick {n}: goal-exec (store 읽기 실패)", waiting=False)
 
+        by_id = {g.id: g for g in goals}
         # Only ACTIVE goals are operator-approved-to-proceed. Bound how many we touch.
         active = [g for g in goals if g.status == GoalStatus.ACTIVE][: self.max_goals]
 
         executed = 0
         blocked = 0
         skipped_done = 0
+        gov_blocked = 0
         executed_paths: List[str] = []
         touched_goals = 0
 
@@ -125,6 +128,15 @@ class GoalExecTicker:
 
         mutator = self._get_mutator()
         for goal in active:
+            # GOVERNANCE GATE — 설계 없는 구현 금지. A governance-required goal (or a child of a
+            # governance-required parent) may NOT run its packets until its design chain
+            # (PM brief → meeting → signed tech-lead decision(스택 ≥2) → handoff) is executable.
+            # We record the refusal ONCE (idempotent) and skip — never a physical run.
+            allowed, stage, reason = gov.design_gate(goal, by_id, env=self.env)
+            if not allowed:
+                goal = self._record_governance_block(store, goal, stage, reason)
+                gov_blocked += 1
+                continue
             already = self._attempted_packet_ids(goal)
             candidates = self._proposed_packet_ids(goal)
             # idempotency: never re-attempt a packet already executed or gate-refused.
@@ -151,10 +163,12 @@ class GoalExecTicker:
                     blocked += 1
                 # ERROR / AWAITING → counted as neither executed nor blocked (recorded only)
 
-        waiting = blocked > 0
+        waiting = blocked > 0 or gov_blocked > 0
         bits = [f"goal-exec {executed} 실행"]
         if blocked:
             bits.append(f"{blocked} 게이트차단")
+        if gov_blocked:
+            bits.append(f"{gov_blocked} 설계미완차단")
         if skipped_done:
             bits.append(f"{skipped_done} 완료-skip")
         summary = f"tick {n}: " + " / ".join(bits)
@@ -163,6 +177,26 @@ class GoalExecTicker:
         return TickOutcome(
             summary=summary, waiting=waiting, blocked_count=blocked,
             executed=executed, executed_paths=tuple(executed_paths))
+
+    def _record_governance_block(self, store, goal, stage: str, reason: str):
+        """Record a single, idempotent governance refusal on the goal (no physical run).
+
+        Keyed by ``ref='governance:<stage>'`` so a goal stuck at the same stage does not
+        churn a new record every tick (bounded). When the design chain advances to a new
+        stage, a fresh honest record is written. Never executes anything."""
+
+        from . import goal_governance as gov
+
+        ref = f"governance:{stage}"
+        if any(e.kind == "decision" and e.ref == ref for e in goal.evidence):
+            return goal
+        g = goal.add_evidence(
+            "decision", f"설계 미완 — specialist 실행 차단 (stage={stage}): {reason}", ref=ref)
+        try:
+            store.save(g)
+        except Exception:  # noqa: BLE001 — a record must never crash the loop
+            return goal
+        return g
 
     @staticmethod
     def _reload_goal(store, goal_id: str, fallback):

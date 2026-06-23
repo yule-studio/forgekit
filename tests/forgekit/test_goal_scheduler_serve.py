@@ -142,10 +142,38 @@ class GoalSchedulerServeTest(unittest.TestCase):
         self.assertFalse(self.store.get(g.id).packets)
         self.assertIn("수집 대상 goal 없음", out.summary)
 
-    # --- full autonomous loop: activate big goal → ... → done --------------
+    def _complete_design_chain(self, goal_id: str) -> None:
+        """Record a valid PM→meeting→tech-lead(stack ≥2)→handoff chain on the goal's
+        governance session, so the design gate becomes executable (the operator/tech-lead
+        step the enforcement requires — never auto-faked by the runtime)."""
+
+        from forgekit_runtime.runtime import goal_governance as gov
+        import forgekit_runtime.decision_lane as L
+
+        parent = self.store.get(goal_id)
+        brief = L.PMBrief(topic=parent.title, problem="self-manage", user_value="운영 자동화",
+                          acceptance_criteria=("동작 확인",), success_metrics=("회귀 green",))
+        meeting = L.MeetingRecord("m-gov", "stack", agenda=("스택 비교",), participants=(
+            L.ParticipantPosition("tech-lead", "support", "선택안"),
+            L.ParticipantPosition("backend-engineer", "conditional", "우려", concerns=("x",))),
+            decisions=("채택",))
+        stack = L.StackComparison("stack", options=(
+            L.StackOption("A", pros=("단순",), cons=("제약",)),
+            L.StackOption("B", pros=("확장",), cons=("복잡",))),
+            recommended="A", rationale="단순 우선", tradeoffs=("확장성 포기",))
+        dec = L.tech_lead_decide(brief, meeting, stack, design_system="ds", coding_convention="cc",
+                                 rationale="단순 우선")
+        ho = L.handoff_to_engineer(dec, "backend-engineer", scope=("구현",), test_strategy="unit",
+                                   acceptance_criteria=("동작 확인",))
+        br = L.build_specialist_briefing(brief, dec, ho)
+        gov.record_artifacts(goal_id, brief=brief, meeting=meeting, decision=dec, handoff=ho,
+                             briefing=br, env=self.env)
+
+    # --- full loop WITH governance: big goal → PM brief first → design chain → done ----
     def test_full_autonomous_loop_closes_goal(self) -> None:
         from forgekit_runtime.runtime.goal_exec_tick import GoalExecTicker
         from forgekit_runtime.runtime.goal_continuation_tick import GoalContinuationTicker
+        from forgekit_runtime.runtime import goal_governance as gov
 
         goal = self._active_goal()
         sched = self._sched(_safe("docs", "콘솔 도움말 문구 개선"),
@@ -153,15 +181,32 @@ class GoalSchedulerServeTest(unittest.TestCase):
         exec_t = GoalExecTicker(repo_root=self.repo, env=self.env)
         cont_t = GoalContinuationTicker(repo_root=self.repo, env=self.env)
 
-        for n in range(1, 10):
-            sched.tick(n)       # collect + autonomous decompose (once)
-            cont_t.tick(n)      # advance draft children → active
-            exec_t.tick(n)      # run each active child's safe packet → execution+verification
-            cont_t.tick(100 + n)  # roll up finished children, close parent
+        # tick 1: scheduler decomposes a big goal AND records the PM brief FIRST + marks
+        # the parent governance-required (설계 강제). The design chain is NOT yet complete.
+        sched.tick(1)
+        parent = self.store.get(goal.id)
+        self.assertTrue(gov.is_governance_required(parent))
+        self.assertFalse(gov.design_ready(parent, env=self.env))   # 설계 미완 — exec 금지
+
+        # specialist execution stays blocked until the design artifacts exist.
+        cont_t.tick(1); exec_t.tick(1)
+        for cid in parent.children:
+            child = self.store.get(cid)
+            self.assertNotIn("execution", [e.kind for e in child.evidence])   # 차단됨
+
+        # operator/tech-lead completes the design chain → gate opens.
+        self._complete_design_chain(goal.id)
+        self.assertTrue(gov.design_ready(goal.id, env=self.env))
+
+        for n in range(2, 12):
+            sched.tick(n)
+            cont_t.tick(n)
+            exec_t.tick(n)        # now permitted — design chain is executable
+            cont_t.tick(100 + n)
 
         parent = self.store.get(goal.id)
-        self.assertTrue(parent.children)                     # was decomposed autonomously
-        self.assertEqual(parent.status, GoalStatus.DONE)     # long-term goal CLOSED
+        self.assertTrue(parent.children)
+        self.assertEqual(parent.status, GoalStatus.DONE)     # long-term goal CLOSED (설계 후)
         for cid in parent.children:
             child = self.store.get(cid)
             self.assertEqual(child.status, GoalStatus.DONE)

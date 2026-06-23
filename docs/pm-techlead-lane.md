@@ -406,6 +406,28 @@ blocking_reasons 필수 + identity trail 금지.
 가 verdict/3축/follow-up · outcome/closes·decision/ci/identity-trail 을 operator
 트레일로 표면화. evidence: `apps/forgekit-console/examples/company-governance/`.
 
+## 7.8 Goal 루프 governance enforcement — 설계 없는 구현 금지 (`runtime/goal_governance.py`)
+
+always-on goal 루프가 *execution queue* 가 아니라 PM→gateway→tech-lead→specialist artifact
+흐름을 강제하도록, 이 모듈이 goal 을 본 레인에 바인딩한다. governance log 의 `session_id`
+를 **`goal.id`** 로 써서(= `/council <goal-id>` 가 그대로 트레일을 읽음), readiness ladder
+(§7.5)를 goal 실행에 hard-gate 로 건다. 코드 SSoT: `runtime/goal_governance.py`.
+
+- **PM brief 먼저** — goal-scheduler 가 *big goal*(≥2 area, 분해 대상)을 decompose 하기
+  전에 `record_pm_brief(goal)` 로 PM brief 를 **첫 governance artifact** 로 기록하고 goal 을
+  governance-required 로 표시한다. (acceptance #1 — 분해 첫 artifact = PM brief)
+- **설계 없는 구현 금지** — goal-exec tick 이 packet 을 돌리기 전에 `design_gate(goal)` 를
+  본다. governance-required goal(또는 그 parent 가 required 인 child)은 design chain 이
+  `executable`(PM brief + meeting + 서명된 tech-lead decision(스택 ≥2) + valid handoff)일
+  때만 실행된다. 아니면 refusal 을 1회 기록하고 **physical run 없이 차단**. (acceptance #2)
+- **anti-fake** — runtime 은 tech-lead 스택 비교/서명을 **자동 날조하지 않는다**. seed 한 PM
+  brief 는 goal(title/intent)에서 framing 하되 user_value/acceptance/metrics 는 비워 둬
+  *의도적으로 incomplete* → readiness 가 정직하게 pending 으로 남고, 사람이 채워야 진행한다.
+- **하위호환** — governance-required 가 아닌 goal 은 gate 가 항상 allow (동작 불변).
+- operator 표면 `/goal govern <id>` = 그 goal 의 design-chain readiness + 다음 필요 artifact.
+  회귀 `test_goal_governance_enforcement` (+ `test_goal_scheduler_serve` full-loop 이 차단→
+  chain 완료→done 을 증명), evidence `apps/forgekit-console/examples/goal-governance/`.
+
 ## 8. 한계 / 비목표
 
 - 본 레인은 **결정 흐름과 그 실재성** 만 강제한다. 회의 *내용* 의 옳고
