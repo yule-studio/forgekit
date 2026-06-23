@@ -1,0 +1,31 @@
+ForgeKit console — 진행중 motion + selection visibility + transcript readability — RUNTIME proof
+재현: tests/forgekit/test_tui_progress_selection_lane.py · test_tui_process_feed.py
+
+==============================================================================
+GAP 1 — 진행중 motion (active feed step) — amber spinner ADVANCES + live elapsed
+==============================================================================
+  3 연속 motion frame (now=7.6s → elapsed 2.3s, 실제 clock):
+    frame 0 : [b #e0b020]⠋[/b #e0b020] [#e0b020]Generating[/#e0b020] [dim](2.3s)[/dim] [dim]…[/dim]
+    frame 1 : [b #e0b020]⠙[/b #e0b020] [#e0b020]Generating[/#e0b020] [dim](2.3s)[/dim] [dim]…[/dim]
+    frame 2 : [b #e0b020]⠹[/b #e0b020] [#e0b020]Generating[/#e0b020] [dim](2.3s)[/dim] [dim]…[/dim]
+  → 글리프가 프레임마다 이동(살아있는 motion) · 색=WARNING amber(#e0b020) · elapsed=실측
+  no fake typing: now 없으면 elapsed 미표기, frame 안 돌면 정적 — motion 은 running 상태에서만
+
+==============================================================================
+GAP 2 — selection visibility (saturated-blue SELECTION_BG, runtime property)
+==============================================================================
+  screen--selection   bg=Color(45, 114, 184)  fg=Color(232, 234, 240)
+  text-area--selection bg=Color(45, 114, 184)  fg=Color(232, 234, 240)
+  SELECTION_BG = #2d72b8 (old accent-dim = #2f6f7a)
+  contrast vs background(#0b0d12) : 3.90:1  (old accent-dim ≈ 3.40:1)
+  contrast FG/selection : 4.15:1 (읽기 가능)
+
+  screenshot: running-feed.svg (export_screenshot — 실제 렌더, 활성 feed)
+
+==============================================================================
+GAP 3 — transcript readability (user prompt head bold = turn anchor)
+==============================================================================
+  [#00d8f0]›[/#00d8f0] [b]이번 turn 의 질문[/b]
+    [dim]계속되는 줄[/dim]
+
+(끝) — 색/대비/elapsed 는 mounted app·실제 clock 에서 실측 · 가짜 typing 0 · real status motion only

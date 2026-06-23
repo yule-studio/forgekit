@@ -22,13 +22,14 @@ SCREEN_CSS = """
    of looking like a separate boxed app window. `--full` still renders the same layout. */
 Screen { layout: vertical; background: transparent; }
 
-/* cross-widget drag-selection (full mode): brand desaturated-cyan block (bg via the
-   $screen-selection-background brand var) with the LIGHT brand foreground forced on top,
-   so EVERY selected line is uniformly high-contrast regardless of its own colour (dim /
-   accent / warn). Without forcing the fg, Textual leaves the original text colour, so a
-   selected `[dim]` line would be muted-on-dim — low contrast. Mirrors the composer's
-   `text-area--selection` treatment for a consistent, on-brand selection everywhere. */
-Screen > .screen--selection { color: $text; }
+/* cross-widget drag-selection (full mode): a SATURATED-blue block (bg via the
+   $screen-selection-background brand var, now SELECTION_BG) with the LIGHT brand foreground
+   forced on top, so EVERY selected line is uniformly high-contrast regardless of its own
+   colour (dim / accent / warn) AND clearly distinct from the near-black background — a drag
+   selection is unmistakably "선택됨". Without forcing the fg, Textual leaves the original text
+   colour, so a selected `[dim]` line would be muted-on-dim — low contrast. Mirrors the
+   composer's `text-area--selection` treatment for a consistent selection everywhere. */
+Screen > .screen--selection { color: $selection-foreground; }
 
 #issue { height: 1; padding: 0 1; }
 

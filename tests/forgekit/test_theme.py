@@ -24,10 +24,19 @@ class ThemeConstantTests(unittest.TestCase):
         for name in (
             "BG", "FG", "MUTED",
             "ACCENT_PRIMARY", "ACCENT_SECONDARY", "ACCENT_DIM", "BORDER",
-            "WARNING", "SUCCESS", "ERROR",
+            "WARNING", "SUCCESS", "ERROR", "SELECTION_BG",
         ):
             value = getattr(theme, name)
             self.assertRegex(value, r"^#[0-9a-fA-F]{6}$", f"{name}={value!r}")
+
+    def test_selection_token_distinct_from_accent_dim(self) -> None:
+        # the selection highlight is its OWN saturated token, no longer the quiet accent-dim
+        self.assertNotEqual(theme.SELECTION_BG, theme.ACCENT_DIM)
+        v = theme.css_variables()
+        self.assertEqual(v["selection-background"], theme.SELECTION_BG)
+        self.assertEqual(v["selection-foreground"], theme.FG)
+        # the cross-widget drag highlight uses the SAME token (uniform selection)
+        self.assertEqual(v["screen-selection-background"], theme.SELECTION_BG)
 
     def test_brand_accents_are_cyan_and_magenta(self) -> None:
         # cyan/aqua primary, magenta/pink secondary — the banner gradient ends
