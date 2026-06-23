@@ -62,6 +62,7 @@ docs/
 | engineering-agent role council / tech-lead signoff / execution review | `docs/engineering-role-council-runtime.md` (+ council contract SSoT `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
 | 설계 결정 레인 / PM→gateway→tech-lead→engineer handoff / stack 비교·권고 / fake meeting·signoff 금지 | `docs/pm-techlead-lane.md` (+ 코드 SSoT `packages/forgekit-runtime/src/forgekit_runtime/decision_lane/`) |
 | Hephaistos forge plan → 실제 승인 게이트 → execution receipt / forge governance | `docs/hephaistos-governance.md` (+ 코드 SSoT `packages/forgekit-runtime/src/forgekit_runtime/forge/`) |
+| 외부 tool/skill/plugin 설치·활성화 안전 / 추천≠설치≠실행 lifecycle / 공급망 리스크 게이트 / fake installed 금지 | `docs/install-safety-lane.md` (+ 코드 SSoT `packages/forgekit-runtime/src/forgekit_runtime/activation/`) |
 | 모노레포 구조 / packages·apps / compat shim / 코드 이전 | `docs/monorepo-structure.md` (달성 구조 · 의존 hard rail · shim 카탈로그 · 남은 로드맵 SSoT) |
 | ForgeKit 플랫폼 경계 / console=operator app / 코어 packages 분리 | `docs/forgekit-architecture-ownership.md` (owner 매트릭스 · import 경계 · 이전 우선순위 SSoT) |
 | packages/* 분류 / 네이밍 충돌 / 새 기능 위치 / transitional debt | `docs/package-topology.md` (18 package 분류표 · migration matrix · 결정 트리 SSoT) |
