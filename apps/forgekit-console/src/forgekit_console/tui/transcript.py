@@ -22,7 +22,7 @@ from typing import Sequence
 
 from textual.widgets import RichLog
 
-from . import render, theme
+from . import render
 
 
 class Transcript(RichLog):
@@ -61,16 +61,11 @@ class Transcript(RichLog):
             self.write("")
 
     def write_echo(self, raw: str) -> None:
-        """Echo the submitted input as a quiet transcript turn.
+        """Echo the submitted input as a quiet transcript turn — bold you-marker head +
+        dim indented continuation. Formatting lives in :func:`render.you_echo_lines`
+        (pure, unit-tested); this just writes the lines."""
 
-        The first line carries the accent ``›`` marker; continuation lines of a
-        multiline prompt are indented under it so a pasted block reads as one turn.
-        """
-
-        head, *rest = (raw or "").split("\n")
-        self.write(f"[{theme.ACCENT_PRIMARY}]›[/{theme.ACCENT_PRIMARY}] {head}")
-        for line in rest:
-            self.write(f"  [dim]{line}[/dim]")
+        self.write_lines(render.you_echo_lines(raw))
 
     def write_result(self, title: str, lines: Sequence[str]) -> None:
         self.write_lines(render.result_block(title, lines))
