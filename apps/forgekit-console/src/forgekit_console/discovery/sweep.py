@@ -283,7 +283,119 @@ def persist_brief(
     return write_note(content, vault_root, subpath)
 
 
+# --- evidence notes — discovery output beyond idea briefs ----------------------
+# A sweep also surfaces a competitor/gap MAP and forgekit self-improve signals. Authoring
+# them as notes (same responsibility as the brief note above) means the loop accumulates
+# STRUCTURED evidence, not just briefs. Honest: 00-inbox raw intake, never curated, and
+# nothing to write → None (no hollow note).
+def gap_map_to_evidence_note(
+    gap_map: M.CompetitorGapMap,
+    *,
+    author: str = "user-researcher",
+    created_at: str = "",
+    title: str = "경쟁/gap 관측 evidence",
+    related: Sequence[str] = (),
+) -> str:
+    """Author the competitor/gap map as a retrieval-friendly evidence note."""
+
+    from nexus.vault.note import build_authored_note
+
+    comp_lines = [f"- {c}" for c in gap_map.competitors] or ["- (관측된 경쟁/대체재 없음)"]
+    gap_lines = [f"- {g}" for g in gap_map.gaps] or ["- (관측된 gap 없음)"]
+    body = "\n".join([
+        "## 핵심 요약",
+        f"- 경쟁/대체재 {len(gap_map.competitors)}개 대비 미충족 gap {len(gap_map.gaps)}개 관측",
+        "",
+        "## 경쟁 지형",
+        *comp_lines,
+        "",
+        "## 관측된 gap (미충족 needs)",
+        *gap_lines,
+        "",
+        "## 내 해석",
+        "- gap 이 경쟁 대비 많을수록 차별화 여지가 크다 — idea brief 의 근거로 사용.",
+        "",
+        "## 참고",
+        "- discovery sweep 의 gap_map 에서 자동 추출 (수집 신호 분류 기반).",
+    ])
+    return build_authored_note(
+        author, title=title, body=body, kind="evidence", status="draft",
+        created_at=created_at, phase="discovery", source_flow="discovery-sweep",
+        handoff_from="discovery", handoff_to="pm",
+        tags=("forgekit", "discovery", "evidence", "competitor-gap"),
+        related=tuple(related))
+
+
+def self_improve_to_note(
+    signals: Sequence[M.OpportunitySignal],
+    *,
+    author: str = "user-researcher",
+    created_at: str = "",
+    title: str = "forgekit 자체 개선 신호",
+    related: Sequence[str] = (),
+) -> str:
+    """Author collected self-improve signals as an improvement-signal note."""
+
+    from nexus.vault.note import build_authored_note
+
+    sig_lines = [f"- [{s.source_id or 'operator'}] {s.text}" for s in signals] \
+        or ["- (수집된 self-improve 신호 없음)"]
+    body = "\n".join([
+        "## 핵심 요약",
+        f"- forgekit 콘솔/도구 자체에 대한 개선 신호 {len(signals)}건 수집",
+        "",
+        "## 개선 신호",
+        *sig_lines,
+        "",
+        "## 내 해석",
+        "- 외부 수집과 별개로, 도구 자체의 마찰은 self-improvement 루프(WT4)의 입력이다.",
+        "",
+        "## 적용 맥락",
+        "- tech-lead 검토 후 packet 화 → 승인 게이트(실행 아님).",
+        "",
+        "## 참고",
+        "- discovery sweep 의 self_improve_signals 에서 자동 추출.",
+    ])
+    return build_authored_note(
+        author, title=title, body=body, kind="improvement-signal", status="draft",
+        created_at=created_at, phase="discovery", source_flow="discovery-sweep",
+        handoff_from="discovery", handoff_to="tech-lead",
+        tags=("forgekit", "discovery", "self-improve"),
+        related=tuple(related))
+
+
+def persist_evidence(
+    sweep: "DiscoverySweep",
+    vault_root,
+    *,
+    author: str = "user-researcher",
+    created_at: str = "",
+    subdir: str = "00-inbox/discovery",
+) -> dict:
+    """Write gap-map + self-improve evidence notes under the vault. Honest empties.
+
+    Returns ``{"gap": path|None, "self_improve": path|None}`` — a key is ``None`` when
+    that track has nothing to record (no hollow note) or the vault is unwritable."""
+
+    out: dict = {"gap": None, "self_improve": None}
+    if not vault_root:
+        return out
+    from nexus.vault.note import write_note
+
+    gm = sweep.result.gap_map
+    if gm.competitors or gm.gaps:
+        content = gap_map_to_evidence_note(gm, author=author, created_at=created_at)
+        out["gap"] = write_note(content, vault_root, f"{subdir}/evidence-competitor-gap.md")
+    sigs = sweep.result.self_improve_signals
+    if sigs:
+        content = self_improve_to_note(sigs, author=author, created_at=created_at)
+        out["self_improve"] = write_note(
+            content, vault_root, f"{subdir}/evidence-self-improve.md")
+    return out
+
+
 __all__ = (
     "DiscoveryDigest", "DiscoverySweep", "run_discovery_sweep",
     "next_questions_for", "promote_brief", "brief_to_authored_note", "persist_brief",
+    "gap_map_to_evidence_note", "self_improve_to_note", "persist_evidence",
 )
