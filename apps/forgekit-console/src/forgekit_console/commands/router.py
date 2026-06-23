@@ -286,6 +286,16 @@ def _provider_result(parsed, ctx: ConsoleContext) -> CommandResult:
             return CommandResult.info("provider recommended", cs.recommended_lines(cfg))
         ok, msg = (cs.apply_connect(pid) if sub == "connect" else cs.apply_disconnect(pid))
         return (CommandResult.info if ok else CommandResult.error)(f"provider {sub}", msg.split("\n"))
+    if sub == "attach":
+        # `/provider attach <id>` — project ONE selected armory tool onto its provider
+        # ecosystem(s): attach/connect/verify per target (claude/codex/gemini) or backend(ollama).
+        from .. import provider_projection as pp
+        tool_id = args[1] if len(args) > 1 else ""
+        if not tool_id:
+            return CommandResult.info("provider attach", (
+                "도구 id 를 입력하세요 — `/provider attach <skill|weapon id>` "
+                "(예: `/provider attach figma-read`). `/resolve <요청>` 의 skills/weapons 참고.",))
+        return CommandResult.info("provider attach", pp.attach_detail_lines(tool_id))
     if sub == "link":
         ok, msg = ps.apply_link(args[1] if len(args) > 1 else "", env=env)
         return (CommandResult.info if ok else CommandResult.error)("provider link", (msg,))
@@ -496,9 +506,23 @@ def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
                                             "(예: `/resolve Spring Boot JWT refresh token`).",))
     plan, read = proj.resolve_with_sources(request, env=env, config=config, role=role)
     if handler == H_RESOLVE:
-        lines = list(proj.resolve_summary_lines(plan, read)) + list(_forge_governance_lines(request, env=env))
+        lines = (list(proj.resolve_summary_lines(plan, read))
+                 + list(_provider_projection_lines(plan))
+                 + list(_forge_governance_lines(request, env=env)))
         return CommandResult.info("resolve", tuple(lines))
     return CommandResult.info("skills", proj.skills_lines(plan, read))
+
+
+def _provider_projection_lines(plan) -> tuple:
+    """Append the provider-projection block to /resolve — for each selected armory tool,
+    WHERE it attaches (claude/codex/gemini projection or ollama backend) + verify gist.
+    Lazy + best-effort: a render error must never break /resolve."""
+
+    try:
+        from .. import provider_projection as pp
+        return pp.packet_projection_lines(plan)
+    except Exception:  # noqa: BLE001
+        return ()
 
 
 def _forge_governance_lines(request: str, *, env=None) -> tuple:
