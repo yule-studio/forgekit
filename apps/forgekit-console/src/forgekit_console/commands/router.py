@@ -457,6 +457,49 @@ def _discovery_result(parsed, ctx) -> CommandResult:
         lines.append("`/discovery promote <n>` · `save <n>` · `park <n>`")
         return CommandResult.info("discovery pending", tuple(lines))
 
+    if sub == "candidates":
+        # "나중에 operator 에게 물어볼" 후보 — 여러 sweep 에 걸쳐 교차 관측되고 신선한 high-score
+        # pending 아이디어만. 단발 noise 가 아니라 누적으로 corroborate 된 것만 표면화한다.
+        cands = D.ask_candidates(ledger, _discovery_now())
+        if not cands:
+            return CommandResult.info(
+                "discovery candidates",
+                ("물어볼 후보 없음 — 교차 관측·신선도 기준을 넘는 아이디어가 아직 없습니다.",
+                 "기준: ≥2회 교차 관측 · score ≥ 2.0 · 36h 내 관측. 더 누적되면 표면화됩니다."))
+        lines = [f"operator 에게 물어볼 후보 {len(cands)}건 (교차 관측·신선도 통과):"]
+        for i, (idea, reason) in enumerate(cands, 1):
+            lines.append(f"[{i}] {idea.title}")
+            lines.append(f"    근거: {reason}")
+            if idea.next_questions:
+                lines.append(f"    물어볼 것: {idea.next_questions[0]}")
+        lines.append("`/discovery pending` 의 번호로 promote/save/park — 이 목록은 read-only 표면입니다.")
+        return CommandResult.info("discovery candidates", tuple(lines))
+
+    if sub == "evidence":
+        # 현재 sweep 의 경쟁/gap map + self-improve 신호를 연결된 vault 에 evidence note 로 영속.
+        # idea-brief 와 별개 트랙 — raw 신호가 증발하지 않고 구조적으로 누적된다(미연결이면 정직 실패).
+        from hephaistos.nexus_read import nexus_root
+
+        root = nexus_root(env, getattr(ctx, "config", None))
+        if not root:
+            return CommandResult.error(
+                "discovery evidence",
+                ("Nexus vault 미연결 — `/nexus set <path>` 로 먼저 연결하세요 (fake-write 안 함).",))
+        sweep = D.run_discovery_sweep(repo_root, config=getattr(ctx, "config", None))
+        paths = D.persist_evidence(sweep, root)
+        if not paths["gap"] and not paths["self_improve"]:
+            return CommandResult.info(
+                "discovery evidence",
+                ("기록할 evidence 없음 — 이번 sweep 에 경쟁/gap·self-improve 신호가 없습니다 "
+                 "(hollow note 안 만듦).",))
+        lines = ["evidence note 기록 (00-inbox/discovery, raw intake):"]
+        if paths["gap"]:
+            lines.append(f"- 경쟁/gap: {paths['gap']}")
+        if paths["self_improve"]:
+            lines.append(f"- self-improve 신호: {paths['self_improve']}")
+        lines.append("- author user-researcher · status draft (curated 아님 — eval gate 후 승격)")
+        return CommandResult.info("discovery evidence", tuple(lines))
+
     if sub == "promote":
         idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
         if err:
@@ -509,9 +552,11 @@ def _discovery_result(parsed, ctx) -> CommandResult:
 
     # default: sweep → record into ledger → accumulating digest
     sweep = D.run_discovery_sweep(repo_root, config=getattr(ctx, "config", None))
-    new, updated = ledger.record_sweep(sweep, now=_discovery_now())
+    now = _discovery_now()
+    new, updated = ledger.record_sweep(sweep, now=now)
     ledger.save(env)
     s = ledger.summary()
+    cands = D.ask_candidates(ledger, now)
     lines = [
         "discovery — 누적 digest (ledger-backed)",
         f"- live 수집원(무료 우선): {', '.join(sweep.digest.live_sources) or '(없음)'}",
@@ -532,6 +577,8 @@ def _discovery_result(parsed, ctx) -> CommandResult:
 
     root = nexus_root(env, getattr(ctx, "config", None))
     lines.append(f"- vault: {'연결됨 ' + str(root) if root else '미연결 — /nexus set <path> 후 /discovery save 가능'}")
+    if cands:
+        lines.append(f"- 물어볼 후보: {len(cands)}건 (교차 관측·신선도 통과) — `/discovery candidates` 로 확인")
     lines.append("`/discovery pending` 으로 결정 대기 아이디어를 보고 promote/save/park 하세요.")
     return CommandResult.info("discovery", tuple(lines))
 
