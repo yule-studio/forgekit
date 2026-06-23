@@ -33,7 +33,7 @@ from .prompt_area import PromptArea
 
 from .. import __version__
 from ..commands import palette as palette_state
-from ..commands.parser import parse_input
+from ..commands.parser import parse_input, split_command_lines
 from ..commands.router import ConsoleContext, build_default_context, route
 from ..models import (
     KIND_AGENT_MODE,
@@ -270,7 +270,12 @@ class ForgekitConsoleApp(App):
         if selected is not None:
             raw = f"/{selected.name}"
         if raw.strip():
-            self._execute(raw)
+            # a multi-command submit (a stack of `/...` lines) runs each in order so
+            # the operator isn't limited to "하나만 인식"; free text / single command
+            # is returned as one entry and behaves exactly as before.
+            for line in split_command_lines(raw):
+                if line.strip():
+                    self._execute(line)
 
     def action_next(self) -> None:
         if self._palette.is_open:
