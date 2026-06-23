@@ -24,6 +24,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | discovery 24h bounded loop (injected clock 누적 driver) | working (core/tick; serve 배선=autonomy lane) | `run_discovery_loop`/`discovery_loop_tick` | `examples/discovery/loop-report.json`, `test_discovery_loop` |
 | discovery ask-me-later 후보 (교차 관측·신선도·score 기준) | working | `/discovery candidates` | `test_discovery_loop` |
 | discovery evidence track (경쟁gap·self-improve → vault note) | working (연결 시; 미연결 정직 실패) | `/discovery evidence` | `examples/discovery/evidence-*.md`, `test_discovery_loop` |
+| GeekNews 무료 radar 수집 (news.hada.io RSS) | working (free; config 토글) | `/sources` · config `discovery.geeknews` | `test_discovery_adoption` |
+| discovery 도입 효율 검토 (6-class 분류 + 8축 + 3축 consult, 기본 collect-first) | working (no fake adoption; 기본 collect-first/hold) | `/discovery review <n>` | `examples/discovery/adoption-review.md`, `test_discovery_adoption` |
+| discovery adopt-now → armory intake (adopted ≠ equipped) | working (3축 후 operator 결정 → promote_candidate adopted 판정; 장착=별도; raw=정직 reject) | `/discovery adopt <n>` | `examples/discovery/adoption-packet.json`, `test_discovery_adoption` |
 | operator-tunable 수집 토픽 (HN/subreddits/GitHub/RSS) | working | config `discovery` 블록 | `test_discovery_ledger` |
 | discovery brief → PM handoff (제안) | working | `/discovery promote <n>` | `test_discovery_ledger` |
 | discovery brief → authored vault note | working (연결 시; 미연결 정직 실패) | `/discovery save <n>` | `examples/discovery/idea-brief-note.md` |

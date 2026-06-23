@@ -76,16 +76,52 @@ raw 면 증발하므로 authored evidence note 로 영속해 구조적으로 누
   (hollow note 금지), vault 미연결이면 정직 실패. 둘 다 `00-inbox/discovery`(raw intake, status draft).
 - evidence: `examples/discovery/evidence-competitor-gap.md` · `evidence-self-improve.md`.
 
+## 도입 효율 검토 (adoption-efficiency review)
+"많이 모으기"가 목적이 아니라 "도입 가치 판단 가능한 근거 만들기"가 목적이다. 수집한 후보
+(plugin/skill/collector/rule/tool/idea)는 `좋아 보인다`만으로 도입하지 않고 **도입 효율 검토**를
+거친다. 코드: `discovery/adoption.py` (한 모듈, ponytail verdict 주석).
+
+**6-class 분류** (`classify_candidate`): `signal_only` / `tool_candidate` / `idea_candidate` /
+`competitor_signal` / `implementation_reference` / `risk_or_constraint`. 후보의 제목·문제 텍스트로
+결정(boilerplate 가설 텍스트는 제외 — false competitor 방지).
+
+**8축 검토** (`AdoptionReview`, `build_adoption_review`):
+1 current pain · 2 expected benefit · 3 overlap(기존 capability 겹침; armory catalog signals 로 검사) ·
+4 operational cost · 5 maintenance risk · 6 provider/runtime fit(provider-neutral) ·
+7 governance/security impact · 8 adopt-now vs collect-first vs hold.
+
+**disposition (세 결말만)** — fake adoption 금지:
+- 기본 **collect-first**: 근거 누적만, **즉시 활성화 안 함**. Nexus vault 에 evidence note 로 영속.
+- **hold**: `risk_or_constraint` 분류이거나 기존 capability 와 겹치면 보류(추적 대상).
+- **adopt-now**: `build_adoption_review` 는 **절대 자동으로 주지 않는다**. 3축(PM/tech-lead/specialist)
+  검토 후 operator 의 명시 결정(`resolve_review(adopt=True)`)으로만. 그래서 모든 후보가 만들 때
+  collect-first/hold 로 나오고, adopt-now 는 사람 결정의 결과다.
+
+**3축 검토 강제**: `build_adoption_review` 는 매 후보마다 **실제 `ConsultNote`**(decision_lane)를 만든다 —
+`by_role=user-researcher → to_roles=[product-manager, tech-lead, <분류별 specialist>]` + 실질 question.
+`validate_consult` 통과하는 진짜 artifact(빈 consult 위조 아님).
+
+**adopted ≠ equipped** (Hephaistos/armory 연결): adopt-now 결정 후 `adoption_to_armory_candidate` 가
+armory intake 게이트(`promote_candidate`)로 연결한다. **adopted** = 계약 검증 통과한 catalog spec.
+**equipped** = `catalog.register_promoted`(resolver 가 실제로 고를 수 있게) — **별도 명시 단계, 여기서 안 함**.
+raw 아이디어는 contract(summary/signals/when_to_use/unsafe_boundary/capability_note/commands) 가 없어
+intake 가 **정직하게 reject**(fake available 방지) → specialist 가 채운 뒤 재시도.
+
+evidence: `examples/discovery/adoption-review.md`(8축 authored note) · `adoption-packet.json`
+(collect-first 검토 → 3축 결정 → armory intake 의 머신 리더블 패킷).
+
 ## current live vs planned
 | 단계 | 상태 | surface | evidence |
 | --- | --- | --- | --- |
-| free-first 수집 (repo-local/HN/Reddit/GitHub/RSS) | **live** (network=injectable fetcher) | `/sources` | `examples/sources/` |
-| **operator-tunable 수집 토픽** (HN query/subreddits/GitHub query/RSS) | **live** | config `discovery` 블록 → `registry_from_config` | `test_discovery_ledger` |
+| free-first 수집 (repo-local/HN/**GeekNews**/Reddit/GitHub/RSS) | **live** (network=injectable fetcher) | `/sources` | `examples/sources/`, `test_discovery_adoption` |
+| **operator-tunable 수집 토픽** (HN query/subreddits/GitHub query/RSS/geeknews 토글) | **live** | config `discovery` 블록 → `registry_from_config` | `test_discovery_ledger`·`test_discovery_adoption` |
 | 수집 → idea-discovery 한 패스 연결 | **live** | `/discovery` | `examples/discovery/sweep-digest.json` |
 | **아이디어 누적/dedup/lifecycle (ledger)** | **live** | `/discovery` · `/discovery pending` | `examples/discovery/ledger-accumulation.json` |
 | **24h bounded loop (누적 driver, injected clock)** | **live** (core/tick) · serve 배선=planned | `run_discovery_loop`/`discovery_loop_tick` | `examples/discovery/loop-report.json` |
 | **freshness·promotion 기준 (ask-me-later 후보)** | **live** | `/discovery candidates` | `test_discovery_loop` |
 | **evidence track (경쟁gap·self-improve → vault note)** | **live** (연결 시) | `/discovery evidence` | `examples/discovery/evidence-*.md` |
+| **도입 효율 검토 (6-class 분류 + 8축 + 3축 consult, 기본 collect-first)** | **live** | `/discovery review <n>` | `examples/discovery/adoption-review.md`, `test_discovery_adoption` |
+| **adopt-now → armory intake (adopted ≠ equipped)** | **live** (adopted 판정; equipped=별도 단계) | `/discovery adopt <n>` | `examples/discovery/adoption-packet.json`, `test_discovery_adoption` |
 | operator digest (왜/다음 질문) | **live** | `/discovery` | `sweep-digest.json` `entries[].why/next_questions` |
 | brief → PM handoff packet | **live** (제안 only) | `/discovery promote <n>` | `test_discovery_ledger` |
 | brief → authored vault note (retrieval-friendly) | **live** (연결 시) | `/discovery save <n>` | `examples/discovery/idea-brief-note.md` |
@@ -99,6 +135,7 @@ raw 면 증발하므로 authored evidence note 로 영속해 구조적으로 누
     "hackernews_query": "AI agents OR devtools",
     "subreddits": ["SaaS", "startups", "selfhosted"],
     "github_query": "tui+dashboard",
+    "geeknews": true,
     "rss_feeds": [["lobsters", "https://lobste.rs/rss"]] } }
 ```
 `registry_from_config(repo_root, config)` 가 이걸 읽어 수집원을 구성한다. 빈 쿼리/빈 리스트는 해당
@@ -116,8 +153,13 @@ raw 면 증발하므로 authored evidence note 로 영속해 구조적으로 누
   eval gate 통과 후 별도).
 - **승격은 제안일 뿐** — `/discovery promote` 는 PM→gateway→tech-lead handoff packet 을 만들고
   멈춘다. 실행은 승인 게이트 통과 후.
-- **vault 미연결 시 정직 실패** — `/discovery save` 는 `FORGEKIT_NEXUS_ROOT`/config 없으면
-  fake-write 없이 에러를 돌려준다.
+- **vault 미연결 시 정직 실패** — `/discovery save`·`/discovery review`·`evidence` 는
+  `FORGEKIT_NEXUS_ROOT`/config 없으면 fake-write 없이 에러/메모리만.
+- **fake adoption 금지** — `/discovery review` 는 절대 자동 adopt-now 를 주지 않는다(기본
+  collect-first/hold). adopt-now 는 3축 검토 후 operator 결정뿐. `/discovery adopt` 는 raw 아이디어를
+  계약 없이 catalog 에 넣지 않는다 — armory intake 가 정직하게 reject(adopted ≠ equipped).
+- **collect-first 는 활성화 아님** — collect-first 후보는 Nexus 에 evidence 만 누적, resolver/Hephaistos
+  에 즉시 노출되지 않는다.
 
 ## operator 흐름
 1. `/discovery` — 수집 sweep + **누적 digest**: 총 추적/결정대기/promoted/saved/parked + 이번 sweep
@@ -125,11 +167,15 @@ raw 면 증발하므로 authored evidence note 로 영속해 구조적으로 누
 2. `/discovery pending` — 결정 대기 아이디어 큐(score 순, 번호 부여).
 3. `/discovery candidates` — **물어볼 후보**(교차 관측·신선도·score 통과만). read-only 표면 —
    번호로 결정하려면 `/discovery pending` 의 번호를 쓴다.
-4. `/discovery evidence` — 이번 sweep 의 경쟁/gap·self-improve 신호를 vault evidence note 로 영속
+4. `/discovery review <n>` — n 번을 **도입 효율 검토**(6-class 분류 + 8축 + 3축 consult)로 만든다.
+   기본 collect-first(즉시 활성화 안 함), 연결 vault 에 adoption-review evidence note 영속.
+5. `/discovery adopt <n>` — 3축 검토 후 operator adopt-now 결정 → armory intake. adopted(검증된 spec)
+   여부만 판정, 장착(equipped)은 별도. raw 아이디어면 계약 미완성으로 정직 reject.
+6. `/discovery evidence` — 이번 sweep 의 경쟁/gap·self-improve 신호를 vault evidence note 로 영속
    (미연결이면 정직 실패, 기록할 게 없으면 hollow note 안 만듦).
-5. `/discovery promote <n>` — n 번을 PM handoff packet 으로 승격(제안) → ledger status `promoted`.
-6. `/discovery save <n>` — 연결된 Nexus vault 에 authored idea-brief note 영속 → status `saved`(note_path 기록).
-7. `/discovery park <n>` — 보류 → status `parked`(다시 안 올라옴).
+7. `/discovery promote <n>` — n 번을 PM handoff packet 으로 승격(제안) → ledger status `promoted`.
+8. `/discovery save <n>` — 연결된 Nexus vault 에 authored idea-brief note 영속 → status `saved`(note_path 기록).
+9. `/discovery park <n>` — 보류 → status `parked`(다시 안 올라옴).
 
 반복 실행하면 ledger 가 쌓여 "지난번엔 새거 3개였는데 이번엔 0개 새거·5개 다시 관측, 2개는 이미 promoted"
 처럼 누적 상태를 보여준다 — 개인 비서형 수집·정리·아이디어화 루프.
@@ -138,6 +184,7 @@ raw 면 증발하므로 authored evidence note 로 영속해 구조적으로 누
 - `python -m unittest tests.forgekit.test_discovery_ledger` (누적·dedup·lifecycle·config 토픽·surface)
 - `python -m unittest tests.forgekit.test_discovery_sweep` (루프·digest·note·승격 코어)
 - `python -m unittest tests.forgekit.test_discovery_loop` (24h bounded loop·freshness/promotion·evidence·surface)
+- `python -m unittest tests.forgekit.test_discovery_adoption` (6-class 분류·8축 검토·3축 consult·armory bridge·GeekNews)
 - `python -m unittest tests.forgekit.test_discovery_e2e` (전체 discovery 프로그램 체인)
 
 ## planned seam 붙이는 법 (YouTube/Google/Instagram)
