@@ -51,7 +51,7 @@ class PaletteTests(unittest.TestCase):
 
     def test_prefix_multiple(self) -> None:
         names = {c.name for c in palette_matches("/a")}
-        self.assertEqual(names, {"agents", "about", "always-on", "auto", "autopilot", "attach"})
+        self.assertEqual(names, {"agents", "about", "always-on", "auto", "autopilot", "attach", "armory"})
 
     def test_substring_fallback_only_when_no_prefix(self) -> None:
         # prefix exists → exact prefix set (no widening); no prefix → substring fallback.
