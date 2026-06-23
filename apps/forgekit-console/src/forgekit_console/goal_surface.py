@@ -108,6 +108,24 @@ def progress_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ...
     return tuple(out)
 
 
+def govern_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ...]:
+    """`/goal govern <id>` — the goal's design-chain readiness (PM→tech-lead→specialist).
+
+    Reads the goal's governance log (keyed by goal.id) via the runtime binding and renders
+    the lane-readiness ladder + the next required design artifact. Honest: a governance-
+    required goal whose chain is incomplete shows '설계 진행 중' and what's still missing —
+    specialist execution stays blocked until executable (설계 없는 구현 금지)."""
+
+    g = _store(env).get((gid or "").strip())
+    if g is None:
+        return (f"goal {gid!r} 없음 — `/goal list` 로 확인",)
+    try:
+        from forgekit_runtime.runtime import goal_governance as gov
+    except Exception as e:  # noqa: BLE001 - runtime optional; surface must not crash
+        return (f"goal governance 미가용: {e}",)
+    return gov.governance_lines(g, env=env)
+
+
 def goal_evidence_lines(env: Optional[Mapping[str, str]], gid: str) -> Tuple[str, ...]:
     g = _store(env).get((gid or "").strip())
     if g is None:
@@ -438,7 +456,7 @@ def usage_lines() -> Tuple[str, ...]:
 
 
 __all__ = (
-    "goal_list_lines", "goal_show_lines", "goal_evidence_lines",
+    "goal_list_lines", "goal_show_lines", "goal_evidence_lines", "govern_lines",
     "progress_lines", "awaiting_lines", "apply_new", "apply_plan",
     "apply_activate", "apply_approve", "apply_deny", "apply_publish_evidence",
     "usage_lines",
