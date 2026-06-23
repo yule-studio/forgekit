@@ -13,7 +13,7 @@ from typing import Mapping, Optional, Tuple
 from forgekit_provider.policy import provider_config as pc
 from forgekit_provider.policy import provider_ops as ops
 
-from . import diagnose, status as st, wizard
+from . import attach, diagnose, status as st, wizard
 from .probe import ConnectionProbe
 
 
@@ -43,6 +43,7 @@ def setup_status_lines(config: Optional[Mapping] = None, *, probe: Optional[Conn
     else:
         lines.append("  다음: gemini API 키 또는 ollama 데몬을 연결한 뒤 `/setup apply` — claude/codex 만으로는 live 불가.")
     lines.append("  명령: `/setup apply` · `/provider connect <id>` · `/provider test <id>` · `/provider recommended`")
+    lines.append(f"  [dim]{attach.PROJECTION_LEGEND}[/dim]")
     return tuple(lines)
 
 
