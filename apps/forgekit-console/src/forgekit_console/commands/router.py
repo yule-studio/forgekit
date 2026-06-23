@@ -427,6 +427,17 @@ def _discovery_now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+def _armory_signals() -> tuple:
+    """Existing-capability signals from the armory catalog (for overlap detection)."""
+
+    try:
+        from armory.catalog import all_skills
+
+        return tuple(s for sk in all_skills() for s in getattr(sk, "signals", ()) or ())
+    except Exception:  # noqa: BLE001 — overlap is best-effort; absence ≠ crash
+        return ()
+
+
 def _discovery_pending_idea(ledger, idx_token: str):
     """Resolve a 1-based index into the ledger's pending queue (score-ordered)."""
 
@@ -510,6 +521,55 @@ def _discovery_result(parsed, ctx) -> CommandResult:
             lines.append(f"- self-improve 신호: {paths['self_improve']}")
         lines.append("- author user-researcher · status draft (curated 아님 — eval gate 후 승격)")
         return CommandResult.info("discovery evidence", tuple(lines))
+
+    if sub == "review":
+        # /discovery review <n> — pending 아이디어 n 을 도입 효율 검토(8축)로 만든다.
+        # 기본 disposition=collect-first(즉시 활성화 안 함), 3축(PM/tech-lead/specialist) consult 요청.
+        # vault 연결 시 adoption-review evidence note 로 영속(no fake — 미연결이면 메모리만).
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery review", (err,))
+        existing = _armory_signals()
+        review = D.build_adoption_review(idea.rebuild_brief(), source_id=idea.source_id,
+                                         existing_signals=existing)
+        lines = list(review.lines())
+        from hephaistos.nexus_read import nexus_root
+
+        root = nexus_root(env, getattr(ctx, "config", None))
+        if root:
+            path = D.persist_adoption_review(review, root)
+            lines.append(f"- evidence note: {path}" if path else "- evidence note: 쓰기 실패(권한/경로)")
+        else:
+            lines.append("- vault 미연결 — 검토는 표시만(영속하려면 `/nexus set <path>`).")
+        lines.append("도입은 3축 검토 후 operator 결정으로만 — `/discovery adopt <n>` (adopted≠equipped).")
+        return CommandResult.info("discovery review", tuple(lines))
+
+    if sub == "adopt":
+        # /discovery adopt <n> — operator 가 3축 검토 후 adopt-now 결정을 기록 → armory intake 게이트.
+        # adopted(검증된 spec) 여부만 판정. 실제 장착(equipped=register_promoted)은 별도 단계(여기서 안 함).
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery adopt", (err,))
+        review = D.build_adoption_review(idea.rebuild_brief(), source_id=idea.source_id,
+                                         existing_signals=_armory_signals())
+        if review.classification == D.CLASS_RISK:
+            return CommandResult.error(
+                "discovery adopt",
+                ("이 후보는 risk/constraint 분류 — 도입이 아니라 추적/완화 대상입니다 (hold).",))
+        decided = D.resolve_review(review, adopt=True, note="operator adopt-now (console)")
+        result = D.adoption_to_armory_candidate(decided, contract={})
+        lines = [f"adopt-now 결정 기록: {review.title}",
+                 f"- 분류: {review.classification} · disposition: {decided.disposition}"]
+        if result is not None and result.accepted:
+            lines.append("- armory intake: ADOPTED (계약 검증 통과 — catalog spec 생성됨)")
+            lines.append("- 주의: adopted ≠ equipped. 장착은 `register_promoted` 별도 단계(여기서 안 함).")
+        else:
+            reasons = list(result.reasons) if result is not None else ["bridge 미적용"]
+            lines.append("- armory intake: 계약 미완성 — 아직 ADOPTED 아님(fake available 방지). 필요:")
+            lines.extend(f"  · {r}" for r in reasons[:6])
+            lines.append("- raw 아이디어라 contract(summary/signals/when_to_use/unsafe_boundary/"
+                         "capability_note/commands) 필요 — specialist 가 채운 뒤 재시도.")
+        return CommandResult.info("discovery adopt", tuple(lines))
 
     if sub == "promote":
         idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
