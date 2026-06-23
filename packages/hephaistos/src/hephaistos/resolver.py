@@ -22,6 +22,7 @@ from . import armory
 from .models import (
     SRC_NOT_CONNECTED,
     NexusSourceRef,
+    RejectedCandidate,
     ResolvedForgePlan,
     SelectionEvidence,
     WorkPacketDraft,
@@ -165,13 +166,28 @@ def resolve(request: str, *, preferred_role: str = "",
 
     scored = []
     evidence: list = []
+    rejected: list = []
     for sk in armory.all_skills():
         # LANGUAGE GATE: a language-specific skill is excluded for a different language.
         if language and sk.languages and language not in sk.languages:
+            # only record a gate rejection if it was otherwise plausible (domain/signal hit).
+            if domain in sk.domains or sk.signal_score(blob):
+                rejected.append(RejectedCandidate(
+                    sk.id, "skill", f"language gate: 요청={language} ≠ {'/'.join(sk.languages)}",
+                    "language-gate"))
             continue
         score = sk.matches(domain=domain, language=language, framework=framework, topic=topic)
         score += sk.signal_score(blob)
         score += sum(1 for t in sk.topics if t in blob)
+        # DOMAIN GATE: a skill from a *different* inferred domain must earn it on more than
+        # a bare language match (else a backend-TS skill leaks into a frontend-TS task).
+        if score > 0 and domain and sk.domains and domain not in sk.domains:
+            lang_bonus = 2 if (language and language in sk.languages) else 0
+            if score - lang_bonus <= 0:
+                rejected.append(RejectedCandidate(
+                    sk.id, "skill", f"domain gate: 요청 domain={domain} ≠ {'/'.join(sk.domains)} "
+                    "(language 만 일치, task 부적합)", "domain-gate"))
+                continue
         if score > 0:
             scored.append((score, sk))
     scored.sort(key=lambda x: (-x[0], x[1].id))
@@ -205,6 +221,21 @@ def resolve(request: str, *, preferred_role: str = "",
     if chosen_loadout:
         evidence.append(SelectionEvidence(target=chosen_loadout, kind="loadout",
                                           decision="selected", reason=lo_reason, signals=lo_signals))
+
+    # project-fact exclusions are also rejected candidates (why-not, with the fact).
+    for ex in excluded_ids:
+        sp = armory.skill(ex)
+        rejected.append(RejectedCandidate(
+            ex, "skill", f"project fact 로 제외 ({sp.name if sp else ex})", "project-fact"))
+    # loadout scope-out: a skill this loadout explicitly blocks AND would otherwise be
+    # plausible (same domain as a selected skill) → an honest "out of task scope" rejection.
+    if lo_spec:
+        sel_domains = {d for sk in selected for d in sk.domains}
+        for bid in lo_spec.blocked_skills:
+            bsp = armory.skill(bid)
+            if bsp and (set(bsp.domains) & sel_domains) and bid not in (sk.id for sk in selected):
+                rejected.append(RejectedCandidate(
+                    bid, "skill", f"loadout {chosen_loadout} 가 task 범위 밖으로 차단", "loadout-scope"))
 
     weapons = list(lo_spec.required_weapons) if lo_spec else []
     for sk in selected:
@@ -241,6 +272,7 @@ def resolve(request: str, *, preferred_role: str = "",
         selection_evidence=tuple(evidence), excluded_skills=excluded_ids,
         project_facts=tuple(f for f in project_facts if f and f.strip()),
         runtime_constraints=rc,
+        rejected_candidates=tuple(rejected),
     )
 
 

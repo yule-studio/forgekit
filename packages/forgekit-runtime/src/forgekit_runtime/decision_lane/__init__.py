@@ -24,6 +24,8 @@ from .schemas import (
     MeetingRecord,
     ParticipantPosition,
     PMBrief,
+    PonytailConsult,
+    PONYTAIL_VERDICTS,
     RejectedOption,
     SpecialistBriefing,
     StackComparison,
@@ -35,6 +37,7 @@ from .validators import (
     validate_handoff,
     validate_meeting,
     validate_pm_brief,
+    validate_ponytail,
     validate_specialist_briefing,
     validate_stack_comparison,
     validate_tech_lead_decision,
@@ -102,8 +105,29 @@ from .readiness import (
     LaneReadiness,
     assess_lane_readiness,
 )
+from .adoption import (
+    ADOPT_NOW,
+    ADOPTION_VERDICTS,
+    CANDIDATE_KINDS,
+    COLLECT_FIRST,
+    HOLD,
+    AdoptionReview,
+    can_equip,
+    equip_block_reason,
+    validate_adoption_review,
+)
+from .merge_receipt import (
+    CI_PASS,
+    MERGE_AWAITING,
+    MERGE_BLOCKED,
+    MERGE_MERGED,
+    MERGE_OUTCOMES,
+    MergeReceipt,
+    validate_merge_receipt,
+)
 from .decision_log import (
     EVENT_KINDS,
+    KIND_ADOPTION,
     KIND_APPROVAL,
     KIND_BRIEF,
     KIND_CONSULT,
@@ -112,6 +136,7 @@ from .decision_log import (
     KIND_GATEWAY,
     KIND_HANDOFF,
     KIND_MEETING,
+    KIND_MERGE,
     GovernanceEvent,
     decision_trail_from_log,
     governance_log_path,
@@ -125,11 +150,12 @@ __all__ = (
     # schemas
     "PMBrief", "StackOption", "StackComparison", "ConsultNote", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
-    "RejectedOption", "SpecialistBriefing",
+    "RejectedOption", "SpecialistBriefing", "PonytailConsult", "PONYTAIL_VERDICTS",
     "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DISSENT_STANCES",
     # validators
-    "validate_pm_brief", "validate_stack_comparison", "validate_consult", "validate_meeting",
-    "validate_tech_lead_decision", "validate_handoff", "validate_specialist_briefing",
+    "validate_pm_brief", "validate_stack_comparison", "validate_consult", "validate_ponytail",
+    "validate_meeting", "validate_tech_lead_decision", "validate_handoff",
+    "validate_specialist_briefing",
     # lane
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
     "handoff_to_engineer", "can_engineer_start", "build_specialist_briefing",
@@ -152,9 +178,16 @@ __all__ = (
     "STAGE_NO_PM_BRIEF", "STAGE_MEETING_PENDING", "STAGE_DECISION_PENDING",
     "STAGE_HANDOFF_PENDING", "STAGE_EXECUTABLE", "STAGE_ORDER",
     "LaneReadiness", "assess_lane_readiness",
+    # adoption review (도입 효율 검토 — adopted ≠ equipped)
+    "ADOPT_NOW", "COLLECT_FIRST", "HOLD", "ADOPTION_VERDICTS", "CANDIDATE_KINDS",
+    "AdoptionReview", "validate_adoption_review", "can_equip", "equip_block_reason",
+    # merge receipt (PR merged under the chain + identity trail)
+    "MERGE_MERGED", "MERGE_BLOCKED", "MERGE_AWAITING", "MERGE_OUTCOMES", "CI_PASS",
+    "MergeReceipt", "validate_merge_receipt",
     # replay-able decision log
     "KIND_BRIEF", "KIND_CONSULT", "KIND_GATEWAY", "KIND_MEETING", "KIND_DECISION",
-    "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS", "GovernanceEvent",
+    "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "KIND_ADOPTION", "KIND_MERGE",
+    "EVENT_KINDS", "GovernanceEvent",
     "governance_log_path", "record_governance_event", "replay_governance_log",
     "record_lane_artifacts", "readiness_from_log", "decision_trail_from_log",
 )

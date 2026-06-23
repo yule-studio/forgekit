@@ -41,6 +41,25 @@ class SelectionEvidence:
 
 
 @dataclass(frozen=True)
+class RejectedCandidate:
+    """A skill/tool the resolver *considered and declined* — with the concrete reason.
+
+    Distinct from "never matched": these were plausible (language-gated alternative,
+    project-fact exclusion, loadout-scoped-out) and actively dropped, so a scenario can
+    show *why not* — the anti-fake counterpart to the selection trail.
+    """
+
+    target: str
+    kind: str = "skill"       # skill / tool
+    reason: str = ""
+    category: str = ""        # rejection class: language-gate / project-fact / loadout-scope
+
+    def to_dict(self) -> dict:
+        return {"target": self.target, "kind": self.kind, "reason": self.reason,
+                "category": self.category}
+
+
+@dataclass(frozen=True)
 class WorkPacketDraft:
     goal: str
     scope: Tuple[str, ...] = ()
@@ -90,6 +109,7 @@ class ResolvedForgePlan:
     excluded_skills: Tuple[str, ...] = ()      # dropped by a project fact (e.g. "EKS 제외")
     project_facts: Tuple[str, ...] = ()        # Nexus/operator facts fed into selection
     runtime_constraints: Tuple[str, ...] = ()  # provider/runtime constraints fed in
+    rejected_candidates: Tuple[RejectedCandidate, ...] = ()  # considered + declined (why-not)
 
     def to_dict(self) -> dict:
         return {"request": self.request, "domain": self.domain, "language": self.language,
@@ -103,7 +123,8 @@ class ResolvedForgePlan:
                 "selection_evidence": [e.to_dict() for e in self.selection_evidence],
                 "excluded_skills": list(self.excluded_skills),
                 "project_facts": list(self.project_facts),
-                "runtime_constraints": list(self.runtime_constraints)}
+                "runtime_constraints": list(self.runtime_constraints),
+                "rejected_candidates": [r.to_dict() for r in self.rejected_candidates]}
 
 
 
@@ -113,5 +134,5 @@ __all__ = (
     "SRC_MISSING", "SRC_BLOCKED", "SRC_RESTRICTED", "WEAPON_SAFE", "WEAPON_RISKY",
     "KIND_SKILL", "KIND_TOOL", "KIND_PLUGIN", "KIND_MCP", "ENTRY_KINDS", "ATTACH_REQUIRED_KINDS",
     "NexusSourceRef", "WeaponSpec", "SkillSpec", "LoadoutSpec", "RuneSpec",
-    "WorkPacketDraft", "ResolvedForgePlan", "SelectionEvidence",
+    "WorkPacketDraft", "ResolvedForgePlan", "SelectionEvidence", "RejectedCandidate",
 )

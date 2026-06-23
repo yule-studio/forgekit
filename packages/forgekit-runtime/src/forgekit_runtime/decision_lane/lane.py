@@ -28,6 +28,7 @@ from .schemas import (
     EngineerHandoff,
     MeetingRecord,
     PMBrief,
+    PonytailConsult,
     RejectedOption,
     SpecialistBriefing,
     StackComparison,
@@ -124,6 +125,9 @@ def tech_lead_decide(
     rationale: str = "",
     signoff_by: str = "tech-lead",
     decision_id: str = "",
+    introduces_dependency: bool = False,
+    introduces_abstraction: bool = False,
+    ponytail: Optional[PonytailConsult] = None,
 ) -> TechLeadDecision:
     """Tech-lead: classify the design's risk, then sign off / conditional / block /
     escalate. A signoff is produced ONLY when the validators pass — a fake (empty
@@ -145,6 +149,10 @@ def tech_lead_decide(
     else:
         status = SIGNED_OFF
 
+    # ponytail consult: prefer an explicitly-passed consult, else inherit one recorded at
+    # the stack-comparison (design) stage, so the simpler-path review flows into the signoff.
+    consult = ponytail if ponytail is not None else stack.ponytail
+
     candidate = TechLeadDecision(
         decision_id=did, pm_brief_ref=brief.topic, meeting_ref=meeting.meeting_id,
         design_system=design_system, coding_convention=coding_convention,
@@ -152,6 +160,8 @@ def tech_lead_decide(
         integration_notes=tuple(integration_notes), risk_class=klass,
         approval_level=level, conditions=tuple(conditions),
         rationale=rationale or stack.rationale, signoff_by=signoff_by, status=status,
+        introduces_dependency=introduces_dependency,
+        introduces_abstraction=introduces_abstraction, ponytail=consult,
     )
 
     # no fake signoff: if the artifact isn't real, it cannot be signed/conditional
@@ -185,6 +195,7 @@ def handoff_to_engineer(
         scope=tuple(scope), forbidden_scope=tuple(forbidden_scope),
         test_strategy=test_strategy, rollback_plan=rollback_plan,
         acceptance_criteria=tuple(acceptance_criteria), operator_required=operator_required,
+        ponytail=decision.ponytail,                  # carry consult into the handoff packet
     )
 
 
@@ -243,6 +254,7 @@ def build_specialist_briefing(
         test_strategy=handoff.test_strategy, rollback_plan=handoff.rollback_plan,
         acceptance_criteria=handoff.acceptance_criteria,
         operator_required=handoff.operator_required,
+        ponytail=decision.ponytail,                  # carry the simpler-path consult forward
     )
 
 

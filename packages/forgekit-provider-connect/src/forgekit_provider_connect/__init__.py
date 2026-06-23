@@ -8,6 +8,6 @@ Never fakes a connection or a live transport. See ``docs/control-plane-architect
 
 from __future__ import annotations
 
-from . import diagnose, probe, status, surface, wizard
+from . import attach, diagnose, probe, status, surface, wizard
 
-__all__ = ("status", "probe", "diagnose", "wizard", "surface")
+__all__ = ("status", "probe", "diagnose", "wizard", "surface", "attach")
