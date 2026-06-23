@@ -15,7 +15,18 @@ Depends on nothing internal (leaf) → Hephaistos depends on Armory, never the r
 from __future__ import annotations
 
 from . import candidate, catalog, models
-from .candidate import ArmoryCandidate, PromotionResult, promote_candidate
+from .candidate import (
+    ADOPT_NOW,
+    COLLECT_FIRST,
+    HOLD,
+    AdoptionResult,
+    AdoptionReview,
+    ArmoryCandidate,
+    AxisReview,
+    PromotionResult,
+    adopt_candidate,
+    promote_candidate,
+)
 from .catalog import (
     all_loadouts,
     all_skills,
@@ -34,4 +45,6 @@ __all__ = (
     "all_skills", "all_loadouts", "all_weapons", "skill", "loadout", "weapon", "categories",
     "register_promoted", "clear_overlay", "promoted_skills",
     "ArmoryCandidate", "PromotionResult", "promote_candidate",
+    "AdoptionReview", "AxisReview", "AdoptionResult", "adopt_candidate",
+    "ADOPT_NOW", "COLLECT_FIRST", "HOLD",
 )

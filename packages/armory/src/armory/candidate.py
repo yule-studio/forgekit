@@ -43,6 +43,99 @@ def _is_placeholder(text: str) -> bool:
     return any(p in t for p in _PLACEHOLDERS)
 
 
+# adoption disposition — the only three a candidate may resolve to (wave rule).
+ADOPT_NOW = "adopt-now"          # review passed → may be adopted (and equipped per task)
+COLLECT_FIRST = "collect-first"  # accumulate evidence in Nexus, do NOT activate yet
+HOLD = "hold"                    # do not adopt (cost/risk/overlap blocks it)
+ADOPTION_DISPOSITIONS = (ADOPT_NOW, COLLECT_FIRST, HOLD)
+
+# review axes — adoption needs ≥3: PM + tech-lead + ≥1 relevant specialist (no single-axis adopt).
+AXIS_PM = "pm"
+AXIS_TECH_LEAD = "tech-lead"
+AXIS_SPECIALIST = "specialist"
+
+
+@dataclass(frozen=True)
+class AxisReview:
+    """One review axis's position on adopting a candidate (PM / tech-lead / specialist)."""
+
+    axis: str             # AXIS_*
+    reviewer: str         # the role that reviewed (e.g. "devops-engineer")
+    position: str         # ADOPT_NOW / COLLECT_FIRST / HOLD (this axis's recommendation)
+    rationale: str = ""
+
+    def to_dict(self) -> dict:
+        return {"axis": self.axis, "reviewer": self.reviewer, "position": self.position,
+                "rationale": self.rationale}
+
+
+@dataclass(frozen=True)
+class AdoptionReview:
+    """ForgeKit 도입 효율 검토 — the 8-field artifact every external candidate must carry.
+
+    Adoption is NOT "looks good": each field is a real assessment, and the disposition is
+    only ``adopt-now`` when the 8 fields are present AND ≥3 axes (PM + tech-lead + ≥1
+    specialist) all clear it. Any axis voting hold/collect-first pulls the verdict down
+    (most-conservative wins) — so adoption requires consensus, not a single enthusiast.
+    A missing field or missing axis ⇒ ``hold`` (cannot adopt on an incomplete review).
+    """
+
+    candidate_id: str
+    current_pain: str = ""
+    expected_benefit: str = ""
+    overlap_with_existing: str = ""
+    operational_cost: str = ""
+    maintenance_risk: str = ""
+    provider_runtime_fit: str = ""
+    governance_security_impact: str = ""
+    adopt_timing_reason: str = ""        # why adopt-now vs collect-first vs hold
+    axis_reviews: Tuple[AxisReview, ...] = ()
+
+    _FIELDS = ("current_pain", "expected_benefit", "overlap_with_existing", "operational_cost",
+               "maintenance_risk", "provider_runtime_fit", "governance_security_impact",
+               "adopt_timing_reason")
+
+    def missing_fields(self) -> Tuple[str, ...]:
+        return tuple(f for f in self._FIELDS if _is_placeholder(getattr(self, f)))
+
+    def axes_present(self) -> Tuple[str, ...]:
+        return tuple(dict.fromkeys(a.axis for a in self.axis_reviews))
+
+    def review_gaps(self) -> Tuple[str, ...]:
+        gaps = [f"필드 누락/placeholder: {f}" for f in self.missing_fields()]
+        axes = set(self.axes_present())
+        if AXIS_PM not in axes:
+            gaps.append("PM 축 검토 없음")
+        if AXIS_TECH_LEAD not in axes:
+            gaps.append("tech-lead 축 검토 없음")
+        if AXIS_SPECIALIST not in axes:
+            gaps.append("specialist 축 검토 없음(≥1 필요)")
+        return tuple(gaps)
+
+    def disposition(self) -> str:
+        """adopt-now / collect-first / hold — most-conservative across axes, gated on completeness."""
+
+        if self.review_gaps():
+            return HOLD
+        positions = {a.position for a in self.axis_reviews}
+        if HOLD in positions:
+            return HOLD
+        if COLLECT_FIRST in positions:
+            return COLLECT_FIRST
+        return ADOPT_NOW
+
+    def to_dict(self) -> dict:
+        return {"candidate_id": self.candidate_id, "current_pain": self.current_pain,
+                "expected_benefit": self.expected_benefit,
+                "overlap_with_existing": self.overlap_with_existing,
+                "operational_cost": self.operational_cost, "maintenance_risk": self.maintenance_risk,
+                "provider_runtime_fit": self.provider_runtime_fit,
+                "governance_security_impact": self.governance_security_impact,
+                "adopt_timing_reason": self.adopt_timing_reason,
+                "axis_reviews": [a.to_dict() for a in self.axis_reviews],
+                "disposition": self.disposition(), "review_gaps": list(self.review_gaps())}
+
+
 @dataclass(frozen=True)
 class ArmoryCandidate:
     """A proposed catalog entry awaiting promotion (intake side)."""
@@ -200,4 +293,57 @@ def promote_candidate(c: ArmoryCandidate) -> PromotionResult:
                            evidence=evidence + (f"승격됨{src}",))
 
 
-__all__ = ("ArmoryCandidate", "PromotionResult", "promote_candidate")
+@dataclass(frozen=True)
+class AdoptionResult:
+    """Outcome of an adoption decision — disposition + (if adopt-now & schema-valid) a spec.
+
+    Couples the schema gate (``promote_candidate``) with the 8-field / 3-axis review. A
+    spec is only handed back for ``adopt-now``; ``collect-first`` keeps the evidence for
+    Nexus accumulation without activating; ``hold`` carries the reasons it was held.
+    """
+
+    candidate_id: str
+    disposition: str
+    spec: Optional[SkillSpec] = None
+    promotion: Optional[PromotionResult] = None
+    reasons: Tuple[str, ...] = ()
+    evidence: Tuple[str, ...] = ()
+
+    @property
+    def adopted(self) -> bool:
+        return self.disposition == ADOPT_NOW and self.spec is not None
+
+    def to_dict(self) -> dict:
+        return {"candidate_id": self.candidate_id, "disposition": self.disposition,
+                "adopted": self.adopted, "reasons": list(self.reasons),
+                "evidence": list(self.evidence),
+                "promotion": self.promotion.to_dict() if self.promotion else None}
+
+
+def adopt_candidate(c: ArmoryCandidate, review: AdoptionReview) -> AdoptionResult:
+    """Decide adoption: schema gate (promote) × adoption review (disposition).
+
+    ``adopt-now`` requires BOTH a valid contract and an all-clear ≥3-axis review — only
+    then is a SkillSpec returned (ready to ``register_promoted``). ``collect-first`` /
+    ``hold`` return no spec (no fake adoption); their evidence/reasons are kept for Nexus.
+    """
+
+    disp = review.disposition()
+    promo = promote_candidate(c)
+    ev = (f"adoption disposition={disp}",) + promo.evidence
+    if disp != ADOPT_NOW:
+        reasons = (f"disposition={disp}",) + review.review_gaps() + \
+            ((f"timing: {review.adopt_timing_reason}",) if review.adopt_timing_reason else ())
+        return AdoptionResult(c.id, disp, spec=None, promotion=promo, reasons=reasons, evidence=ev)
+    if not promo.accepted:
+        # review says adopt-now but the contract is incomplete → cannot activate (no fake).
+        return AdoptionResult(c.id, HOLD, spec=None, promotion=promo,
+                              reasons=("review=adopt-now 이나 catalog 계약 미달",) + promo.reasons,
+                              evidence=ev)
+    return AdoptionResult(c.id, ADOPT_NOW, spec=promo.spec, promotion=promo, evidence=ev)
+
+
+__all__ = ("ArmoryCandidate", "PromotionResult", "promote_candidate",
+           "AdoptionReview", "AxisReview", "AdoptionResult", "adopt_candidate",
+           "ADOPT_NOW", "COLLECT_FIRST", "HOLD", "ADOPTION_DISPOSITIONS",
+           "AXIS_PM", "AXIS_TECH_LEAD", "AXIS_SPECIALIST")
