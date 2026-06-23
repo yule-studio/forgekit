@@ -108,6 +108,7 @@ class GoalSchedulerTicker:
     def tick(self, n: int) -> TickOutcome:
         from forgekit_goal import GoalStatus, planning
         from ..selfimprove import goal_tick
+        from . import goal_governance as gov
 
         store = self._get_store()
         try:
@@ -124,6 +125,7 @@ class GoalSchedulerTicker:
         packetized = 0
         decomposed = 0
         awaiting = 0
+        governed = 0
         for goal in candidates[: self.max_goals]:
             si = self._discover()
             if not si.packets:
@@ -133,6 +135,17 @@ class GoalSchedulerTicker:
             if planning.is_big_goal(items) and len(
                 {(a or "").strip() or "general" for a, _ in items}
             ) >= self.big_area_threshold:
+                # GOVERNANCE: a big (design-requiring) goal must carry the PM→tech-lead→
+                # specialist artifact chain. Record the PM brief FIRST (the first artifact a
+                # decomposition emits) and mark the goal governance-required, BEFORE creating
+                # any child/packet. Specialist execution stays gated downstream (exec tick)
+                # until the chain is executable — 설계 없는 구현 금지. PM brief is seeded from
+                # the goal (honest, intentionally incomplete) — never a faked design.
+                if not gov.is_governance_required(goal):
+                    gov.record_pm_brief(goal, env=self.env)
+                    goal = gov.mark_governance_required(
+                        goal, "big goal — design chain required (PM brief recorded first)")
+                    governed += 1
                 g2, made = self._decompose_and_route(goal, si, planning, goal_tick)
                 store.save(g2)
                 for child in made:
@@ -156,6 +169,8 @@ class GoalSchedulerTicker:
             bits.append(f"{packetized} goal packetize")
         if decomposed:
             bits.append(f"{decomposed} goal 자동분해")
+        if governed:
+            bits.append(f"{governed} PM brief 선기록(설계강제)")
         if awaiting:
             bits.append(f"{awaiting} 승인대기")
         summary = f"tick {n}: goal-scheduler " + " / ".join(bits)
