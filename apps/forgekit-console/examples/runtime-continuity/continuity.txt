@@ -1,0 +1,42 @@
+FORGEKIT PROVIDER/RUNTIME CONTINUITY — per-tick lane + budget (evidence)
+(hermetic: $FORGEKIT_HOME tempdir, injected config, instant sleep, no network)
+
+──────────────────────────────────────────────────────────────────────────────
+1) honest lane resolution — brain vs actual transport vs fallback
+──────────────────────────────────────────────────────────────────────────────
+[live (gemini primary)]
+  short : gemini→gemini(live)
+  label : brain=gemini · 실 transport=gemini (live console transport)
+[participant-only (claude — unsupported_in_console)]
+  short : claude(participant)
+  label : brain=claude (routing participant · unsupported_in_console — console live transport 없음, 라우팅 참여로는 유효)
+[fallback→live (claude declared → gemini)]
+  short : claude→gemini(live)·fallback
+  label : brain=claude · 실 transport=gemini (live console transport) declared 'claude' 불가 → fallback
+  chain : claude → gemini
+
+──────────────────────────────────────────────────────────────────────────────
+2) bounded serve keeps an active goal progressing (6 ticks, live lane)
+──────────────────────────────────────────────────────────────────────────────
+serve result: ticks=6 · executed=6 · waits=0 · stopped=max_ticks(6)
+progression: 6 steps advanced across 6 ticks (no stall)
+
+durable per-tick ledger (~/.forgekit/state/runtime-tick-ledger.jsonl):
+runtime 진행 연속성 (per-tick provider lane · budget):
+  현재 lane: brain=gemini · 실 transport=gemini (live console transport)
+  최근 6 tick:
+  tick 1: lane gemini→gemini(live) · exec 1 · budget 0/20000tok
+  tick 2: lane gemini→gemini(live) · exec 1 · budget 0/20000tok
+  tick 3: lane gemini→gemini(live) · exec 1 · budget 0/20000tok
+  tick 4: lane gemini→gemini(live) · exec 1 · budget 0/20000tok
+  tick 5: lane gemini→gemini(live) · exec 1 · budget 0/20000tok
+  tick 6: lane gemini→gemini(live) · exec 1 · budget 0/20000tok
+  누적 executed(safe-class) 6 · 마지막 tick 6
+
+──────────────────────────────────────────────────────────────────────────────
+acceptance
+──────────────────────────────────────────────────────────────────────────────
+- runtime serve 중 active goal 이 매 tick step 전진 (6/6, no stall).
+- provider route / actual transport / fallback 가 lane 으로 정직 표기.
+- budget/receipt(executed paths)/evidence 가 tick 단위 ledger 로 남음.
+- Claude/Codex 는 unsupported_in_console 이어도 brain participant 로 유효 표기.
