@@ -305,6 +305,12 @@ def _trail_facts(ev: GovernanceEvent) -> str:
             bits.append(f"approval={p['approval_level']}")
         if p.get("tradeoffs"):
             bits.append(f"tradeoff {len(p['tradeoffs'])}개")
+        pony = p.get("ponytail") or {}
+        if pony.get("ponytail_required"):
+            if pony.get("consulted"):
+                bits.append(f"ponytail={pony.get('ponytail_verdict') or '?'}")
+            else:
+                bits.append("ponytail=거부(더 복잡한 경로)")
         return " · ".join(bits)
     if k == KIND_APPROVAL:
         return f"approved={p.get('approved', '')}"

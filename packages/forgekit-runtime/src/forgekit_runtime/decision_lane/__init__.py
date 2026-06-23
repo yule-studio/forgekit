@@ -24,6 +24,8 @@ from .schemas import (
     MeetingRecord,
     ParticipantPosition,
     PMBrief,
+    PonytailConsult,
+    PONYTAIL_VERDICTS,
     RejectedOption,
     SpecialistBriefing,
     StackComparison,
@@ -35,6 +37,7 @@ from .validators import (
     validate_handoff,
     validate_meeting,
     validate_pm_brief,
+    validate_ponytail,
     validate_specialist_briefing,
     validate_stack_comparison,
     validate_tech_lead_decision,
@@ -110,11 +113,12 @@ __all__ = (
     # schemas
     "PMBrief", "StackOption", "StackComparison", "ConsultNote", "ParticipantPosition",
     "MeetingRecord", "TechLeadDecision", "EngineerHandoff",
-    "RejectedOption", "SpecialistBriefing",
+    "RejectedOption", "SpecialistBriefing", "PonytailConsult", "PONYTAIL_VERDICTS",
     "DRAFT", "SIGNED_OFF", "CONDITIONAL", "BLOCKED", "ESCALATED", "NEEDS_INFO", "DISSENT_STANCES",
     # validators
-    "validate_pm_brief", "validate_stack_comparison", "validate_consult", "validate_meeting",
-    "validate_tech_lead_decision", "validate_handoff", "validate_specialist_briefing",
+    "validate_pm_brief", "validate_stack_comparison", "validate_consult", "validate_ponytail",
+    "validate_meeting", "validate_tech_lead_decision", "validate_handoff",
+    "validate_specialist_briefing",
     # lane
     "GatewayRouting", "LaneResult", "route_to_tech_lead", "tech_lead_decide",
     "handoff_to_engineer", "can_engineer_start", "build_specialist_briefing",
