@@ -15,8 +15,30 @@ from armory.models import (  # noqa: F401  (re-export catalog vocab for compat)
     NEXUS_AREA, NEXUS_PATTERN, NEXUS_SNIPPET, NEXUS_TROUBLESHOOTING, NEXUS_DECISION,
     SRC_AVAILABLE, SRC_NOT_CONNECTED, SRC_PLANNED, SRC_UNKNOWN, SRC_EXISTS,
     SRC_MISSING, SRC_BLOCKED, SRC_RESTRICTED, WEAPON_SAFE, WEAPON_RISKY,
+    KIND_SKILL, KIND_TOOL, KIND_PLUGIN, KIND_MCP, ENTRY_KINDS, ATTACH_REQUIRED_KINDS,
     NexusSourceRef, WeaponSpec, SkillSpec, LoadoutSpec, RuneSpec,
 )
+
+
+@dataclass(frozen=True)
+class SelectionEvidence:
+    """Why one item was (de)selected — the anti-fake trail behind every Hephaistos pick.
+
+    ``target`` is a skill/loadout/weapon id; ``kind`` is what it is; ``decision`` is
+    selected/excluded; ``reason`` + ``signals`` say WHAT in the request/context drove it.
+    No selection ships without a row here — a "smart" pick with no evidence is a fake.
+    """
+
+    target: str
+    kind: str                 # skill / loadout / weapon / agent / constraint
+    decision: str             # selected / excluded
+    reason: str = ""
+    signals: Tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        return {"target": self.target, "kind": self.kind, "decision": self.decision,
+                "reason": self.reason, "signals": list(self.signals)}
+
 
 @dataclass(frozen=True)
 class WorkPacketDraft:
@@ -30,6 +52,10 @@ class WorkPacketDraft:
     approval_level: str = "L2_internal_approve"
     evidence_path: str = ""
     nexus_refs: Tuple[NexusSourceRef, ...] = ()
+    # work-packet quality fields — concrete + execution-ready.
+    selected_tools: Tuple[str, ...] = ()       # weapon ids the executor must have/attach
+    constraints: Tuple[str, ...] = ()          # project-fact constraints (dev-first / keep-structure …)
+    harness: str = ""                          # intended executor harness (claude-code / codex …)
 
     def to_dict(self) -> dict:
         return {"goal": self.goal, "scope": list(self.scope),
@@ -37,7 +63,9 @@ class WorkPacketDraft:
                 "required_areas": list(self.required_areas), "commands": list(self.commands),
                 "verification": list(self.verification), "acceptance": list(self.acceptance),
                 "approval_level": self.approval_level, "evidence_path": self.evidence_path,
-                "nexus_refs": [r.to_dict() for r in self.nexus_refs]}
+                "nexus_refs": [r.to_dict() for r in self.nexus_refs],
+                "selected_tools": list(self.selected_tools), "constraints": list(self.constraints),
+                "harness": self.harness}
 
 
 @dataclass(frozen=True)
@@ -57,6 +85,11 @@ class ResolvedForgePlan:
     nexus_refs: Tuple[NexusSourceRef, ...] = ()
     verification_commands: Tuple[str, ...] = ()
     packet_draft: WorkPacketDraft = None  # type: ignore[assignment]
+    # anti-fake selection trail + what context shaped it.
+    selection_evidence: Tuple[SelectionEvidence, ...] = ()
+    excluded_skills: Tuple[str, ...] = ()      # dropped by a project fact (e.g. "EKS 제외")
+    project_facts: Tuple[str, ...] = ()        # Nexus/operator facts fed into selection
+    runtime_constraints: Tuple[str, ...] = ()  # provider/runtime constraints fed in
 
     def to_dict(self) -> dict:
         return {"request": self.request, "domain": self.domain, "language": self.language,
@@ -66,7 +99,11 @@ class ResolvedForgePlan:
                 "required_weapons": list(self.required_weapons),
                 "nexus_refs": [r.to_dict() for r in self.nexus_refs],
                 "verification_commands": list(self.verification_commands),
-                "packet_draft": self.packet_draft.to_dict() if self.packet_draft else None}
+                "packet_draft": self.packet_draft.to_dict() if self.packet_draft else None,
+                "selection_evidence": [e.to_dict() for e in self.selection_evidence],
+                "excluded_skills": list(self.excluded_skills),
+                "project_facts": list(self.project_facts),
+                "runtime_constraints": list(self.runtime_constraints)}
 
 
 
@@ -74,6 +111,7 @@ __all__ = (
     "NEXUS_AREA", "NEXUS_PATTERN", "NEXUS_SNIPPET", "NEXUS_TROUBLESHOOTING", "NEXUS_DECISION",
     "SRC_AVAILABLE", "SRC_NOT_CONNECTED", "SRC_PLANNED", "SRC_UNKNOWN", "SRC_EXISTS",
     "SRC_MISSING", "SRC_BLOCKED", "SRC_RESTRICTED", "WEAPON_SAFE", "WEAPON_RISKY",
+    "KIND_SKILL", "KIND_TOOL", "KIND_PLUGIN", "KIND_MCP", "ENTRY_KINDS", "ATTACH_REQUIRED_KINDS",
     "NexusSourceRef", "WeaponSpec", "SkillSpec", "LoadoutSpec", "RuneSpec",
-    "WorkPacketDraft", "ResolvedForgePlan",
+    "WorkPacketDraft", "ResolvedForgePlan", "SelectionEvidence",
 )
