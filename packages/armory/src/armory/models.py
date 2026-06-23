@@ -35,6 +35,17 @@ SRC_RESTRICTED = "restricted"        # present but raw read gated → projection
 WEAPON_SAFE = "safe"
 WEAPON_RISKY = "risky"
 
+# entry kind — what *shape* of capability a catalog entry is. The selection contract
+# differs by kind: a tool/mcp/plugin needs install/attach requirements before it can be
+# equipped, while a pure skill is knowledge/workflow the executor already carries.
+KIND_SKILL = "skill"     # knowledge / workflow / convention (no external attach)
+KIND_TOOL = "tool"       # a CLI / binary the executor invokes (needs install)
+KIND_PLUGIN = "plugin"   # a harness plugin / extension (needs attach to a harness)
+KIND_MCP = "mcp"         # an MCP server (needs connect/attach + transport)
+ENTRY_KINDS = (KIND_SKILL, KIND_TOOL, KIND_PLUGIN, KIND_MCP)
+# kinds that cannot be equipped without an explicit install/attach step.
+ATTACH_REQUIRED_KINDS = (KIND_TOOL, KIND_PLUGIN, KIND_MCP)
+
 
 @dataclass(frozen=True)
 class NexusSourceRef:
@@ -101,10 +112,23 @@ class SkillSpec:
     signals: Tuple[str, ...] = ()          # keyword/intent signals the resolver scores on
     capability_note: str = ""              # vendor-neutral capability (NOT a provider name)
     status: str = "ready"                  # ready / partial / shallow
+    # entry-kind + attach contract (RWT2 intake) — a tool/mcp/plugin is only equippable
+    # once its install/attach requirements are met. ``provider_affinity`` names the
+    # harness/runtime an entry attaches to (claude-code / codex / mcp-host …) — this is
+    # an *attachment target*, NOT a capability claim, so it is allowed to name a vendor
+    # (``capability_note`` stays vendor-neutral; the breadth test guards only that field).
+    kind: str = KIND_SKILL
+    provider_affinity: Tuple[str, ...] = ()   # harness/runtime targets (claude-code/codex/…)
+    install_requirements: Tuple[str, ...] = ()  # what must exist locally (weapon/cli/runtime)
+    attach_requirements: Tuple[str, ...] = ()   # how to attach (mcp connect / plugin enable …)
 
     @property
     def title(self) -> str:
         return self.name
+
+    @property
+    def needs_attach(self) -> bool:
+        return self.kind in ATTACH_REQUIRED_KINDS
 
     @property
     def unsafe_boundary(self) -> Tuple[str, ...]:
@@ -139,7 +163,16 @@ class SkillSpec:
                 "forbidden": list(self.forbidden), "related_weapons": list(self.related_weapons),
                 "related_loadouts": list(self.related_loadouts),
                 "related_roles": list(self.related_roles),
-                "nexus_refs": [r.to_dict() for r in self.nexus_refs]}
+                "nexus_refs": [r.to_dict() for r in self.nexus_refs],
+                "category": self.category, "summary": self.summary,
+                "when_to_use": list(self.when_to_use), "when_not_to_use": list(self.when_not_to_use),
+                "required_inputs": list(self.required_inputs),
+                "expected_outputs": list(self.expected_outputs),
+                "signals": list(self.signals), "capability_note": self.capability_note,
+                "status": self.status, "kind": self.kind,
+                "provider_affinity": list(self.provider_affinity),
+                "install_requirements": list(self.install_requirements),
+                "attach_requirements": list(self.attach_requirements)}
 
 
 @dataclass(frozen=True)
@@ -193,5 +226,6 @@ __all__ = (
     "NEXUS_AREA", "NEXUS_PATTERN", "NEXUS_SNIPPET", "NEXUS_TROUBLESHOOTING", "NEXUS_DECISION",
     "SRC_AVAILABLE", "SRC_NOT_CONNECTED", "SRC_PLANNED", "SRC_UNKNOWN", "SRC_EXISTS",
     "SRC_MISSING", "SRC_BLOCKED", "SRC_RESTRICTED", "WEAPON_SAFE", "WEAPON_RISKY",
+    "KIND_SKILL", "KIND_TOOL", "KIND_PLUGIN", "KIND_MCP", "ENTRY_KINDS", "ATTACH_REQUIRED_KINDS",
     "NexusSourceRef", "WeaponSpec", "SkillSpec", "LoadoutSpec", "RuneSpec",
 )

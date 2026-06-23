@@ -1,0 +1,77 @@
+ARMORY INTAKE → PROMOTION + HEPHAISTOS CONTEXT-AWARE SELECTION (evidence)
+(hermetic regen — no repo/store/git; resolver is rule-first deterministic)
+
+──────────────────────────────────────────────────────────────────────────────
+1) intake candidate → Armory promotion (a CI security tool, kind=tool)
+──────────────────────────────────────────────────────────────────────────────
+candidate: trivy-scan (kind=tool, source=discovery:brief-trivy-001)
+accepted : True
+  gate ✓ kind=tool
+  gate ✓ summary 실체 있음
+  gate ✓ signals 2개
+  gate ✓ when_to_use 명시
+  gate ✓ unsafe_boundary 선언
+  gate ✓ capability_note vendor-neutral
+  gate ✓ 검증 경로 있음
+  gate ✓ install/attach requirements 명시
+  gate ✓ provider_affinity=github
+  gate ✓ 승격됨 (source=discovery:brief-trivy-001)
+registered → catalog now has 27 skills (overlay: ['trivy-scan'])
+
+──────────────────────────────────────────────────────────────────────────────
+2) incomplete candidate → rejected (no placeholder enters the catalog)
+──────────────────────────────────────────────────────────────────────────────
+candidate: halfbaked  accepted: False
+  reject ✗ summary 가 placeholder/너무 짧음
+  reject ✗ when_to_use 없음 — 언제 쓰는지 불명
+  reject ✗ unsafe_boundary 없음 — 위험 경계 미선언(금지)
+  reject ✗ capability_note 없음
+  reject ✗ commands/verification 둘 다 없음 — 검증 경로 없음
+  reject ✗ tool 인데 install/attach requirements 없음 — 부착 불가(fake available 방지)
+
+──────────────────────────────────────────────────────────────────────────────
+3) Hephaistos selection — Terraform→ECS with project facts + constraints
+──────────────────────────────────────────────────────────────────────────────
+request  : Terraform으로 ECS 배포 환경 구성해야 돼. Claude Code한테 맡길 프롬프트 만들어줘.
+facts    : EKS는 제외, dev 환경부터, 기존 구조 보존
+hephaistos resolve — Terraform으로 ECS 배포 환경 구성해야 돼. Claude Code한테 맡길 프롬프트 만들어줘.
+  infer     : devops/-/-/terraform
+  agent     : devops-engineer
+  skills    : terraform, aws-ecs, docker, github-actions, secrets-management, trivy-scan
+  loadout   : devops-cloud-local
+  weapons   : docker, terraform, awscli, gh, actionlint
+  excluded  : kubernetes  (프로젝트 제약으로 제외)
+  nexus     : not_connected (FORGEKIT_NEXUS_ROOT 미설정 — 지식 source 미연결)
+  packet    : scope 10 / forbidden 10 / verify 10 / approval L2_internal_approve
+  tools     : docker, terraform, awscli, gh, actionlint
+  constraints: EKS는 제외, dev 환경부터, 기존 구조 보존, production apply 금지
+  harness   : claude-code
+  [dim]상세: /skills <요청> · /loadout <id> · /hephaistos · 선택근거: 아래 evidence[/dim]
+  evidence  : 선택/제외 근거 (no fake smart-selection)
+    ✓ [skill] terraform — domain=devops, topic=terraform, signals=terraform/배포
+    ✓ [skill] aws-ecs — domain=devops, signals=ecs
+    ✓ [skill] docker — domain=devops
+    ✓ [skill] github-actions — domain=devops
+    ✓ [skill] secrets-management — domain=devops
+    ✓ [skill] trivy-scan — domain=devops
+    ✗ [skill] kubernetes — project fact: EKS는 제외
+    ✓ [constraint] dev 환경부터 — project fact (Nexus/operator context)
+    … +4 more
+
+work packet (execution-ready draft):
+  goal       : Terraform으로 ECS 배포 환경 구성해야 돼. Claude Code한테 맡길 프롬프트 만들어줘.
+  tools      : docker, terraform, awscli, gh, actionlint
+  constraints: EKS는 제외, dev 환경부터, 기존 구조 보존, production apply 금지
+  harness    : claude-code
+  approval   : L2_internal_approve
+  forbidden  :
+    - production apply 금지(승인 필요)
+    - state backend 임의 변경
+    - production service 직접 변경(승인)
+    - 운영 registry/container 변경
+    - 프로덕션 배포 job 무승인 트리거
+    - secret 을 workflow 로그에 echo
+    - secret 평문 커밋
+    - 로그에 secret 출력
+    - 스캔 결과 무시하고 prod push 금지
+    - Kubernetes 미사용(프로젝트 제약으로 제외)

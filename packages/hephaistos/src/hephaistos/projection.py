@@ -43,14 +43,43 @@ def resolve_summary_lines(plan: ResolvedForgePlan, read: nx.NexusReadResult) -> 
         f"  loadout   : {plan.selected_loadout or '-'}",
         f"  weapons   : {', '.join(plan.required_weapons) or '-'}",
     ]
+    if plan.excluded_skills:
+        lines.append(f"  excluded  : {', '.join(plan.excluded_skills)}  (프로젝트 제약으로 제외)")
     lines += list(nexus_status_lines(read))
     if plan.packet_draft:
         pk = plan.packet_draft
         lines.append(f"  packet    : scope {len(pk.scope)} / forbidden {len(pk.forbidden_scope)} / "
                      f"verify {len(pk.verification)} / approval {pk.approval_level}")
+        if pk.selected_tools:
+            lines.append(f"  tools     : {', '.join(pk.selected_tools)}")
+        if pk.constraints:
+            lines.append(f"  constraints: {', '.join(pk.constraints)}")
+        if pk.harness:
+            lines.append(f"  harness   : {pk.harness}")
     if shallow:
         lines.append(shallow)
-    lines.append("  [dim]상세: /skills <요청> · /loadout <id> · /hephaistos[/dim]")
+    lines.append("  [dim]상세: /skills <요청> · /loadout <id> · /hephaistos · 선택근거: 아래 evidence[/dim]")
+    lines += list(selection_evidence_lines(plan, limit=8))
+    return tuple(lines)
+
+
+def selection_evidence_lines(plan: ResolvedForgePlan, *, limit: int = 0) -> Tuple[str, ...]:
+    """Project the anti-fake selection trail — WHY each pick/exclusion happened. Read-only.
+
+    Reflects whatever the resolver recorded; no choice is invented here. A plan with no
+    evidence renders an honest '(근거 없음)' rather than a fabricated rationale.
+    """
+
+    ev = plan.selection_evidence
+    if not ev:
+        return ("  evidence  : (근거 없음 — shallow/미매칭)",)
+    rows = ev if not limit else ev[:limit]
+    lines = ["  evidence  : 선택/제외 근거 (no fake smart-selection)"]
+    mark = {"selected": "✓", "excluded": "✗"}
+    for e in rows:
+        lines.append(f"    {mark.get(e.decision, '·')} [{e.kind}] {e.target} — {e.reason or '-'}")
+    if limit and len(ev) > limit:
+        lines.append(f"    … +{len(ev) - limit} more")
     return tuple(lines)
 
 
@@ -121,5 +150,6 @@ def nexus_surface_lines(*, env: Optional[Mapping[str, str]] = None,
 
 __all__ = (
     "resolve_with_sources", "nexus_status_lines", "resolve_summary_lines",
+    "selection_evidence_lines",
     "skills_lines", "loadout_lines", "hephaistos_status_lines", "nexus_surface_lines",
 )
