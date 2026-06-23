@@ -35,6 +35,11 @@ class TickOutcome:
     executed_paths: tuple = ()     # repo-relative paths really written this tick
     skipped_reason: str = ""       # why nothing executed (cooldown / dupes / halt)
     next_eligible_tick: int = 0    # tick at which execution resumes (0 = no cooldown)
+    # provider/runtime continuity (lane B) — which provider lane this tick routed through
+    # (brain vs actual transport vs fallback) + the budget snapshot. Optional so the
+    # base daemon stays decoupled; the continuity wrapper fills them. Honest dicts or None.
+    provider_lane: Optional[dict] = None
+    budget: Optional[dict] = None
 
 
 @dataclass
