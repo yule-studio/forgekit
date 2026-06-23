@@ -6,7 +6,7 @@ provider · knowledge(nexus/vault) · toolchain → 단일 canonical ~/.forgekit
 STEP 1 — `/setup` (fresh: no provider live lane, no nexus, manifest present)
 ==============================================================================
 ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provider · knowledge · toolchain)
-  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json  (재실행 후에도 유지)
+  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp42scsa_r/config.json  (재실행 후에도 유지)
 
   ○ provider   setup-required — live 전송 가능한 provider 없음 — CLI(claude/codex)는 routing-only
       다음: `/setup apply` 로 추천 4-provider preset 저장 · `/provider connect <id>`
@@ -30,6 +30,12 @@ ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provid
     명령: `/setup apply` · `/provider connect <id>` · `/provider test <id>` · `/provider recommended`
 
 verdict: setup-required — provider live lane 없음(필수). `/setup apply` 로 추천 preset 저장 후 재점검.
+
+[runtime readiness — always-on 진행 가능성 (daemon × goal × live transport)]
+  readiness : [b]setup_required[/b]  (daemon=stopped · active 0 · awaiting 0 · blocked 0)
+      다음: `/setup apply` 로 4-provider 브레인을 구성하세요 (primary + live lane).
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
   지식/toolchain 은 non-blocking 정직 표면 — 미연결도 console 은 동작.
 
 ==============================================================================
@@ -40,13 +46,13 @@ setup 적용 — primary brain = claude, default_chat actual live = gemini.
   실제 live lane(검증됨): gemini. claude/codex 는 routing/brain participant.
   verdict: ready. `/provider` 로 declared→actual, `/setup` 로 연결 재점검.
 
-$ /nexus set /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t
-  nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t (저장됨) · 상태: [exists] 연결됨
+$ /nexus set /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5v8sheir
+  nexus_root = /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5v8sheir (저장됨) · 상태: [exists] 연결됨
 
 ==============================================================================
 STEP 3 — RESTART SIMULATION: re-read canonical config from disk (no in-memory state)
 ==============================================================================
-$ cat /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json
+$ cat /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp42scsa_r/config.json
 {
   "primary_provider": "claude",
   "linked_providers": [
@@ -100,17 +106,17 @@ $ cat /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json
       ]
     }
   },
-  "nexus_root": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t"
+  "nexus_root": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5v8sheir"
 }
 
 ==============================================================================
 STEP 4 — `/setup` after restart (settings persisted → verdict ready)
 ==============================================================================
 ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provider · knowledge · toolchain)
-  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json  (재실행 후에도 유지)
+  canonical config: /private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp42scsa_r/config.json  (재실행 후에도 유지)
 
   ● provider   live           — live lane(검증됨): gemini · claude/codex 는 routing/brain participant
-  ◐ knowledge  connected      — /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t
+  ◐ knowledge  connected      — /var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5v8sheir
   ◐ toolchain  detected       — 2 tool (repo-local manifest, 추측 없음): python@3.13.1, nodejs@20.11.0
       다음: `/toolchain verify` 로 mise 기반 검증(설치 시)
 
@@ -130,6 +136,16 @@ ForgeKit 컨트롤플레인 부트스트랩 — 한 화면 정직 집계 (provid
     명령: `/setup apply` · `/provider connect <id>` · `/provider test <id>` · `/provider recommended`
 
 verdict: ready — provider live lane 있음. `/daemon` always-on · `/goal` 연속 작업으로 진행.
+
+[runtime readiness — always-on 진행 가능성 (daemon × goal × live transport)]
+  readiness : [b]idle_no_goals[/b]  (daemon=stopped · active 0 · awaiting 0 · blocked 0)
+      transport: live lane 있음 · 검증됨
+        ● default_chat gemini→gemini (live-capable)
+        ● execution    codex→gemini (live-capable)
+        ● research     gemini→gemini (live-capable)
+      다음: `/goal new <제목>` → `/goal activate <id>` 로 진행할 목표를 주세요.
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
   지식/toolchain 은 non-blocking 정직 표면 — 미연결도 console 은 동작.
 
 ==============================================================================
@@ -138,7 +154,7 @@ HONEST AGGREGATE (machine-readable, incl. 5-state provider taxonomy)
 {
   "verdict": "ready",
   "ready": true,
-  "config_path": "/private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5dx6b6gy/config.json",
+  "config_path": "/private/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp42scsa_r/config.json",
   "live_lane": [
     "gemini"
   ],
@@ -176,7 +192,7 @@ HONEST AGGREGATE (machine-readable, incl. 5-state provider taxonomy)
       "status": "connected",
       "connected": true,
       "blocking": false,
-      "detail": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp281f9m1t",
+      "detail": "/var/folders/sp/kccsmqn50pj0t48h0wvzgh880000gn/T/tmp5v8sheir",
       "next_action": ""
     },
     {
@@ -199,8 +215,15 @@ $ forgekit runtime serve --max-ticks 2   (prior heartbeat tick=5)
 $ /daemon  (status surface)
   forgekit always-on daemon — stopped
     status    : stopped · tick 7 · pid 222
-    last tick : 2026-06-22T11:43:51
+    last tick : 2026-06-23T17:13:16
     last note : max_ticks(2)
     kill-switch: clear
     resume    : 다음 serve 는 tick 8 부터 이어집니다 (resume on; cooldown 연속성 유지)
+    readiness : [b]idle_no_goals[/b]  (daemon=stopped · active 0 · awaiting 0 · blocked 0)
+        transport: live lane 있음 · 미검증(probe 안 함)
+          ◐ default_chat gemini→gemini (live-capable)
+          ◐ execution    codex→gemini (live-capable)
+          ◐ research     gemini→gemini (live-capable)
+        다음: `/goal new <제목>` → `/goal activate <id>` 로 진행할 목표를 주세요.
+        [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
     [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]

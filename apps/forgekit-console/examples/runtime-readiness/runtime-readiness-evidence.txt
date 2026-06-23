@@ -1,0 +1,59 @@
+ForgeKit runtime readiness — daemon × goal × live transport join (operator-first) — deterministic evidence
+재현: tests/forgekit/test_runtime_readiness.py · 하드레일: no fake-live, platform-honest unattended
+
+==============================================================================
+STEP 1 — provider 미설정: verdict=setup_required (정직)
+==============================================================================
+  readiness : [b]setup_required[/b]  (daemon=stopped · active 0 · awaiting 0 · blocked 0)
+      다음: `/setup apply` 로 4-provider 브레인을 구성하세요 (primary + live lane).
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
+==============================================================================
+STEP 2 — four-brain, goal 없음: verdict=idle_no_goals · transport 미검증(probe 안 함)
+==============================================================================
+  readiness : [b]idle_no_goals[/b]  (daemon=stopped · active 0 · awaiting 0 · blocked 0)
+      transport: live lane 있음 · 미검증(probe 안 함)
+        ◐ default_chat gemini→gemini (live-capable)
+        · execution    codex→codex (routing-only)
+        ◐ research     gemini→gemini (live-capable)
+      다음: `/goal new <제목>` → `/goal activate <id>` 로 진행할 목표를 주세요.
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
+==============================================================================
+STEP 3 — active goal + four-brain + probe(gemini live): verdict=progressing · transport 검증됨
+==============================================================================
+  readiness : [b]progressing[/b]  (daemon=stopped · active 1 · awaiting 0 · blocked 0)
+      transport: live lane 있음 · 검증됨
+        ● default_chat gemini→gemini (live-capable)
+        · execution    codex→codex (routing-only)
+        ● research     gemini→gemini (live-capable)
+      다음: 데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 시작 후: active goal + live lane 확보 — serve 가 safe packet 을 자동 진행합니다.
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
+==============================================================================
+STEP 4 — active goal 이지만 claude/codex(CLI)만: verdict=no_live_lane (packet 누적, fake-live 아님)
+==============================================================================
+  readiness : [b]no_live_lane[/b]  (daemon=stopped · active 1 · awaiting 0 · blocked 0)
+      transport: live lane 없음 (routing-only)
+        · default_chat claude→claude (routing-only)
+        · execution    codex→codex (routing-only)
+        · research     claude→claude (routing-only)
+      다음: 데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 시작 후: active goal 은 있으나 work slot 에 live transport 없음 — gemini key/ollama 데몬을 연결(`/provider connect`)해야 LLM 작업이 진행됩니다 (packet 은 누적, fake-live 아님).
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
+==============================================================================
+STEP 5 — awaiting_approval: verdict=awaiting_operator (operator 행동 필요)
+==============================================================================
+  readiness : [b]awaiting_operator[/b]  (daemon=stopped · active 0 · awaiting 1 · blocked 0)
+      transport: live lane 있음 · 미검증(probe 안 함)
+        ◐ default_chat gemini→gemini (live-capable)
+        · execution    codex→codex (routing-only)
+        ◐ research     gemini→gemini (live-capable)
+      ⚠ action-needed: 1 goal awaiting_approval — `/goal awaiting` → `/goal approve <id>`
+      다음: 데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 시작 후: 1 goal awaiting_approval — `/goal awaiting` → `/goal approve <id>`.
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
+
+==============================================================================
+STEP 6 — machine-readable readiness
+==============================================================================
+{'daemon_state': 'stopped', 'provider_configured': True, 'active_goals': 0, 'awaiting_approval': 1, 'blocked_goals': 0, 'goals_available': True, 'last_work': '', 'last_work_goal': '', 'slots': [{'slot': 'default_chat', 'declared': 'gemini', 'actual': 'gemini', 'live_capable': True, 'verified': None, 'reason': "slot 'default_chat' → gemini (declared)"}, {'slot': 'execution', 'declared': 'codex', 'actual': 'codex', 'live_capable': False, 'verified': None, 'reason': "'codex' 는 콘솔 live-submit 미구현(routable). explicit fallback 도 live 불가 — 설정 또는 fallback 정책을 조정하세요"}, {'slot': 'research', 'declared': 'gemini', 'actual': 'gemini', 'live_capable': True, 'verified': None, 'reason': "slot 'research' → gemini (declared)"}], 'has_live_lane': True, 'live_verified': False, 'verdict': 'awaiting_operator', 'next_action': '데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 시작 후: 1 goal awaiting_approval — `/goal awaiting` → `/goal approve <id>`.', 'unattended_note': 'macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)'}

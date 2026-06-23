@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as home:
     env={"FORGEKIT_HOME":home}; now=clk(); st=GoalStore(env=env)
     banner("STEP 1 — goal 없음: 정직 표기(fake 진행 없음)")
     for ln in surface.daemon_status_lines(env=env):
-        if "goal-loop" in ln or "always-on" in ln: print(ln)
+        if "readiness" in ln or "always-on" in ln: print(ln)
     # active goal with real execution evidence + a risky goal awaiting operator
     g=transitions.apply(Goal.create("ship console help polish",now=now),GoalStatus.ACTIVE,now=now)
     g=g.add_evidence("execution","safe packet 실행 — 콘솔 도움말 문구 개선",ref="p1",now=now)
