@@ -241,6 +241,10 @@ def _goal_result(parsed, ctx: ConsoleContext) -> CommandResult:
         return (CommandResult.info if ok else CommandResult.error)("goal activate", (msg,))
     if sub == "evidence":
         return CommandResult.info("goal evidence", gs.goal_evidence_lines(env, args[1] if len(args) > 1 else ""))
+    if sub == "publish":
+        ok, lines = gs.apply_publish_evidence(env, args[1] if len(args) > 1 else "",
+                                              getattr(ctx, "config", None))
+        return (CommandResult.info if ok else CommandResult.error)("goal publish", lines)
     if sub == "plan":
         ok, lines = gs.apply_plan(env, args[1] if len(args) > 1 else "", args[2:])
         return (CommandResult.info if ok else CommandResult.error)("goal plan", lines)

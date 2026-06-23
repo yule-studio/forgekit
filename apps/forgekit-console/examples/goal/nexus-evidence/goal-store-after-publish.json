@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "id": "goal-4e358694622a",
+  "title": "Nexus evidence and discovery continuity",
+  "intent": "goal/autopilot 결과를 Nexus evidence 축에 누적",
+  "status": "draft",
+  "mode": null,
+  "parent_id": null,
+  "children": [],
+  "packets": [],
+  "evidence": [
+    {
+      "ts": "2026-06-23T10:00:00+00:00",
+      "kind": "proposal",
+      "summary": "discovery intake packet 제안",
+      "ref": "pkt-discovery-1"
+    },
+    {
+      "ts": "2026-06-23T10:05:00+00:00",
+      "kind": "execution",
+      "summary": "safe-class 실행 완료",
+      "ref": "pkt-discovery-1"
+    },
+    {
+      "ts": "2026-06-23T10:06:00+00:00",
+      "kind": "decision",
+      "summary": "operator 승인"
+    },
+    {
+      "ts": "2026-06-23T09:49:42.892463+00:00",
+      "kind": "nexus-note",
+      "summary": "Nexus evidence note [proposal] · src_ts=2026-06-23T10:00:00+00:00",
+      "ref": "00-inbox/evidence/goal/goal-4e358694622a/proposal-000.md"
+    },
+    {
+      "ts": "2026-06-23T09:49:42.892603+00:00",
+      "kind": "nexus-note",
+      "summary": "Nexus evidence note [execution] · src_ts=2026-06-23T10:05:00+00:00",
+      "ref": "00-inbox/evidence/goal/goal-4e358694622a/execution-001.md"
+    },
+    {
+      "ts": "2026-06-23T09:49:42.892720+00:00",
+      "kind": "nexus-note",
+      "summary": "Nexus evidence note [decision] · src_ts=2026-06-23T10:06:00+00:00",
+      "ref": "00-inbox/evidence/goal/goal-4e358694622a/decision-002.md"
+    }
+  ],
+  "created_at": "2026-06-23T09:49:42.876119+00:00",
+  "updated_at": "2026-06-23T09:49:42.892723+00:00"
+}

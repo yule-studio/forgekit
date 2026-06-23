@@ -85,6 +85,10 @@ class NoteFrontmatter:
     source_flow: str = ""
     cssclasses: Tuple[str, ...] = ()
     agent_color: str = ""
+    # extra scalar frontmatter (k, v) pairs — a general seam for typed metadata that
+    # isn't part of the authorship block (e.g. the evidence schema: goal_id/lane/
+    # packet_id/status/evidence_path). Kept as an ordered tuple so output is deterministic.
+    extra: Tuple[Tuple[str, str], ...] = ()
 
     def to_yaml(self) -> str:
         lines = ["---"]
@@ -111,6 +115,8 @@ class NoteFrontmatter:
         lines.append("cssclasses: [" + ", ".join(_yaml_scalar(c) for c in self.cssclasses) + "]")
         if self.agent_color:
             lines.append(f"agent_color: {_yaml_scalar(self.agent_color)}")
+        for key, value in self.extra:
+            lines.append(f"{key}: {_yaml_scalar(str(value))}")
         lines.append("---")
         return "\n".join(lines)
 

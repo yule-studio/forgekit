@@ -9,7 +9,7 @@ what at which handoff phase". Pure string building + a guarded writer.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Sequence, Tuple
+from typing import Mapping, Optional, Sequence, Tuple
 
 from . import authorship as A
 
@@ -28,8 +28,13 @@ def build_authored_note(
     source_flow: str = "",
     tags: Sequence[str] = (),
     related: Sequence[str] = (),
+    extra: Optional[Mapping[str, str]] = None,
 ) -> str:
-    """A full markdown note authored by *agent_id* (frontmatter + callout + body)."""
+    """A full markdown note authored by *agent_id* (frontmatter + callout + body).
+
+    *extra* adds typed scalar frontmatter keys (ordered) beyond the authorship block —
+    used to carry the evidence schema (goal_id/lane/packet_id/status/evidence_path) so it
+    is queryable metadata, not buried in prose."""
 
     ident = A.identity_for(agent_id)
     fm = A.NoteFrontmatter(
@@ -38,6 +43,7 @@ def build_authored_note(
         agent_author=ident.agent_id, agent_role=ident.role_label,
         handoff_from=handoff_from, handoff_to=handoff_to, phase=phase,
         source_flow=source_flow, cssclasses=(ident.cssclass,), agent_color=ident.color,
+        extra=tuple((str(k), str(v)) for k, v in (extra or {}).items()),
     )
     marker = f"> [!{ident.callout}] {ident.role_label}"
     if phase:
