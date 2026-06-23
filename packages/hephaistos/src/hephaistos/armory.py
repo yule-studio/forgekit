@@ -12,9 +12,13 @@ from armory.catalog import (  # noqa: F401
     all_skills,
     all_weapons,
     categories,
+    clear_overlay,
     loadout,
+    promoted_skills,
+    register_promoted,
     skill,
     weapon,
 )
 
-__all__ = ("all_skills", "all_loadouts", "all_weapons", "skill", "loadout", "weapon", "categories")
+__all__ = ("all_skills", "all_loadouts", "all_weapons", "skill", "loadout", "weapon",
+           "categories", "register_promoted", "clear_overlay", "promoted_skills")

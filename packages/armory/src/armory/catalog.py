@@ -43,6 +43,7 @@ _WEAPONS = (
     WeaponSpec("terraform", "Terraform", "cli", "terraform version", "brew install terraform"),
     WeaponSpec("awscli", "AWS CLI", "cli", "aws --version", "brew install awscli"),
     WeaponSpec("gh", "GitHub CLI", "cli", "gh --version", "brew install gh"),
+    WeaponSpec("actionlint", "actionlint", "cli", "actionlint --version", "brew install actionlint"),
     WeaponSpec("intellij", "IntelliJ IDEA", "ide", "", "jetbrains toolbox"),
     WeaponSpec("vscode", "VS Code", "ide", "code --version", "https://code.visualstudio.com"),
 )
@@ -177,8 +178,8 @@ _SKILLS = (
               related_weapons=("docker",), related_loadouts=("backend-java-local", "devops-cloud-local"),
               related_roles=("backend-engineer", "devops-engineer")),
     SkillSpec("kubernetes", "Kubernetes", category="devops",
-              domains=("devops",), topics=("kubernetes", "k8s", "deploy", "orchestration"),
-              signals=("kubernetes", "k8s", "kubectl"), summary="K8s manifest/deploy",
+              domains=("devops",), topics=("kubernetes", "k8s", "eks", "deploy", "orchestration"),
+              signals=("kubernetes", "k8s", "kubectl", "eks"), summary="K8s manifest/deploy (EKS 포함)",
               when_to_use=("컨테이너 오케스트레이션, 배포 manifest",), when_not_to_use=("단일 로컬 실행",),
               rules=("resource limit 명시", "secret 은 secret 리소스"),
               commands=("kubectl apply --dry-run=client -f .",),
@@ -201,11 +202,32 @@ _SKILLS = (
               domains=("devops",), topics=("aws", "ecs", "deploy", "container"),
               signals=("ecs", "aws", "fargate"), summary="AWS ECS 배포 가이드",
               when_to_use=("ECS/Fargate 컨테이너 배포",), when_not_to_use=("on-prem k8s",),
+              required_inputs=("대상 환경(dev/stg/prod)", "컨테이너 이미지", "task 정의/리소스"),
+              expected_outputs=("ECS service/task 정의", "배포 전략(rolling/blue-green) 문서"),
               rules=("task role 최소권한", "rolling/blue-green 전략 명시"),
               commands=("aws ecs describe-services",), verification=("aws --version",),
               forbidden=("production service 직접 변경(승인)",), capability_note="cloud deploy",
               related_weapons=("awscli", "docker"), related_loadouts=("devops-cloud-local",),
               related_roles=("devops-engineer",)),
+    SkillSpec("github-actions", "GitHub Actions (CI/CD)", category="devops",
+              domains=("devops",), topics=("ci", "cd", "pipeline", "workflow", "deploy", "container"),
+              signals=("github actions", "github-actions", "actions", "ci/cd", "ci 파이프라인",
+                       "워크플로우", "workflow", "파이프라인", "deploy pipeline"),
+              summary="GitHub Actions CI/CD 워크플로우 작성·검증",
+              when_to_use=("빌드/테스트/배포 파이프라인, IaC plan→apply 게이트, 이미지 push",),
+              when_not_to_use=("런타임 오케스트레이션(→kubernetes/aws-ecs)", "로컬 단발 빌드"),
+              required_inputs=("배포 대상/트리거(브랜치·태그)", "필요 secret 목록", "빌드/테스트 명령"),
+              expected_outputs=(".github/workflows/*.yml", "환경별 job 분리(dev→prod gate)"),
+              rules=("secret 은 repo/environment secret(평문 금지)", "prod 배포는 manual approval gate",
+                     "OIDC 권장(장기 키 금지)"),
+              commands=("actionlint .github/workflows",),
+              verification=("actionlint .github/workflows", "gh workflow list"),
+              forbidden=("프로덕션 배포 job 무승인 트리거", "secret 을 workflow 로그에 echo"),
+              capability_note="ci/cd pipeline authoring", provider_affinity=("github",),
+              install_requirements=("gh", "actionlint"),
+              related_weapons=("gh", "actionlint", "docker"),
+              related_loadouts=("devops-cloud-local",), related_roles=("devops-engineer",),
+              nexus_refs=(_area("20-areas/devops/github-actions"),)),
     # --- auth / security -------------------------------------------------
     SkillSpec("auth-jwt", "Auth / JWT", category="security",
               domains=("backend", "security"), topics=("auth-jwt", "auth", "jwt", "refresh-token", "security"),
@@ -252,7 +274,7 @@ _SKILLS = (
     # --- ai / agent ------------------------------------------------------
     SkillSpec("openai-api", "LLM API (openai-compatible)", category="ai",
               domains=("ai",), topics=("llm", "api", "completion", "embedding"),
-              signals=("llm api", "openai", "completion", "embedding", "프롬프트"),
+              signals=("llm api", "openai", "completion", "embedding", "프롬프트 엔지니어링"),
               summary="openai-compatible LLM API 연동",
               when_to_use=("LLM 호출/임베딩, provider-neutral 연동",), when_not_to_use=("로컬 모델 학습",),
               rules=("usage/cost 추적", "키는 env"), verification=("(연결 smoke)",),
@@ -376,10 +398,11 @@ _LOADOUTS = (
                 verify_commands=("terraform version", "docker --version"),
                 goal="클라우드 IaC/배포 plan 작성",
                 recommended_skills=("terraform", "aws-ecs", "docker"),
-                optional_skills=("kubernetes", "secrets-management"),
+                optional_skills=("kubernetes", "secrets-management", "github-actions"),
                 blocked_skills=("java-spring", "react-typescript"),
                 default_verify_flow=("terraform validate", "terraform plan"),
-                selection_signals=("terraform", "ecs", "kubernetes", "배포", "iac"),
+                selection_signals=("terraform", "ecs", "kubernetes", "배포", "iac",
+                                   "github actions", "ci/cd", "파이프라인"),
                 notes="apply 는 항상 승인+runbook (plan-first)"),
     LoadoutSpec("ai-agent-local", "AI Agent (local)", intended_roles=("ai-engineer",),
                 required_weapons=("python", "uv"), optional_weapons=("docker",),
@@ -418,9 +441,38 @@ _WEAPON_BY_ID: Dict[str, WeaponSpec] = {w.id: w for w in _WEAPONS}
 _SKILL_BY_ID: Dict[str, SkillSpec] = {s.id: s for s in _SKILLS}
 _LOADOUT_BY_ID: Dict[str, LoadoutSpec] = {l.id: l for l in _LOADOUTS}
 
+# ─── promotion overlay ────────────────────────────────────────────────────────
+# Candidates promoted at runtime (intake → ``armory.candidate.promote_candidate`` →
+# ``register_promoted``) land here, so the resolver picks them up without editing the
+# seed. Process-local + resettable (``clear_overlay``) — tests register into it and clear,
+# never leaking across cases. A promoted id overrides the seed entry of the same id
+# (re-promotion = update), and base order is preserved with overlay appended after.
+_OVERLAY: "list[SkillSpec]" = []
+
+
+def register_promoted(spec: SkillSpec) -> None:
+    """Add (or replace) a promoted SkillSpec in the runtime overlay. Idempotent by id."""
+
+    global _OVERLAY
+    _OVERLAY = [s for s in _OVERLAY if s.id != spec.id] + [spec]
+
+
+def clear_overlay() -> None:
+    """Drop all runtime-promoted entries (test isolation / re-seed)."""
+
+    _OVERLAY.clear()
+
+
+def promoted_skills() -> Tuple[SkillSpec, ...]:
+    return tuple(_OVERLAY)
+
 
 def all_skills() -> Tuple[SkillSpec, ...]:
-    return _SKILLS
+    if not _OVERLAY:
+        return _SKILLS
+    overridden = {s.id for s in _OVERLAY}
+    base = tuple(s for s in _SKILLS if s.id not in overridden)
+    return base + tuple(_OVERLAY)
 
 
 def all_loadouts() -> Tuple[LoadoutSpec, ...]:
@@ -432,6 +484,9 @@ def all_weapons() -> Tuple[WeaponSpec, ...]:
 
 
 def skill(skill_id: str) -> Optional[SkillSpec]:
+    for s in _OVERLAY:
+        if s.id == skill_id:
+            return s
     return _SKILL_BY_ID.get(skill_id)
 
 
@@ -444,7 +499,8 @@ def weapon(weapon_id: str) -> Optional[WeaponSpec]:
 
 
 def categories() -> Tuple[str, ...]:
-    return tuple(dict.fromkeys(s.category for s in _SKILLS if s.category))
+    return tuple(dict.fromkeys(s.category for s in all_skills() if s.category))
 
 
-__all__ = ("all_skills", "all_loadouts", "all_weapons", "skill", "loadout", "weapon", "categories")
+__all__ = ("all_skills", "all_loadouts", "all_weapons", "skill", "loadout", "weapon",
+           "categories", "register_promoted", "clear_overlay", "promoted_skills")
