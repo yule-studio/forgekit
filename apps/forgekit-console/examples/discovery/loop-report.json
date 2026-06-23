@@ -1,0 +1,49 @@
+{
+  "started_at": "2026-06-23T00:00:00",
+  "ended_at": "2026-06-23T18:00:00",
+  "window_hours": 24.0,
+  "ticks": [
+    {
+      "index": 0,
+      "at": "2026-06-23T00:00:00",
+      "new_count": 2,
+      "seen_count": 0,
+      "total_tracked": 2,
+      "pending": 2
+    },
+    {
+      "index": 1,
+      "at": "2026-06-23T06:00:00",
+      "new_count": 0,
+      "seen_count": 2,
+      "total_tracked": 2,
+      "pending": 2
+    },
+    {
+      "index": 2,
+      "at": "2026-06-23T12:00:00",
+      "new_count": 0,
+      "seen_count": 2,
+      "total_tracked": 2,
+      "pending": 2
+    },
+    {
+      "index": 3,
+      "at": "2026-06-23T18:00:00",
+      "new_count": 0,
+      "seen_count": 2,
+      "total_tracked": 2,
+      "pending": 2
+    }
+  ],
+  "new_total": 2,
+  "seen_total": 6,
+  "candidates": [
+    {
+      "title": "아이디어: apps/m.py: 3 TODO/FIXME 누적",
+      "why": "pain 신호 · 출처 repo-local · score 4.0",
+      "reason": "4회 교차 관측 · score 4.0 · 방금 관측"
+    }
+  ],
+  "stopped_reason": "clock-exhausted"
+}

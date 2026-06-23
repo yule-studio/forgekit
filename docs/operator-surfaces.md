@@ -21,6 +21,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | discovery collectors (free-first) | working; YouTube/IG/Google planned | `/sources` | `examples/sources/` |
 | discovery sweep → digest (왜/다음 질문) | working | `/discovery` | `examples/discovery/sweep-digest.json`, `test_discovery_sweep` |
 | discovery 아이디어 누적/dedup/lifecycle (영속 ledger) | working | `/discovery` · `/discovery pending` | `examples/discovery/ledger-accumulation.json`, `test_discovery_ledger` |
+| discovery 24h bounded loop (injected clock 누적 driver) | working (core/tick; serve 배선=autonomy lane) | `run_discovery_loop`/`discovery_loop_tick` | `examples/discovery/loop-report.json`, `test_discovery_loop` |
+| discovery ask-me-later 후보 (교차 관측·신선도·score 기준) | working | `/discovery candidates` | `test_discovery_loop` |
+| discovery evidence track (경쟁gap·self-improve → vault note) | working (연결 시; 미연결 정직 실패) | `/discovery evidence` | `examples/discovery/evidence-*.md`, `test_discovery_loop` |
 | operator-tunable 수집 토픽 (HN/subreddits/GitHub/RSS) | working | config `discovery` 블록 | `test_discovery_ledger` |
 | discovery brief → PM handoff (제안) | working | `/discovery promote <n>` | `test_discovery_ledger` |
 | discovery brief → authored vault note | working (연결 시; 미연결 정직 실패) | `/discovery save <n>` | `examples/discovery/idea-brief-note.md` |

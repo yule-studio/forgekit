@@ -2,7 +2,7 @@
 
 forgekit 의 discovery 프로그램(무료 우선 수집 → 아이디어 → 자체 개선 → 보안 드릴)이
 실제로 닫히고, 위험한 것은 전부 gated/planned 라는 evidence. 재생성/검증:
-`python -m unittest tests.forgekit.test_discovery_e2e tests.forgekit.test_discovery_sweep`.
+`python -m unittest tests.forgekit.test_discovery_e2e tests.forgekit.test_discovery_sweep tests.forgekit.test_discovery_loop`.
 discovery 루프 SSoT: [`docs/discovery-loop.md`](../../../../docs/discovery-loop.md).
 
 | 파일 | 단계 | 무엇 |
@@ -11,6 +11,9 @@ discovery 루프 SSoT: [`docs/discovery-loop.md`](../../../../docs/discovery-loo
 | `idea-brief.json` | idea-discovery(WT3) | ReferenceBundle + CompetitorGapMap + IdeaBrief + self-improve 신호 분리 |
 | `sweep-digest.json` | discovery loop | 수집→brief→operator digest 한 패스. `entries[].why`(왜 올라왔는지) + `entries[].next_questions`(다음 질문) |
 | `ledger-accumulation.json` | 누적(ledger) | 2회 sweep: sweep1 new 3 → sweep2 new 0/dedup 3(seen_count++) → promote/park lifecycle 영속 |
+| `loop-report.json` | bounded 24h loop | 4 tick(6h 간격) 누적: tick0 new 2 → tick1~3 dedup(seen++) → 교차 관측 후보 1건 표면. injected clock, window-bound |
+| `evidence-competitor-gap.md` | evidence track | sweep 의 경쟁/gap map → authored evidence note(5 섹션, `competitor-gap` 태그) |
+| `evidence-self-improve.md` | evidence track | sweep 의 self-improve 신호 → improvement-signal note(handoff→tech-lead) |
 | `idea-brief-note.md` | knowledge plane | brief → retrieval-friendly authored vault note (author/role/color/cssclass + 5 섹션) |
 | `../selfimprove/scan.json` | self-improvement(WT4) | repo gap → risk-classified 패킷(safe만 자동) |
 | `../security/drill-plan.json` | red/blue(WT5) | 내 자산 plan-only 드릴(dry-run, 승인 필요) |
