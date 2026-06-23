@@ -1,0 +1,288 @@
+"""armory.adoption_registry — the evaluated external candidates (data, declaration-only).
+
+The actual ForgeKit 도입 효율 검토 for this wave's candidate set. Each entry is a real
+``AdoptionReview`` (8축 artifact + PM/tech-lead/specialist 3축 검토 + verdict). This is a
+registry/declaration file by design (no branch logic) — see CLAUDE.md large-file 예외.
+
+Verdict 요약(이 라운드):
+- adopt-now   : vale (+ doc-quality-review-local loadout).
+- collect-first: proselint, write-good, alex, textlint, ponytail, context7, mcp-fetch, mcp-memory.
+- hold        : mcp-filesystem, mcp-git, mcp-sequential-thinking, browser-use.
+
+collect-first 후보는 Nexus 에 근거만 누적하고 즉시 활성화하지 않는다. hold 는 governance/
+security/overlap 사유로 이번 라운드 제외. 어느 것도 "installed" 로 보고하지 않는다.
+"""
+
+from __future__ import annotations
+
+from typing import Tuple
+
+from .adoption import (
+    AXIS_PM,
+    AXIS_SPECIALIST,
+    AXIS_TECH_LEAD,
+    VERDICT_ADOPT_NOW,
+    VERDICT_COLLECT_FIRST,
+    VERDICT_HOLD,
+    AdoptionReview,
+    ReviewerVerdict,
+)
+from .models import KIND_MCP, KIND_SKILL, KIND_TOOL
+
+
+def _rv(axis, verdict, rationale):
+    return ReviewerVerdict(axis=axis, verdict=verdict, rationale=rationale)
+
+
+_REVIEWS: Tuple[AdoptionReview, ...] = (
+    # ── adopt-now ────────────────────────────────────────────────────────────
+    AdoptionReview(
+        candidate_id="vale", name="Vale", kind=KIND_TOOL,
+        source="https://github.com/errata-ai/vale",
+        current_pain="vault/문서 품질이 사람 리뷰에만 의존 — '왜' 깊이/문체/용어 일관성을 기계로 강제할 표준 도구가 없다.",
+        expected_benefit="style-guide(YAML) 기반 prose lint 를 CI/로컬에서 결정적으로 강제 — 문서 회귀를 사람 전에 잡는다.",
+        overlap="Nexus vault-curate 는 구조(frontmatter/5섹션)를 보지만 prose 문체/용어는 안 본다 — 보완재(중복 아님).",
+        operational_cost="단일 Go 바이너리(brew/직접 다운로드) + style 패키지 sync. 런타임 의존 없음 — 가장 낮은 부담.",
+        maintenance_risk="활발히 유지(errata-ai), config 안정적. 낮음 — style 패키지 버전만 핀.",
+        provider_runtime_fit="provider-neutral CLI — 어느 backend 든 executor 가 호출. ForgeKit toolchain 으로 버전 관리 가능.",
+        governance_security="로컬 파일만 읽고 네트워크 없음(style sync 제외). 위험 낮음, 가드 불필요.",
+        verdict=VERDICT_ADOPT_NOW,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_ADOPT_NOW, "문서 품질은 ForgeKit 핵심 가치(vault) — 즉시 카탈로그화할 가치 충분."),
+            _rv(AXIS_TECH_LEAD, VERDICT_ADOPT_NOW, "단일 바이너리·config 기반이라 도입 리스크 최소. attach contract 명확."),
+            _rv(AXIS_SPECIALIST, VERDICT_ADOPT_NOW, "knowledge-engineer: style-guide 로 '왜' 깊이/용어 강제가 vault 규칙과 정합."),
+        ),
+        install_plan=("brew install vale", "vale sync (.vale.ini 의 style 패키지)", "검증: vale --version"),
+        loadout_id="doc-quality-review-local",
+        notes="adopted=카탈로그 등록(available). 실제 설치/장착은 install_plan 선언일 뿐 — 미설치."),
+
+    # ── collect-first : doc-quality loadout members (optional) ────────────────
+    AdoptionReview(
+        candidate_id="proselint", name="proselint", kind=KIND_TOOL,
+        source="https://github.com/amperser/proselint",
+        current_pain="문서의 상투구/중복/약한 표현을 기계로 잡을 보조 린터가 없다.",
+        expected_benefit="Vale 보완 — 영어 prose 의 검증된 규칙(중복/jargon) 추가 커버.",
+        overlap="Vale 규칙과 상당 부분 겹침 — Vale 채택 후 한계가 드러나면 그때 보강.",
+        operational_cost="Python 패키지(pip/uv) — Python 런타임 의존. Vale 대비 추가 부담.",
+        maintenance_risk="유지보수 빈도 낮은 편 — 중간. Vale 가 있으면 필수 아님.",
+        provider_runtime_fit="CLI, provider-neutral. doc-quality loadout 의 optional 멤버로 적합.",
+        governance_security="로컬 파일만 — 위험 낮음.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "Vale 로 시작하고 효과 측정 후 보강 — 동시 도입은 과함."),
+            _rv(AXIS_TECH_LEAD, VERDICT_COLLECT_FIRST, "Vale 와 규칙 중복 — 한계 evidence 누적 후 결정."),
+            _rv(AXIS_SPECIALIST, VERDICT_COLLECT_FIRST, "knowledge-engineer: loadout optional 로만 노출, 강제 X."),
+        ),
+        notes="doc-quality-review-local 의 optional 멤버 후보 — Nexus 근거 누적, 미설치."),
+
+    AdoptionReview(
+        candidate_id="write-good", name="write-good", kind=KIND_TOOL,
+        source="https://github.com/btford/write-good",
+        current_pain="수동태/약한 표현 같은 흔한 글쓰기 안티패턴을 기계로 못 잡는다.",
+        expected_benefit="가벼운 영어 문체 힌트 — 빠른 1차 패스.",
+        overlap="Vale/proselint 와 규칙 겹침 — naive linter 라 정확도 낮음.",
+        operational_cost="npm 패키지 — Node 런타임 의존. 멀티 Node 도구는 toolchain 부담 누적.",
+        maintenance_risk="유지보수 정체(최근 커밋 드묾) — 중상.",
+        provider_runtime_fit="CLI, provider-neutral. 단 Node 의존이 Vale 단일바이너리보다 불리.",
+        governance_security="로컬 파일만 — 위험 낮음.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "정확도/유지보수가 약해 즉시 도입 가치 낮음."),
+            _rv(AXIS_TECH_LEAD, VERDICT_HOLD, "Node 의존 + 유지보수 정체 — 사실상 hold 에 가까움, loadout 노출만."),
+            _rv(AXIS_SPECIALIST, VERDICT_COLLECT_FIRST, "knowledge-engineer: Vale 로 대체 가능, evidence 만."),
+        ),
+        notes="loadout optional 후보(약). 미설치."),
+
+    AdoptionReview(
+        candidate_id="alex", name="alex", kind=KIND_TOOL,
+        source="https://github.com/get-alex/alex",
+        current_pain="둔감/배제적 표현(insensitive writing)을 사람이 일일이 못 잡는다.",
+        expected_benefit="포용적 글쓰기 자동 점검 — 공개 문서/README 톤 관리.",
+        overlap="Vale 에도 inclusive-language 스타일 팩(예: alex 포팅)이 있어 부분 중복.",
+        operational_cost="npm 패키지 — Node 런타임 의존.",
+        maintenance_risk="유지보수 양호하나 영어 전용 — 한국어 문서엔 제한적. 중간.",
+        provider_runtime_fit="CLI, provider-neutral. 한국어 비중 높은 vault 엔 적용 범위 좁음.",
+        governance_security="로컬 파일만 — 위험 낮음.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "공개 문서 톤엔 가치 — 단 한국어 vault 비중 고려해 선검증."),
+            _rv(AXIS_TECH_LEAD, VERDICT_COLLECT_FIRST, "Vale inclusive 팩과 비교 evidence 필요."),
+            _rv(AXIS_SPECIALIST, VERDICT_COLLECT_FIRST, "knowledge-engineer: 영어 산출물 한정 optional."),
+        ),
+        notes="영어 산출물 한정 optional 후보. 미설치."),
+
+    AdoptionReview(
+        candidate_id="textlint", name="textlint", kind=KIND_TOOL,
+        source="https://github.com/textlint/textlint",
+        current_pain="규칙을 직접 짜야 하는 문서 영역(한국어 포함)에 플러그형 린터가 없다.",
+        expected_benefit="플러그인 생태계로 한국어/마크다운 규칙까지 확장 가능 — Vale 가 약한 영역 보완.",
+        overlap="Vale 와 목적 겹치나 plugin 모델/한국어 커버는 차별점.",
+        operational_cost="npm + 플러그인 다수 — 설정/유지 부담 가장 큼.",
+        maintenance_risk="코어는 유지되나 플러그인 품질 편차 — 중상.",
+        provider_runtime_fit="CLI, provider-neutral. 한국어 vault 에는 Vale 보다 적합할 수 있음(검증 필요).",
+        governance_security="로컬 파일만 — 위험 낮음.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "한국어 커버 가능성은 매력 — 단 설정 부담 커서 PoC 먼저."),
+            _rv(AXIS_TECH_LEAD, VERDICT_COLLECT_FIRST, "플러그인 의존 트리 평가 후. 지금 adopt 는 과투자."),
+            _rv(AXIS_SPECIALIST, VERDICT_COLLECT_FIRST, "knowledge-engineer: 한국어 규칙 PoC 로 Vale 와 비교."),
+        ),
+        notes="한국어 vault 커버 PoC 후보. 미설치."),
+
+    # ── collect-first : 그 외 ─────────────────────────────────────────────────
+    AdoptionReview(
+        candidate_id="ponytail", name="ponytail", kind=KIND_SKILL,
+        source="https://github.com/example/ponytail",
+        current_pain="새 모듈/계층 추가 시 과설계를 막을 일관된 단순성 검토 렌즈가 코드화돼 있지 않다.",
+        expected_benefit="ponytail 식 단순성 검토(keep/simplify/use-existing/reduce-surface/reject)를 표준 스킬로.",
+        overlap="ForgeKit 은 이미 council/consult + lane readiness 로 설계 검토 레인을 가짐 — 상당 부분 겹침.",
+        operational_cost="외부 도구라기보다 검토 절차 — 도입 부담 낮으나 repo 실체/성숙도 불명확.",
+        maintenance_risk="repo 정체성/유지보수 불확실 — 외부 의존보다 '렌즈를 스킬로 내재화'가 안전.",
+        provider_runtime_fit="skill(절차) — provider-neutral. 단 외부 repo 채택보다 내부 스킬화가 fit.",
+        governance_security="검토 절차라 보안 위험 낮음 — 외부 코드 실행 아님.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "단순성 렌즈 자체는 이미 우리 lane 이 적용 중 — 외부 채택보다 evidence."),
+            _rv(AXIS_TECH_LEAD, VERDICT_COLLECT_FIRST, "council/consult 와 겹침 — 외부 repo 의존 만들 이유 약함."),
+            _rv(AXIS_SPECIALIST, VERDICT_HOLD, "tech-lead specialist: 내부 스킬화로 충분, 외부 도입은 보류."),
+        ),
+        notes="이미 본 wave 의 consult 렌즈로 사용 중 — 외부 repo 채택은 근거 누적 후."),
+
+    AdoptionReview(
+        candidate_id="context7", name="Context7", kind=KIND_MCP,
+        source="https://github.com/upstash/context7",
+        current_pain="LLM 이 라이브러리 최신 API 를 모르고 환각 — 버전 맞는 docs/예제 주입 경로가 없다.",
+        expected_benefit="최신 라이브러리 docs/snippet 을 MCP 로 주입 — 코드 생성 정확도 향상.",
+        overlap="Nexus 는 *내부* 지식(vault) — 외부 라이브러리 docs 는 미커버라 보완재. 단 역할 경계 정리 필요.",
+        operational_cost="MCP 서버 + (호스티드) 의존/키 가능성 — 외부 서비스 의존 도입.",
+        maintenance_risk="3rd-party 호스티드 서비스 의존 — 가용성/정책 변화 리스크 중상.",
+        provider_runtime_fit="MCP 라 claude/codex/gemini(mcp-host)에 attach — provider-neutral SSoT 가능. ollama 제외.",
+        governance_security="외부 서버로 쿼리 송신 — outbound/데이터 노출 검토 필요. integrations/mcp 가드 경유 필수.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_ADOPT_NOW, "환각 감소 효과 크다 — 가능하면 빨리."),
+            _rv(AXIS_TECH_LEAD, VERDICT_COLLECT_FIRST, "호스티드 의존 + outbound 정책 정리 전엔 adopt 불가 — PoC 먼저."),
+            _rv(AXIS_SPECIALIST, VERDICT_COLLECT_FIRST, "platform-runtime: integrations/mcp 가드+키 처리 검증 후."),
+        ),
+        install_plan=("integrations/mcp/context7.json 정의(transport/auth.env)", "mcp projection 생성", "키는 env 참조만"),
+        notes="가장 유망한 collect-first — outbound/키 가드 검증되면 adopt 재평가."),
+
+    AdoptionReview(
+        candidate_id="mcp-fetch", name="MCP Fetch (official)", kind=KIND_MCP,
+        source="https://github.com/modelcontextprotocol/servers/tree/main/src/fetch",
+        current_pain="에이전트가 임의 URL 본문을 표준 경로로 가져올 reference MCP 가 미배선.",
+        expected_benefit="공식 reference 서버라 신뢰도 높은 fetch capability — 리서치 보강.",
+        overlap="discovery sources(RSS/HN/GitHub collectors)와 기능 겹침 — 단 임의 URL fetch 는 미커버.",
+        operational_cost="공식 서버 설치/attach — 경량이나 MCP host 연결 필요.",
+        maintenance_risk="공식 레포라 유지보수 양호 — 낮음.",
+        provider_runtime_fit="MCP, mcp-host attach. provider-neutral SSoT 가능.",
+        governance_security="임의 URL fetch = SSRF/내부망 접근 위험 — allowlist/sandbox 정책 필수. 가드 전 도입 금지.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "리서치엔 유용하나 보안 가드가 선행."),
+            _rv(AXIS_TECH_LEAD, VERDICT_COLLECT_FIRST, "SSRF allowlist 정책 설계 후 — 지금 adopt 위험."),
+            _rv(AXIS_SPECIALIST, VERDICT_HOLD, "security-engineer: outbound allowlist 없이는 hold."),
+        ),
+        install_plan=("integrations/mcp/fetch.json", "URL allowlist/sandbox 정책 첨부", "mcp projection"),
+        notes="공식이라 품질 높음 — SSRF 가드 설계가 adopt 전제."),
+
+    AdoptionReview(
+        candidate_id="mcp-memory", name="MCP Memory (official)", kind=KIND_MCP,
+        source="https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+        current_pain="세션 간 기억의 표준 MCP 경로가 없다.",
+        expected_benefit="공식 memory 서버로 표준화된 기억 capability.",
+        overlap="Nexus(vault) + troubleshooting ledger + claude-mem 으로 이미 기억 레인 보유 — 중복 큼.",
+        operational_cost="서버 설치/attach + 저장소 관리 — 기존 기억 레인과 이중화 비용.",
+        maintenance_risk="공식 유지보수 양호하나 우리 기억 SSoT 와 충돌 위험 — 중간.",
+        provider_runtime_fit="MCP attach 가능 — 단 우리 기억은 vault/ledger 가 SSoT 라 fit 약함.",
+        governance_security="기억 저장 위치/내용 거버넌스 — 기존 메모리 정책과 정합 필요.",
+        verdict=VERDICT_COLLECT_FIRST,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_COLLECT_FIRST, "기억은 이미 vault/ledger 로 충당 — 굳이 지금 아님."),
+            _rv(AXIS_TECH_LEAD, VERDICT_HOLD, "Nexus/ledger 와 SSoT 중복 — 사실상 hold 성격."),
+            _rv(AXIS_SPECIALIST, VERDICT_COLLECT_FIRST, "knowledge-engineer: 우리 기억 모델과 비교 evidence 만."),
+        ),
+        notes="중복 큼 — Nexus/ledger 한계 드러날 때 재평가."),
+
+    # ── hold ─────────────────────────────────────────────────────────────────
+    AdoptionReview(
+        candidate_id="mcp-filesystem", name="MCP Filesystem (official)", kind=KIND_MCP,
+        source="https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+        current_pain="에이전트의 파일 접근을 표준 MCP 로 노출하고 싶을 수 있다.",
+        expected_benefit="표준 파일 접근 capability.",
+        overlap="executor 는 이미 파일 도구를 가짐 — 기능 거의 전부 중복.",
+        operational_cost="추가 서버 + 권한 범위 관리.",
+        maintenance_risk="공식 유지보수는 양호하나 우리 가드와 충돌 관리 비용.",
+        provider_runtime_fit="MCP attach 가능하나 ForgeKit 파일 경로 안전(git_path_safety)과 경합.",
+        governance_security="광범위 FS 접근 MCP 는 git-write hard rail / 경로 안전 SSoT 를 우회 — 거버넌스 충돌(금지).",
+        verdict=VERDICT_HOLD,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_HOLD, "기존 파일 도구로 충분 — 추가 가치 없음."),
+            _rv(AXIS_TECH_LEAD, VERDICT_HOLD, "경로 안전 hard rail 우회 위험 — 도입 불가."),
+            _rv(AXIS_SPECIALIST, VERDICT_HOLD, "security-engineer: broad FS MCP 는 가드 우회, hold."),
+        ),
+        notes="governance 충돌 + 중복 — 이번 라운드 제외."),
+
+    AdoptionReview(
+        candidate_id="mcp-git", name="MCP Git (official)", kind=KIND_MCP,
+        source="https://github.com/modelcontextprotocol/servers/tree/main/src/git",
+        current_pain="git 작업을 MCP 로 노출하려는 유혹.",
+        expected_benefit="표준 git capability.",
+        overlap="ForgeKit 은 git-write 를 git_path_safety/repo_write_policy 로 강하게 통제 — 전면 중복.",
+        operational_cost="추가 서버 + 권한.",
+        maintenance_risk="우리 git hard rail 과 이중 경로 유지 비용.",
+        provider_runtime_fit="MCP attach 가능하나 우리 git 거버넌스와 정면 충돌.",
+        governance_security="MCP 가 git write 를 수행하면 `git -C + 명시 pathspec` hard rail / commit-governance 를 우회 — 금지.",
+        verdict=VERDICT_HOLD,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_HOLD, "git 안전은 우리 핵심 가드 — 외부 MCP 로 우회 불가."),
+            _rv(AXIS_TECH_LEAD, VERDICT_HOLD, "repo_write_policy SSoT 우회 — 도입 금지."),
+            _rv(AXIS_SPECIALIST, VERDICT_HOLD, "security-engineer: hard rail 충돌, hold."),
+        ),
+        notes="git hard rail 우회 위험 — 제외."),
+
+    AdoptionReview(
+        candidate_id="mcp-sequential-thinking", name="MCP Sequential Thinking (official)", kind=KIND_MCP,
+        source="https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+        current_pain="구조화된 단계적 추론을 도구로 강제하고 싶을 수 있다.",
+        expected_benefit="단계적 사고 스캐폴딩.",
+        overlap="decision_lane(readiness/council/handoff) + 에이전트 자체 추론과 겹침 — 한계 효용.",
+        operational_cost="추가 서버 + 프롬프트 표면 증가.",
+        maintenance_risk="효용 대비 유지 비용 — 중간.",
+        provider_runtime_fit="MCP attach 가능하나 모델 내장 추론과 중복.",
+        governance_security="위험 낮으나 도입 정당성(효용) 부족이 더 큰 문제.",
+        verdict=VERDICT_HOLD,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_HOLD, "추론은 모델/lane 이 이미 함 — 추가 가치 미미."),
+            _rv(AXIS_TECH_LEAD, VERDICT_HOLD, "프롬프트 표면만 늘림 — hold."),
+            _rv(AXIS_SPECIALIST, VERDICT_HOLD, "decision_lane 과 중복 — hold."),
+        ),
+        notes="효용 낮음 — 제외."),
+
+    AdoptionReview(
+        candidate_id="browser-use", name="browser-use", kind=KIND_TOOL,
+        source="https://github.com/browser-use/browser-use",
+        current_pain="실제 브라우저 자동화(로그인-게이트 사이트 등) capability 가 없다.",
+        expected_benefit="LLM 주도 브라우저 자동화 — 일부 리서치/검증 시나리오 확장.",
+        overlap="discovery 의 YouTube/Figma/Google 은 planned seam — 그쪽과 목적 일부 겹침(미연결).",
+        operational_cost="Python + 헤드리스 브라우저(Playwright) 의존 — 무거운 런타임.",
+        maintenance_risk="빠르게 바뀌는 신생 프로젝트 — API 불안정, 중상.",
+        provider_runtime_fit="라이브러리/에이전트 — 무거운 의존이 ForgeKit 경량 toolchain 과 어긋남.",
+        governance_security="실 브라우저 구동 = 자격증명/exfiltration/자동 액션 위험 매우 큼 — 강한 sandbox/승인 게이트 없이는 금지.",
+        verdict=VERDICT_HOLD,
+        reviewers=(
+            _rv(AXIS_PM, VERDICT_HOLD, "위험·비용 대비 당장 필요 시나리오 없음."),
+            _rv(AXIS_TECH_LEAD, VERDICT_HOLD, "무거운 의존 + 불안정 API — hold."),
+            _rv(AXIS_SPECIALIST, VERDICT_HOLD, "security-engineer: 브라우저 자동화 위험, sandbox 설계 전 hold."),
+        ),
+        notes="고위험 — planned browser seam 과 함께 별도 보안 설계 후 재평가."),
+)
+
+
+def adoption_registry() -> Tuple[AdoptionReview, ...]:
+    """The evaluated external candidate set for this intake round (immutable view)."""
+
+    return _REVIEWS
+
+
+__all__ = ("adoption_registry",)
