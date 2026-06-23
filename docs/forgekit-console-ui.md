@@ -236,9 +236,26 @@ ForgeKit 콘솔은 **full-screen Textual TUI** (alternate screen + mouse capture
   반영. 가짜 typing 애니메이션 없음.
 - **history**: turn 단위 group(새 입력 시 reset), 최근 ~6개만 노출 — 무한 누적 없음. idle→빈
   surface(0행). clear 시 feed 도 정리.
-- **active-state 가시성**: 실행 중(running) 이벤트는 **bold accent `▸` 마커 + 밝은 라벨**로
-  도드라지고(=지금 일어나는 일), 끝난 이벤트는 조용한 dim `•` + dim 라벨로 가라앉는다. 순수
-  `status==RUNNING` 기반 — 가짜 spinner/typing 아님. running 은 실측 duration 이 없으므로 정직하게
-  `…` 만(가짜 ~1초 없음), 끝나면 실측 `(N.Ns)`. 검증 `test_tui_process_feed`(ProcessFeedRenderTests).
+- **active-state 가시성 + 살아있는 motion**: 실행 중(running) 이벤트는 **amber braille
+  spinner(`render.SPINNER_FRAMES`) + amber 라벨 + 실시간 elapsed `(X.Xs)`** 로 도드라진다
+  (=지금 일어나는 일, "노란 진행감"). 끝난 이벤트는 조용한 dim `•` + dim 라벨로 가라앉는다.
+  motion 은 **real status motion 만**: `app._motion_tick` 이 spinner frame 을 advance 하되
+  **step 이 진짜 running 일 때만**(idle 이면 no-op — idle 애니메이션 없음), elapsed 는 **실제
+  monotonic clock** 에서 측정(`now - started_at`). **가짜 typing/char-reveal 절대 없음** —
+  `process_feed_lines(events, *, now, frame)` 는 순수 함수(now 없으면 elapsed 미표기, frame 안
+  돌면 정적). 검증 `test_tui_process_feed`(ProcessFeedRenderTests) · `test_tui_progress_selection_lane`.
 
-증거: `examples/tui-process-feed/timeline.txt`, 테스트 `test_tui_process_feed`.
+## 7.1 Selection visibility + transcript readability (parity lane)
+
+- **selection 가시성**: drag/text selection 하이라이트가 quiet accent-dim(#2f6f7a, 근-검정
+  배경과 너무 비슷) 에서 **saturated SELECTION_BG(#2d72b8)** 로. 배경 대비 ~3.40:1 → **~3.90:1**
+  로 올라가 "선택됐는지 안 됐는지" 가 바로 보인다. composer(`text-area--selection`) 와
+  cross-widget(`screen--selection`) 가 **동일 토큰**(`$selection-background`, `theme.SELECTION_BG`)
+  — 어디서 선택해도 같게 보임. 검증(runtime property): `test_tui_selection_contrast` ·
+  `test_tui_transcript_selection`(배경 대비 floor + FG 가독 동시 강제).
+- **transcript readability**: user 질문 head 가 **bold**(`render.you_echo_lines`) = 각 turn 의
+  scannable anchor. 연속 줄은 dim+indent 로 한 turn 으로 읽힘.
+
+증거: `examples/tui-process-feed/timeline.txt`, `examples/tui-progress-selection/`
+(`progress-selection-evidence.txt` + `running-feed.svg` 실 렌더 screenshot), 테스트
+`test_tui_process_feed` · `test_tui_progress_selection_lane`.
