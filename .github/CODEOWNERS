@@ -1,0 +1,18 @@
+# CODEOWNERS — GitHub native review enforcement
+#
+# 실제 owner 는 @codwithyc 한 명이다. 아래 "team:" 주석은 agents/engineering-agent/
+# manifest.json 의 team_topology 4-core-team 책임 매핑이며, 그 팀들은 GitHub identity
+# 가 아니라 agent-runtime 역할이라 owner 컬럼에 쓸 수 없다 (유효 owner 만 @codwithyc).
+# 조직 topology SSoT: agents/engineering-agent/manifest.json team_topology.
+
+# 기본 — 그 외 모든 경로
+*                                                   @codwithyc
+
+# team: qa-governance-team — git/PR/issue governance, approval gate, validator, CI
+/.github/                                           @codwithyc
+/policies/                                          @codwithyc
+/tests/                                             @codwithyc
+
+# team: forgekit-core-team — 부서 정체성 / team topology / 멤버 계약
+/agents/engineering-agent/                          @codwithyc
+/policies/runtime/agents/                           @codwithyc
