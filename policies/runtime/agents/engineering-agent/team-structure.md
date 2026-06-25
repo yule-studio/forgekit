@@ -24,6 +24,27 @@ CTO 조직이 도입되면 engineering-agent의 외부 인터페이스는 cto-ag
 3. **외부 인터페이스가 단순하다.** 다른 시스템(Discord, planning-agent, 미래의 cto-agent)은 게이트웨이와만 대화한다. 멤버 구성을 알 필요가 없다.
 4. **확장이 쉽다.** 같은 부서 패턴으로 platform/security/data-ai/product/design/marketing/operations 부서를 단계적으로 추가한다.
 
+## MVP 4-Core Execution Teams
+
+engineering-agent 내부 역할은 flat 하게 흩어두지 않고, **초기 4개 핵심 실행팀**
+으로 묶는다. 지금 ForgeKit에서 먼저 단단해야 하는 것은 agent 수가 아니라
+"누가 어느 execution lane 을 책임지느냐" 이기 때문이다.
+
+| Team | Lead | 현재 포함 역할 | 1차 책임 |
+| --- | --- | --- | --- |
+| `forgekit-core-team` | `tech-lead` | `tech-lead`, `backend-engineer`, `frontend-engineer`, `product-designer` | goal/runtime core handoff, work packet, routing, approval queue, operator workflow |
+| `platform-runtime-team` | `platform-runtime-engineer` | `platform-runtime-engineer`, `devops-engineer`, `ops-observer` | scheduler, queue, provider/runtime, worktree isolation, daemon health |
+| `skill-rnd-team` | `ai-engineer` | `ai-engineer`, `knowledge-engineer` | prompt/context-pack/model-routing, skill 도입 실험, retrieval/knowledge 개선 |
+| `qa-governance-team` | `qa-engineer` | `qa-engineer`, `security-engineer` | regression/e2e, reality-check, source-grounding, issue/PR/git governance, approval gate |
+
+규칙:
+- 한 역할은 기본 소속 팀이 있어야 한다. "필요할 때 아무나" 호출하는 구조 금지.
+- `tech-lead` 는 팀 간 실행 순서를 조율하지만, 각 팀의 전문 실행 책임을 대신하지 않는다.
+- `qa-governance-team` 은 구현 이후 검수 팀이 아니라, **초기 설계/실행 전 단계부터**
+  fake completion / governance drift 를 막는 intercept 팀이다.
+- 실제 machine-readable topology 는 `agents/engineering-agent/manifest.json` 의
+  `team_topology` 가 SSoT 다.
+
 ## File Layout
 
 ```
@@ -67,6 +88,12 @@ policies/runtime/agents/engineering-agent/
 | `frontend-engineer` | UI 컴포넌트, 사용자 흐름 코드, 데이터 연결 | engineering-agent에 유지 |
 | `qa-engineer` | 수용 기준, 회귀 시나리오, 테스트 우선순위 | engineering-agent에 유지 (또는 `quality-agent`로 분기 가능) |
 
+추가 보강 역할:
+- `platform-runtime-engineer` — 설치/연결/runtime/provider/doctor 전담. `platform-runtime-team` 의 lead.
+- `knowledge-engineer` — vault schema / retrieval / canonical knowledge 전담. `skill-rnd-team` 핵심 멤버.
+- `ops-observer` — 24h runtime 관제 / alert / triage. `platform-runtime-team` 관측 축.
+- `security-engineer` — cross-cutting reviewer 이지만 초기에는 `qa-governance-team`의 governance 축으로 고정 호출한다.
+
 향후 추가 가능 멤버:
 - `platform/devops` — 인프라, CI/CD, observability
 - `security-review` — 보안 리뷰, threat modeling
@@ -96,6 +123,16 @@ policies/runtime/agents/engineering-agent/
 | **1. MVP 골격** | 진행 중 / 마무리 | 부서 정체성 문서, 멤버 책임 정의, 운영 정책 4가지 결정, 역할 가중치 v0, reference pack |
 | **2. 본격 구현** | 다음 마일스톤 | LLM 러너 추상화, 메시지 프로토콜, 디스패처, Discord 멀티봇 |
 | **3. 확장** | 그 이후 | platform/security/data-ai 부서 분기, design-agent 분기 검토 |
+
+### 성장 경로
+
+초기 팀 수는 4개지만 최종 구조는 더 크다. engineering-agent 내부 roadmap 은 아래처럼 단계적으로 확장한다.
+
+| 단계 | 팀/Division 수 | 포함 축 |
+| --- | --- | --- |
+| MVP | 4 | `forgekit-core-team`, `platform-runtime-team`, `skill-rnd-team`, `qa-governance-team` |
+| Growth | 8 | + `agent-ai-team`, `personal-repo-team`, `revenue-product-lab`, `knowledge-data-team` |
+| Target | 12 | `forgekit-core/platform-runtime/agent-ai/product-engineering/personal-repo/skill-rnd/revenue-product/data-knowledge/security-governance/qa-evaluation/devex/integration-automation` |
 
 ## Boundaries
 - 모든 코드 변경은 부서 단위 `write_policy`를 따른다(사용자 승인 필수, write executor 1명).
