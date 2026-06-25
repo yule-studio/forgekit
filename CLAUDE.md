@@ -65,6 +65,7 @@
 | ForgeKit 플랫폼 경계 / console=operator app / 코어 packages 분리(WT1~4) | + `docs/forgekit-architecture-ownership.md` (owner 매트릭스·import 경계·이전 우선순위 SSoT) |
 | packages/* 분류 / 네이밍 충돌 / 어디에 새 기능 추가 / transitional debt | + `docs/package-topology.md` (18 package 분류표·migration matrix·결정 트리 SSoT) |
 | control-plane 방향 / OpenClaw·Harness·Hermes 흡수 / onboarding bootstrap / P0~P2 우선순위 / Mac mini host | + `docs/control-plane-architecture.md` (역할·소유 경계·우선순위 로드맵 SSoT) |
+| 대규모 agent 조직 모델 / CEO·forge-master·10 C-level office / office↔부서 매핑 / 조직 네이밍 / 단계 로드맵 | + `docs/company/forgekit-company-model.md` (+ `agent-office-map`·`naming-convention`·`staged-agent-organization-roadmap`). engineering 성장 경로는 `team_topology` 링크 |
 
 전체 매핑은 `AGENTS.md` §2.
 
