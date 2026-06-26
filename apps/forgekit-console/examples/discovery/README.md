@@ -17,6 +17,7 @@ discovery 루프 SSoT: [`docs/discovery-loop.md`](../../../../docs/discovery-loo
 | `adoption-review.md` | adoption review | 후보 → 도입 효율 검토 8축 authored note(분류/disposition 태그, 기본 collect-first) |
 | `adoption-packet.json` | adoption packet | Hephaistos-readable: collect-first 검토 → 3축 결정(adopt-now) → armory intake(adopted, equipped 아님) |
 | `idea-brief-note.md` | knowledge plane | brief → retrieval-friendly authored vault note (author/role/color/cssclass + 5 섹션) |
+| `external-intake-packet.json` | external intake | 외부 skill/plugin/tool 후보 → curation gate. ponytail-like 후보 **promote**(MIT/active/cli), 메타 부족 **raw**, backend **blocked**. SSoT [`docs/external-intake-lane.md`](../../../../docs/external-intake-lane.md), 재생성: `python -m unittest tests.forgekit.test_external_intake` |
 | `../selfimprove/scan.json` | self-improvement(WT4) | repo gap → risk-classified 패킷(safe만 자동) |
 | `../security/drill-plan.json` | red/blue(WT5) | 내 자산 plan-only 드릴(dry-run, 승인 필요) |
 | `../security/blocked-public.json` | red/blue(WT5) | 공용 대상 → BLOCKED(공격 흐름 거부) |
@@ -27,3 +28,4 @@ discovery 루프 SSoT: [`docs/discovery-loop.md`](../../../../docs/discovery-loo
 - video-watch 는 transcript/notes 만 live 요약, bare 링크는 `reference_only`(크롤 없음).
 - self-improvement 는 관측/분류/패킷화만 자동, mutation 은 승인/runbook.
 - red/blue 는 내 자산 allowlist + plan-first, active 는 operator 승인 필수, 공용/3rd-party 거부.
+- external intake 는 license/maintenance/trust 를 bare signal 에서 **날조하지 않음**(unknown→raw 유지). promote 는 Armory 등록 *자격*일 뿐 자동 설치 아님. Figma community / GeekNews 스크래핑은 planned seam(빈 결과).

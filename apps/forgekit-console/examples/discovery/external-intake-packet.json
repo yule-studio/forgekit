@@ -1,0 +1,77 @@
+{
+  "counts": {
+    "promote": 1,
+    "raw": 1,
+    "blocked": 1
+  },
+  "promoted": [
+    {
+      "candidate": {
+        "name": "ponytail",
+        "source": "github",
+        "repo_url": "https://github.com/example/ponytail",
+        "provider_affinity": "neutral",
+        "capability_class": "code-review",
+        "install_shape": "cli",
+        "trust_risk": "low",
+        "maintenance_signal": "active",
+        "license": "MIT",
+        "why_it_matters": "과설계 검토(ponytail lens) — autonomy/execution core 단순성 게이트에 활용",
+        "score": 420,
+        "fingerprint": "github.com/example/ponytail"
+      },
+      "disposition": "promote",
+      "reasons": [
+        "Armory candidate 자격 충족: cli/code-review (neutral, MIT)"
+      ]
+    }
+  ],
+  "raw": [
+    {
+      "candidate": {
+        "name": "some-rag-lib",
+        "source": "hackernews",
+        "repo_url": "https://github.com/acme/some-rag-lib",
+        "provider_affinity": "neutral",
+        "capability_class": "retrieval",
+        "install_shape": "lib",
+        "trust_risk": "unknown",
+        "maintenance_signal": "unknown",
+        "license": "unknown",
+        "why_it_matters": "",
+        "score": 33,
+        "fingerprint": "github.com/acme/some-rag-lib"
+      },
+      "disposition": "raw",
+      "reasons": [
+        "필수 메타(repo_url/name/capability/why) 부족",
+        "license 미상 — 확인 필요",
+        "trust_risk 미평가",
+        "maintenance active 미확인"
+      ]
+    }
+  ],
+  "blocked": [
+    {
+      "candidate": {
+        "name": "local-llama-runner",
+        "source": "github",
+        "repo_url": "https://github.com/acme/local-llama-runner",
+        "provider_affinity": "neutral",
+        "capability_class": "orchestration",
+        "install_shape": "backend",
+        "trust_risk": "low",
+        "maintenance_signal": "active",
+        "license": "MIT",
+        "why_it_matters": "local inference",
+        "score": 88,
+        "fingerprint": "github.com/acme/local-llama-runner"
+      },
+      "disposition": "blocked",
+      "reasons": [
+        "install_shape 'backend' allowlist 밖 (backend 등)"
+      ]
+    }
+  ],
+  "source_status": []
+}

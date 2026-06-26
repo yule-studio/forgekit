@@ -549,6 +549,16 @@ def _discovery_result(parsed, ctx) -> CommandResult:
         lines.append("- author user-researcher · status draft (curated 아님 — eval gate 후 승격)")
         return CommandResult.info("discovery evidence", tuple(lines))
 
+    if sub == "intake":
+        # /discovery intake — free-first EXTERNAL skill/plugin/tool intake sweep →
+        # curation gate (promote/raw/blocked). Distinct from idea-discovery above:
+        # this scouts the external ecosystem for Armory candidates (no auto-install).
+        from nexus import intake as INTAKE
+        from ..tui import render as _r
+
+        packet = INTAKE.run_intake(repo_root)
+        return CommandResult.info("discovery intake", _r.intake_lines(packet))
+
     if sub == "review":
         # /discovery review <n> — pending 아이디어 n 을 도입 효율 검토(8축)로 만든다.
         # 기본 disposition=collect-first(즉시 활성화 안 함), 3축(PM/tech-lead/specialist) consult 요청.

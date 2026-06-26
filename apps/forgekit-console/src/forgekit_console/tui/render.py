@@ -638,6 +638,36 @@ def discovery_lines(result) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def intake_lines(packet) -> Tuple[str, ...]:
+    """Render an external skill/plugin/tool intake packet — grouped by disposition."""
+
+    c = packet.counts
+    live = [r["id"] for r in packet.source_status if r.get("status") == "live"]
+    planned = [r["id"] for r in packet.source_status if r.get("status") != "live"]
+    lines = [
+        f"[b {_ACCENT}]» external intake (free-first)[/b {_ACCENT}]",
+        f"  live 수집원: {', '.join(live) or '(없음)'}",
+        f"  planned(미연결 — fake-live 아님): {', '.join(planned) or '(없음)'}",
+        f"  승격 {c.get('promote', 0)} · raw {c.get('raw', 0)} · blocked {c.get('blocked', 0)}",
+    ]
+    if packet.promoted:
+        lines.append("  [b]Armory 승격 후보[/b]")
+        for v in packet.promoted[:5]:
+            cd = v.candidate
+            lines.append(f"    [{_OK}]▲[/{_OK}] {cd.name}  [dim]({cd.install_shape}/{cd.capability_class}"
+                         f" · {cd.provider_affinity} · {cd.license})[/dim]")
+    if packet.raw:
+        lines.append("  [b]raw intake (메타 보강 대기)[/b]")
+        for v in packet.raw[:5]:
+            lines.append(f"    [{_WARN}]•[/{_WARN}] {v.candidate.name}  [dim]{'; '.join(v.reasons[:2])}[/dim]")
+    if packet.blocked:
+        lines.append("  [b]blocked[/b]")
+        for v in packet.blocked[:5]:
+            lines.append(f"    [{_ERR}]✗[/{_ERR}] {v.candidate.name}  [dim]{'; '.join(v.reasons[:2])}[/dim]")
+    lines.append("  [dim]승격은 Armory 등록 자격일 뿐 — 자동 설치 아님(승인 게이트 별도)[/dim]")
+    return tuple(lines)
+
+
 def armory_intake_lines(pairs, results, *, detail_id="") -> Tuple[str, ...]:
     """Render the Armory intake — evaluated external candidates by disposition / detail.
 
@@ -937,6 +967,6 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections", "selection_copy_lines",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "armory_intake_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines", "SPINNER_FRAMES",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "intake_lines", "armory_intake_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines", "SPINNER_FRAMES",
     "RESPONSE_MARKER", "mark_response_chunks", "you_echo_lines",
 )

@@ -69,6 +69,7 @@ docs/
 | control-plane 방향 / 외부 프로젝트 흡수 / onboarding bootstrap / P0~P2 / Mac mini host | `docs/control-plane-architecture.md` (역할 · 소유 경계 · 우선순위 로드맵 SSoT) |
 | Nexus discovery 루프 / free-first 수집→idea brief→operator digest→PM packet·vault note / planned seam | `docs/discovery-loop.md` (+ 코드 SSoT `apps/forgekit-console/src/forgekit_console/discovery/sweep.py`) |
 | 대규모 agent 조직 모델 / CEO·forge-master·C-level office / office↔부서 매핑 / 네이밍 / 단계 로드맵 | `docs/company/forgekit-company-model.md` (+ `agent-office-map.md` · `naming-convention.md` · `staged-agent-organization-roadmap.md`). engineering 4→8→12 은 `team_topology` 링크(중복 금지) |
+| 외부 skill/plugin/tool/MCP 후보 intake / candidate schema · curation gate · Armory 승격 전 | `docs/external-intake-lane.md` (+ 코드 SSoT `packages/nexus/src/nexus/intake/`) |
 
 규칙:
 - 위 표에 없는 토픽이면 그 작업과 가장 가까운 디렉터리의 `CLAUDE.md`,

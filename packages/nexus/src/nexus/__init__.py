@@ -8,6 +8,8 @@ console-private module and not a single slash command — see ``docs/vision.md``
 Currently extracted:
 - ``sources`` — discovery source collectors (GitHub / HN / Reddit / RSS, free-first)
 - ``vault``   — Obsidian vault read + authorship (registry-backed agent identity)
+- ``intake``  — external skill/plugin/tool/MCP intake lane: ``sources`` → candidate
+  schema + curation gate → Armory candidate (``docs/external-intake-lane.md``)
 
 Follow-ups (entangled, later increments): ``discovery`` (needs handoff/contracts),
 ``design`` (restricted source; UI projection splits to console), and the bounded
@@ -17,4 +19,4 @@ Owner matrix: ``docs/forgekit-architecture-ownership.md``.
 
 from __future__ import annotations
 
-__all__ = ("sources", "vault")
+__all__ = ("sources", "vault", "intake")

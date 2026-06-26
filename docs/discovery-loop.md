@@ -5,6 +5,11 @@ discovery 루프의 SSoT. 코드: `apps/forgekit-console/src/forgekit_console/di
 (`sweep.py` = 이 루프의 배선). 수집원 레지스트리/collector 는 `packages/nexus/src/nexus/sources/`,
 authored vault note 는 `packages/nexus/src/nexus/vault/`.
 
+> 이 루프는 **제품 아이디어**(idea brief) 발굴이다. 같은 free-first 수집원을 재사용해
+> **외부 skill/plugin/tool/MCP 후보**를 모아 Armory 승격 전 curated intake packet 으로
+> 정제하는 짝 레인은 [`external-intake-lane.md`](external-intake-lane.md)
+> (`nexus.intake`, surface `/discovery intake`).
+
 ## 한 패스 (run_discovery_sweep)
 ```
 default_registry(repo_root, fetcher, rss_feeds)   # 수집원 레지스트리 (WT2)
