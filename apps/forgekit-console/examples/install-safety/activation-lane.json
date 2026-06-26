@@ -1,0 +1,288 @@
+{
+  "lane": "install-safety",
+  "doc": "docs/install-safety-lane.md",
+  "states": [
+    "collected",
+    "curated",
+    "armory-registered",
+    "attachable",
+    "install-required",
+    "approval-needed",
+    "enabled",
+    "executed",
+    "blocked"
+  ],
+  "scenarios": [
+    {
+      "label": "safe attach (present armory tool)",
+      "candidate": {
+        "id": "ripgrep",
+        "kind": "tool",
+        "display_name": "",
+        "source": "armory",
+        "state": "collected",
+        "present": true,
+        "needs_install": false,
+        "global_write": false,
+        "safety": "safe",
+        "armory_registered": true,
+        "curated": true,
+        "verify_command": "",
+        "why": "코드 검색 속도"
+      },
+      "action": "attach",
+      "readiness_state": "attachable",
+      "classification": {
+        "action": "attach",
+        "disposition": "safe",
+        "approval_level": "L2_internal_approve",
+        "supply_chain_flags": [],
+        "reasons": []
+      },
+      "receipt": {
+        "candidate_id": "ripgrep",
+        "kind": "tool",
+        "display_name": "",
+        "source": "armory",
+        "action": "attach",
+        "from_state": "collected",
+        "to_state": "enabled",
+        "disposition": "safe",
+        "approval_level": "L2_internal_approve",
+        "authorized": true,
+        "outcome": "enabled",
+        "approval_metadata": "decision=코드 검색 속도;level=L2_internal_approve;signoff=tech-lead",
+        "chain_trace": [
+          "pm:structure",
+          "gateway:route→devops",
+          "tech-lead:safe/L2_internal_approve"
+        ],
+        "commit_trailers": [
+          "Forgekit-Agent: devops-engineer",
+          "Forgekit-Role: DevOps",
+          "Forgekit-Dept: engineering",
+          "Forgekit-GitHub-App: missing",
+          "Forgekit-Vault-Class: fk-devops",
+          "Forgekit-Flow: activation",
+          "Forgekit-Mode: safe",
+          "Forgekit-Handoff-From: tech-lead",
+          "Forgekit-Handoff-To: devops-engineer",
+          "Forgekit-Approval: decision=코드 검색 속도;level=L2_internal_approve;signoff=tech-lead"
+        ],
+        "executor": "devops-engineer",
+        "supply_chain_flags": [],
+        "verify_command": "",
+        "evidence": "코드 검색 속도",
+        "blocking_reasons": []
+      }
+    },
+    {
+      "label": "install-required external — no approval → blocked",
+      "candidate": {
+        "id": "some-cli",
+        "kind": "tool",
+        "display_name": "",
+        "source": "external",
+        "state": "collected",
+        "present": false,
+        "needs_install": true,
+        "global_write": false,
+        "safety": "",
+        "armory_registered": true,
+        "curated": true,
+        "verify_command": "",
+        "why": "포맷 편의"
+      },
+      "action": "install",
+      "readiness_state": "approval-needed",
+      "classification": {
+        "action": "install",
+        "disposition": "risky",
+        "approval_level": "L3_user_approve",
+        "supply_chain_flags": [
+          "install_required",
+          "external_source",
+          "unknown_safety"
+        ],
+        "reasons": [
+          "설치 필요 — 새 코드를 머신에 올림",
+          "미신뢰 출처(external) — 공급망 리스크",
+          "safety 미증명(보수적 risky)"
+        ]
+      },
+      "receipt": {
+        "candidate_id": "some-cli",
+        "kind": "tool",
+        "display_name": "",
+        "source": "external",
+        "action": "install",
+        "from_state": "collected",
+        "to_state": "blocked",
+        "disposition": "risky",
+        "approval_level": "L3_user_approve",
+        "authorized": false,
+        "outcome": "blocked",
+        "approval_metadata": "",
+        "chain_trace": [
+          "pm:structure",
+          "gateway:route→devops",
+          "tech-lead:risky/L3_user_approve"
+        ],
+        "commit_trailers": [],
+        "executor": "devops-engineer",
+        "supply_chain_flags": [
+          "install_required",
+          "external_source",
+          "unknown_safety"
+        ],
+        "verify_command": "",
+        "evidence": "포맷 편의",
+        "blocking_reasons": [
+          "risky(L3) — operator 승인 없음",
+          "설치 필요 — 새 코드를 머신에 올림",
+          "미신뢰 출처(external) — 공급망 리스크",
+          "safety 미증명(보수적 risky)"
+        ]
+      }
+    },
+    {
+      "label": "install-required external — operator approval → enabled",
+      "candidate": {
+        "id": "some-cli",
+        "kind": "tool",
+        "display_name": "",
+        "source": "external",
+        "state": "collected",
+        "present": false,
+        "needs_install": true,
+        "global_write": false,
+        "safety": "",
+        "armory_registered": true,
+        "curated": true,
+        "verify_command": "",
+        "why": "포맷 편의"
+      },
+      "action": "install",
+      "readiness_state": "approval-needed",
+      "classification": {
+        "action": "install",
+        "disposition": "risky",
+        "approval_level": "L3_user_approve",
+        "supply_chain_flags": [
+          "install_required",
+          "external_source",
+          "unknown_safety"
+        ],
+        "reasons": [
+          "설치 필요 — 새 코드를 머신에 올림",
+          "미신뢰 출처(external) — 공급망 리스크",
+          "safety 미증명(보수적 risky)"
+        ]
+      },
+      "receipt": {
+        "candidate_id": "some-cli",
+        "kind": "tool",
+        "display_name": "",
+        "source": "external",
+        "action": "install",
+        "from_state": "collected",
+        "to_state": "enabled",
+        "disposition": "risky",
+        "approval_level": "L3_user_approve",
+        "authorized": true,
+        "outcome": "enabled",
+        "approval_metadata": "decision=포맷 편의;level=L3_user_approve;signoff=tech-lead;operator=operator",
+        "chain_trace": [
+          "pm:structure",
+          "gateway:route→devops",
+          "tech-lead:risky/L3_user_approve"
+        ],
+        "commit_trailers": [
+          "Forgekit-Agent: devops-engineer",
+          "Forgekit-Role: DevOps",
+          "Forgekit-Dept: engineering",
+          "Forgekit-GitHub-App: missing",
+          "Forgekit-Vault-Class: fk-devops",
+          "Forgekit-Flow: activation",
+          "Forgekit-Mode: risky",
+          "Forgekit-Handoff-From: tech-lead",
+          "Forgekit-Handoff-To: devops-engineer",
+          "Forgekit-Approval: decision=포맷 편의;level=L3_user_approve;signoff=tech-lead;operator=operator"
+        ],
+        "executor": "devops-engineer",
+        "supply_chain_flags": [
+          "install_required",
+          "external_source",
+          "unknown_safety"
+        ],
+        "verify_command": "",
+        "evidence": "포맷 편의",
+        "blocking_reasons": []
+      }
+    },
+    {
+      "label": "destructive plugin — blocked even with approval",
+      "candidate": {
+        "id": "deploy-secret-plugin",
+        "kind": "plugin",
+        "display_name": "",
+        "source": "external",
+        "state": "collected",
+        "present": true,
+        "needs_install": false,
+        "global_write": false,
+        "safety": "safe",
+        "armory_registered": true,
+        "curated": true,
+        "verify_command": "",
+        "why": "production deploy secret rotation"
+      },
+      "action": "enable",
+      "readiness_state": "attachable",
+      "classification": {
+        "action": "enable",
+        "disposition": "blocked",
+        "approval_level": "L4_restricted",
+        "supply_chain_flags": [
+          "external_source"
+        ],
+        "reasons": [
+          "미신뢰 출처(external) — 공급망 리스크",
+          "wording → L4_restricted"
+        ]
+      },
+      "receipt": {
+        "candidate_id": "deploy-secret-plugin",
+        "kind": "plugin",
+        "display_name": "",
+        "source": "external",
+        "action": "enable",
+        "from_state": "collected",
+        "to_state": "blocked",
+        "disposition": "blocked",
+        "approval_level": "L4_restricted",
+        "authorized": false,
+        "outcome": "blocked",
+        "approval_metadata": "",
+        "chain_trace": [
+          "pm:structure",
+          "gateway:route→devops",
+          "tech-lead:blocked/L4_restricted"
+        ],
+        "commit_trailers": [],
+        "executor": "devops-engineer",
+        "supply_chain_flags": [
+          "external_source"
+        ],
+        "verify_command": "",
+        "evidence": "production deploy secret rotation",
+        "blocking_reasons": [
+          "destructive(L4) — 자동 실행 금지, operator + runbook 전용",
+          "blocked 분류 — 활성화 금지 (operator + runbook 전용)",
+          "미신뢰 출처(external) — 공급망 리스크",
+          "wording → L4_restricted"
+        ]
+      }
+    }
+  ]
+}
