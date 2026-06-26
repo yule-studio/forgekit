@@ -225,6 +225,7 @@ queue, Obsidian 미러) — [`docs/operations.md`](docs/operations.md).
 | provider 정책 | [docs/forgekit-provider-policy.md](docs/forgekit-provider-policy.md) |
 | 운영 (always-on) | [docs/operations.md](docs/operations.md) |
 | 설정 / 메모리 / 테스트 | [docs/configuration.md](docs/configuration.md) · [docs/memory.md](docs/memory.md) · [docs/testing.md](docs/testing.md) |
+| **개발 워크플로 (AI-assisted lifecycle)** | [docs/workflow.md](docs/workflow.md) |
 
 기여자/에이전트 읽기 순서: [`AGENTS.md`](AGENTS.md) → [`CLAUDE.md`](CLAUDE.md) → 주제별 `docs/<topic>.md`.
 
