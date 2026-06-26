@@ -18,6 +18,9 @@
 ## 부서 × 역할 매트릭스
 
 ### Engineering (CTO 산하)
+
+> 위 역할들의 4-core-team 묶음 / 8팀·12-division 성장 경로는 `agents/engineering-agent/manifest.json` 의 `team_topology` (machine-readable SSoT) + [`engineering-agent/team-structure.md`](engineering-agent/team-structure.md) 참조.
+
 - `engineering-agent/tech-lead`
 - `engineering-agent/backend-engineer`
 - `engineering-agent/frontend-engineer`

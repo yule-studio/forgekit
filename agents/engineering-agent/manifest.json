@@ -57,6 +57,123 @@
       "secret_deploy_merge_remain_operator_approval"
     ]
   },
+  "team_topology": {
+    "phase": "mvp-4-core-teams",
+    "core_execution_teams": [
+      {
+        "team_id": "forgekit-core-team",
+        "purpose": "ForgeKit core domain과 operator workflow를 실제 실행 가능한 packet/approval 흐름으로 연결한다.",
+        "lead_role": "tech-lead",
+        "member_roles": [
+          "tech-lead",
+          "backend-engineer",
+          "frontend-engineer",
+          "product-designer"
+        ],
+        "owns": [
+          "goal/runtime core handoff",
+          "work packet / routing",
+          "approval queue / operator workflow",
+          "CLI/TUI coding surface"
+        ],
+        "expands_to": [
+          "forgekit-core-division",
+          "product-engineering-division"
+        ]
+      },
+      {
+        "team_id": "platform-runtime-team",
+        "purpose": "24시간 scheduler/queue/provider/worktree/runtime health 를 안정적으로 굴리는 실행팀.",
+        "lead_role": "platform-runtime-engineer",
+        "member_roles": [
+          "platform-runtime-engineer",
+          "devops-engineer",
+          "ops-observer"
+        ],
+        "owns": [
+          "scheduler / job queue",
+          "provider runtime / token-budget",
+          "worktree isolation / daemon health",
+          "runtime doctor / operator next-action"
+        ],
+        "expands_to": [
+          "platform-runtime-division",
+          "devex-internal-tools-division"
+        ]
+      },
+      {
+        "team_id": "skill-rnd-team",
+        "purpose": "에이전트 지능, skill 도입 실험, memory/retrieval 품질을 높이는 R&D 실행팀.",
+        "lead_role": "ai-engineer",
+        "member_roles": [
+          "ai-engineer",
+          "knowledge-engineer"
+        ],
+        "owns": [
+          "prompt / context-pack / model-routing",
+          "skill / MCP / framework adoption review",
+          "retrieval / canonical knowledge improvement",
+          "evaluation-ready experiment notes"
+        ],
+        "expands_to": [
+          "agent-ai-division",
+          "skill-rnd-division",
+          "data-knowledge-engineering-division"
+        ]
+      },
+      {
+        "team_id": "qa-governance-team",
+        "purpose": "fake completion 을 막고 test·security·approval governance 를 코드로 묶는 검증팀.",
+        "lead_role": "qa-engineer",
+        "member_roles": [
+          "qa-engineer",
+          "security-engineer"
+        ],
+        "owns": [
+          "regression / acceptance / e2e review",
+          "reality-check / source-grounding",
+          "issue / PR / git governance",
+          "approval gate / audit trail"
+        ],
+        "expands_to": [
+          "qa-evaluation-division",
+          "security-governance-engineering-division"
+        ]
+      }
+    ],
+    "growth_path": {
+      "mvp_4": [
+        "forgekit-core-team",
+        "platform-runtime-team",
+        "skill-rnd-team",
+        "qa-governance-team"
+      ],
+      "growth_8": [
+        "forgekit-core-team",
+        "platform-runtime-team",
+        "agent-ai-team",
+        "personal-repo-team",
+        "skill-rnd-team",
+        "revenue-product-lab",
+        "knowledge-data-team",
+        "qa-governance-team"
+      ],
+      "target_12": [
+        "forgekit-core-division",
+        "platform-runtime-division",
+        "agent-ai-division",
+        "product-engineering-division",
+        "personal-repo-division",
+        "skill-rnd-division",
+        "revenue-product-lab",
+        "data-knowledge-engineering-division",
+        "security-governance-engineering-division",
+        "qa-evaluation-division",
+        "devex-internal-tools-division",
+        "integration-automation-division"
+      ]
+    }
+  },
   "policies": [
     "policies/runtime/common/safety.md",
     "policies/runtime/common/context-loading.md",
