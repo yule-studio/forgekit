@@ -1,0 +1,37 @@
+# labs/cli-agents/_template/evaluation.yaml
+# CLI agent 평가 템플릿. 이 _template 폴더를 agent 이름 폴더로 복사해 채운다.
+# 기준 설명은 docs/tool-evaluation.md.
+
+identity:
+  name: ""            # 예: claude-code
+  version: ""         # 평가 시점 버전
+  vendor: ""
+  install_method: ""  # brew / npm / pipx / curl …
+
+execution:
+  non_interactive: unknown   # yes | no | partial
+  workspace_path_arg: unknown
+  prompt_file_support: unknown
+  stdin_prompt: unknown
+  exit_code_reliable: unknown
+
+code_operations:
+  produces_diff: unknown
+  applies_changes: unknown
+  runs_shell: unknown
+
+safety:
+  permission_model: ""   # none | prompt | sandbox | approval
+  sandbox: unknown
+  approval_required_for: []
+
+observability:
+  stdout_parseable: unknown
+  stderr_separate: unknown
+  log_capture: ""        # 로그 캡처 방식
+
+fit_for_forgekit:
+  verdict: ""            # adopt-now | collect-first | hold
+  reason: ""
+
+notes: ""
