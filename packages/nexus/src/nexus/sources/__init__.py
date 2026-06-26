@@ -16,9 +16,11 @@ from .contract import (
     SourceSpec,
 )
 from .collectors import (
+    GEEKNEWS_FEED,
     PlannedCollector,
     RepoLocalCollector,
     RssCollector,
+    geeknews_collector,
     github_collector,
     hackernews_collector,
     reddit_collector,
@@ -30,5 +32,6 @@ __all__ = (
     "SourceItem", "SourceSpec",
     "PlannedCollector", "RepoLocalCollector", "RssCollector",
     "github_collector", "hackernews_collector", "reddit_collector",
+    "geeknews_collector", "GEEKNEWS_FEED",
     "SourceRegistry", "default_registry", "registry_from_config",
 )

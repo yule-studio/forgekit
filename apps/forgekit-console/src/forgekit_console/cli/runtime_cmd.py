@@ -111,6 +111,28 @@ def _build_tick_fn(repo_root: str):
     return _combined
 
 
+def _wrap_provider_continuity(tick_fn):
+    """Wrap the composed tick so every tick records its provider lane + budget (lane B).
+
+    Reads the live provider config (the same ``load_config`` the console uses) and folds
+    each tick's resolved provider lane (brain vs actual transport vs fallback) + the day's
+    budget into a durable tick-ledger record + the TickOutcome the heartbeat surfaces. Best-
+    effort: if the provider layer is unavailable, the loop still runs (continuity is additive)."""
+
+    import os
+
+    try:
+        from forgekit_runtime.runtime.provider_continuity import with_provider_continuity
+
+        from ..chat.service import load_config
+
+        env = dict(os.environ)
+        config = load_config(env)
+        return with_provider_continuity(tick_fn, config=config, env=env)
+    except Exception:  # noqa: BLE001 — continuity is additive; never block the loop
+        return tick_fn
+
+
 def handle(args: argparse.Namespace) -> int:
     import os
 
@@ -124,6 +146,13 @@ def handle(args: argparse.Namespace) -> int:
         print(f"forgekit runtime: {hb.status} · tick {hb.tick} · ts {hb.ts or '-'} · pid {hb.pid}")
         if hb.note:  # last tick: exec/propose/skip + written paths (WT2 #241)
             print(f"  last tick: {hb.note}")
+        # provider/runtime continuity — recent per-tick provider lane + budget (lane B).
+        try:
+            from ..runtime.surface import provider_lane_lines
+            for ln in provider_lane_lines():
+                print(ln)
+        except Exception:  # noqa: BLE001
+            pass
         print(f"  kill switch: {'SET' if HB.is_killed() else 'clear'}")
         return EXIT_OK
 
@@ -141,7 +170,7 @@ def handle(args: argparse.Namespace) -> int:
         poll_interval=getattr(args, "interval", 60.0),
         max_ticks=getattr(args, "max_ticks", 0) or 0,
         notifier=notifier, pid=os.getpid())
-    tick_fn = _build_tick_fn(repo)
+    tick_fn = _wrap_provider_continuity(_build_tick_fn(repo))
 
     if cmd == "once":
         out = daemon.once(tick_fn)

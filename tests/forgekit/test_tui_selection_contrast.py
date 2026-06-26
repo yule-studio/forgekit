@@ -2,9 +2,10 @@
 
 Real RUNTIME property check (not a CSS-string assertion): mount the app, resolve the
 PromptArea's ``text-area--selection`` component style, and assert the selection
-background is the brand desaturated-cyan (``$accent-dim``) with the light foreground —
-i.e. a high-contrast, on-brand selection, not Textual's default low-contrast one on the
-transparent dark surface. Guards against a selection-contrast regression.
+background is the saturated-blue selection token (``$selection-background`` = SELECTION_BG)
+with the light foreground — i.e. a selection that POPS against the near-black surface, not
+the old quiet accent-dim (which read too close to the background) nor Textual's default.
+Enforces a real selection-vs-background contrast floor (regression guard).
 """
 
 from __future__ import annotations
@@ -44,12 +45,17 @@ class SelectionContrastTests(unittest.IsolatedAsyncioTestCase):
             bg = sel.background
             fg = sel.color
 
-            # selection background resolves to the brand accent-dim (not Textual default)
-            self.assertEqual(bg, Color.parse(theme.ACCENT_DIM))
-            # text stays the light brand foreground → readable on the dim-cyan block
+            # selection background resolves to the SATURATED-blue selection token (not the
+            # quiet accent-dim it used to be, and not Textual's low-contrast default)
+            self.assertEqual(bg, Color.parse(theme.SELECTION_BG))
+            # text stays the light brand foreground → readable on the selection block
             self.assertEqual(fg, Color.parse(theme.FG))
             # real contrast: selection bg differs clearly from the screen background
             self.assertNotEqual(bg, Color.parse(theme.BG))
+            # the WHOLE POINT of the lane: selection must POP against the near-black bg so
+            # "선택됐는지 안 됐는지" is obvious — enforce a real bg-vs-selection contrast floor
+            # that the old accent-dim (#2f6f7a ≈ 3.4:1) did not clear.
+            self.assertGreater(_contrast(bg, Color.parse(theme.BG)), 3.7)
             # contrast ratio FG-on-selection is comfortably readable (WCAG-ish > 3:1)
             ratio = _contrast(fg, bg)
             self.assertGreater(ratio, 3.0)

@@ -1,0 +1,84 @@
+HEPHAISTOS EXECUTION CORE — equip · Nexus · loadout/packet · ponytail (evidence)
+(hermetic: which 주입[terraform/docker 존재·awscli/gh 부재], Nexus not_connected)
+
+──────────────────────────────────────────────────────────────────────────────
+1) Terraform + ECS (project facts + runtime constraints + harness)
+──────────────────────────────────────────────────────────────────────────────
+request : Terraform 으로 ECS 배포 환경 구성. Claude Code 한테 맡길 프롬프트 만들어줘.
+facts   : EKS는 제외, dev 환경부터, 기존 구조 보존
+rejected candidates (why-not): kubernetes[project-fact], java-spring[loadout-scope]
+hephaistos execute — Terraform 으로 ECS 배포 환경 구성. Claude Code 한테 맡길 프롬프트 만들어줘.
+  skills   : terraform, aws-ecs, docker, github-actions, secrets-management
+  loadout  : devops-cloud-local
+  equip    : partial · adopted 5 / equipped [docker, terraform] / not_equipped [awscli, gh, actionlint]
+    ⚠ adopted≠equipped — 실행 전 설치 필요: AWS CLI 설치: brew install awscli; GitHub CLI 설치: brew install gh; actionlint 설치: brew install actionlint
+  rejected : kubernetes(project-fact), java-spring(loadout-scope)
+  nexus    : not_connected · project facts 0
+  outputs  : loadout 목표: 클라우드 IaC/배포 plan 작성 | ECS service/task 정의 | 배포 전략(rolling/blue-green) 문서
+  verify   : 0) 장비 설치 — AWS CLI 설치: brew install awscli; GitHub CLI 설치: brew install gh; actionlint 설치: brew install actionlint → verify: terraform validate → verify: terraform plan → verify: terraform version
+  ponytail : waived-with-reason — prod 경계가 dev-first/plan-first/승인 제약으로 가드됨 (proportionate)
+  runtime  : approval level: L2_internal_approve
+  runtime  : 장비 미충족(partial) — 실행 전 설치 필요(adopted≠equipped): awscli, gh, actionlint
+  runtime  : prod/배포/apply 경계 존재 — operator 승인 필수(자동 실행 금지)
+  runtime  : ponytail: waived-with-reason — prod 경계가 dev-first/plan-first/승인 제약으로 가드됨 (proportionate)
+
+──────────────────────────────────────────────────────────────────────────────
+2) Frontend design system / UI refactor
+──────────────────────────────────────────────────────────────────────────────
+request : Next.js 디자인 시스템 토큰 간격 일관성 UI refactor 해줘.
+facts   : 기존 토큰 유지, 컴포넌트 단위로
+rejected candidates (why-not): node-nestjs[domain-gate]
+hephaistos execute — Next.js 디자인 시스템 토큰 간격 일관성 UI refactor 해줘.
+  skills   : design-system-review, nextjs, react-typescript, ux-ui-reference-pack, vite-react, figma-read
+  loadout  : design-review-local
+  equip    : partial · adopted 6 / equipped [node, npm] / not_equipped [vscode]
+    ⚠ adopted≠equipped — 실행 전 설치 필요: VS Code 설치: https://code.visualstudio.com
+  rejected : node-nestjs(domain-gate)
+  nexus    : not_connected · project facts 0
+  outputs  : loadout 목표: 디자인 시스템/UX 일관성 리뷰(restricted-aware)
+  verify   : 0) 장비 설치 — VS Code 설치: https://code.visualstudio.com → verify: (토큰/레퍼런스 대비) → verify: (토큰 대비 점검) → verify: npm run build
+  ponytail : waived-with-reason — proportionate — 기존 내장 능력으로 task 를 덮고, 과장비/신규 dep/prod 위험 신호 없음
+  runtime  : approval level: L2_internal_approve
+  runtime  : 장비 미충족(partial) — 실행 전 설치 필요(adopted≠equipped): vscode
+  runtime  : ponytail: waived-with-reason — proportionate — 기존 내장 능력으로 task 를 덮고, 과장비/신규 dep/prod 위험 신호 없음
+
+──────────────────────────────────────────────────────────────────────────────
+3) Docs quality / prose cleanup (built-in, tool-less)
+──────────────────────────────────────────────────────────────────────────────
+request : README 문서 품질 개선하고 prose 다듬어줘.
+rejected candidates (why-not): (없음)
+hephaistos execute — README 문서 품질 개선하고 prose 다듬어줘.
+  skills   : docs-quality
+  loadout  : docs-writing-local
+  equip    : ready · adopted 1 / equipped [-] / not_equipped [-]
+  nexus    : not_connected · project facts 0
+  outputs  : loadout 목표: 문서 품질/prose 정리 — built-in 능력, 장비 설치 불필요 | 정리된 prose(구조/명료성/일관성) | 변경 요약
+  verify   : verify: (prose 체크리스트: 구조/명료성/일관성/오타)
+  ponytail : waived-with-reason — proportionate — 기존 내장 능력으로 task 를 덮고, 과장비/신규 dep/prod 위험 신호 없음
+  runtime  : approval level: L2_internal_approve
+  runtime  : loadout 장비 ready — 즉시 실행 가능(승인 게이트는 별개)
+  runtime  : ponytail: waived-with-reason — proportionate — 기존 내장 능력으로 task 를 덮고, 과장비/신규 dep/prod 위험 신호 없음
+
+──────────────────────────────────────────────────────────────────────────────
+도입 효율 검토 artifact — 외부 후보 'trivy-scan' (adopt-now vs collect-first vs hold)
+──────────────────────────────────────────────────────────────────────────────
+  current_pain: 이미지/IaC 취약점을 사람이 수동 점검 — 누락 위험
+  expected_benefit: CI 단계에서 자동 게이트 → 취약점 조기 차단
+  overlap_with_existing: web-security-review 와 일부 겹침(정적 점검). 런타임 이미지 스캔은 신규 능력
+  operational_cost: CI 시간 +~30s, DB 캐시 관리
+  maintenance_risk: 취약점 DB 업데이트 의존, false positive 튜닝 필요
+  provider_runtime_fit: github-actions 와 적합(provider_affinity=github)
+  governance_security_impact: 읽기 전용, secret 불필요 — governance 위험 낮음
+  adopt_timing_reason: pain 크고 overlap 제한적 → adopt-now (단, 3축 합의 전제)
+  axis[pm] pm: adopt-now — 보안 가치 높음
+  axis[tech-lead] tech-lead: adopt-now — 유지비 수용 가능
+  axis[specialist] security-engineer: adopt-now — OWASP 커버 확대
+  → disposition: adopt-now  (gaps: 없음)
+  주: disposition=adopt-now 라도 console 은 projection only — 실제 등록은 register_promoted,
+     장착(equipped)은 install/attach 충족 후. adopted≠equipped 분리 유지.
+
+──────────────────────────────────────────────────────────────────────────────
+hold 예시 — specialist 축 누락 시 강제 hold (no fake adoption)
+──────────────────────────────────────────────────────────────────────────────
+  axes=('pm',) → disposition: hold
+  gaps: tech-lead 축 검토 없음, specialist 축 검토 없음(≥1 필요)

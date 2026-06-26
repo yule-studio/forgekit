@@ -1,0 +1,125 @@
+{
+  "collect_first_review": {
+    "candidate_id": "콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구",
+    "title": "GeekNews 발견: 경량 TUI 상태 대시보드 라이브러리",
+    "classification": "tool_candidate",
+    "source_id": "geeknews",
+    "score": 4.0,
+    "current_pain": "콘솔에서 런타임 상태를 한눈에 보기 어려움 — 경량 도구 필요",
+    "expected_benefit": "기존보다 단순/저비용 TUI",
+    "overlap": "기존 capability와 겹침 관측 안 됨 (도입 시 별도 검증 필요)",
+    "operational_cost": "설치·attach·버전 유지 비용 (toolchain 영향)",
+    "maintenance_risk": "외부 의존·ToS·유지보수 리스크 (vendor lock-in 점검)",
+    "provider_runtime_fit": "provider-neutral 로 평가 (특정 vendor 가정 금지) — runtime/harness fit 은 specialist 검토",
+    "governance_security_impact": "표준 승인 게이트 적용 (실행은 게이트 통과 후)",
+    "disposition_rationale": "근거는 충분치 않음 — 3축 검토 전까지 evidence 만 누적(즉시 활성화 안 함)",
+    "disposition": "collect-first",
+    "reviewed": false,
+    "consult": {
+      "consult_id": "adopt-콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구",
+      "topic": "도입 효율 검토: GeekNews 발견: 경량 TUI 상태 대시보드 라이브러리",
+      "by_role": "user-researcher",
+      "to_roles": [
+        "product-manager",
+        "tech-lead",
+        "platform-runtime-engineer"
+      ],
+      "question": "이 후보를 adopt-now / collect-first / hold 중 무엇으로 둘지 — pain·benefit·overlap·cost·risk·fit·governance 기준으로 검토 요청",
+      "note": "",
+      "refs": [
+        "콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구"
+      ]
+    }
+  },
+  "after_3axis_decision": {
+    "candidate_id": "콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구",
+    "title": "GeekNews 발견: 경량 TUI 상태 대시보드 라이브러리",
+    "classification": "tool_candidate",
+    "source_id": "geeknews",
+    "score": 4.0,
+    "current_pain": "콘솔에서 런타임 상태를 한눈에 보기 어려움 — 경량 도구 필요",
+    "expected_benefit": "기존보다 단순/저비용 TUI",
+    "overlap": "기존 capability와 겹침 관측 안 됨 (도입 시 별도 검증 필요)",
+    "operational_cost": "설치·attach·버전 유지 비용 (toolchain 영향)",
+    "maintenance_risk": "외부 의존·ToS·유지보수 리스크 (vendor lock-in 점검)",
+    "provider_runtime_fit": "provider-neutral 로 평가 (특정 vendor 가정 금지) — runtime/harness fit 은 specialist 검토",
+    "governance_security_impact": "표준 승인 게이트 적용 (실행은 게이트 통과 후)",
+    "disposition_rationale": "3축 검토 후 operator 채택 결정 — 3축 검토 통과 — 채택",
+    "disposition": "adopt-now",
+    "reviewed": true,
+    "consult": {
+      "consult_id": "adopt-콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구",
+      "topic": "도입 효율 검토: GeekNews 발견: 경량 TUI 상태 대시보드 라이브러리",
+      "by_role": "user-researcher",
+      "to_roles": [
+        "product-manager",
+        "tech-lead",
+        "platform-runtime-engineer"
+      ],
+      "question": "이 후보를 adopt-now / collect-first / hold 중 무엇으로 둘지 — pain·benefit·overlap·cost·risk·fit·governance 기준으로 검토 요청",
+      "note": "3축 검토 통과 — 채택",
+      "refs": [
+        "콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구"
+      ]
+    }
+  },
+  "armory_intake": {
+    "candidate_id": "콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구",
+    "accepted": true,
+    "spec": {
+      "id": "콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구",
+      "name": "GeekNews 발견: 경량 TUI 상태 대시보드 라이브러리",
+      "domains": [],
+      "languages": [],
+      "frameworks": [],
+      "topics": [],
+      "rules": [],
+      "commands": [
+        "x --status"
+      ],
+      "verification": [
+        "x --version"
+      ],
+      "forbidden": [
+        "프로덕션 자동 변경 금지"
+      ],
+      "related_weapons": [],
+      "related_loadouts": [],
+      "related_roles": [],
+      "nexus_refs": [],
+      "category": "devtools",
+      "summary": "콘솔 상태를 한눈에 보여주는 TUI 대시보드 도구",
+      "when_to_use": [
+        "운영 상태 모니터링"
+      ],
+      "when_not_to_use": [],
+      "required_inputs": [],
+      "expected_outputs": [],
+      "signals": [
+        "tui",
+        "dashboard"
+      ],
+      "capability_note": "터미널에서 런타임 상태를 시각화하는 능력",
+      "status": "ready",
+      "kind": "tool",
+      "provider_affinity": [],
+      "install_requirements": [
+        "pip install x"
+      ],
+      "attach_requirements": []
+    },
+    "reasons": [],
+    "evidence": [
+      "kind=tool",
+      "summary 실체 있음",
+      "signals 2개",
+      "when_to_use 명시",
+      "unsafe_boundary 선언",
+      "capability_note vendor-neutral",
+      "검증 경로 있음",
+      "install/attach requirements 명시",
+      "승격됨 (source=discovery:콘솔에서-런타임-상태를-한눈에-보기-어려움-—-경량-도구)"
+    ]
+  },
+  "note": "adopted = promote_candidate accepted (validated spec); equipped(register_promoted)는 별도 단계(여기 안 함)."
+}

@@ -24,6 +24,9 @@ Honest status of each console surface (working / partial / planned). Code:
 | discovery 24h bounded loop (injected clock 누적 driver) | working (core/tick; serve 배선=autonomy lane) | `run_discovery_loop`/`discovery_loop_tick` | `examples/discovery/loop-report.json`, `test_discovery_loop` |
 | discovery ask-me-later 후보 (교차 관측·신선도·score 기준) | working | `/discovery candidates` | `test_discovery_loop` |
 | discovery evidence track (경쟁gap·self-improve → vault note) | working (연결 시; 미연결 정직 실패) | `/discovery evidence` | `examples/discovery/evidence-*.md`, `test_discovery_loop` |
+| GeekNews 무료 radar 수집 (news.hada.io RSS) | working (free; config 토글) | `/sources` · config `discovery.geeknews` | `test_discovery_adoption` |
+| discovery 도입 효율 검토 (6-class 분류 + 8축 + 3축 consult, 기본 collect-first) | working (no fake adoption; 기본 collect-first/hold) | `/discovery review <n>` | `examples/discovery/adoption-review.md`, `test_discovery_adoption` |
+| discovery adopt-now → armory intake (adopted ≠ equipped) | working (3축 후 operator 결정 → promote_candidate adopted 판정; 장착=별도; raw=정직 reject) | `/discovery adopt <n>` | `examples/discovery/adoption-packet.json`, `test_discovery_adoption` |
 | operator-tunable 수집 토픽 (HN/subreddits/GitHub/RSS) | working | config `discovery` 블록 | `test_discovery_ledger` |
 | discovery brief → PM handoff (제안) | working | `/discovery promote <n>` | `test_discovery_ledger` |
 | discovery brief → authored vault note | working (연결 시; 미연결 정직 실패) | `/discovery save <n>` | `examples/discovery/idea-brief-note.md` |
@@ -40,9 +43,12 @@ Honest status of each console surface (working / partial / planned). Code:
 | toolchain verify/drift (required vs ACTIVE, mise; no manager→honest) | working (needs mise to verify; manager-missing surfaced) | `/toolchain verify\|drift [<loadout>]` | `test_toolchain` |
 | toolchain switch (mise; global/install **approval-gated**, no fake switch) | working (local 적용; gated 액션은 `--approve`) | `/toolchain switch [global] [--approve]` | `test_toolchain` |
 | goal control plane (장기 목표 model/transition/append-only evidence/packet·child linkage, 영속) | working (surface CRUD; tick=runtime/GW4) | `/goal [list\|new <제목>\|show <id>\|activate <id>\|evidence <id>]` | `examples/goal/`, `test_goal_core`·`test_goal_surface`·`test_goal_tick` |
+| goal evidence → Nexus 축 적재 (goal progression packet/evidence 를 schema 고정 authored note 로 mirror) | working (연결 vault; 미연결 정직 실패·idempotent·no raw dump; schema=goal_id/lane/packet_id/role/status/created_at/evidence_path) | `/goal publish <id>` · `/goal evidence <id>` | `examples/goal/nexus-evidence/`, `test_goal_nexus_evidence` |
 | in-console approve/deny + GW4-B 실행 연결 (awaiting_approval goal → operator 결정 → 실제 게이트 실행) | working (legal transition + decision evidence → GW4-B execute_approved_packet 호출: safe=실행됨(execution+verification 보존, surface 는 reload·비덮어쓰기), risky/blocked=실행 거부, 가짜 실행 0) | `/goal awaiting` · `/goal approve <id> [메모]` · `/goal deny <id> [메모]` | `examples/goal/approval.txt`, `test_goal_approval`·`test_execute_bridge` |
 | cockpit status line (mode + 승인대기 goal 개수 + budget% 한눈에, polling 불필요) | working (persistent issue line; awaiting=실제 goal store 카운트(`goal_continuity_status`), budget=실제 ledger spend÷budget; turn-boundary 마다 refresh; store/ledger 실패 시 무배지로 degrade·가짜 숫자 0) | issue line (`/status`·`/mode`·Shift+Tab·매 turn) | `examples/cockpit-status/`, `test_tui_cockpit_status` |
 | 선택/복사 visibility + drag-selection contrast (transcript native 선택 색·mode-aware copy 안내) | working (cross-widget `screen--selection`=brand accent-dim+밝은 FG, 런타임 실측 4.75:1 WCAG AA; help 안내가 mode-aware: inline=터미널 native drag, full=앱 drag+Ctrl+C; `/copy` 양쪽 공통; 가짜 0) | drag-select(full=앱/inline=터미널) · `/copy` · `/help` 선택·복사 섹션 | `examples/selection-contrast/`(evidence+SVG), `test_tui_transcript_selection`·`test_tui_selection_contrast` |
+| multi-command submit (하나만 인식 차단 — 한 submit 의 여러 `/명령` 순차 실행) | working (모든 줄이 `/`로 시작할 때만 분리, free text/단일 명령 무변경; 각 명령 자체 transcript+process feed) | 멀티라인 submit (Ctrl+J 로 `/a`⏎`/b`) | `examples/cockpit-qa/cockpit-qa.txt`, `test_multi_command` |
+| 도입 효율 검토 (외부 plugin/skill/collector/rule/workflow/tool adopt-now/collect-first/hold) | working (8점 검토+proposer/PM/tech-lead/specialist 3축+adopted≠equipped+ponytail verdict; collect-first/hold 장착 금지) | governance artifact (`decision_lane.adoption`) | `examples/cockpit-qa/cockpit-qa.txt`, `test_company_governance_upgrade` |
 
 ## Provider reality matrix
 | provider | connection | live submit | usage basis | mode influence |

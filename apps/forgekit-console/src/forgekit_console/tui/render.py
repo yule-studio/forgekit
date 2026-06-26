@@ -427,16 +427,16 @@ def selection_copy_lines(inline: bool) -> Tuple[str, ...]:
     :mod:`tui.ui_mode`): inline runs with ``mouse=False`` so the TERMINAL owns drag-select
     (native selection + the terminal's own copy); full-screen captures the mouse so the APP
     owns selection (in-app drag + ``Ctrl+C``) and a plain terminal drag is blocked. ``/copy``
-    works in BOTH modes (plain-text → OS clipboard). The selection highlight is the brand
-    desaturated-cyan (``accent-dim``) at a measured 4.75:1 contrast (see
-    ``test_tui_selection_contrast``). Pure → unit-testable without a terminal."""
+    works in BOTH modes (plain-text → OS clipboard). The selection highlight is the saturated
+    selection-blue (``selection``) — clearly distinct from the near-black background so a
+    selection is obvious (see ``test_tui_selection_contrast``). Pure → unit-testable."""
 
     common = (
         "  /copy            마지막 응답 복사 (= /copy last)",
         "  /copy turn <n>   n 번째 턴(질문+응답)   ·   /copy block <n>  n 번째 블록",
         "  /copy all        전체 복사   ·   /copy paste <id>  보존된 large paste",
         "  [dim]plain-text 로 OS clipboard 에 실제 복사 (pbcopy/xclip) — 빈 내용은 실패로 정직 표기.[/dim]",
-        "  [dim]선택 하이라이트 = brand accent-dim (대비 4.75:1).[/dim]",
+        "  [dim]선택 하이라이트 = 선택-blue (배경과 명확히 대비 — 선택 여부가 바로 보임).[/dim]",
     )
     if inline:
         return (
@@ -668,6 +668,70 @@ def intake_lines(packet) -> Tuple[str, ...]:
     return tuple(lines)
 
 
+def armory_intake_lines(pairs, results, *, detail_id="") -> Tuple[str, ...]:
+    """Render the Armory intake — evaluated external candidates by disposition / detail.
+
+    ``pairs`` = (ArmoryCandidate, AdoptionReview) tuples; ``results`` = parallel
+    AdoptionResult tuple (adopt_candidate output). ``detail_id`` shows one candidate's
+    8축 + 3축 review; else a verdict-bucket summary.
+    """
+
+    _V = {"adopt-now": _OK, "collect-first": _WARN, "hold": _ERR}
+    by_id = {c.id: (c, rv) for c, rv in pairs}
+    res_by_id = {r.candidate_id: r for r in results}
+
+    if detail_id:
+        item = by_id.get(detail_id)
+        if not item:
+            return (f"[{_ERR}]후보 '{detail_id}' 없음[/{_ERR}]",)
+        c, rv = item
+        res = res_by_id.get(detail_id)
+        disp = res.disposition if res else rv.disposition()
+        tag = _V.get(disp, _MUTED)
+        lines = [
+            f"[b {_ACCENT}]» armory intake · {c.name}[/b {_ACCENT}]  [dim]({c.kind})[/dim]",
+            f"  verdict: [{tag}]{disp}[/{tag}]"
+            + (f"  ·  [{_OK}]adopted spec[/{_OK}]" if res and res.adopted else "")
+            + f"   [dim]{c.source_ref}[/dim]",
+            f"  현재 pain: {rv.current_pain}",
+            f"  기대 효과: {rv.expected_benefit}",
+            f"  기존 중복: {rv.overlap_with_existing}",
+            f"  운영 비용: {rv.operational_cost}",
+            f"  유지 리스크: {rv.maintenance_risk}",
+            f"  provider/runtime: {rv.provider_runtime_fit}",
+            f"  governance/security: {rv.governance_security_impact}",
+            f"  도입 시점 사유: {rv.adopt_timing_reason}",
+            "  3축 검토:",
+        ]
+        for a in rv.axis_reviews:
+            atag = _V.get(a.position, _MUTED)
+            lines.append(f"    - {a.axis}({a.reviewer}): [{atag}]{a.position}[/{atag}] — {a.rationale}")
+        if res and not res.adopted and res.reasons:
+            lines.append(f"  [dim]비활성 사유: {res.reasons[0]}[/dim]")
+        return tuple(lines)
+
+    buckets = {"adopt-now": [], "collect-first": [], "hold": []}
+    for r in results:
+        buckets.setdefault(r.disposition, []).append(r)
+    adopted = [r.candidate_id for r in results if r.adopted]
+    lines = [
+        f"[b {_ACCENT}]» armory intake — 외부 후보 도입 검토[/b {_ACCENT}]",
+        f"  adopt-now {len(buckets['adopt-now'])} · collect-first {len(buckets['collect-first'])} · hold {len(buckets['hold'])}"
+        f"  [dim](총 {len(results)}건 · 8축 artifact + PM/tech-lead/specialist 3축)[/dim]",
+        f"  adopted spec(=카탈로그 등록, 미설치): {', '.join(adopted) or '(없음)'}",
+    ]
+    for v, tag in (("adopt-now", _OK), ("collect-first", _WARN), ("hold", _ERR)):
+        if not buckets[v]:
+            continue
+        lines.append(f"  [b][{tag}]{v}[/{tag}][/b]")
+        for r in buckets[v]:
+            nm = by_id.get(r.candidate_id, (None, None))[0]
+            label = nm.name if nm else r.candidate_id
+            lines.append(f"    [{tag}]•[/{tag}] {label} [dim]({r.candidate_id})[/dim]")
+    lines.append("  [dim]adopted=카탈로그 등록(available) ≠ equipped/installed · collect-first=근거만 누적 · `/armory <id>`[/dim]")
+    return tuple(lines)
+
+
 def video_watch_lines(result) -> Tuple[str, ...]:
     """Render a video-watch ingest result — live summary or honest reference_only."""
 
@@ -779,27 +843,46 @@ def result_block(title: str, lines: Sequence[str]) -> Tuple[str, ...]:
     return (header, *lines, "")
 
 
-def process_feed_lines(events: Sequence) -> Tuple[str, ...]:
+# Live "진행중(in-progress)" motion frames — a braille spinner. Advancing these frames
+# (driven by a real timer tick *while a step is genuinely RUNNING*) is **real status
+# motion**, NOT a fake typing animation: the glyph only moves while actual work is in
+# flight, and the elapsed seconds rendered beside it are measured from the real monotonic
+# start. When the step finishes, the line collapses to a quiet dot. Amber (the WARNING
+# token) gives the "노란 진행감" — a living, moving running line, Claude-Code-like.
+SPINNER_FRAMES: Tuple[str, ...] = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+
+
+def process_feed_lines(events: Sequence, *, now: float | None = None,
+                       frame: int = 0) -> Tuple[str, ...]:
     """Render process events as compact timeline lines (Claude tone, ForgeKit verbs).
 
-    The ACTIVE (running) step stands out — a bold accent ``▸`` marker + a NON-dim label —
-    so the operator sees "what's happening now" at a glance; finished steps stay quiet
-    (a dim ``•`` + dim label). The dot colour is the severity. Running → ``…``; blocked/error
-    → ``— <reason>``; done → quiet. Duration only shows when it was MEASURED (no fake ~1s).
-    The active distinction is purely ``status``-driven — never a fake spinner/typing."""
+    The ACTIVE (running) step is ALIVE — an amber braille spinner (``frame``-indexed) + an
+    amber label + a LIVE elapsed ``(X.Xs)`` ticking up from the real monotonic ``now`` — so
+    the operator sees "what's happening now" with real motion, not a static line. Finished
+    steps stay quiet (a dim ``•`` + dim label). Running → spinner + ``…``; blocked/error →
+    ``— <reason>``; done → quiet. Duration only shows when MEASURED (no fake ~1s).
+
+    Honest motion only: the spinner advances solely because a step is genuinely RUNNING and
+    a real timer is ticking ``frame``; ``now`` is the real clock. There is NO fake
+    typing/char-reveal — the elapsed seconds and the run state are both real. ``now`` and
+    ``frame`` default to a static first frame, so the function stays pure + unit-testable."""
 
     from . import process_events as pe
 
     out = []
+    spin = SPINNER_FRAMES[frame % len(SPINNER_FRAMES)]
     for ev in events:
         detail = f" [dim]{ev.detail}[/dim]" if ev.detail else ""
-        dur = f" [dim]({ev.duration_ms / 1000:.1f}s)[/dim]" if ev.duration_ms else ""
         if ev.status == pe.ST_RUNNING:
-            # active step: bold accent marker + bright label (the "now" line).
+            # live elapsed from the REAL monotonic clock (measured, never fabricated).
+            elapsed = (f" [dim]({now - ev.started_at:.1f}s)[/dim]"
+                       if now is not None and now > ev.started_at else "")
+            # amber spinner (노란 진행감) + amber label — the "살아있는 now" line.
             out.append(
-                f"[b {_ACCENT}]▸[/b {_ACCENT}] [{_ACCENT}]{ev.label}[/{_ACCENT}]"
-                f"{detail}{dur} [dim]…[/dim]")
+                f"[b {_WARN}]{spin}[/b {_WARN}] [{_WARN}]{ev.label}[/{_WARN}]"
+                f"{detail}{elapsed} [dim]…[/dim]")
             continue
+        dur = f" [dim]({ev.duration_ms / 1000:.1f}s)[/dim]" if ev.duration_ms else ""
         dot = {pe.SEV_WARN: _WARN, pe.SEV_ERROR: _ERR}.get(ev.severity, _ACCENT)
         if ev.status == pe.ST_BLOCKED:
             tail = f" [{_WARN}]— {ev.detail or 'blocked'}[/{_WARN}]"
@@ -819,6 +902,20 @@ def process_feed_lines(events: Sequence) -> Tuple[str, ...]:
 # echo), so a turn's response start was hard to scan. Magenta keeps it distinct from the
 # cyan status dots / you-marker.
 RESPONSE_MARKER = f"[b {_ACCENT2}]●[/b {_ACCENT2}]"
+
+
+def you_echo_lines(raw: str) -> Tuple[str, ...]:
+    """Format a submitted prompt as transcript echo lines (pure → unit-testable).
+
+    The first line carries the cyan ``›`` you-marker AND is bold — the question is the
+    anchor of each turn, so making it pop (against the dim continuation lines and the body
+    that follows) lets the operator scan turn boundaries at a glance. Continuation lines of
+    a multiline prompt are indented + dim so a pasted block reads as one turn."""
+
+    head, *rest = (raw or "").split("\n")
+    out = [f"[{_ACCENT}]›[/{_ACCENT}] [b]{head}[/b]"]
+    out.extend(f"  [dim]{line}[/dim]" for line in rest)
+    return tuple(out)
 
 
 def mark_response_chunks(chunks: Sequence[Sequence[str]]) -> Tuple[Tuple[str, ...], ...]:
@@ -870,6 +967,6 @@ __all__ = (
     "palette_lines", "palette_panel_lines", "mode_badge", "mode_pill",
     "status_pill", "hint_line", "help_sections", "selection_copy_lines",
     "help_panel_document", "help_tab_strip", "help_body", "default_help_tab",
-    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "intake_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines",
-    "RESPONSE_MARKER", "mark_response_chunks",
+    "handoff_summary_lines", "loop_summary_lines", "auto_decision_lines", "source_status_lines", "discovery_lines", "intake_lines", "armory_intake_lines", "video_watch_lines", "self_improve_lines", "security_drill_lines", "autopilot_lines", "design_status_lines", "result_block", "chunk_result_lines", "process_feed_lines", "SPINNER_FRAMES",
+    "RESPONSE_MARKER", "mark_response_chunks", "you_echo_lines",
 )

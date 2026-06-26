@@ -33,7 +33,9 @@ from .registry import (
     H_BLOCKED,
     H_WHOAMI,
     H_RESOLVE,
+    H_FORGE,
     H_HEPHAISTOS,
+    H_ARMORY,
     H_SKILLS,
     H_LOADOUT,
     H_PROVIDER,
@@ -174,8 +176,10 @@ def route(parsed, ctx: ConsoleContext) -> CommandResult:
         )
     if handler == H_WHOAMI:
         return _whoami_result(parsed)
-    if handler in (H_RESOLVE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
+    if handler in (H_RESOLVE, H_FORGE, H_HEPHAISTOS, H_SKILLS, H_LOADOUT):
         return _hephaistos_result(handler, parsed, ctx)
+    if handler == H_ARMORY:
+        return _armory_result(parsed, ctx)
     if handler == H_PROVIDER:
         return _provider_result(parsed, ctx)
     if handler == H_SETUP:
@@ -240,11 +244,17 @@ def _goal_result(parsed, ctx: ConsoleContext) -> CommandResult:
         return (CommandResult.info if ok else CommandResult.error)("goal activate", (msg,))
     if sub == "evidence":
         return CommandResult.info("goal evidence", gs.goal_evidence_lines(env, args[1] if len(args) > 1 else ""))
+    if sub == "publish":
+        ok, lines = gs.apply_publish_evidence(env, args[1] if len(args) > 1 else "",
+                                              getattr(ctx, "config", None))
+        return (CommandResult.info if ok else CommandResult.error)("goal publish", lines)
     if sub == "plan":
         ok, lines = gs.apply_plan(env, args[1] if len(args) > 1 else "", args[2:])
         return (CommandResult.info if ok else CommandResult.error)("goal plan", lines)
     if sub == "progress":
         return CommandResult.info("goal progress", gs.progress_lines(env, args[1] if len(args) > 1 else ""))
+    if sub == "govern":
+        return CommandResult.info("goal govern", gs.govern_lines(env, args[1] if len(args) > 1 else ""))
     if sub in ("awaiting", "pending"):
         return CommandResult.info("goal awaiting", gs.awaiting_lines(env))
     if sub == "approve":
@@ -286,6 +296,16 @@ def _provider_result(parsed, ctx: ConsoleContext) -> CommandResult:
             return CommandResult.info("provider recommended", cs.recommended_lines(cfg))
         ok, msg = (cs.apply_connect(pid) if sub == "connect" else cs.apply_disconnect(pid))
         return (CommandResult.info if ok else CommandResult.error)(f"provider {sub}", msg.split("\n"))
+    if sub == "attach":
+        # `/provider attach <id>` — project ONE selected armory tool onto its provider
+        # ecosystem(s): attach/connect/verify per target (claude/codex/gemini) or backend(ollama).
+        from .. import provider_projection as pp
+        tool_id = args[1] if len(args) > 1 else ""
+        if not tool_id:
+            return CommandResult.info("provider attach", (
+                "도구 id 를 입력하세요 — `/provider attach <skill|weapon id>` "
+                "(예: `/provider attach figma-read`). `/resolve <요청>` 의 skills/weapons 참고.",))
+        return CommandResult.info("provider attach", pp.attach_detail_lines(tool_id))
     if sub == "link":
         ok, msg = ps.apply_link(args[1] if len(args) > 1 else "", env=env)
         return (CommandResult.info if ok else CommandResult.error)("provider link", (msg,))
@@ -391,6 +411,24 @@ def _toolchain_result(parsed, ctx) -> CommandResult:
     return CommandResult.info("toolchain detect", ts.detect_lines(root))
 
 
+def _armory_result(parsed, ctx) -> CommandResult:
+    # /armory [<id>] — 외부 후보 도입 검토(adopt-now/collect-first/hold) 요약 또는 상세.
+    # adoption framework(armory.candidate)를 실제 후보 set 에 적용한 큐레이션 결정 — 카탈로그
+    # 자체는 /skills · /loadout · /resolve 가 본다. adopted ≠ equipped/installed.
+    from .. import armory_intake as AI
+    from ..tui import render as _r
+
+    pairs = AI.intake_candidates()
+    results = AI.intake_results()
+    args = list(getattr(parsed, "args", ()) or ())
+    detail = args[0].lower() if args else ""
+    if detail:
+        ids = {c.id for c, _ in pairs}
+        if detail not in ids:
+            return CommandResult.error("armory", (f"후보 '{detail}' 없음. 가능: {', '.join(sorted(ids))}",))
+    return CommandResult.info("armory", _r.armory_intake_lines(pairs, results, detail_id=detail))
+
+
 def _nexus_result(parsed, ctx) -> CommandResult:
     # /nexus [set <path> | clear] — operator-driven connect, else live status.
     from ..hephaistos import nexus_ops as nops
@@ -414,6 +452,17 @@ def _discovery_now() -> str:
     from datetime import datetime
 
     return datetime.now().isoformat(timespec="seconds")
+
+
+def _armory_signals() -> tuple:
+    """Existing-capability signals from the armory catalog (for overlap detection)."""
+
+    try:
+        from armory.catalog import all_skills
+
+        return tuple(s for sk in all_skills() for s in getattr(sk, "signals", ()) or ())
+    except Exception:  # noqa: BLE001 — overlap is best-effort; absence ≠ crash
+        return ()
 
 
 def _discovery_pending_idea(ledger, idx_token: str):
@@ -509,6 +558,55 @@ def _discovery_result(parsed, ctx) -> CommandResult:
 
         packet = INTAKE.run_intake(repo_root)
         return CommandResult.info("discovery intake", _r.intake_lines(packet))
+
+    if sub == "review":
+        # /discovery review <n> — pending 아이디어 n 을 도입 효율 검토(8축)로 만든다.
+        # 기본 disposition=collect-first(즉시 활성화 안 함), 3축(PM/tech-lead/specialist) consult 요청.
+        # vault 연결 시 adoption-review evidence note 로 영속(no fake — 미연결이면 메모리만).
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery review", (err,))
+        existing = _armory_signals()
+        review = D.build_adoption_review(idea.rebuild_brief(), source_id=idea.source_id,
+                                         existing_signals=existing)
+        lines = list(review.lines())
+        from hephaistos.nexus_read import nexus_root
+
+        root = nexus_root(env, getattr(ctx, "config", None))
+        if root:
+            path = D.persist_adoption_review(review, root)
+            lines.append(f"- evidence note: {path}" if path else "- evidence note: 쓰기 실패(권한/경로)")
+        else:
+            lines.append("- vault 미연결 — 검토는 표시만(영속하려면 `/nexus set <path>`).")
+        lines.append("도입은 3축 검토 후 operator 결정으로만 — `/discovery adopt <n>` (adopted≠equipped).")
+        return CommandResult.info("discovery review", tuple(lines))
+
+    if sub == "adopt":
+        # /discovery adopt <n> — operator 가 3축 검토 후 adopt-now 결정을 기록 → armory intake 게이트.
+        # adopted(검증된 spec) 여부만 판정. 실제 장착(equipped=register_promoted)은 별도 단계(여기서 안 함).
+        idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
+        if err:
+            return CommandResult.error("discovery adopt", (err,))
+        review = D.build_adoption_review(idea.rebuild_brief(), source_id=idea.source_id,
+                                         existing_signals=_armory_signals())
+        if review.classification == D.CLASS_RISK:
+            return CommandResult.error(
+                "discovery adopt",
+                ("이 후보는 risk/constraint 분류 — 도입이 아니라 추적/완화 대상입니다 (hold).",))
+        decided = D.resolve_review(review, adopt=True, note="operator adopt-now (console)")
+        result = D.adoption_to_armory_candidate(decided, contract={})
+        lines = [f"adopt-now 결정 기록: {review.title}",
+                 f"- 분류: {review.classification} · disposition: {decided.disposition}"]
+        if result is not None and result.accepted:
+            lines.append("- armory intake: ADOPTED (계약 검증 통과 — catalog spec 생성됨)")
+            lines.append("- 주의: adopted ≠ equipped. 장착은 `register_promoted` 별도 단계(여기서 안 함).")
+        else:
+            reasons = list(result.reasons) if result is not None else ["bridge 미적용"]
+            lines.append("- armory intake: 계약 미완성 — 아직 ADOPTED 아님(fake available 방지). 필요:")
+            lines.extend(f"  · {r}" for r in reasons[:6])
+            lines.append("- raw 아이디어라 contract(summary/signals/when_to_use/unsafe_boundary/"
+                         "capability_note/commands) 필요 — specialist 가 채운 뒤 재시도.")
+        return CommandResult.info("discovery adopt", tuple(lines))
 
     if sub == "promote":
         idea, err = _discovery_pending_idea(ledger, args[1] if len(args) > 1 else "1")
@@ -629,14 +727,34 @@ def _hephaistos_result(handler, parsed, ctx=None) -> CommandResult:
         if sub == "apply":
             return _forge_apply_result(" ".join(args[1:]).strip(), env=env)
     if not request:
-        which = "/resolve" if handler == H_RESOLVE else "/skills"
+        which = {H_RESOLVE: "/resolve", H_FORGE: "/forge"}.get(handler, "/skills")
         return CommandResult.info(handler, (f"요청을 입력하세요 — `{which} <요청>` "
                                             "(예: `/resolve Spring Boot JWT refresh token`).",))
+    if handler == H_FORGE:
+        # full execution core — equip(adopted vs equipped) / Nexus / ponytail / packet.
+        # env/config/role LIVE; `which` defaults to shutil.which (real local equip probe).
+        from hephaistos import forge_execution_plan
+        ep = forge_execution_plan(request, env=env, config=config, role=role)
+        return CommandResult.info("forge", proj.execution_lines(ep))
     plan, read = proj.resolve_with_sources(request, env=env, config=config, role=role)
     if handler == H_RESOLVE:
-        lines = list(proj.resolve_summary_lines(plan, read)) + list(_forge_governance_lines(request, env=env))
+        lines = (list(proj.resolve_summary_lines(plan, read))
+                 + list(_provider_projection_lines(plan))
+                 + list(_forge_governance_lines(request, env=env)))
         return CommandResult.info("resolve", tuple(lines))
     return CommandResult.info("skills", proj.skills_lines(plan, read))
+
+
+def _provider_projection_lines(plan) -> tuple:
+    """Append the provider-projection block to /resolve — for each selected armory tool,
+    WHERE it attaches (claude/codex/gemini projection or ollama backend) + verify gist.
+    Lazy + best-effort: a render error must never break /resolve."""
+
+    try:
+        from .. import provider_projection as pp
+        return pp.packet_projection_lines(plan)
+    except Exception:  # noqa: BLE001
+        return ()
 
 
 def _forge_governance_lines(request: str, *, env=None) -> tuple:

@@ -32,6 +32,12 @@ Engineering Agent는 **엔지니어링 부서의 게이트웨이**다. 외부에
 - `product-designer` — 화면/플로우 결정, 컴포넌트 분해, 시각 가이드
 - `qa-engineer` — 수용 기준, 회귀 시나리오, 테스트 우선순위
 
+이 역할들은 flat list 로 운영하지 않는다. 현재 engineering-agent 는
+`forgekit-core-team` / `platform-runtime-team` / `skill-rnd-team` /
+`qa-governance-team` 의 **4개 핵심 실행팀** 으로 묶어 운영한다.
+team-level topology 의 SSoT 는 `agents/engineering-agent/manifest.json` 의
+`team_topology` 와 `policies/runtime/agents/engineering-agent/team-structure.md`.
+
 ## Execution Model
 - 기본은 **single-executor, multi-advisor** 모델이다. 한 실행에서 코드를 수정할 수 있는 참여자는 한 명만 허용한다.
 - Advisor는 요구사항 검토, 계획 제안, 패치 제안, diff 리뷰를 수행한다.

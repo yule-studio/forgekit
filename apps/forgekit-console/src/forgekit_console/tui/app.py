@@ -33,7 +33,7 @@ from .prompt_area import PromptArea
 
 from .. import __version__
 from ..commands import palette as palette_state
-from ..commands.parser import parse_input
+from ..commands.parser import parse_input, split_command_lines
 from ..commands.router import ConsoleContext, build_default_context, route
 from ..models import (
     KIND_AGENT_MODE,
@@ -102,6 +102,8 @@ class ForgekitConsoleApp(App):
         self._pastes = PasteStore()      # large-paste raw payloads (expand/resend/copy by id)
         from .process_events import ProcessFeed
         self._feed = ProcessFeed()       # real process timeline (route/submit/generate/…)
+        self._motion_frame = 0          # spinner frame for the live "진행중" active line
+        self._motion_interval = 0.12    # motion tick (seconds) — advances only while running
         self._reveal_interval = 0.05    # progressive-reveal tick (seconds) per body chunk
         self._turns_finalized = 0       # reading-flow turns closed through the sink (measurable)
         self._suppress_refilter = False
@@ -202,6 +204,9 @@ class ForgekitConsoleApp(App):
         self._sync_intro()  # empty + idle → wide hero art; working state → compact
         self.query_one("#prompt", PromptArea).focus()
         self._follow_tail()
+        # drive the live "진행중" spinner — the tick is a no-op unless a step is running,
+        # so there is no idle animation (real status motion only).
+        self.set_interval(self._motion_interval, self._motion_tick)
 
     def _write_system(self, lines) -> None:
         """Write an operator-facing SYSTEM explanation block to the transcript AND the
@@ -270,7 +275,12 @@ class ForgekitConsoleApp(App):
         if selected is not None:
             raw = f"/{selected.name}"
         if raw.strip():
-            self._execute(raw)
+            # a multi-command submit (a stack of `/...` lines) runs each in order so
+            # the operator isn't limited to "하나만 인식"; free text / single command
+            # is returned as one entry and behaves exactly as before.
+            for line in split_command_lines(raw):
+                if line.strip():
+                    self._execute(line)
 
     def action_next(self) -> None:
         if self._palette.is_open:
@@ -1241,7 +1251,19 @@ class ForgekitConsoleApp(App):
         if self._feed.empty:
             w.update("")
             return
-        w.update("\n".join(render.process_feed_lines(self._feed.recent(6))))
+        # while a step is genuinely RUNNING, feed the real clock + motion frame so the
+        # active line shows a live spinner + ticking elapsed (real motion, not fake typing).
+        now = self._feed.clock() if self._feed.active() is not None else None
+        w.update("\n".join(render.process_feed_lines(
+            self._feed.recent(6), now=now, frame=self._motion_frame)))
+
+    def _motion_tick(self) -> None:
+        """Advance the in-progress spinner ONLY while a step is really running — so the
+        motion is tied to real work (no idle animation, no fake typing)."""
+
+        if self._feed.active() is not None:
+            self._motion_frame += 1
+            self._render_feed()
 
     def _flash_mode_switch(self) -> None:
         """A SHORT transient '▶▶ <mode> mode on' confirmation in the live status zone —

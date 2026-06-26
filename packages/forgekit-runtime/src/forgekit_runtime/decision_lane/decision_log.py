@@ -47,9 +47,11 @@ KIND_DECISION = "decision"     # tech-lead signoff
 KIND_APPROVAL = "approval"     # operator approval
 KIND_HANDOFF = "handoff"       # engineer handoff
 KIND_EXECUTION = "execution"   # execution receipt
+KIND_ADOPTION = "adoption"     # external-candidate adoption review (도입 효율 검토)
+KIND_MERGE = "merge"           # merge receipt (PR merged under the chain + identity trail)
 EVENT_KINDS: Tuple[str, ...] = (
     KIND_BRIEF, KIND_CONSULT, KIND_GATEWAY, KIND_MEETING, KIND_DECISION, KIND_APPROVAL,
-    KIND_HANDOFF, KIND_EXECUTION,
+    KIND_HANDOFF, KIND_EXECUTION, KIND_ADOPTION, KIND_MERGE,
 )
 
 
@@ -146,6 +148,7 @@ def record_lane_artifacts(
     session_id: str,
     *,
     brief=None,
+    adoption=None,
     consult=None,
     gateway=None,
     meeting=None,
@@ -153,6 +156,7 @@ def record_lane_artifacts(
     approval=None,
     handoff=None,
     briefing=None,
+    merge=None,
     env: Optional[Mapping[str, str]] = None,
     at: str = "",
 ) -> Tuple[GovernanceEvent, ...]:
@@ -184,6 +188,12 @@ def record_lane_artifacts(
         ok = not validate_pm_brief(brief)
         _emit(KIND_BRIEF, "product-manager", f"PM brief: {brief.topic}", ok,
               brief.topic, _payload(brief))
+    if adoption is not None:
+        from .adoption import validate_adoption_review
+        ok = not validate_adoption_review(adoption)
+        _emit(KIND_ADOPTION, adoption.proposed_by or "product-manager",
+              f"adoption {adoption.candidate_id} → {adoption.adoption_verdict}", ok,
+              adoption.candidate_id, _payload(adoption))
     if consult is not None:
         notes = consult if isinstance(consult, (list, tuple)) else (consult,)
         for note in notes:
@@ -230,6 +240,14 @@ def record_lane_artifacts(
         _emit(KIND_HANDOFF, handoff.executor_role,
               f"handoff {handoff.handoff_id} → {handoff.executor_role}", ok,
               handoff.handoff_id, payload)
+    if merge is not None:
+        # merge 'valid' = the receipt is well-formed AND it actually merged (a blocked
+        # merge is a real, recorded verdict but does NOT advance/close the lane).
+        from .merge_receipt import MERGE_MERGED, validate_merge_receipt
+        ok = (not validate_merge_receipt(merge)) and merge.outcome == MERGE_MERGED
+        _emit(KIND_MERGE, merge.executor or "tech-lead",
+              f"merge PR {merge.pr_ref} ({merge.outcome})", ok, merge.pr_ref,
+              _payload(merge))
     return tuple(recorded)
 
 
@@ -276,6 +294,25 @@ def _trail_facts(ev: GovernanceEvent) -> str:
 
     p = ev.payload or {}
     k = ev.kind
+    if k == KIND_ADOPTION:
+        bits = [f"verdict={p.get('adoption_verdict', '')}"]
+        sp = p.get("specialist_consulted") or []
+        bits.append(f"3축(pm={p.get('reviewed_by_pm', '')}·tl={p.get('reviewed_by_tech_lead', '')}·spec {len(sp)})")
+        if p.get("ponytail_verdict"):
+            bits.append(f"ponytail={p['ponytail_verdict'][:24]}")
+        if p.get("follow_up_owner"):
+            bits.append(f"follow-up={p['follow_up_owner']}")
+        return " · ".join(bits)
+    if k == KIND_MERGE:
+        bits = [f"outcome={p.get('outcome', '')}"]
+        if p.get("issue_ref"):
+            bits.append(f"closes #{p['issue_ref']}")
+        if p.get("decision_ref"):
+            bits.append(f"decision={p['decision_ref']}")
+        bits.append(f"ci={p.get('ci_status', '-')}")
+        if p.get("commit_trailers"):
+            bits.append(f"identity-trail {len(p['commit_trailers'])}개")
+        return " · ".join(bits)
     if k == KIND_BRIEF:
         return (f"acceptance {len(p.get('acceptance_criteria') or [])}개 · "
                 f"metric {len(p.get('success_metrics') or [])}개 · priority={p.get('priority', '')}")
@@ -305,6 +342,12 @@ def _trail_facts(ev: GovernanceEvent) -> str:
             bits.append(f"approval={p['approval_level']}")
         if p.get("tradeoffs"):
             bits.append(f"tradeoff {len(p['tradeoffs'])}개")
+        pony = p.get("ponytail") or {}
+        if pony.get("ponytail_required"):
+            if pony.get("consulted"):
+                bits.append(f"ponytail={pony.get('ponytail_verdict') or '?'}")
+            else:
+                bits.append("ponytail=거부(더 복잡한 경로)")
         return " · ".join(bits)
     if k == KIND_APPROVAL:
         return f"approved={p.get('approved', '')}"
@@ -339,7 +382,8 @@ def decision_trail_from_log(events: Tuple[GovernanceEvent, ...]) -> Tuple[str, .
 
 __all__ = (
     "KIND_BRIEF", "KIND_CONSULT", "KIND_GATEWAY", "KIND_MEETING", "KIND_DECISION",
-    "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "EVENT_KINDS",
+    "KIND_APPROVAL", "KIND_HANDOFF", "KIND_EXECUTION", "KIND_ADOPTION", "KIND_MERGE",
+    "EVENT_KINDS",
     "GovernanceEvent", "governance_log_path", "record_governance_event",
     "replay_governance_log", "record_lane_artifacts", "readiness_from_log",
     "decision_trail_from_log",

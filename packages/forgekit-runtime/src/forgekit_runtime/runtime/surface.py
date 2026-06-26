@@ -45,12 +45,32 @@ def daemon_status_lines(*, env: Optional[Mapping[str, str]] = None) -> Tuple[str
     elif beat.tick > 0:
         # honest resume hint: the next serve continues tick numbering from here (launchd KeepAlive 등).
         lines.append(f"  resume    : 다음 serve 는 tick {beat.tick + 1} 부터 이어집니다 (resume on; cooldown 연속성 유지)")
-    # goal-driven continuity visibility — what the serve loop is actually progressing + what
-    # needs operator approval (the daemon DRIVES goals; the status must show it, not hide it).
-    from .goal_status import goal_continuity_lines
-    lines.extend(goal_continuity_lines(env=env))
+    # runtime readiness — the JOINED honest view: goal continuity + declared live transport +
+    # the single binding constraint on autonomous progress (the daemon DRIVES goals AND needs a
+    # live lane for LLM work; the status must show both, not hide either). Falls back to the
+    # bare goal-continuity lines if the provider join is unavailable (best-effort).
+    try:
+        from .readiness import readiness_lines
+        lines.extend(readiness_lines(env=env))
+    except Exception:  # noqa: BLE001 - a join failure must never blind the daemon surface
+        from .goal_status import goal_continuity_lines
+        lines.extend(goal_continuity_lines(env=env))
+    # provider/runtime continuity — which provider lane EACH PAST TICK routed through + budget
+    # (brain vs actual transport vs fallback), read-only over the durable tick ledger. This is
+    # the per-tick HISTORY trail; readiness above is the current declared/binding view.
+    lines.extend(provider_lane_lines(env=env))
     lines.append("  [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]")
     return tuple(lines)
+
+
+def provider_lane_lines(*, env: Optional[Mapping[str, str]] = None,
+                        recent: int = 5) -> Tuple[str, ...]:
+    """`/daemon` (and `/runtime`) — recent per-tick provider lane + budget continuity."""
+
+    from . import tick_ledger as TL
+
+    records = TL.read_tick_records(env=env, limit=recent)
+    return TL.tick_ledger_lines(records)
 
 
 def request_stop(*, env: Optional[Mapping[str, str]] = None) -> Tuple[bool, str]:
@@ -62,4 +82,4 @@ def request_stop(*, env: Optional[Mapping[str, str]] = None) -> Tuple[bool, str]
     return True, "kill-switch SET — 실행 중인 `forgekit runtime serve` 는 다음 tick 에 정지합니다."
 
 
-__all__ = ("daemon_state", "daemon_status_lines", "request_stop")
+__all__ = ("daemon_state", "daemon_status_lines", "request_stop", "provider_lane_lines")

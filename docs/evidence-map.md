@@ -18,6 +18,7 @@ Where each capability's evidence lives. Paths under `apps/forgekit-console/examp
 | design restricted source | `examples/design/` | yes | `/design` |
 | security red/blue | `examples/security/` | yes | `/red-blue` |
 | vault authorship | `examples/vault/` | yes | — |
+| goal evidence → Nexus 축 (schema 고정) | `examples/goal/nexus-evidence/` | yes | `/goal publish <id>` (연결 vault) |
 
 Runtime output written by the daemon/autopilot lands under `<repo>/runs/forgekit/…`
 (**gitignored** — `apps/forgekit-console/runs/` is ignored; committed evidence lives in `examples/`).

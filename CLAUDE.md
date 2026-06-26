@@ -59,12 +59,14 @@
 | 보안 검토 / cross-cutting security 게이트 | + `docs/security-review.md` (+ `agents/engineering-agent/security-engineer/` 역할 계약 SSoT) |
 | plugin/hook/skill/MCP/backend 분리 / provider 배치 | + `docs/plugin-taxonomy.md` + `docs/provider-capability-matrix.md` |
 | engineering role council / tech-lead signoff / execution review | + `docs/engineering-role-council-runtime.md` (SSoT — same-role peer review 통과 후에만 cross-role synthesis, tech-lead = technical approval, gateway = operator approval surface. 코드 contract: `apps/engineering-agent/src/yule_engineering/agents/council.py`) |
-| 설계 결정 레인 / PM brief·meeting·stack 비교 / PM→gateway→tech-lead→engineer handoff / fake meeting·signoff 금지 | + `docs/pm-techlead-lane.md` (SSoT — design system+coding convention+stack+tradeoff+approval 5필수, single executor gate `can_engineer_start`. 코드: `packages/forgekit-runtime/src/forgekit_runtime/decision_lane/`) |
+| 설계 결정 레인 / PM brief·meeting·stack 비교 / PM→gateway→tech-lead→engineer handoff / fake meeting·signoff 금지 / 외부 후보 adoption 효율 검토(8필드+3축, adopt-now·collect-first·hold, adopted≠equipped) / merge receipt identity trail | + `docs/pm-techlead-lane.md` (SSoT — design system+coding convention+stack+tradeoff+approval 5필수, single executor gate `can_engineer_start`, 7.6 adoption + 7.7 merge receipt. 코드: `packages/forgekit-runtime/src/forgekit_runtime/decision_lane/`) |
 | Hephaistos forge plan governance / forge→승인게이트→execution receipt / weapon safety 분류 / fake receipt 금지 | + `docs/hephaistos-governance.md` (SSoT — forge plan 을 동일 승인 게이트(run_internal_chain→authorize_runtime_execution→validate_execution)에 연결, 코드: `packages/forgekit-runtime/src/forgekit_runtime/forge/`) |
+| 외부 tool/skill/plugin install·activation safety / 추천≠설치≠실행 lifecycle / 공급망 리스크(install·global-write·external·unknown-safety) 게이트 / fake installed 금지 | + `docs/install-safety-lane.md` (SSoT — activation 을 동일 승인 게이트에 연결, lifecycle state + activation receipt + append-only ledger, 코드: `packages/forgekit-runtime/src/forgekit_runtime/activation/`) |
 | 모노레포 구조 / packages·apps 추가 / compat shim | + `docs/monorepo-structure.md` (현황·의존 규칙·shim 카탈로그·로드맵 SSoT) |
 | ForgeKit 플랫폼 경계 / console=operator app / 코어 packages 분리(WT1~4) | + `docs/forgekit-architecture-ownership.md` (owner 매트릭스·import 경계·이전 우선순위 SSoT) |
 | packages/* 분류 / 네이밍 충돌 / 어디에 새 기능 추가 / transitional debt | + `docs/package-topology.md` (18 package 분류표·migration matrix·결정 트리 SSoT) |
 | control-plane 방향 / OpenClaw·Harness·Hermes 흡수 / onboarding bootstrap / P0~P2 우선순위 / Mac mini host | + `docs/control-plane-architecture.md` (역할·소유 경계·우선순위 로드맵 SSoT) |
+| 대규모 agent 조직 모델 / CEO·forge-master·10 C-level office / office↔부서 매핑 / 조직 네이밍 / 단계 로드맵 | + `docs/company/forgekit-company-model.md` (+ `agent-office-map`·`naming-convention`·`staged-agent-organization-roadmap`). engineering 성장 경로는 `team_topology` 링크 |
 | 외부 skill/plugin/tool/MCP 후보 수집(free-first) / candidate schema / curation gate / Armory 승격 전 intake | + `docs/external-intake-lane.md` (SSoT — `nexus.sources`→`nexus.intake`(candidate+curate)→Armory candidate. 새 collector/scheduler 금지, planned source fake-live 금지. 코드: `packages/nexus/src/nexus/intake/`) |
 
 전체 매핑은 `AGENTS.md` §2.

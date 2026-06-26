@@ -45,12 +45,13 @@ class PromptArea(TextArea):
         background: transparent;   /* no full-width line highlight — reads like an input bar */
     }
     PromptArea > .text-area--selection {
-        /* Operator text-selection in the input must be clearly readable against the
-           transparent brand theme — Textual's default selection is off-brand/low-contrast
-           on this dark surface. Desaturated-cyan block keeps the light FG text legible
-           (real selection contrast, not a CSS no-op). */
-        background: $accent-dim;
-        color: $text;
+        /* Operator text-selection in the input must POP against the near-black surface —
+           Textual's default selection is off-brand/low-contrast here. A saturated-blue
+           block ($selection-background) with the forced light FG ($selection-foreground)
+           is unmistakably "선택됨" (real selection contrast, not a CSS no-op). Same token as
+           the cross-widget drag selection so selection reads the same everywhere. */
+        background: $selection-background;
+        color: $selection-foreground;
     }
     """
 

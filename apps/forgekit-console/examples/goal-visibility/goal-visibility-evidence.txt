@@ -5,7 +5,7 @@ ForgeKit always-on runtime — goal-continuity 가시성 (operator-visible) — 
 STEP 1 — goal 없음: 정직 표기(fake 진행 없음)
 ==============================================================================
 forgekit always-on daemon — stopped
-  goal-loop : 활성 goal 없음 (`/goal new <제목>` → `/goal activate <id>` 로 시작)
+  readiness : [b]setup_required[/b]  (daemon=stopped · active 0 · awaiting 0 · blocked 0)
 
 ==============================================================================
 STEP 2 — active(진행) 1 + awaiting(승인 필요) 1: runtime status 가 둘 다 표면
@@ -16,12 +16,14 @@ forgekit always-on daemon — stopped
   last note : no heartbeat
   kill-switch: clear
   (데몬 미가동 — `forgekit runtime serve --interval 300 --max-ticks N` 로 bounded 시작)
-  goal-loop : active 1 (serve 가 자동 진행) · awaiting 1 (operator 승인 필요) · blocked 0 · done 0
+  readiness : [b]setup_required[/b]  (daemon=stopped · active 1 · awaiting 1 · blocked 0)
       ⚠ action-needed: 1 goal awaiting_approval — `/goal awaiting` → `/goal approve <id>`
-      last work: bounded write 재읽기 검증 통과 (goal-dc8d57609f6f)
+      last work: bounded write 재읽기 검증 통과 (goal-912e77ff5c49)
+      다음: `/setup apply` 로 4-provider 브레인을 구성하세요 (primary + live lane).
+      [dim]macOS: LaunchAgent 는 clamshell(닫힘) sleep 시 suspend — 진짜 24h 는 `caffeinate -s` 또는 Linux/systemd 권장 (`forgekit runtime install-unit`)[/dim]
   [dim]제어: CLI `forgekit runtime serve|once|status|stop` · 콘솔 `/daemon stop`(kill-switch)[/dim]
 
 ==============================================================================
 STEP 3 — machine-readable status
 ==============================================================================
-{'available': True, 'total': 2, 'active': 1, 'awaiting_approval': 1, 'blocked': 0, 'done': 0, 'last_work': 'bounded write 재읽기 검증 통과', 'last_work_goal': 'goal-dc8d57609f6f', 'reason': 'ok'}
+{'available': True, 'total': 2, 'active': 1, 'awaiting_approval': 1, 'blocked': 0, 'done': 0, 'last_work': 'bounded write 재읽기 검증 통과', 'last_work_goal': 'goal-912e77ff5c49', 'reason': 'ok'}

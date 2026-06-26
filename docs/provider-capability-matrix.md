@@ -168,6 +168,21 @@ usage_basis 는 `submit_compat` 에 따라 갈린다 — 코드 SSoT 는
 honest estimate(길이 기반)로 degrade 하며 live 와 절대 합산하지 않는다. ledger 가 `usage_basis`
 로 둘을 분리 기록하고 `/usage` rollup 이 live_ratio 로 표면화한다.
 
+## 9b. 매트릭스를 실행하는 projection 엔진 (forgekit #406)
+
+§2 의 capability×provider 표는 *prose* 다. 이 표를 **deterministic 코드** 로 굴리는 SSoT 는
+`packages/forgekit-provider/src/forgekit_provider/projection/` 의 rules 엔진이다 —
+vendor-neutral `ToolCandidate(taxonomy_kind, capability_class)` 를 받아 `ProjectionVerdict`
+(어느 provider 로 투영되는지 + target별 attach/connect/verify 조건)를 돌려준다.
+
+- capability class → primary projection target 매핑이 §2 표의 **P** 열을 그대로 미러한다
+  (security/verify/enforce→claude · execution/tool→codex · research/analysis→gemini).
+- 분류/요약/압축/fallback capability → **Ollama backend slot**(projection_targets 비움 —
+  §4 의 "Ollama 는 plugin host 가 아니라 backend" 를 코드로 강제).
+- operator 표면: `/setup` legend · `/provider attach <도구>` 상세 · `/resolve` packet block.
+- 분류 SSoT 와 짝: [`plugin-taxonomy.md`](plugin-taxonomy.md) §6.5.
+
 ## 10. 관련
 - [`forgekit-provider-policy.md`](forgekit-provider-policy.md) · [`plugin-taxonomy.md`](plugin-taxonomy.md) · [`agent-slash-commands.md`](agent-slash-commands.md) · `GEMINI.md`
-- backend/runner: `agents/runners/` · 거버넌스 회귀: `tests/governance/test_provider_capability_taxonomy.py`
+- projection 엔진: `packages/forgekit-provider/.../projection/` · connect/attach 표면: `packages/forgekit-provider-connect/.../attach.py`
+- backend/runner: `agents/runners/` · 거버넌스 회귀: `tests/governance/test_provider_capability_taxonomy.py` · projection 회귀: `tests/forgekit/test_provider_projection.py`

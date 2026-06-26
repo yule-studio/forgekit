@@ -11,7 +11,11 @@ leaf goals that need work:
 1. **collect / packetize** — runs the bounded self-improvement discovery
    (``run_self_improvement``) and links the discovered packets to the goal with a
    ``proposal`` evidence each (``goal_tick.link_packets``). This is the loop's
-   "collect state → choose packets" stage.
+   "collect state → choose packets" stage. If discovery finds nothing (a
+   feature/intent goal, not a repo gap), it **seeds the first decision-lane step from
+   the goal's own intent** (``goal_intent.intent_packets``) so the goal never sticks at
+   ``packets: 0`` — that seed is risky (PM brief / design decision needed) so it parks
+   the goal at ``awaiting_approval`` rather than auto-running (honest, not fake-exec).
 2. **autonomously decompose if big** — if the discovered work spans ≥2 distinct
    affected areas (``planning.is_big_goal``), the goal is decomposed into one
    **child goal per area** (``planning.decompose``), and each area's packets are
@@ -108,6 +112,7 @@ class GoalSchedulerTicker:
     def tick(self, n: int) -> TickOutcome:
         from forgekit_goal import GoalStatus, planning
         from ..selfimprove import goal_tick
+        from . import goal_governance as gov
 
         store = self._get_store()
         try:
@@ -124,15 +129,37 @@ class GoalSchedulerTicker:
         packetized = 0
         decomposed = 0
         awaiting = 0
+        governed = 0
         for goal in candidates[: self.max_goals]:
             si = self._discover()
             if not si.packets:
-                continue  # nothing discovered this tick — leave the goal as-is
+                # No repo-discoverable gap for this goal (e.g. a feature/intent goal). Seed
+                # the FIRST decision-lane step from the goal's own intent so it never sticks
+                # at packets:0 (autopilot exec core). The seed is risky → awaiting_approval
+                # (operator/PM design input needed) — honest, not a fake executable packet.
+                from .goal_intent import intent_packets
+                from ..selfimprove.loop import SelfImprovementResult
+
+                seeded = intent_packets(goal.title)
+                if not seeded:
+                    continue
+                si = SelfImprovementResult(packets=seeded)
             items = [(p.affected_area, p.finding) for p in si.packets]
 
             if planning.is_big_goal(items) and len(
                 {(a or "").strip() or "general" for a, _ in items}
             ) >= self.big_area_threshold:
+                # GOVERNANCE: a big (design-requiring) goal must carry the PM→tech-lead→
+                # specialist artifact chain. Record the PM brief FIRST (the first artifact a
+                # decomposition emits) and mark the goal governance-required, BEFORE creating
+                # any child/packet. Specialist execution stays gated downstream (exec tick)
+                # until the chain is executable — 설계 없는 구현 금지. PM brief is seeded from
+                # the goal (honest, intentionally incomplete) — never a faked design.
+                if not gov.is_governance_required(goal):
+                    gov.record_pm_brief(goal, env=self.env)
+                    goal = gov.mark_governance_required(
+                        goal, "big goal — design chain required (PM brief recorded first)")
+                    governed += 1
                 g2, made = self._decompose_and_route(goal, si, planning, goal_tick)
                 store.save(g2)
                 for child in made:
@@ -156,6 +183,8 @@ class GoalSchedulerTicker:
             bits.append(f"{packetized} goal packetize")
         if decomposed:
             bits.append(f"{decomposed} goal 자동분해")
+        if governed:
+            bits.append(f"{governed} PM brief 선기록(설계강제)")
         if awaiting:
             bits.append(f"{awaiting} 승인대기")
         summary = f"tick {n}: goal-scheduler " + " / ".join(bits)

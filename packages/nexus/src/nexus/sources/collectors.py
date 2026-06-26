@@ -22,12 +22,16 @@ from .contract import (
     STATUS_PLANNED,
     SourceItem,
     SourceSpec,
+    TYPE_GEEKNEWS,
     TYPE_GITHUB,
     TYPE_HACKERNEWS,
     TYPE_REDDIT,
     TYPE_REPO_LOCAL,
     TYPE_RSS,
 )
+
+# GeekNews (news.hada.io) — Korean HN-like dev/startup radar; public RSS, free.
+GEEKNEWS_FEED = "https://feeds.hada.io/rss/news"
 
 Fetcher = Callable[[str], str]
 
@@ -185,6 +189,19 @@ def reddit_collector(subreddit: str, fetcher: Optional[Fetcher] = None) -> JsonL
     return JsonListCollector(spec, url, _reddit_extract, fetcher)
 
 
+def geeknews_collector(feed: str = GEEKNEWS_FEED, fetcher: Optional[Fetcher] = None) -> "RssCollector":
+    """GeekNews (news.hada.io) — free dev/startup radar via its public RSS feed.
+
+    A signal/radar source (like HN/Reddit): parsed with the stdlib RSS collector, so a
+    fake fetcher exercises parsing offline and a missing feed yields [] (honest, no fake).
+    """
+
+    spec = SourceSpec("geeknews", "GeekNews", TYPE_GEEKNEWS, cost_class=COST_FREE,
+                      freshness="daily", trust_level="medium", ingest_method="rss",
+                      legal_note="news.hada.io 공개 RSS — 무료, 출처 표기 권장")
+    return RssCollector(spec, feed, fetcher)
+
+
 def github_collector(query: str, fetcher: Optional[Fetcher] = None) -> JsonListCollector:
     spec = SourceSpec("github", "GitHub search", TYPE_GITHUB, cost_class=COST_LOW,
                       freshness="on-demand", trust_level="high", ingest_method="api",
@@ -207,4 +224,5 @@ class PlannedCollector:
 __all__ = (
     "Fetcher", "RepoLocalCollector", "RssCollector", "JsonListCollector",
     "PlannedCollector", "hackernews_collector", "reddit_collector", "github_collector",
+    "geeknews_collector", "GEEKNEWS_FEED",
 )

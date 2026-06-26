@@ -1,0 +1,21 @@
+# AUTOPILOT exec core — intent goal seeds its FIRST packet (no longer stuck at 0)
+before tick: goal-54b80db46e9b [active]  packets: 0  children: 0  evidence: 0
+  (operator 가 goal 만 활성화 — 추가 prompt 없음. discovery 는 repo gap 0)
+
+runtime tick → tick 1: goal-scheduler 1 goal packetize / 1 승인대기  (waiting=True)
+
+after tick:  goal-54b80db46e9b [awaiting_approval]  packets: 1  children: 0  evidence: 1
+  evidence[proposal] [risky] PM brief 작성: 외부 결제 연동 기능을 설계하고 구현한다 -> risky → approval-wait (operator 결정)  (ref=packet-1be11de4aaf4)
+
+# /goal show (consistent surface — same store)
+  goal-54b80db46e9b  [awaiting_approval]  외부 결제 연동 기능을 설계하고 구현한다
+    intent: -
+    mode: auto   packets: 1   children: 0   evidence: 1
+    linked packets: packet-1be11de4aaf4
+    recent evidence:
+      - [proposal] [risky] PM brief 작성: 외부 결제 연동 기능을 설계하고 구현한다 -> risky → approval-wait (operator 결정)  (packet-1be11de4aaf4)
+
+# 자동 vs operator 입력 (정직)
+# - 자동: activate 된 goal → tick 이 첫 packet + proposal evidence 생성, 상태 surface
+# - operator 입력 필요: PM brief/design 결정(risky seed → awaiting_approval), 그리고 risky packet approve
+# - 실행 0: 이 tick 은 packet 을 링크/기록만 — 물리 실행은 exec tick(safe-class) + 승인 게이트

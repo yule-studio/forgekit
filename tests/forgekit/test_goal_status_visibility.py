@@ -89,7 +89,9 @@ class DaemonStatusWiringTests(unittest.TestCase):
             g = transitions.apply(Goal.create("ship feature", now=now), GoalStatus.ACTIVE, now=now)
             GoalStore(env=env).save(g)
             text = "\n".join(surface.daemon_status_lines(env=env))
-            self.assertIn("goal-loop", text)               # always-on status now surfaces goals
+            # the daemon surface now joins goals + live transport into a readiness block
+            # (issue #428) — it surfaces the goal continuity counts within that verdict.
+            self.assertIn("readiness", text)               # always-on status surfaces goals + transport
             self.assertIn("active 1", text)
 
 

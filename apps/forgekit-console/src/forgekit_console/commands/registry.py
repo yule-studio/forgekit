@@ -27,7 +27,9 @@ H_RENDER = "render"
 H_BLOCKED = "blocked"
 H_WHOAMI = "whoami"
 H_RESOLVE = "resolve"
+H_FORGE = "forge"
 H_HEPHAISTOS = "hephaistos"
+H_ARMORY = "armory"
 H_SKILLS = "skills"
 H_LOADOUT = "loadout"
 H_PROVIDER = "provider"
@@ -103,16 +105,18 @@ _COMMANDS: Tuple[SlashCommand, ...] = (
     SlashCommand("resolve", "Hephaistos — 요청을 skill/loadout/weapon/source/packet 으로 resolve + governance verdict (`/resolve <요청>` 미리보기, `/resolve apply <요청>` = receipt 를 ledger 에 영속, `/resolve ledger` = forge governance ledger 보기)", H_RESOLVE, "status"),
     SlashCommand("council", "PM→tech-lead→specialist lane readiness — 실행 전에 무엇이 확정돼야 하는지(replay 가능 decision log). `/council <session>` (없으면 사용법)", H_COUNCIL, "status"),
     SlashCommand("handoff", "specialist work order — 목표/제안 스택/선택 이유/탈락안/컨벤션/디자인·API·infra/scope/test/acceptance (`/handoff <session>`, replay 된 handoff packet)", H_HANDOFF, "status"),
+    SlashCommand("forge", "Hephaistos execution core — 요청을 equip(adopted vs equipped)·Nexus 지식·loadout/work packet·ponytail(anti-overbuild) verdict 까지 forge (`/forge <요청>`)", H_FORGE, "status"),
     SlashCommand("hephaistos", "Hephaistos skill-forge 상태 — armory/nexus/resolver/loadout", H_HEPHAISTOS, "status"),
+    SlashCommand("armory", "Armory intake — 외부 plugin/skill/tool 후보 도입 검토(adopt-now/collect-first/hold) + 8축 artifact + 3축 검토. `/armory [<id>]` (id 없으면 verdict 요약 + adopted spec)", H_ARMORY, "status"),
     SlashCommand("skills", "최근/지정 요청의 선택 skill + 선택 이유 (`/skills <요청>`)", H_SKILLS, "status"),
     SlashCommand("loadout", "loadout readiness — 실 env weapon 검증 (`/loadout <id>`)", H_LOADOUT, "status"),
-    SlashCommand("provider", "provider 설정/연결 — `/provider [set|link|unlink|connect <id>|disconnect <id>|test <id>|recommended|preset four-brain|route show|route set <slot> <id>|budget <id> <limit>|budget show|list|doctor]`", H_PROVIDER, "status"),
+    SlashCommand("provider", "provider 설정/연결 — `/provider [set|link|unlink|connect <id>|disconnect <id>|test <id>|attach <도구id>|recommended|preset four-brain|route show|route set <slot> <id>|budget <id> <limit>|budget show|list|doctor]` (attach=선택 tool 의 provider 생태계 projection/connect/verify)", H_PROVIDER, "status"),
     SlashCommand("setup", "컨트롤플레인 부트스트랩 — provider · knowledge(nexus/vault) · toolchain 한 화면 정직 집계 + 추천 preset 저장/검증 (`/setup [apply [preset]]`)", H_SETUP, "status"),
     SlashCommand("toolchain", "language/runtime 버전 전환 — `/toolchain [detect|recommend <loadout>|switch [global] [--approve]|verify|drift]` (repo-local 감지·mise 기반, global/install 은 승인 게이트)", H_TOOLCHAIN, "status"),
     SlashCommand("nexus", "Nexus 지식 source — `/nexus [set <path>|clear]` 연결/해제 + live 상태(connected/not_connected/missing/blocked/restricted)", H_NEXUS, "status"),
-    SlashCommand("discovery", "discovery 누적 루프 — free-first 수집→idea brief→**ledger 누적**(새 vs 추적중, lifecycle)+operator digest(왜/다음 질문). `/discovery [intake | pending | candidates | evidence | promote <n> | save <n> | park <n>]` (intake=외부 skill/plugin/tool 후보 수집+curation gate(Armory 승격 전), pending=결정대기 목록, candidates=교차 관측·신선도 통과한 '물어볼 후보', evidence=경쟁gap·self-improve 신호를 vault evidence note 로 영속, promote=PM handoff 제안, save=연결 vault authored note, park=보류)", H_DISCOVERY, "status"),
+    SlashCommand("discovery", "discovery 누적 루프 — free-first 수집→idea brief→**ledger 누적**(새 vs 추적중, lifecycle)+operator digest(왜/다음 질문). `/discovery [intake | pending | candidates | review <n> | adopt <n> | evidence | promote <n> | save <n> | park <n>]` (intake=외부 skill/plugin/tool 후보 수집+curation gate(Armory 승격 전), pending=결정대기 목록, candidates=교차 관측·신선도 통과한 '물어볼 후보', review=도입 효율 검토 8축+3축 consult(기본 collect-first), adopt=3축 검토 후 armory intake(adopted≠equipped), evidence=경쟁gap·self-improve 신호를 vault evidence note 로 영속, promote=PM handoff 제안, save=연결 vault authored note, park=보류)", H_DISCOVERY, "status"),
     SlashCommand("daemon", "always-on 데몬 heartbeat — state/tick/last_tick/pid/kill-switch (`/daemon [stop]`); CLI `forgekit runtime serve|status|stop`", H_DAEMON, "status"),
-    SlashCommand("goal", "장기 목표 control plane — `/goal [list|new <제목>|show <id>|activate <id>|evidence <id>|awaiting|approve <id> [메모]|deny <id> [메모]]` (forgekit_goal 영속, 승인은 awaiting_approval→active/blocked + decision evidence, tick/실행은 runtime/GW4)", H_GOAL, "status"),
+    SlashCommand("goal", "장기 목표 control plane — `/goal [list|new <제목>|show <id>|activate <id>|evidence <id>|progress <id>|govern <id>|publish <id>|awaiting|approve <id> [메모]|deny <id> [메모]]` (forgekit_goal 영속, govern=설계 chain readiness(PM→tech-lead→specialist), publish=goal evidence 를 Nexus evidence 축에 schema 고정 authored note 로 기록, 승인은 awaiting_approval→active/blocked + decision evidence, tick/실행은 runtime/GW4)", H_GOAL, "status"),
     SlashCommand("pm-agent", "Product intake gate — 요구 보강·결정 질문·handoff (stub)", H_AGENT_ENTER, "agent", "product-agent"),
     SlashCommand("planning-agent", "Planning 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "planning-agent"),
     SlashCommand("backend-agent", "Backend 에이전트 모드 진입 (stub)", H_AGENT_ENTER, "agent", "backend-agent"),

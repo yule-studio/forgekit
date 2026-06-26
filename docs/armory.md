@@ -14,7 +14,7 @@ armory` single direction (no cycle). Old paths kept as compat: `hephaistos.armor
 (so `from hephaistos.models import SkillSpec` still works). **Provider-neutral**: skills describe
 *capability / framework / workflow* (`capability_note` carries the capability lens), never a vendor name.
 
-## Coverage (7 categories, 26 skills, 8 loadouts)
+## Coverage (8 categories, 28 skills, 10 loadouts)
 | category | skills |
 | --- | --- |
 | backend | java-spring, kotlin-spring, node-nestjs, python-fastapi |
@@ -23,10 +23,12 @@ armory` single direction (no cycle). Old paths kept as compat: `hephaistos.armor
 | devops | docker, kubernetes, terraform, aws-ecs, github-actions |
 | security | auth-jwt, oauth2, secrets-management, web-security-review |
 | ai | openai-api, rag-basics, eval-harness, agent-evaluation |
+| docs | docs-quality (built-in prose, tool-less) |
 | design-support | figma-read (partial — blocked when unconnected), design-system-review, ux-ui-reference-pack |
 
 Loadouts: backend-java/python/node-local, frontend-react-local, fullstack-web-local,
-devops-cloud-local, ai-agent-local, security-review-local, design-review-local.
+devops-cloud-local, ai-agent-local, security-review-local, docs-writing-local (tool-less),
+design-review-local.
 
 ## Manifest contract (no placeholders)
 Each skill carries id/title/category/summary/when_to_use/when_not_to_use/required_inputs/
@@ -66,6 +68,30 @@ A promoted spec is registered into a **runtime overlay** (`catalog.register_prom
 `promoted_skills` / `clear_overlay`) that `all_skills()`/`skill()` merge over the seed — so the
 resolver picks it up immediately, re-promotion (same id) updates in place, and tests `clear_overlay()`
 for isolation. Evidence: `apps/forgekit-console/examples/armory-intake/intake.txt`.
+
+### Adoption review — 도입 효율 검토 (adopt-now / collect-first / hold)
+`promote_candidate` is the *schema* gate; **`AdoptionReview`** is the *should-we-adopt-at-all*
+gate. It carries 8 fields (current pain / expected benefit / overlap with existing / operational
+cost / maintenance risk / provider-runtime fit / governance-security impact / adopt-timing reason)
+and **≥3 axis reviews** (PM + tech-lead + ≥1 specialist). `disposition()` = the most-conservative
+axis, gated on completeness → any axis voting hold/collect-first pulls it down; a missing field or
+axis ⇒ **hold** (no single-axis adopt). **`adopt_candidate(candidate, review)`** couples both: only
+`adopt-now` + a valid contract yields a `SkillSpec` to register; `collect-first`/`hold` return no
+spec (no fake adoption — evidence kept for Nexus). **adopted** (in catalog/overlay) stays distinct
+from **equipped** (the tools are actually installed/attached for a task — checked by the execution
+core, see [hephaistos-runtime.md](hephaistos-runtime.md)).
+
+**Evaluated external-candidate set.** The framework above is *applied* to a curated external
+candidate set in [`forgekit_console.armory_intake`](../apps/forgekit-console/src/forgekit_console/armory_intake.py)
+(operator data, console layer — reuses `armory.candidate`, no new model). This round evaluated
+13 named candidates (ponytail · Context7 · MCP official Fetch/Filesystem/Git/Memory/Sequential
+Thinking · Vale · textlint · alex · write-good · proselint · browser-use): **adopt-now 1** (Vale →
+the `doc-quality-lint-local` loadout), **collect-first 8** (Nexus 근거만, 미활성), **hold 4**
+(MCP Git/Filesystem = git-write/path-safety hard-rail 우회, Sequential Thinking = 중복, browser-use
+= 자격증명/exfiltration 위험). Surface `/armory [<id>]`; evidence
+`examples/armory-intake/adoption-catalog.json`; regression `tests/forgekit/test_armory_intake_candidates.py`.
+Vale-based linting is a **distinct** tool loadout (`doc-quality-lint-local`) from the built-in
+tool-less `docs-writing-local` — different equip profiles, not a duplicate.
 
 ## Context-aware selection (Hephaistos)
 `hephaistos.resolve(request, *, preferred_role="", project_facts=(), runtime_constraints=(), harness="")`
