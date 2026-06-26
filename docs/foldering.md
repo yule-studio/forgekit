@@ -38,3 +38,6 @@ labs/ (실험·조사)  →  armory/ (반복 가치 승격)  →  packages/forge
   선택 로직만** 축적하고, 실제 실행은 hermes/openclaw/runtime 으로 위임한다 ([hephaistos.md](hephaistos.md)).
 - **빈 디렉터리는 README 또는 `.gitkeep`** 으로 유지한다.
 - 1차는 **scaffolding only** — runtime 구현/dependency/build tooling 은 추가하지 않는다.
+- **`forge-*` 식별자는 컨셉/서사용이다.** 실제 package/app 정식 prefix 는 `forgekit-*` 가
+  canonical — 위 `forge-core`/`forge-cli` 등 placeholder 의 구현명/disposition 기준은
+  [package-topology.md §9](package-topology.md) 가 SSoT. 본 문서는 컨셉 지도일 뿐이다.
