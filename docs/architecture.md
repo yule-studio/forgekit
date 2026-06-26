@@ -95,3 +95,37 @@
 - `policies/reference/COMMIT_CONVENTION.md` — 커밋 메시지 source of truth
 - `policies/reference/BRANCH_STRATEGY.md` — 브랜치 정책
 - `policies/reference/NAMING_CONVENTION.md` — 네이밍 정책
+
+## Local-first Agent Control Plane (1차 폴더링)
+
+> ForgeKit 의 확장 방향. 디렉터리 책임은 [foldering.md](foldering.md), 오케스트레이터는
+> [hephaistos.md](hephaistos.md). 본 절은 1차 scaffolding 의 역할 지도다.
+
+**정의** — ForgeKit 은 로컬 우선(Local-first) 으로 도는 **에이전트 제어판**이다. 판단/계획은
+로컬에서 하고, 외부 연결과 무거운 작업만 위임한다.
+
+**Local / Server 역할 분리**
+- **Local** — forge-cli/daemon/dashboard, Hephaistos 판단, openclaw 로컬 실행, nexus/armory 저장.
+  기본 신뢰 경계. 사람 승인 게이트가 여기 있다.
+- **Server(선택)** — 무거운/공유가 필요한 작업만(원격 실행·대용량 인덱싱 등). 기본은 로컬.
+
+**구성요소 역할**
+| 요소 | 역할 |
+| --- | --- |
+| **ForgeKit Core** (`packages/forge-core`) | 플랫폼 골격·제어판 진입 |
+| **Hephaistos** (`agents/hephaistos`) | 최상위 오케스트레이터·판단 엔진(도구 선택/계획/승격) |
+| **Hermes** (`agents/hermes`) | 외부 세계 연결자(검색/브라우저/API/메시지/웹 조사) |
+| **OpenClaw** (`agents/openclaw`) | 로컬 실행자(터미널/파일/Git/브라우저 조작) |
+| **Nexus** (`nexus/`) | 기억 저장소(작업기록/평가/판단기준/지식) |
+| **Armory** (`armory/`) | 도구 창고(프롬프트/스킬/스크립트/어댑터/레시피) |
+| **Labs** (`labs/`) | 실험장(clone coding / CLI agent 조사 / 패턴 추출) |
+
+**실행 흐름**
+```text
+User → forge-cli / forge-dashboard
+     → ForgeKit Core
+     → Hephaistos (intent → plan → tool-select)
+     → Policy (autonomy level / approval gate)
+     → Hermes / OpenClaw / Runtimes (실행)
+     → Nexus / Armory (기록·승격)
+```
